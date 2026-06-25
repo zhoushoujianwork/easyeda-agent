@@ -579,6 +579,43 @@ const schematicExportBom: Handler = async (payload) => {
 	return { result: { artifactId: artifact.id, fileType }, artifacts: [artifact] };
 };
 
+// ─── Library search ──────────────────────────────────────────────────
+
+const schematicLibrarySearch: Handler = async (payload) => {
+	const query = requireString(payload, 'query');
+	const limit = optionalNumber(payload, 'limit') ?? 10;
+
+	let raw: Array<unknown>;
+	try {
+		raw = await eda.lib_Device.search(query);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to search device library.');
+	}
+	if (!Array.isArray(raw)) {
+		return { result: { count: 0, components: [] } };
+	}
+
+	const components = raw.slice(0, limit).map((d) => {
+		const r = d as Record<string, unknown>;
+		const otherProperty = (r.otherProperty as Record<string, unknown> | undefined) ?? {};
+		return {
+			uuid: r.uuid,
+			libraryUuid: r.libraryUuid,
+			name: r.name,
+			value: otherProperty.Value,
+			footprintName: r.footprintName,
+			symbolName: r.symbolName,
+			lcsc: r.supplierId,
+			manufacturer: r.manufacturer,
+			manufacturerId: r.manufacturerId,
+			description: typeof r.description === 'string' ? r.description.slice(0, 200) : r.description,
+		};
+	});
+
+	return { result: { count: components.length, query, components } };
+};
+
 // ─── Composite: pin → wire → netflag/netport in one call ────────────
 
 /**
@@ -715,6 +752,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.export.netlist': schematicExportNetlist,
 	'schematic.export.bom': schematicExportBom,
 	'schematic.power.connect_pin': schematicPowerConnectPin,
+	'schematic.library.search': schematicLibrarySearch,
 	'debug.exec_js': debugExecJs,
 };
 

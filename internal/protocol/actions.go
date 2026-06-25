@@ -133,6 +133,15 @@ func Phase1Actions() []ActionSpec {
 			VerifyWith:  []string{"schematic.snapshot"},
 		},
 		{
+			Name:        "schematic.library.search",
+			Domain:      DomainSchematic,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Search the EasyEDA device library by free-text query (e.g. '1kΩ 0603', '0.1uF X7R', 'tact button'). Returns a ranked list of matching devices with their libraryUuid + uuid ready for schematic.component.place. Replaces ad-hoc debug.exec_js lookups.",
+			Inputs:      []string{"query", "limit optional"},
+			Outputs:     []string{"components[].libraryUuid", "components[].uuid", "components[].name", "components[].value", "components[].footprintName", "components[].lcsc", "components[].description"},
+		},
+		{
 			Name:        "schematic.power.connect_pin",
 			Domain:      DomainSchematic,
 			Phase:       1,
