@@ -14,7 +14,7 @@
 		"build": "npm run compile && ts-node ./build/packaged.ts",
 		"package": "ts-node ./build/packaged.ts",
 		"bump": "node ./scripts/bump.mjs",
-		"release": "node ./scripts/bump.mjs minor && npm run typecheck && npm run build"
+		"release": "node ./scripts/bump.mjs && npm run typecheck && npm run build"
 	},
 	"devDependencies": {
 		"@jlceda/pro-api-types": "^0.2.21",
