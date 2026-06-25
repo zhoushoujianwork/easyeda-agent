@@ -72,14 +72,17 @@ a bug. Two guards keep verdicts honest (run `make lint-test` or
    opposite its wire (顺着导线) and that `(family, body) → rotation` matches
    `orientation.json`. For **power/ground** (label-box symbols) a disagreement is
    a hard rule-bug signal — verified on ceshi: all 10 agree. For **net_port** (an
-   ARROW symbol) the bbox center may sit on the opposite side, so a port
-   disagreement is reported as **UNCONFIRMED**, not a hard bug: the ESP32
-   reference shows 12 ports that disagree with the `port` row, but that could be
-   the table OR the bbox-misreads-arrows — needs a visual to resolve before
-   touching the `port` row / connect_pin. (Do NOT validate by *creating* a flag
+   ARROW symbol) the bbox center does NOT track the arrow direction, so calibrate
+   reports a port disagreement as an informational **WARN**, never a hard bug.
+   (The ESP32 reference showed 12 such port WARNs; the `port` row was then
+   VISUALLY CONFIRMED correct — a `connect_pin` `direction=right` port renders
+   pointing right — so those WARNs are bbox artifacts, not a table bug. The
+   table/connect_pin were left unchanged.) Do NOT validate by *creating* a flag
    and reading its bbox immediately — a freshly-created isolated flag's bbox
    flips horizontally vs a settled on-canvas one; only real, wired, rendered
-   flags are ground truth.)
+   flags are ground truth. And note `getCurrentRenderedAreaImage` can return a
+   **stale/cached** render (doesn't follow zoom or reflect just-made edits), so
+   don't trust a screenshot for confirmation without first proving it refreshed.
 2. **Fixture goldens** — every layout under `tests/fixtures/` is linted and
    diffed against `tests/golden/`. `clean_board.json` MUST stay clean (the
    false-positive net); each bad fixture MUST still fire its rule. After an

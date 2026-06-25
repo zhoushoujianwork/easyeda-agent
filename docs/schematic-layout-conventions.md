@@ -145,7 +145,7 @@ EasyEDA 默认 lineWidth = 1。约定：
 | ground (`GND`/`AGND`) | 180° | 270° | **0°** | 90° |
 | net_port (`IN`/`OUT`/`BI`) | 90° | 180° | 270° | **0°** |
 
-> 加粗的是各类型的**默认/最常见**朝向（power 朝上、ground 朝下、port 朝右），由 `calibrate.js` 对活体 bbox 实测验证。其余方向**不是另外猜的**——它们由同一条循环律从已验证的锚点推导（`orient.py:derive` / `deriveBodyRotation`），所以与锚点同样可信、构造上一致；导入新 .eext 后跑 `calibrate.js` 复核锚点即可，必要时用 `schematic.power.connect_pin` 的 `rotation` 参数显式覆盖。
+> 加粗的是各类型的**默认/最常见**朝向（power 朝上、ground 朝下、port 朝右）。**power/ground** 由 `calibrate.js` 对活体 bbox 实测验证（ceshi 10/10 通过）。**net_port 是箭头符号，bbox 中心读不出它的指向**——已用 **connect_pin 放置 + 肉眼确认**：`direction=right` 的 port 渲染出来确实朝右（朝外），所以 port 行也是对的；`calibrate.js` 对 port 报的 WARN 是 bbox 读不准导致的，**属正常、不是表的 bug**。其余未观测方向由同一条循环律从已验证锚点推导，构造上一致。必要时用 `schematic.power.connect_pin` 的 `rotation` 参数显式覆盖。
 
 **普通元件的朝向**（信号流原则）：
 - 元件按信号流向摆——**输入 pin 朝信号来的方向，输出 pin 朝信号去的方向**。一个串在 A→B 横向链路上的元件（电阻、电感、磁珠）应水平摆放，pin1 朝 A、pin2 朝 B，不要竖着插在横向链路里。
@@ -285,5 +285,5 @@ LED 也可用 `LED1` 这种语义化命名（兼容 `D1`），EasyEDA 不强制 
 - 这是 **schematic** 约定，不是 PCB 约定。PCB layout 另有独立约定（trace 宽度、layer 用途、impedance）。
 - 对超大模块（pin > 100），九宫格容纳能力有限，可能要分多页（用 `schematic.pages.list` + `schematic.page.open`）。
 - 多页之间通过 `net_port` (`createNetPort('IN/OUT/BI')`) 在页间建立电气连接，net 名称相同视为同网。
-- `getCurrentRenderedAreaImage` 返回的是当前 viewport 的截图，不是全图——大图需要 `dmt_EditorControl.openDocument` + `sch_Document.navigateToRegion` 控制视野后再 snapshot。
+- `getCurrentRenderedAreaImage` **实测不可靠**：在后台标签 / 某些状态下它返回的是**缓存的旧渲染**——既不跟随 `zoomToSelectedPrimitives` / `zoomToRegion`，也可能不反映刚做的增删（实测：两次不同板面状态下截图逐字节相同、md5 一致）。用它做"改完截图确认"前，务必先确认它真的刷新了（例如截图前后做一处明显改动并比对像素）；否则改用纯数据校验（如 schematic-lint）或直接肉眼看 EasyEDA 界面。
 - 目前两份 reference（§7 motobox、§8 ESP32S3R8N8）覆盖了「贴近 3×3 理想」与「RF MCU 占角 + 横向电源链」两种典型。若再采集到第三种（例如纯模拟前端、或多电源域工控板），应继续补充以避免 agent 过拟合到单一案例。

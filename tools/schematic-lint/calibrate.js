@@ -91,9 +91,9 @@ for (const c of comps) {
   else if (rot !== wantRot) {
     // The bbox-center method is validated for power/ground (label-box symbols,
     // confirmed on ceshi: 10/10). For net_port (an ARROW symbol) the bbox center
-    // may sit on the opposite side, so a port "conflict" is UNCONFIRMED — it can
-    // mean either the table's port row is wrong OR the bbox misreads ports. Needs
-    // a visual to resolve; don't treat it as a hard rule-bug.
+    // does NOT track the arrow direction — VISUALLY CONFIRMED that connect_pin's
+    // port rotations are correct (a direction=right port renders pointing right),
+    // so a port "conflict" here is a bbox artifact, never a table bug. Informational.
     if (fam === 'port') out.portUnconfirmed.push(rec);
     else out.tableConflicts.push(rec);                       // power/ground: hard RULE BUG signal
   }
@@ -104,9 +104,10 @@ if (out.tableConflicts.length) {
   out.summary = `FAIL — ${out.tableConflicts.length} power/ground flag(s) disagree with the table `
     + `(hard signal — the table or connect_pin is wrong); ${out.portUnconfirmed.length} net_port unconfirmed`;
 } else if (out.portUnconfirmed.length) {
-  out.summary = `WARN — ${out.ok} power/ground flags agree with the table, but ${out.portUnconfirmed.length} `
-    + `net_port(s) disagree. UNCONFIRMED: the bbox method isn't validated for arrow-shaped port symbols. `
-    + `Resolve with a visual before changing the port row of orientation.json / connect_pin.`;
+  out.summary = `WARN — ${out.ok} power/ground flags agree with the table; ${out.portUnconfirmed.length} `
+    + `net_port(s) disagree, but this is EXPECTED and informational: the bbox-center method can't read `
+    + `arrow-shaped port symbols. The connect_pin port rotations were VISUALLY CONFIRMED correct, so `
+    + `port WARNs are NOT a table-bug signal.`;
 } else {
   out.summary = `PASS — ${out.ok} correctly-oriented flags all agree with orientation.json `
     + `(${out.misoriented.length} mis-oriented board flags, ${out.unwired} unwired, ignored)`;
