@@ -1,0 +1,14 @@
+root = true
+
+[*]
+end_of_line = lf
+
+[*.{html,css,js,mjs,jsx,json,ts,mts,tsx,vue}]
+charset = utf-8
+indent_style = tab
+indent_size = 4
+
+[*.{md,yml,yaml}]
+charset = utf-8
+indent_style = space
+indent_size = 2

@@ -55,5 +55,5 @@ When a needed operation has no typed action:
 
 1. Decompose it into existing actions if possible.
 2. Otherwise state the missing action name and expected inputs/outputs.
-3. Use raw JavaScript only as a temporary debug escape hatch.
+3. Use `debug.exec_js` (raw `eda.*` JavaScript) only as a temporary, user-confirmed debug escape hatch. Its result must be JSON-serializable — base64-encode any `Blob`/`File` inside the snippet.
 4. Recommend promoting repeated debug code into a typed action.

@@ -1,4 +1,4 @@
-.PHONY: test fmt actions
+.PHONY: test fmt actions build daemon
 
 test:
 	go test ./...
@@ -8,3 +8,9 @@ fmt:
 
 actions:
 	go run ./cmd/easyeda actions
+
+build:
+	go build -o bin/easyeda ./cmd/easyeda
+
+daemon:
+	go run ./cmd/easyeda daemon

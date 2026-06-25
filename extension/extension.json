@@ -1,0 +1,195 @@
+{
+	"name": "easyeda-agent-connector",
+	"uuid": "e30ac714ed1248ea9bf8fbd08c75c333",
+	"displayName": "EasyEDA Agent Connector",
+	"description": "Bridges the easyeda-agent Go daemon to the official eda.* API over a local WebSocket, dispatching typed schematic actions.",
+	"version": "0.1.0",
+	"publisher": "easyeda-agent",
+	"engines": {
+		"eda": "~3.2.0"
+	},
+	"license": "Apache-2.0",
+	"categories": "Other",
+	"keywords": [
+		"agent",
+		"automation",
+		"websocket",
+		"schematic",
+		"AI"
+	],
+	"activationEvents": {
+		"onStartupFinished": true
+	},
+	"entry": "./dist/index",
+	"dependentExtensions": {},
+	"headerMenus": {
+		"home": [
+			{
+				"id": "EasyEDA Agent",
+				"title": "EasyEDA Agent",
+				"menuItems": [
+					{
+						"id": "Reconnect",
+						"title": "Reconnect",
+						"registerFn": "reconnect"
+					},
+					{
+						"id": "StopConnection",
+						"title": "Stop",
+						"registerFn": "stopConnection"
+					},
+					{
+						"id": "ToggleAutoConnect",
+						"title": "Toggle Auto-Connect",
+						"registerFn": "toggleAutoConnect"
+					},
+					{
+						"id": "About",
+						"title": "About...",
+						"registerFn": "about"
+					}
+				]
+			}
+		],
+		"blank": [
+			{
+				"id": "EasyEDA Agent",
+				"title": "EasyEDA Agent",
+				"menuItems": [
+					{
+						"id": "Reconnect",
+						"title": "Reconnect",
+						"registerFn": "reconnect"
+					},
+					{
+						"id": "StopConnection",
+						"title": "Stop",
+						"registerFn": "stopConnection"
+					},
+					{
+						"id": "ToggleAutoConnect",
+						"title": "Toggle Auto-Connect",
+						"registerFn": "toggleAutoConnect"
+					},
+					{
+						"id": "About",
+						"title": "About...",
+						"registerFn": "about"
+					}
+				]
+			}
+		],
+		"sch": [
+			{
+				"id": "EasyEDA Agent",
+				"title": "EasyEDA Agent",
+				"menuItems": [
+					{
+						"id": "Reconnect",
+						"title": "Reconnect",
+						"registerFn": "reconnect"
+					},
+					{
+						"id": "StopConnection",
+						"title": "Stop",
+						"registerFn": "stopConnection"
+					},
+					{
+						"id": "ToggleAutoConnect",
+						"title": "Toggle Auto-Connect",
+						"registerFn": "toggleAutoConnect"
+					},
+					{
+						"id": "About",
+						"title": "About...",
+						"registerFn": "about"
+					}
+				]
+			}
+		],
+		"symbol": [
+			{
+				"id": "EasyEDA Agent",
+				"title": "EasyEDA Agent",
+				"menuItems": [
+					{
+						"id": "Reconnect",
+						"title": "Reconnect",
+						"registerFn": "reconnect"
+					},
+					{
+						"id": "StopConnection",
+						"title": "Stop",
+						"registerFn": "stopConnection"
+					},
+					{
+						"id": "ToggleAutoConnect",
+						"title": "Toggle Auto-Connect",
+						"registerFn": "toggleAutoConnect"
+					},
+					{
+						"id": "About",
+						"title": "About...",
+						"registerFn": "about"
+					}
+				]
+			}
+		],
+		"pcb": [
+			{
+				"id": "EasyEDA Agent",
+				"title": "EasyEDA Agent",
+				"menuItems": [
+					{
+						"id": "Reconnect",
+						"title": "Reconnect",
+						"registerFn": "reconnect"
+					},
+					{
+						"id": "StopConnection",
+						"title": "Stop",
+						"registerFn": "stopConnection"
+					},
+					{
+						"id": "ToggleAutoConnect",
+						"title": "Toggle Auto-Connect",
+						"registerFn": "toggleAutoConnect"
+					},
+					{
+						"id": "About",
+						"title": "About...",
+						"registerFn": "about"
+					}
+				]
+			}
+		],
+		"footprint": [
+			{
+				"id": "EasyEDA Agent",
+				"title": "EasyEDA Agent",
+				"menuItems": [
+					{
+						"id": "Reconnect",
+						"title": "Reconnect",
+						"registerFn": "reconnect"
+					},
+					{
+						"id": "StopConnection",
+						"title": "Stop",
+						"registerFn": "stopConnection"
+					},
+					{
+						"id": "ToggleAutoConnect",
+						"title": "Toggle Auto-Connect",
+						"registerFn": "toggleAutoConnect"
+					},
+					{
+						"id": "About",
+						"title": "About...",
+						"registerFn": "about"
+					}
+				]
+			}
+		]
+	}
+}

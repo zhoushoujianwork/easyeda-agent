@@ -1,18 +1,38 @@
 # EasyEDA Connector Contract
 
-The connector is an EasyEDA extension installed in the official client. It is the only part of the system that can access the official `eda` object.
+The connector is an EasyEDA Pro extension installed in the official client. It is the only part of the system that can access the official `eda` object.
+
+## Runtime Constraints
+
+The connector runs inside EasyEDA's webview, which shapes the transport:
+
+- **No `fetch` to the daemon.** EasyEDA Pro is served over HTTPS, so the browser blocks mixed-content requests to `http://127.0.0.1`. The connector cannot use the `/health` endpoint for discovery.
+- **No browser `WebSocket`.** The connector must use the official `eda.sys_WebSocket` API (`register` / `send` / `close`).
+- **Permission gate.** The user must enable the extension's **Allow external interaction** (允许外部交互) permission, or every `eda.sys_WebSocket` call throws.
+- The connector cannot write to the daemon's filesystem; binary artifacts are sent inline (see [protocol.md](protocol.md)).
 
 ## Startup
 
-1. Connect to the Go daemon by scanning `127.0.0.1:49620-49629`.
-2. Verify the daemon service identity as `easyeda-agent`.
-3. Register a generated `windowId`.
-4. Send current context if a project/document is active.
-5. Keep heartbeat active.
+1. For each port in `127.0.0.1:49620-49629`, open a WebSocket to `ws://127.0.0.1:PORT/eda` via `eda.sys_WebSocket.register`.
+2. Wait briefly (~1.5s) for the daemon to send a `handshake` frame. Verify `service === "easyeda-agent"`.
+3. On a valid handshake, generate a `windowId` and send `register`, then `context`.
+4. Start a `ping`/`pong` heartbeat; on a missed pong or socket error, re-scan and reconnect.
 
-## Required Connector Messages
+## Required Messages
 
-### register
+### handshake (daemon → connector)
+
+Sent by the daemon immediately on connect so the connector can confirm it reached an easyeda-agent daemon before registering.
+
+```json
+{
+  "type": "handshake",
+  "service": "easyeda-agent",
+  "version": "0.1.0-dev"
+}
+```
+
+### register (connector → daemon)
 
 ```json
 {
@@ -24,7 +44,7 @@ The connector is an EasyEDA extension installed in the official client. It is th
 }
 ```
 
-### context
+### context (connector → daemon)
 
 ```json
 {
@@ -34,6 +54,18 @@ The connector is an EasyEDA extension installed in the official client. It is th
   "documentUuid": "...",
   "documentType": "schematic"
 }
+```
+
+### ping / pong (heartbeat)
+
+The connector sends `ping` periodically; the daemon answers `pong` echoing the `id`. A missed pong triggers reconnect.
+
+```json
+{ "type": "ping", "id": "hb-1" }
+```
+
+```json
+{ "type": "pong", "id": "hb-1" }
 ```
 
 ### action result

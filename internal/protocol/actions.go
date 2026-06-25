@@ -8,6 +8,7 @@ const (
 	DomainSchematic Domain = "schematic"
 	DomainArtifact  Domain = "artifact"
 	DomainSystem    Domain = "system"
+	DomainDebug     Domain = "debug"
 )
 
 type ActionSpec struct {
@@ -183,6 +184,17 @@ func Phase1Actions() []ActionSpec {
 			Description: "Export schematic BOM as csv or xlsx artifact.",
 			Inputs:      []string{"fileType", "template optional", "columns optional"},
 			Outputs:     []string{"artifact id", "file path", "file type"},
+		},
+		{
+			Name:         "debug.exec_js",
+			Domain:       DomainDebug,
+			Phase:        1,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Run raw eda.* JavaScript in the connector. Escape hatch for operations without a typed action; confirmation-gated, not for normal workflows.",
+			Inputs:       []string{"code"},
+			Outputs:      []string{"value"},
 		},
 	}
 }

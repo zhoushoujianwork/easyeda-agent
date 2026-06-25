@@ -1,16 +1,20 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"github.com/zhoushoujianwork/easyeda-agent/internal/daemon"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/version"
 )
@@ -41,6 +45,10 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 		return printActions(stdout, stderr)
 	case "health":
 		return health(args[1:], stdout, stderr)
+	case "daemon":
+		return runDaemon(args[1:], stdout, stderr)
+	case "call":
+		return runCall(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown command: %s\n\n", args[0])
 		printUsage(stderr)
@@ -56,6 +64,8 @@ Usage:
   easyeda phase1
   easyeda actions
   easyeda health [--host 127.0.0.1] [--ports 49620-49629]
+  easyeda daemon [--host 127.0.0.1] [--ports 49620-49629]
+  easyeda call <action> [--window id] [--payload '{...}'] [--host 127.0.0.1] [--ports 49620-49629]
 
 `, version.Name)
 }
@@ -83,7 +93,168 @@ func printActions(stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-type healthOptions struct {
+func runDaemon(args []string, stdout io.Writer, stderr io.Writer) int {
+	opts, err := parseHostPortOptions(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "daemon: %v\n", err)
+		return 2
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	srv := daemon.New(daemon.Options{
+		Host:      opts.host,
+		PortStart: opts.portStart,
+		PortEnd:   opts.portEnd,
+		Version:   version.Version,
+	})
+	if err := srv.Run(ctx, stdout); err != nil {
+		fmt.Fprintf(stderr, "daemon: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+type callOptions struct {
+	action    string
+	window    string
+	payload   string
+	host      string
+	portStart int
+	portEnd   int
+}
+
+func runCall(args []string, stdout io.Writer, stderr io.Writer) int {
+	opts, err := parseCallOptions(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "call: %v\n", err)
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	scan := scanHealth(ctx, hostPortOptions{host: opts.host, portStart: opts.portStart, portEnd: opts.portEnd})
+	if scan.Found == nil {
+		fmt.Fprintf(stderr, "call: no easyeda-agent daemon found on %s:%s (start it with `easyeda daemon`)\n", opts.host, scan.Ports)
+		return 1
+	}
+
+	body := map[string]any{"action": opts.action}
+	if opts.window != "" {
+		body["windowId"] = opts.window
+	}
+	if opts.payload != "" {
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(opts.payload), &payload); err != nil {
+			fmt.Fprintf(stderr, "call: invalid --payload json: %v\n", err)
+			return 2
+		}
+		body["payload"] = payload
+	}
+
+	buf, err := json.Marshal(body)
+	if err != nil {
+		fmt.Fprintf(stderr, "call: encode request: %v\n", err)
+		return 1
+	}
+
+	url := fmt.Sprintf("http://%s:%d/action", opts.host, scan.Found.Port)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
+	if err != nil {
+		fmt.Fprintf(stderr, "call: build request: %v\n", err)
+		return 1
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintf(stderr, "call: %v\n", err)
+		return 1
+	}
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		fmt.Fprintf(stderr, "call: read response: %v\n", readErr)
+		return 1
+	}
+	if closeErr != nil {
+		fmt.Fprintf(stderr, "call: close response: %v\n", closeErr)
+		return 1
+	}
+
+	stdout.Write(respBody)
+	if len(respBody) > 0 && respBody[len(respBody)-1] != '\n' {
+		fmt.Fprintln(stdout)
+	}
+
+	var parsed struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil || !parsed.OK {
+		return 1
+	}
+	return 0
+}
+
+func parseCallOptions(args []string) (callOptions, error) {
+	opts := callOptions{
+		host:      defaultHost,
+		portStart: defaultPortStart,
+		portEnd:   defaultPortEnd,
+	}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--window":
+			i++
+			if i >= len(args) {
+				return opts, errors.New("--window requires a value")
+			}
+			opts.window = args[i]
+		case "--payload":
+			i++
+			if i >= len(args) {
+				return opts, errors.New("--payload requires a value")
+			}
+			opts.payload = args[i]
+		case "--host":
+			i++
+			if i >= len(args) {
+				return opts, errors.New("--host requires a value")
+			}
+			opts.host = args[i]
+		case "--ports":
+			i++
+			if i >= len(args) {
+				return opts, errors.New("--ports requires a value")
+			}
+			start, end, err := parsePortRange(args[i])
+			if err != nil {
+				return opts, err
+			}
+			opts.portStart = start
+			opts.portEnd = end
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return opts, fmt.Errorf("unknown call option: %s", arg)
+			}
+			if opts.action != "" {
+				return opts, fmt.Errorf("unexpected argument: %s", arg)
+			}
+			opts.action = arg
+		}
+	}
+
+	if opts.action == "" {
+		return opts, errors.New("action name is required, e.g. `easyeda call system.health`")
+	}
+	return opts, nil
+}
+
+type hostPortOptions struct {
 	host      string
 	portStart int
 	portEnd   int
@@ -110,7 +281,7 @@ type daemonHealth struct {
 }
 
 func health(args []string, stdout io.Writer, stderr io.Writer) int {
-	opts, err := parseHealthOptions(args)
+	opts, err := parseHostPortOptions(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "health: %v\n", err)
 		return 2
@@ -132,8 +303,8 @@ func health(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func parseHealthOptions(args []string) (healthOptions, error) {
-	opts := healthOptions{
+func parseHostPortOptions(args []string) (hostPortOptions, error) {
+	opts := hostPortOptions{
 		host:      defaultHost,
 		portStart: defaultPortStart,
 		portEnd:   defaultPortEnd,
@@ -185,7 +356,7 @@ func parsePortRange(raw string) (int, int, error) {
 	return start, end, nil
 }
 
-func scanHealth(ctx context.Context, opts healthOptions) healthResult {
+func scanHealth(ctx context.Context, opts hostPortOptions) healthResult {
 	result := healthResult{
 		Status: "not_found",
 		Host:   opts.host,

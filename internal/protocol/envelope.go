@@ -39,9 +39,15 @@ type Artifact struct {
 	ID       string `json:"id"`
 	Kind     string `json:"kind"`
 	Path     string `json:"path,omitempty"`
+	FileName string `json:"fileName,omitempty"`
 	MimeType string `json:"mimeType,omitempty"`
 	Size     int64  `json:"size,omitempty"`
 	SHA256   string `json:"sha256,omitempty"`
+
+	// InlineBase64 carries the artifact bytes from the connector, which cannot
+	// write to the daemon's disk. The daemon decodes it, persists the file, fills
+	// Path/Size/SHA256, and clears this field before returning to the caller.
+	InlineBase64 string `json:"inlineBase64,omitempty"`
 }
 
 type ErrorInfo struct {

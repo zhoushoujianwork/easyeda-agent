@@ -51,10 +51,22 @@ docs/                        Architecture, protocol, roadmap, decisions
 go run ./cmd/easyeda version
 go run ./cmd/easyeda phase1
 go run ./cmd/easyeda actions
+go run ./cmd/easyeda daemon
 go run ./cmd/easyeda health
+go run ./cmd/easyeda call system.health
 ```
 
-`health` scans `127.0.0.1:49620-49629` for an `easyeda-agent` daemon-style health endpoint. The daemon is not implemented yet, so a clean `not_found` result is expected at this stage.
+`daemon` starts the local server. It binds the first free port in `127.0.0.1:49620-49629` and serves three endpoints, then runs until interrupted (Ctrl-C / SIGTERM):
+
+- `GET /health` — service identity, version, and connected windows
+- `GET /eda` — WebSocket the EasyEDA connector registers on (daemon sends a `handshake` on connect)
+- `POST /action` — a typed action envelope to forward to a connected window
+
+`health` scans the same port range for an `easyeda-agent` daemon. With the daemon running it reports `status: found` and lists connected windows; otherwise a clean `not_found` result is expected.
+
+`call <action>` finds the running daemon and posts a typed action to it. `system.health` is answered by the daemon itself (no connector required); schematic actions need a connected EasyEDA window and return `NO_CONNECTOR` until the connector extension is running.
+
+The Go daemon side of the action protocol is in place. The EasyEDA connector under `extension/` is a working transport/dispatch skeleton; its `eda.*` calls are stubbed pending validation against the official EasyEDA extension SDK.
 
 ## Design Position
 

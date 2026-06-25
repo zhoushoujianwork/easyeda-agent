@@ -1,0 +1,8 @@
+/.vscode/
+/dist/
+/build/dist/
+/node_modules/
+/.eslintcache
+/tsconfig.tsbuildinfo
+debug.log
+.DS_Store

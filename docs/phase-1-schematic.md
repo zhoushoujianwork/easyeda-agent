@@ -49,6 +49,9 @@ Phase 1 makes schematic work reliable enough for an AI agent to inspect, modify,
 | `schematic.save` | yes | Save schematic |
 | `schematic.export.netlist` | no | Export netlist artifact |
 | `schematic.export.bom` | no | Export BOM artifact |
+| `debug.exec_js` | maybe | Run raw `eda.*` JavaScript (confirm-gated escape hatch) |
+
+`debug.exec_js` is the deliberate escape hatch for operations without a typed action. It is confirmation-gated and not for normal workflows; repeated snippets should be promoted to typed actions.
 
 Run `easyeda actions` to print the current machine-readable version of this list.
 
