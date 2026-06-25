@@ -49,6 +49,25 @@ Core schematic operations:
 - Treat `File` and `Blob` outputs as artifacts.
 - If DRC fails, report violations and propose the smallest repair step.
 
+## EasyEDA Electrical Rules (load-bearing — DRC will fatal if ignored)
+
+EasyEDA's DRC does **not** treat two primitives sharing the same coordinate as electrically connected. Every connection needs a real `schematic.wire.create` between them. Two concrete consequences:
+
+1. **`schematic.netflag.create` MUST NOT be placed on the same point as a pin.** Placing a +3V3/GND/IN/OUT flag at the exact pin coordinate produces a DRC fatal: *"端点重叠且未连接 / endpoints overlap but not connected"*. The flag sits on top of the pin visually but EasyEDA treats them as two disjoint endpoints.
+
+   Correct pattern: pin → short wire → netflag at the wire's far end. Typical offset: 20 grid units (EasyEDA uses 0.01 inch / grid unit on schematics). Example for `+3V3` on `R1.pin1 @(265, 440)`:
+
+   ```text
+   schematic.wire.create     points = [265,440, 245,440]   # pin to a free point
+   schematic.netflag.create  x = 245, y = 440, kind=power, net="+3V3"
+   ```
+
+2. **Wires must have non-zero length.** A wire of `[x,y, x,y]` is silently ignored; a wire of `[x,y, x+0,y+0]` will not register a connection.
+
+3. **NC pins still need explicit marking.** A pin without any wire/flag triggers a "悬空 / floating" warning even if your design intends it unused. Use a Non-Connected flag for those.
+
+Apply this rule when generating any power/ground/port connection — emit the wire first, then place the flag at the wire's free endpoint.
+
 ## Missing Actions
 
 When a needed operation has no typed action:
