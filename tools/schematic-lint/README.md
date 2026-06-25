@@ -70,11 +70,16 @@ a bug. Two guards keep verdicts honest (run `make lint-test` or
    [`calibrate.js`](calibrate.js) (READ-ONLY) via `debug.exec_js` against a
    connected window: for every real placed flag it checks the body points
    opposite its wire (顺着导线) and that `(family, body) → rotation` matches
-   `orientation.json`. A real, correctly-oriented flag whose rotation disagrees
-   is a rule-bug signal. (Do NOT validate by *creating* a flag and reading its
-   bbox immediately — a freshly-created isolated flag's bbox flips horizontally
-   vs a settled on-canvas one; only real, wired, rendered flags are ground truth.
-   Verified on the ceshi board: all 10 power/ground flags agree with the table.)
+   `orientation.json`. For **power/ground** (label-box symbols) a disagreement is
+   a hard rule-bug signal — verified on ceshi: all 10 agree. For **net_port** (an
+   ARROW symbol) the bbox center may sit on the opposite side, so a port
+   disagreement is reported as **UNCONFIRMED**, not a hard bug: the ESP32
+   reference shows 12 ports that disagree with the `port` row, but that could be
+   the table OR the bbox-misreads-arrows — needs a visual to resolve before
+   touching the `port` row / connect_pin. (Do NOT validate by *creating* a flag
+   and reading its bbox immediately — a freshly-created isolated flag's bbox
+   flips horizontally vs a settled on-canvas one; only real, wired, rendered
+   flags are ground truth.)
 2. **Fixture goldens** — every layout under `tests/fixtures/` is linted and
    diffed against `tests/golden/`. `clean_board.json` MUST stay clean (the
    false-positive net); each bad fixture MUST still fire its rule. After an

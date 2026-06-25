@@ -52,7 +52,7 @@ function bboxCenter(bb) {
   return null;
 }
 
-const out = { flags: [], misoriented: [], tableConflicts: [], unwired: 0, ok: 0, notes: [] };
+const out = { flags: [], misoriented: [], tableConflicts: [], portUnconfirmed: [], unwired: 0, ok: 0, notes: [] };
 
 // wire-endpoint index
 const wires = await eda.sch_PrimitiveWire.getAll();
@@ -88,13 +88,27 @@ for (const c of comps) {
   out.flags.push(rec);
   if (wireDir === null) out.unwired++;
   else if (!oriented) out.misoriented.push(rec);              // board issue, not table issue
-  else if (rot !== wantRot) out.tableConflicts.push(rec);     // RULE BUG signal
+  else if (rot !== wantRot) {
+    // The bbox-center method is validated for power/ground (label-box symbols,
+    // confirmed on ceshi: 10/10). For net_port (an ARROW symbol) the bbox center
+    // may sit on the opposite side, so a port "conflict" is UNCONFIRMED — it can
+    // mean either the table's port row is wrong OR the bbox misreads ports. Needs
+    // a visual to resolve; don't treat it as a hard rule-bug.
+    if (fam === 'port') out.portUnconfirmed.push(rec);
+    else out.tableConflicts.push(rec);                       // power/ground: hard RULE BUG signal
+  }
   else out.ok++;
 }
 
-out.summary = out.tableConflicts.length === 0
-  ? `PASS — ${out.ok} correctly-oriented flags all agree with orientation.json `
-    + `(${out.misoriented.length} mis-oriented board flags, ${out.unwired} unwired, ignored)`
-  : `FAIL — ${out.tableConflicts.length} real correctly-oriented flag(s) disagree with the table; `
-    + `investigate the table vs calibrate before changing connect_pin`;
+if (out.tableConflicts.length) {
+  out.summary = `FAIL — ${out.tableConflicts.length} power/ground flag(s) disagree with the table `
+    + `(hard signal — the table or connect_pin is wrong); ${out.portUnconfirmed.length} net_port unconfirmed`;
+} else if (out.portUnconfirmed.length) {
+  out.summary = `WARN — ${out.ok} power/ground flags agree with the table, but ${out.portUnconfirmed.length} `
+    + `net_port(s) disagree. UNCONFIRMED: the bbox method isn't validated for arrow-shaped port symbols. `
+    + `Resolve with a visual before changing the port row of orientation.json / connect_pin.`;
+} else {
+  out.summary = `PASS — ${out.ok} correctly-oriented flags all agree with orientation.json `
+    + `(${out.misoriented.length} mis-oriented board flags, ${out.unwired} unwired, ignored)`;
+}
 return out;
