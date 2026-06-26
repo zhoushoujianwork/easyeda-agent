@@ -884,7 +884,55 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	};
 };
 
+// ─── Generic document open ───────────────────────────────────────────
+
+/**
+ * Open any document (schematic page or PCB) by UUID. A generalization of
+ * schematic.page.open that works for all document types the editor supports.
+ */
+const documentOpen: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	let tabId;
+	try {
+		tabId = await eda.dmt_EditorControl.openDocument(uuid);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to open document.');
+	}
+	if (tabId === undefined) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to open document "${uuid}".`);
+	}
+	return { result: { tabId } };
+};
+
 // ─── PCB (Phase 2 — read-only skeleton) ──────────────────────────────
+
+/**
+ * List all PCB documents in the current project. Returns uuid + name for each
+ * PCB, which can be passed to document.open to switch to that board.
+ */
+const pcbDocumentsList: Handler = async () => {
+	let pcbs;
+	try {
+		pcbs = await eda.dmt_Pcb.getAllPcbsInfo();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list PCB documents.');
+	}
+	if (!Array.isArray(pcbs)) {
+		return { result: { pcbs: [], count: 0 } };
+	}
+	return {
+		result: {
+			pcbs: pcbs.map(p => ({
+				uuid: p.uuid,
+				name: p.name,
+				parentProjectUuid: p.parentProjectUuid,
+			})),
+			count: pcbs.length,
+		},
+	};
+};
 
 /**
  * List placed components on the active PCB. Optionally filter by layer and
@@ -991,6 +1039,7 @@ const debugExecJs: Handler = async (payload) => {
 const HANDLERS: Record<string, Handler> = {
 	'project.current': projectCurrent,
 	'document.current': documentCurrent,
+	'document.open': documentOpen,
 	'schematic.pages.list': schematicPagesList,
 	'schematic.page.open': schematicPageOpen,
 	'schematic.components.list': schematicComponentsList,
@@ -1007,6 +1056,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.export.bom': schematicExportBom,
 	'schematic.power.connect_pin': schematicPowerConnectPin,
 	'schematic.library.search': schematicLibrarySearch,
+	'pcb.documents.list': pcbDocumentsList,
 	'pcb.components.list': pcbComponentsList,
 	'pcb.layers.list': pcbLayersList,
 	'pcb.nets.list': pcbNetsList,

@@ -25,7 +25,7 @@ const dispatchTimeout = 60 * time.Second
 // knownActions is the set of Phase 1 action names the daemon will accept.
 var knownActions = func() map[string]bool {
 	set := map[string]bool{}
-	for _, a := range protocol.Phase1Actions() {
+	for _, a := range protocol.AllActions() {
 		set[a.Name] = true
 	}
 	return set

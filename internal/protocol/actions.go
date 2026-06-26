@@ -25,7 +25,7 @@ type ActionSpec struct {
 	VerifyWith   []string `json:"verifyWith,omitempty"`
 }
 
-func Phase1Actions() []ActionSpec {
+func AllActions() []ActionSpec {
 	return []ActionSpec{
 		{
 			Name:        "system.health",
@@ -49,6 +49,16 @@ func Phase1Actions() []ActionSpec {
 			NeedsWindow: true,
 			Description: "Read active editor document and schematic page context.",
 			Outputs:     []string{"document uuid", "document type", "tab id"},
+		},
+		{
+			Name:        "document.open",
+			Domain:      DomainDocument,
+			Phase:       1,
+			Mutates:     false,
+			NeedsWindow: true,
+			Description: "Open any document (schematic page or PCB) by UUID and activate its editor tab. A generalization of schematic.page.open that works for all document types.",
+			Inputs:      []string{"uuid"},
+			Outputs:     []string{"tab id"},
 		},
 		{
 			Name:        "schematic.pages.list",
@@ -210,6 +220,14 @@ func Phase1Actions() []ActionSpec {
 		// Connectivity probe + inspection surface for the upcoming PCB
 		// layout/routing feature. All read-only; mirrors the schematic read
 		// actions against the eda.pcb_* namespaces. See docs/phase-2-pcb.md.
+		{
+			Name:        "pcb.documents.list",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "List all PCB documents in the current project. Returns uuid + name for each board; pass uuid to document.open to switch to that PCB.",
+			Outputs:     []string{"pcbs[].uuid", "pcbs[].name", "pcbs[].parentProjectUuid", "count"},
+		},
 		{
 			Name:        "pcb.components.list",
 			Domain:      DomainPcb,

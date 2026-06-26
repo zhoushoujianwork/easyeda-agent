@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -89,11 +91,78 @@ func printPhase1(w io.Writer) {
 func printActions(stdout io.Writer, stderr io.Writer) int {
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(protocol.Phase1Actions()); err != nil {
+	if err := enc.Encode(protocol.AllActions()); err != nil {
 		fmt.Fprintf(stderr, "encode actions: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// daemonPIDFile returns the path where the daemon records its PID.
+func daemonPIDFile() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".easyeda-agent", "daemon.pid")
+}
+
+// killExistingDaemon reads the PID file and terminates any running daemon so
+// the new one can bind the preferred port (49620) instead of spilling to the
+// next one.
+func killExistingDaemon(log io.Writer) {
+	pidFile := daemonPIDFile()
+	if pidFile == "" {
+		return
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		_ = os.Remove(pidFile)
+		return
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		_ = os.Remove(pidFile)
+		return
+	}
+	// Signal 0 checks liveness without sending a real signal.
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		_ = os.Remove(pidFile)
+		return
+	}
+	fmt.Fprintf(log, "easyeda-agent: killing existing daemon (pid %d)\n", pid)
+	_ = proc.Signal(syscall.SIGTERM)
+	for range 20 {
+		time.Sleep(100 * time.Millisecond)
+		if proc.Signal(syscall.Signal(0)) != nil {
+			break
+		}
+	}
+	_ = proc.Signal(syscall.SIGKILL)
+	_ = os.Remove(pidFile)
+	time.Sleep(200 * time.Millisecond) // let the OS release the port
+}
+
+// writeDaemonPID writes our PID to the PID file and returns a cleanup func
+// that removes it on exit.
+func writeDaemonPID(log io.Writer) func() {
+	pidFile := daemonPIDFile()
+	if pidFile == "" {
+		return func() {}
+	}
+	if err := os.MkdirAll(filepath.Dir(pidFile), 0755); err != nil {
+		fmt.Fprintf(log, "easyeda-agent: create pid dir: %v\n", err)
+		return func() {}
+	}
+	if err := os.WriteFile(pidFile, fmt.Appendf(nil, "%d\n", os.Getpid()), 0644); err != nil {
+		fmt.Fprintf(log, "easyeda-agent: write pid file: %v\n", err)
+		return func() {}
+	}
+	return func() { _ = os.Remove(pidFile) }
 }
 
 func runDaemon(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -102,6 +171,10 @@ func runDaemon(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "daemon: %v\n", err)
 		return 2
 	}
+
+	killExistingDaemon(stdout)
+	cleanup := writeDaemonPID(stdout)
+	defer cleanup()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

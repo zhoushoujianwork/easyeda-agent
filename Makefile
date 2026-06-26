@@ -40,6 +40,9 @@ daemon: ## one-shot daemon (no reload) — prefer `make dev`
 dev: ## hot-reload the daemon (air) — mirrors output to tmp/daemon.log (truncated each start)
 	@command -v air >/dev/null 2>&1 || { echo "air not found — install: go install github.com/air-verse/air@latest"; exit 1; }
 	@mkdir -p tmp
+	@# Kill any leftover daemon+watcher from a prior session so we always bind 49620.
+	@pkill -TERM -f 'tmp/easyeda daemon' 2>/dev/null || true
+	@sleep 0.4
 	air 2>&1 | tee tmp/daemon.log
 
 # Build the connector .eext at the CURRENT version (no bump).

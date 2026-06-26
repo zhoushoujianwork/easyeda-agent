@@ -3,9 +3,9 @@ package protocol
 import "testing"
 
 func TestPhase1ActionsHaveStableNames(t *testing.T) {
-	actions := Phase1Actions()
+	actions := AllActions()
 	if len(actions) == 0 {
-		t.Fatal("expected phase 1 actions")
+		t.Fatal("expected actions")
 	}
 
 	seen := map[string]bool{}
@@ -17,8 +17,8 @@ func TestPhase1ActionsHaveStableNames(t *testing.T) {
 			t.Fatalf("duplicate action name: %s", action.Name)
 		}
 		seen[action.Name] = true
-		if action.Phase != 1 {
-			t.Fatalf("expected phase 1 action, got phase %d for %s", action.Phase, action.Name)
+		if action.Phase < 1 {
+			t.Fatalf("action %s has invalid phase %d", action.Name, action.Phase)
 		}
 	}
 
