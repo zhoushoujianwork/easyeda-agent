@@ -19,18 +19,23 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 
 ## Drawing a schematic — library-first (default)
 
+> **Design conventions live in the sibling [`easyeda-conventions`](../easyeda-conventions/SKILL.md) skill**
+> (layout zones, spacing, wire/orientation rules, part-selection criteria, the
+> canonical orientation table + standard-parts library). This operational skill
+> **links** to it — single source, never copy the rules here.
+
 Place **real parts from the EasyEDA / 立创(LCSC) library**, then wire them.
 Hand-drawing a custom component symbol is the **fallback**, used only when the
 part genuinely isn't in the library (a hand-built symbol loses the
 footprint/supplier linkage and is error-prone — prefer a library part, even a
 near-equivalent, first).
 
-0. **Standard parts first.** Check [`references/standard-parts.json`](references/standard-parts.json)
-   for the category you need (10k 0402, 100nF, ESP32-S3, AMS1117, USB-C, …). If it's
-   there, place straight from its `{ libraryUuid, deviceUuid }` — deterministic,
-   BOM-ready, with the real LCSC C-number. Only search when the category is missing,
-   and ADD the chosen part back to `standard-parts.json` (with its C-number) so the
-   next design is reproducible.
+0. **Standard parts first.** Check [`standard-parts.json`](../easyeda-conventions/references/standard-parts.json)
+   (in the easyeda-conventions skill) for the category you need (10k 0402, 100nF,
+   ESP32-S3, AMS1117, USB-C, …). If it's there, place straight from its
+   `{ libraryUuid, deviceUuid }` — deterministic, BOM-ready, with the real LCSC
+   C-number. Only search when the category is missing, and ADD the chosen part back
+   to `standard-parts.json` (with its C-number) so the next design is reproducible.
 1. **Search** (fallback) `schematic.library.search` (free-text: an MPN, value+package,
    or a name like `ESP32-S3-WROOM-1`). Results are **reranked by relevance** (best
    category first; each carries a `score`), so the right part usually leads — but
@@ -109,9 +114,9 @@ Run `easyeda actions` for the current machine-readable action list.
 | `scripts/bom-enrich.py <bom.tsv>` | 将导出的 BOM 里 `SupplierId` 从 MPN 补全为 LCSC C 号 |
 | `scripts/parts-select.py` | 器件选型辅助工具 |
 
-`references/standard-parts.json` — 标准器件库（libraryUuid + deviceUuid + LCSC C 号），放置前先查这里。
-
-`references/orientation.json` — flag 旋转真值表（lint 和 connector 共用，不要手动修改）。
+标准器件库（`standard-parts.json`）、flag 旋转真值表（`orientation.json`）、布局/选型约定都在
+**[easyeda-conventions](../easyeda-conventions/SKILL.md)** skill（单一真源，勿在此复制）。
+`bom-enrich.py` / `parts-select.py` / `orient.py` 会跨 skill 自动读取这些 canonical 文件。
 
 ## Guardrails
 
@@ -126,7 +131,7 @@ Run `easyeda actions` for the current machine-readable action list.
 
 ### 原理图
 
-When placing components, follow [docs/schematic-layout-conventions.md](../../docs/schematic-layout-conventions.md):
+When placing components, follow the easyeda-conventions skill — [schematic-layout-conventions.md](../easyeda-conventions/references/schematic-layout-conventions.md):
 - Zone map (power left, MCU center, RF/sensors right, big modules in corners)
 - Module spacing rules (80–500 units depending on size + pin count)
 - Wire stub lengths (20–40 units for power, 20–60 for signals)
@@ -134,7 +139,7 @@ When placing components, follow [docs/schematic-layout-conventions.md](../../doc
 
 ### PCB 布局
 
-PCB 自动布局/调整时遵循 [docs/pcb-layout-conventions.md](../../docs/pcb-layout-conventions.md)（完整规则 + 检测方法）。要点:
+PCB 自动布局/调整时遵循 easyeda-conventions skill 的 [pcb-layout-conventions.md](../easyeda-conventions/references/pcb-layout-conventions.md)（完整规则 + 检测方法）。要点:
 
 **优先级裁决(冲突时高覆盖低)**:P0 机械/外壳锁定 > P1 安全间距/隔离 > P2 EMI 热回路 + 关键去耦贴近 > P3 参考平面/回流连续 > P4 热 keep-out > P5 功能分区 > P6 DFM > P7 网格/对齐/丝印(纯美化,**绝不覆盖功能位**)。
 

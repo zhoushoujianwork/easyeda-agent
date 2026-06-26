@@ -353,7 +353,7 @@ func AllActions() []ActionSpec {
 			Phase:       2,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Coarse auto-layout SEED (priority P6 in docs/pcb-layout-conventions.md): cluster components by shared local nets (mode=cluster) or pack a flat grid (mode=grid), then grid-pack each cluster into a tidy block with gutters. Skips locked components. This is the mechanical first pass — the agent then applies the higher-priority placement rules (mechanical/connectors → decoupling → thermal) from the conventions doc.",
+			Description: "Coarse auto-layout SEED (priority P6 in skills/easyeda-conventions/references/pcb-layout-conventions.md): cluster components by shared local nets (mode=cluster) or pack a flat grid (mode=grid), then grid-pack each cluster into a tidy block with gutters. Skips locked components. This is the mechanical first pass — the agent then applies the higher-priority placement rules (mechanical/connectors → decoupling → thermal) from the conventions doc.",
 			Inputs:      []string{"mode optional (cluster|grid, default cluster)", "primitiveIds optional", "pitch optional", "gutter optional", "cols optional"},
 			Outputs:     []string{"mode", "groups", "moved[].primitiveId", "moved[].from", "moved[].to", "count"},
 			VerifyWith:  []string{"pcb.components.list"},

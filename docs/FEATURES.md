@@ -112,7 +112,7 @@ not just hand-drawn custom symbols.
 
 These are planned and **not implemented** today.
 
-- **器件标准化 / standard parts library** — a curated `skills/easyeda-schematic/references/standard-parts.json`
+- **器件标准化 / standard parts library** — a curated `skills/easyeda-conventions/references/standard-parts.json`
   mapping category → `{MPN, LCSC C-number, libraryUuid, deviceUuid}` that the
   agent places from **first**, with `schematic.library.search` as the fallback. The
   goal is deterministic, repeatable part choices instead of re-searching every time.

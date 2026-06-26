@@ -699,7 +699,7 @@ type Direction = 'up' | 'down' | 'left' | 'right';
  * Default direction by kind. Power flows up to a + rail, ground falls down
  * to a 0V rail, an IN port comes from the left (the producer), an OUT/BI
  * port goes to the right (the consumer / shared bus). These match the §3.3
- * conventions in docs/schematic-layout-conventions.md.
+ * conventions in skills/easyeda-conventions/references/schematic-layout-conventions.md.
  */
 function defaultDirection(kind: string): Direction {
 	if (['ground', 'analog_ground', 'protective_ground', 'protect_ground'].includes(kind)) return 'down';
@@ -715,11 +715,11 @@ function defaultDirection(kind: string): Direction {
  *
  * The whole table is DERIVED from four facts — the +90° body cycle and the body
  * direction at rotation 0 for each family. These are the SINGLE SOURCE OF TRUTH
- * mirrored in skills/easyeda-schematic/references/orientation.json; the lint harness
+ * mirrored in skills/easyeda-conventions/references/orientation.json; the lint harness
  * (skills/easyeda-schematic/scripts/tests/run.py) asserts that file derives the identical
  * table, so this writer and the linter's check can never drift. Re-validate the
  * anchors against live getPrimitivesBBox via skills/easyeda-schematic/scripts/calibrate.js
- * after importing a new .eext. See docs/schematic-layout-conventions.md §3.5.
+ * after importing a new .eext. See skills/easyeda-conventions/references/schematic-layout-conventions.md §3.5.
  */
 const ROTATION_CYCLE: Direction[] = ['up', 'left', 'down', 'right'];
 const BODY_ANCHOR_AT_ROT0: Record<'power' | 'ground' | 'port', Direction> = {
@@ -1350,7 +1350,7 @@ const pcbComponentsMove: Handler = async (payload) => {
 
 // ─── PCB auto-layout seed: cluster by shared local nets + grid-pack (P6) ──
 // The mechanical first pass. The agent then applies higher-priority rules
-// (mechanical/connectors → decoupling → thermal) per docs/pcb-layout-conventions.md.
+// (mechanical/connectors → decoupling → thermal) per skills/easyeda-conventions/references/pcb-layout-conventions.md.
 
 /** Global nets (GND/power/high-fanout) connect everything, so they are excluded from clustering. */
 function isGlobalNetName(net: string): boolean {

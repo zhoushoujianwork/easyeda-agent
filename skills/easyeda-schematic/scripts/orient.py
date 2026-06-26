@@ -11,7 +11,11 @@ derive from these same facts, so they can never drift — tests/run.py asserts i
 import json
 import os
 
-DEFAULT_SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'references', 'orientation.json')
+# orientation.json is the canonical truth and lives in the easyeda-conventions
+# skill (single source); this operational script reads it across the skill boundary.
+DEFAULT_SPEC = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    '..', '..', 'easyeda-conventions', 'references', 'orientation.json')
 
 
 def derive(rotation_cycle, body_anchor):

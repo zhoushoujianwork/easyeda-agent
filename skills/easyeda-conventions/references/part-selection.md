@@ -51,7 +51,7 @@ need a part ──▶ parts-select (pick optimal LCSC C#)
             ──▶ export.bom + bom-enrich  →  orderable BOM with the C#
 ```
 
-This makes [`standard-parts.json`](../skills/easyeda-schematic/references/standard-parts.json) selections justified
+This makes [`standard-parts.json`](./standard-parts.json) selections justified
 by live stock/price/basic data instead of a guess. Validated: 100nF→C1525,
 10µF→C440198, AMS1117→C6186 — all matched the curated standard library.
 

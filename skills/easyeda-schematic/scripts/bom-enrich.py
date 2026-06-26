@@ -48,7 +48,9 @@ def main():
         return 2
     bom_path = args[0]
     out_path = None
-    parts_path = os.path.join(HERE, 'standard-parts.json')
+    # standard-parts.json is canonical data in the easyeda-conventions skill.
+    parts_path = os.path.join(
+        HERE, '..', '..', 'easyeda-conventions', 'references', 'standard-parts.json')
     av = sys.argv[1:]
     if '--out' in av:
         out_path = av[av.index('--out') + 1]
