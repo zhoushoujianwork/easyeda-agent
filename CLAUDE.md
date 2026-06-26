@@ -22,7 +22,7 @@ on `main` by default (user preference). Don't `git checkout -b`; just commit to
 |---|---|
 | `cmd/easyeda` + `internal/{app,daemon,protocol}` | Go CLI + daemon. `internal/protocol/actions.go` = the 20 typed actions. Daemon: `/health`, `/eda` (connector WS), `/action`. |
 | `extension/` | TypeScript connector → esbuild → `.eext`. `src/transport.ts` (port-scan + auto-reconnect), `src/actions.ts` (eda.* handlers + `connect_pin`). |
-| `tools/schematic-lint/` | Data-only schematic linter (no screenshots) + rule-trust harness + diff baseline. |
+| `skills/easyeda-schematic/` | User-facing skill. `scripts/` = lint suite + BOM/parts tools. `references/` = standard-parts.json, orientation.json. |
 | `docs/schematic-layout-conventions.md` | Layout/orientation conventions the agent must follow. |
 | `docs/FEATURES.md` | Feature-status inventory (20 actions grouped by capability) + roadmap. |
 | `skills/easyeda-schematic/SKILL.md` | The user-facing skill. |
@@ -52,8 +52,8 @@ make eext         # bump PATCH + build importable .eext, STABLE uuid (update in 
 make eext-fresh   # fallback: bump PATCH + FRESH uuid (imports as a new entry; delete the old one) — for when the installed one won't uninstall
 make connector    # build .eext at the current version/uuid (no bump — same-version dev only)
 
-tools/schematic-lint/lint.sh <project>          # live lint (DIFF if a baseline exists)
-tools/schematic-lint/lint.sh <project> --save   # full lint + record baseline
+skills/easyeda-schematic/scripts/lint.sh <project>          # live lint (DIFF if a baseline exists)
+skills/easyeda-schematic/scripts/lint.sh <project> --save   # full lint + record baseline
 ```
 
 For a connected window, EasyEDA must be open with the project AND have **"允许外部
@@ -78,9 +78,9 @@ reaches the daemon.
   OLD connector code and fights the freshly-imported one over the daemon socket;
   **fully quit and relaunch EasyEDA** to load new connector code.
 - **EasyEDA schematic coords are y-UP** (+y renders upward). The orientation table
-  in `tools/schematic-lint/orientation.json` is the **stored-rotation** truth (the
+  in `skills/easyeda-schematic/references/orientation.json` is the **stored-rotation** truth (the
   value `getState_Rotation` reads back for a correctly-oriented flag), validated
-  read-only against real placed flags by `calibrate.js`. **`createNetFlag` /
+  read-only against real placed flags by `skills/easyeda-schematic/scripts/calibrate.js`. **`createNetFlag` /
   `createNetPort` STORE rotation negated** on the 2026-06 build — confirmed via
   `connect_pin(direction=left)`: it passed `90`, the flag stored `270` and rendered
   pointing **right** (up/down at 0/180 are symmetric, which is why it hid for so

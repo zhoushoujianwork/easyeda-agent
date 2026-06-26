@@ -42,7 +42,7 @@ Phase 1 focuses on schematic workflows:
 - export schematic netlist and BOM artifacts
 - capture schematic viewport snapshots for verification
 
-A data-only [schematic linter](tools/schematic-lint/README.md) finds layout and
+A data-only [schematic linter](skills/easyeda-schematic/scripts/README.md) finds layout and
 connectivity problems from primitive data (no screenshots), with a diff baseline.
 
 PCB, footprint, manufacturing, and library authoring are intentionally deferred.
@@ -58,7 +58,7 @@ internal/daemon/             Local daemon: /health, /eda (connector WS), /action
 internal/protocol/           Typed action protocol shared with connector (actions.go)
 internal/version/            Build/version metadata
 extension/                   EasyEDA connector (.eext) source + build (TypeScript → esbuild)
-tools/schematic-lint/        Data-only schematic linter + rule-trust harness + diff baseline
+skills/easyeda-schematic/scripts/        Data-only schematic linter + rule-trust harness + diff baseline
 skills/easyeda-schematic/    The user-facing Skill
 docs/                        Architecture, protocol, features/roadmap, conventions, decisions
 ```

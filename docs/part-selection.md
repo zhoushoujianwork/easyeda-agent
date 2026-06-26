@@ -18,10 +18,10 @@ top page, so the selector queries base + general and merges.
 
 ## Where it lives
 
-Tool-side (`tools/parts-select.py`) or daemon-side — **NOT the connector**: the
+Tool-side (`skills/easyeda-schematic/scripts/parts-select.py`) or daemon-side — **NOT the connector**: the
 EasyEDA webview can't make these cross-origin fetches; the daemon/tool can.
 
-## Ranking (`tools/parts-select.py`)
+## Ranking (`skills/easyeda-schematic/scripts/parts-select.py`)
 
 1. **Relevance gate** — normalize value text (`10kohm`/`10kΩ`/`10k` → `10k`,
    `µ`→`u`) and require the candidate to match the query's value, so a cheap basic
@@ -47,7 +47,7 @@ need a part ──▶ parts-select (pick optimal LCSC C#)
             ──▶ export.bom + bom-enrich  →  orderable BOM with the C#
 ```
 
-This makes [`standard-parts.json`](../tools/standard-parts.json) selections justified
+This makes [`standard-parts.json`](../skills/easyeda-schematic/references/standard-parts.json) selections justified
 by live stock/price/basic data instead of a guess. Validated: 100nF→C1525,
 10µF→C440198, AMS1117→C6186 — all matched the curated standard library.
 

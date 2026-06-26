@@ -5,7 +5,7 @@
     "circuit side. This file is the SINGLE SOURCE OF TRUTH — never hand-edit the",
     "12 numbers in frozenTable; they are DERIVED from rotationCycle + bodyAnchor.",
     "Both consumers derive the same table:",
-    "  - tools/schematic-lint/orient.py  (the linter's check)",
+    "  - skills/easyeda-schematic/scripts/orient.py  (the linter's check)",
     "  - extension/src/actions.ts deriveBodyRotation()  (what connect_pin writes)",
     "tests/run.py asserts derive(cycle, anchors) == frozenTable, so the two",
     "language copies can never drift. calibrate.js re-validates the 3 anchors +",

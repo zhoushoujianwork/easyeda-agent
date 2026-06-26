@@ -71,7 +71,7 @@ itself (daemon/connector liveness, no window required).
 
 ### Tooling layer
 
-- **`tools/schematic-lint`** — a data-only schematic checker (no screenshots): one
+- **`skills/easyeda-schematic/scripts`** — a data-only schematic checker (no screenshots): one
   `getAll` + `wire.getAll` pull returns the full layout, then a geometry/union-find
   pass finds connectivity and orientation problems with exact coordinates (13
   checks: `flag_on_pin`, `dangling_wire`, `floating_pin`, `orientation`,
@@ -112,7 +112,7 @@ not just hand-drawn custom symbols.
 
 These are planned and **not implemented** today.
 
-- **器件标准化 / standard parts library** — a curated `tools/standard-parts.json`
+- **器件标准化 / standard parts library** — a curated `skills/easyeda-schematic/references/standard-parts.json`
   mapping category → `{MPN, LCSC C-number, libraryUuid, deviceUuid}` that the
   agent places from **first**, with `schematic.library.search` as the fallback. The
   goal is deterministic, repeatable part choices instead of re-searching every time.
@@ -131,7 +131,7 @@ A placed component's `getState_SupplierId()` returns `MPN.1` (e.g.
 the exported BOM, whose "Supplier Part" column is the MPN.1. The component can't be
 fixed at the source: `setState_SupplierId('C440198')` does **not** persist (the
 field is device-bound and reverts on re-pull). So the fix is post-export:
-**`tools/bom-enrich.py`** joins the C-number in by matching each row's Manufacturer
+**`skills/easyeda-schematic/scripts/bom-enrich.py`** joins the C-number in by matching each row's Manufacturer
 Part against `standard-parts.json` (MPN → LCSC) and rewriting "Supplier Part" to the
 real C-number (and filling an empty Value). Verified: 5/5 rows of the ESP32-S3 BOM
 enriched to orderable C-numbers; unmatched MPNs are reported as candidates to add to
