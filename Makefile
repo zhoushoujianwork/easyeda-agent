@@ -1,4 +1,4 @@
-.PHONY: test fmt actions build daemon eext connector lint-test
+.PHONY: test fmt actions build daemon dev eext connector lint-test
 
 test:
 	go test ./...
@@ -20,6 +20,13 @@ build:
 
 daemon:
 	go run ./cmd/easyeda daemon
+
+# Live-reload the daemon for development (.air.toml): rebuilds + restarts on any
+# .go change; the connector auto-reconnects (it port-scans 49620-49629). Keep
+# this running in a terminal while developing so the daemon is always up.
+dev:
+	@command -v air >/dev/null 2>&1 || { echo "air not found — install: go install github.com/air-verse/air@latest"; exit 1; }
+	air
 
 # Build the connector .eext at the CURRENT version (no bump).
 connector:

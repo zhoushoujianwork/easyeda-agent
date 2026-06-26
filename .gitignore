@@ -5,6 +5,10 @@
 /dist/
 /coverage.out
 
+# air live-reload build output
+/tmp/
+/build-errors.log
+
 # Local runtime state
 /.easyeda-agent/
 /artifacts/
