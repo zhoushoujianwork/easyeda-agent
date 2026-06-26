@@ -367,6 +367,41 @@ func AllActions() []ActionSpec {
 			Inputs:      []string{"strict optional"},
 			Outputs:     []string{"passed", "violations"},
 		},
+		// ─── Board outline (板框) — closed polyline on the BOARD_OUTLINE layer ──
+		// Curves are line-segment approximated (native arcs do not commit on the
+		// current build). Shape-generation recipes (rect/rounded-rect/circle/
+		// instrument) live in the easyeda-pcb skill; these actions just render points.
+		{
+			Name:         "pcb.outline.set",
+			Domain:       DomainPcb,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Set the board outline from a closed polygon of points (mil, y-up). Replaces any existing outline. The agent generates the points for the desired shape (rectangle/rounded-rect/circle/instrument); curves are approximated by line segments. Reports whether all components fall inside.",
+			Inputs:       []string{"points ([[x,y],...] mil)", "replace optional (default true)", "lineWidth optional"},
+			Outputs:      []string{"segments", "zoomed", "bbox", "allInside", "outside"},
+			VerifyWith:   []string{"pcb.outline.get"},
+		},
+		{
+			Name:        "pcb.outline.get",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "Read the current board outline (segment/arc counts + bounding box).",
+			Outputs:     []string{"segments", "arcs", "bbox"},
+		},
+		{
+			Name:         "pcb.outline.clear",
+			Domain:       DomainPcb,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Remove the current board outline (all primitives on the BOARD_OUTLINE layer).",
+			Outputs:      []string{"removed"},
+			VerifyWith:   []string{"pcb.outline.get"},
+		},
 		{
 			Name:         "debug.exec_js",
 			Domain:       DomainDebug,

@@ -60,6 +60,33 @@ missing **and** the user explicitly accepts a debug path.
 - `pcb.components.move` — translate a group by relative `dx` / `dy`.
 - `pcb.components.arrange` — coarse auto-layout **seed** (priority P6): `mode=cluster` groups by shared local nets then grid-packs each cluster into a tidy non-overlapping block; `mode=grid` packs a flat grid. Skips locked parts.
 
+### Board outline (板框)
+
+The board outline is a **prerequisite** for layout (edge keep-out, connectors-to-edge,
+mounting holes are all relative to it). If the customer has an outline spec, build it
+first; otherwise draft a layout, then define an outline around it.
+
+- `pcb.outline.set` — set the outline from a closed polygon `points` (`[[x,y],…]`, mil,
+  y-up). Replaces any existing outline; reports `allInside`/`outside` (components out of
+  the board). **Confirm first** (redraws the board edge).
+- `pcb.outline.get` — current outline (segment/arc count + bbox).
+- `pcb.outline.clear` — remove the outline.
+
+**The agent generates the `points`** for the wanted shape. Curves are **line-segment
+approximated** (~48–120 segments) — native arcs do not commit on this build, so a true
+circle/arc needs the EasyEDA UI (圆形/圆弧 tool) or an SVG import. Recipes (centre `(cx,cy)`,
+all mil):
+
+| Shape | Points |
+|---|---|
+| Rectangle `w×h` | the 4 corners |
+| Rounded-rect | corners replaced by N-step quarter-circle fillets of radius `r` |
+| Circle Ø`d` | `N≈72`: `[cx+r·cosθ, cy+r·sinθ]` for `θ=2πi/N`, `r=d/2` |
+| Instrument / dashboard (异形) | squircle `x=a·sign(cosθ)·|cosθ|^(2/n)`, `y=b·sign(sinθ)·|sinθ|^(2/n)` (n≈3.6) + width taper `x·(1+k·y/b)` + top-centre arch — a wide rounded shield |
+
+Size the outline to enclose the component extent (`pcb.components.list --includeBBox`)
+with margin, then verify `allInside` from the response.
+
 ## Auto-layout — execute per the conventions
 
 Follow the priority hierarchy in

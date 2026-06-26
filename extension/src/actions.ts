@@ -1499,6 +1499,151 @@ const pcbDrcCheck: Handler = async (payload) => {
 	return { result: { passed: violations.length === 0, violations } };
 };
 
+// ─── Board outline (板框) ──────────────────────────────────────────────
+// The board outline is a closed loop of lines on the BOARD_OUTLINE layer (11).
+// Native arcs do not commit on the current build, so curves are line-segment
+// approximated by the caller. The layer is the numeric literal — EPCB_LayerId is
+// a plain (non-const) enum that may not exist as a runtime global.
+const BOARD_OUTLINE_LAYER = 11 as unknown as TPCB_LayersOfLine;
+
+/** Ray-casting point-in-polygon over a closed ring of [x,y] points. */
+function pointInPolygon(x: number, y: number, ring: Array<[number, number]>): boolean {
+	let inside = false;
+	for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+		const xi = ring[i][0], yi = ring[i][1];
+		const xj = ring[j][0], yj = ring[j][1];
+		if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+			inside = !inside;
+		}
+	}
+	return inside;
+}
+
+/**
+ * Set the board outline from a closed polygon of points (mil, y-up). Replaces
+ * any existing outline, draws one line per edge (closing the loop), and reports
+ * whether every component falls inside.
+ */
+const pcbOutlineSet: Handler = async (payload) => {
+	const raw = payload.points;
+	if (!Array.isArray(raw) || raw.length < 3) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'points must be an array of >= 3 [x,y] pairs (mil).');
+	}
+	const points: Array<[number, number]> = [];
+	for (const p of raw) {
+		if (!Array.isArray(p) || p.length < 2 || typeof p[0] !== 'number' || typeof p[1] !== 'number') {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each point must be [x, y] numbers.');
+		}
+		points.push([p[0], p[1]]);
+	}
+	const replace = optionalBoolean(payload, 'replace') !== false;
+	const lineWidth = optionalNumber(payload, 'lineWidth') ?? 6;
+
+	try {
+		if (replace) {
+			const oldLines = await eda.pcb_PrimitiveLine.getAll(undefined, BOARD_OUTLINE_LAYER);
+			if (oldLines.length) {
+				await eda.pcb_PrimitiveLine.delete(oldLines.map(l => l.getState_PrimitiveId()));
+			}
+			try {
+				const oldArcs = await eda.pcb_PrimitiveArc.getAll(undefined, BOARD_OUTLINE_LAYER);
+				if (oldArcs.length) await eda.pcb_PrimitiveArc.delete(oldArcs.map(a => a.getState_PrimitiveId()));
+			}
+			catch { /* arcs best-effort */ }
+		}
+
+		let segments = 0;
+		for (let i = 0; i < points.length; i++) {
+			const a = points[i];
+			const b = points[(i + 1) % points.length];
+			const ln = await eda.pcb_PrimitiveLine.create('', BOARD_OUTLINE_LAYER, a[0], a[1], b[0], b[1], lineWidth);
+			if (ln) segments++;
+		}
+
+		let zoomed = false;
+		try { zoomed = await eda.pcb_Document.zoomToBoardOutline(); }
+		catch { /* best-effort */ }
+
+		const xs = points.map(p => p[0]);
+		const ys = points.map(p => p[1]);
+		const bbox = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+
+		// Best-effort enclosure check: any component whose bbox corner is outside.
+		const outside: Array<string> = [];
+		try {
+			const comps = await eda.pcb_PrimitiveComponent.getAll();
+			for (const c of comps) {
+				const box = await eda.pcb_Primitive.getPrimitivesBBox([c.getState_PrimitiveId()]);
+				if (!box) continue;
+				const corners: Array<[number, number]> = [
+					[box.minX, box.minY], [box.maxX, box.minY], [box.minX, box.maxY], [box.maxX, box.maxY],
+				];
+				if (corners.some(([x, y]) => !pointInPolygon(x, y, points))) {
+					outside.push(c.getState_Designator() ?? c.getState_PrimitiveId());
+				}
+			}
+		}
+		catch { /* enclosure check is best-effort */ }
+
+		return { result: { segments, zoomed, bbox, allInside: outside.length === 0, outside } };
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to set board outline.');
+	}
+};
+
+/** Read the current board outline: segment/arc counts + bounding box. */
+const pcbOutlineGet: Handler = async () => {
+	let lines;
+	try {
+		lines = await eda.pcb_PrimitiveLine.getAll(undefined, BOARD_OUTLINE_LAYER);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read board outline.');
+	}
+	let arcCount = 0;
+	try { arcCount = (await eda.pcb_PrimitiveArc.getAll(undefined, BOARD_OUTLINE_LAYER)).length; }
+	catch { /* best-effort */ }
+
+	let bbox: Record<string, number> | null = null;
+	if (lines.length) {
+		let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+		for (const l of lines) {
+			const pts: Array<[number, number]> = [[l.getState_StartX(), l.getState_StartY()], [l.getState_EndX(), l.getState_EndY()]];
+			for (const [x, y] of pts) {
+				minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+				minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+			}
+		}
+		bbox = { minX, maxX, minY, maxY };
+	}
+	return { result: { segments: lines.length, arcs: arcCount, bbox } };
+};
+
+/** Remove the current board outline (all primitives on the BOARD_OUTLINE layer). */
+const pcbOutlineClear: Handler = async () => {
+	let removed = 0;
+	try {
+		const lines = await eda.pcb_PrimitiveLine.getAll(undefined, BOARD_OUTLINE_LAYER);
+		if (lines.length) {
+			await eda.pcb_PrimitiveLine.delete(lines.map(l => l.getState_PrimitiveId()));
+			removed += lines.length;
+		}
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to clear board outline.');
+	}
+	try {
+		const arcs = await eda.pcb_PrimitiveArc.getAll(undefined, BOARD_OUTLINE_LAYER);
+		if (arcs.length) {
+			await eda.pcb_PrimitiveArc.delete(arcs.map(a => a.getState_PrimitiveId()));
+			removed += arcs.length;
+		}
+	}
+	catch { /* best-effort */ }
+	return { result: { removed } };
+};
+
 // ─── Debug escape hatch ──────────────────────────────────────────────
 
 /**
@@ -1560,6 +1705,9 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.components.move': pcbComponentsMove,
 	'pcb.components.arrange': pcbComponentsArrange,
 	'pcb.drc.check': pcbDrcCheck,
+	'pcb.outline.set': pcbOutlineSet,
+	'pcb.outline.get': pcbOutlineGet,
+	'pcb.outline.clear': pcbOutlineClear,
 	'debug.exec_js': debugExecJs,
 };
 
