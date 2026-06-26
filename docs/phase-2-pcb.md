@@ -72,7 +72,7 @@ PCB **沿用同一条链路,原则不变**:typed actions(新增 `pcb` Domain)→
 - **PCB 文档守卫**:`document.current` 已暴露 `documentType`——`NeedsWindow` 守卫可断言"当前文档是 PCB",小 helper,无新 transport。
 - **新单位/坐标模块**(原理图无对应):统一 PCB 数据单位 = mil;会话开始 `setCanvasOrigin(0,0)`;暴露 `sys_Unit.mmToMil/milToMm`(同步);约定所有 `pcb.*` 的 x/y 为 mil、y-up、已网格取整。
 - **新约定文档** `docs/pcb-layout-conventions.md`:默认线宽/孔径(按 net-class)、层分配、网格步距、禁布区策略、丝印朝向。**无 netflag/orientation.json 对应物**。
-- **新数据型 linter** `tools/pcb-lint/`:原样复用 schematic-lint 架构(单次 exec_js 整拉 → Python 确定性检查 → 稳定 `{rule,msg}` → git 版本化 baseline/diff),但规则换成 PCB:未布线飞线、间距/clearance、via-in-pad、courtyard 重叠、off-grid、悬空/零长 track、酸角、铜渣。probe **必须按 net+layer 分页**(`getAllPrimitiveId` 过滤),因图元体量可能超过 1MB Request 上限 / 60s dispatch 超时。
+- **新数据型 linter** `skills/easyeda-schematic/scripts/pcb-lint/`:原样复用 schematic-lint 架构(单次 exec_js 整拉 → Python 确定性检查 → 稳定 `{rule,msg}` → git 版本化 baseline/diff),但规则换成 PCB:未布线飞线、间距/clearance、via-in-pad、courtyard 重叠、off-grid、悬空/零长 track、酸角、铜渣。probe **必须按 net+layer 分页**(`getAllPrimitiveId` 过滤),因图元体量可能超过 1MB Request 上限 / 60s dispatch 超时。
 - **制造导出**:`persistArtifacts`(dispatch.go:120-166)对 gerber/drill/pnp/ODB++/STEP/DSN 原样复用。
 - **SKILL 脚手架**复用(health → 读上下文 → 巡查 → 小步增量 → 每次改动 readback/snapshot/DRC 验证 → 破坏性/保存需确认 → 护栏);并强化审计日志 before/after 规则——在 PCB 上更关键(`clearRouting('all')`、`autoRouting(REMOVE)`)。
 
@@ -102,7 +102,7 @@ PCB **沿用同一条链路,原则不变**:typed actions(新增 `pcb` Domain)→
 ## 6. 推荐分阶段计划
 
 - **Phase 0 基础(无变更)**:加 `pcb` Domain + `pcb.v1` 能力;pcb-coords helper(`setCanvasOrigin(0,0)` @4486、mil 约定、y-up、`sys_Unit` 换算);只读动作 `pcb.document.current`/`pcb.components.list`(getAll @10605 + getAllPinsByPrimitiveId @10613)/`pcb.nets.list`(`pcb_Net.getAllNets` @6382 / `getAllNetsName` @6397)/`pcb.layers.list`(getAllLayers @3689)/`pcb.primitive.get`(@4163)/`pcb.snapshot`。未 typed 的先走 `debug.exec_js`。
-- **Phase 1 巡查 + linter**:`tools/pcb-lint/`(复用 schematic-lint 架构,按 net/layer 分页防图元爆量);规则:未布线飞线、clearance、via-in-pad、courtyard 重叠、off-grid、悬空/零长 track。写 `docs/pcb-layout-conventions.md`(按 net-class 的线宽/孔径默认、层分配、网格步距、禁布区策略)。
+- **Phase 1 巡查 + linter**:`skills/easyeda-schematic/scripts/pcb-lint/`(复用 schematic-lint 架构,按 net/layer 分页防图元爆量);规则:未布线飞线、clearance、via-in-pad、courtyard 重叠、off-grid、悬空/零长 track。写 `docs/pcb-layout-conventions.md`(按 net-class 的线宽/孔径默认、层分配、网格步距、禁布区策略)。
 - **Phase 2 布局(增量改动)**:`pcb.component.place`(create @10517,带 layer/x/y/rotation,网格取整)、`pcb.component.modify`(移动/旋转/翻面/锁 @10553)、`pcb.component.delete`(需确认)、`pcb.select` / cross-probe(`doSelectPrimitives` @12169 / `doCrossProbeSelect` @12181);确定性 `pcb.align` + `pcb.distribute`(`getPrimitivesBBox` @4179 + modify x/y);`lib_Footprint.search` @2593 找封装。
 - **Phase 3 原理图→PCB 桥**:`pcb.board.ensure`(`dmt_Board.createBoard` @792 / `getCurrentBoardInfo` @832)、`pcb.import_changes`(`importChanges` @4366 + `startCalculatingRatline` @4415,readback 验证)。产出"已布局未布线"的板,是稳定的 @public 同步路径。
 - **Phase 4 手动布线 + 过孔**:`pcb.track.create`(`pcb_PrimitiveLine.create` @6859 逐段 或 `pcb_PrimitivePolyline.create` @9248 一次成)、`pcb.via.create`(@6541)、`pcb.route_net` 复合(pad→段→换层过孔)、`pcb.layer.select`(@3569)、`pcb.clear_routing`(@4567,需确认);等长/差分组创建(@4995/@4937)。

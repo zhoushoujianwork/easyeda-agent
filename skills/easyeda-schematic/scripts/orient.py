@@ -11,7 +11,7 @@ derive from these same facts, so they can never drift — tests/run.py asserts i
 import json
 import os
 
-DEFAULT_SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'orientation.json')
+DEFAULT_SPEC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'references', 'orientation.json')
 
 
 def derive(rotation_cycle, body_anchor):

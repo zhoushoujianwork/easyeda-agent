@@ -65,7 +65,7 @@ def check_ts_consistency(failures):
     from orientation.json. Nothing else forces them to agree, so assert it here —
     a drift means connect_pin would WRITE a rotation the linter then flags as
     wrong (or misses). This is the cross-language half of the single-source rule."""
-    actions = os.path.normpath(os.path.join(ROOT, '..', '..', 'extension', 'src', 'actions.ts'))
+    actions = os.path.normpath(os.path.join(ROOT, '..', '..', '..', 'extension', 'src', 'actions.ts'))
     if not os.path.exists(actions):
         print(f"{DIM}· skipped TS cross-check (actions.ts not found at {actions}){RESET}")
         return

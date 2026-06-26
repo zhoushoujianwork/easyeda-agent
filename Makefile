@@ -20,7 +20,7 @@ test: ## go test ./...
 # (orientation.json derives to its frozenTable; matches the connector) +
 # fixture goldens (known-good board stays clean, known-bad cases still fire).
 lint-test: ## linter rule-trust harness (orientation + fixtures)
-	python3 tools/schematic-lint/tests/run.py
+	python3 skills/easyeda-schematic/scripts/tests/run.py
 
 fmt: ## gofmt cmd + internal
 	gofmt -w cmd internal
