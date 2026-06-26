@@ -337,6 +337,17 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
+			Name:        "pcb.components.move",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Translate components by a relative (dx, dy) offset — nudge a group without recomputing absolute coordinates. Operates on the current selection unless primitiveIds is given.",
+			Inputs:      []string{"dx", "dy", "primitiveIds optional"},
+			Outputs:     []string{"moved[].primitiveId", "moved[].from", "moved[].to", "count"},
+			VerifyWith:  []string{"pcb.components.list"},
+		},
+		{
 			Name:         "debug.exec_js",
 			Domain:       DomainDebug,
 			Phase:        1,

@@ -1308,6 +1308,36 @@ const pcbGridSnap: Handler = async (payload) => {
 	return { result: { grid, snapped, count: snapped.length } };
 };
 
+/**
+ * Translate components by a relative (dx, dy) — nudge a group. Operates on the
+ * current selection unless primitiveIds is given.
+ */
+const pcbComponentsMove: Handler = async (payload) => {
+	const dx = requireNumber(payload, 'dx');
+	const dy = requireNumber(payload, 'dy');
+	const ids = await resolvePcbTargetIds(payload);
+	if (ids.length === 0) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'No target components; select components or pass primitiveIds.');
+	}
+	const moved: Array<Record<string, unknown>> = [];
+	for (const id of ids) {
+		const component = await eda.pcb_PrimitiveComponent.get(id);
+		if (!component) continue;
+		const x = component.getState_X();
+		const y = component.getState_Y();
+		const nx = x + dx;
+		const ny = y + dy;
+		try {
+			await eda.pcb_PrimitiveComponent.modify(id, { x: nx, y: ny });
+		}
+		catch (err) {
+			throw edaError(err, `Failed to move component ${component.getState_Designator() ?? id}.`);
+		}
+		moved.push({ primitiveId: id, designator: component.getState_Designator(), from: { x, y }, to: { x: nx, y: ny } });
+	}
+	return { result: { dx, dy, moved, count: moved.length } };
+};
+
 // ─── Debug escape hatch ──────────────────────────────────────────────
 
 /**
@@ -1366,6 +1396,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.align': pcbAlign,
 	'pcb.distribute': pcbDistribute,
 	'pcb.grid_snap': pcbGridSnap,
+	'pcb.components.move': pcbComponentsMove,
 	'debug.exec_js': debugExecJs,
 };
 
