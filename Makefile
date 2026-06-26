@@ -32,8 +32,12 @@ dev:
 connector:
 	npm --prefix extension run build
 
-# Bump the connector version + build a fresh, importable .eext.
-# EasyEDA refuses to re-import an .eext whose (uuid, version) is already
-# installed, so use this whenever the user needs to load new connector code.
+# Cut a fresh, importable connector .eext: bump the PATCH version AND mint a new
+# uuid (scripts/bump.mjs), typecheck, build. EasyEDA dedups installed extensions
+# by UUID — a version bump alone will NOT re-import (it silently fails); the fresh
+# uuid is what unblocks it. Prints the .eext path to import in EasyEDA.
 eext:
-	npm --prefix extension run release
+	node extension/scripts/bump.mjs patch
+	npm --prefix extension run typecheck
+	npm --prefix extension run build
+	@printf '\n✅ import in EasyEDA → extension/build/dist/easyeda-agent-connector_v%s.eext\n' "$$(node -p "require('./extension/extension.json').version")"

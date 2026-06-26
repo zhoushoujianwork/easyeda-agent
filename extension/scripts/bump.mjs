@@ -10,6 +10,7 @@
 //   node scripts/bump.mjs major      # major: 0.3.0 -> 1.0.0
 //   node scripts/bump.mjs 0.5.0      # set an explicit version
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -48,10 +49,19 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 const from = ext.version;
 const to = nextVersion(from, mode);
 
+// Mint a fresh uuid every release. EasyEDA dedups INSTALLED extensions by uuid:
+// re-importing an .eext whose uuid is already installed silently fails — a
+// version bump alone is NOT enough. A new uuid makes every build a clean install.
+// Format must match the connector's testUuid: 32 lowercase hex chars.
+const fromUuid = ext.uuid;
+const toUuid = crypto.randomUUID().replaceAll('-', '');
+
 ext.version = to;
+ext.uuid = toUuid;
 pkg.version = to;
 
 writeJsonTabs(extPath, ext);
 writeJsonTabs(pkgPath, pkg);
 
 console.log(`version ${from} -> ${to}  (extension.json + package.json)`);
+console.log(`uuid    ${fromUuid} -> ${toUuid}  (fresh uuid → EasyEDA accepts the re-import)`);

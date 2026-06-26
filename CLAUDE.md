@@ -40,8 +40,8 @@ make daemon       # one-shot daemon (no reload) — prefer `make dev`
 make test         # go test ./...
 make lint-test    # linter rule-trust harness (orientation consistency + fixtures)
 make actions      # print the typed action catalog
-make eext         # bump version + build an importable connector .eext
-make connector    # build .eext at the current version (no bump)
+make eext         # bump PATCH + mint a FRESH UUID + build importable .eext (prints import path)
+make connector    # build .eext at the current version/uuid (no bump — same-version dev only)
 
 tools/schematic-lint/lint.sh <project>          # live lint (DIFF if a baseline exists)
 tools/schematic-lint/lint.sh <project> --save   # full lint + record baseline
@@ -53,12 +53,14 @@ reaches the daemon.
 
 ## Load-bearing gotchas
 
-- **Re-importing the connector is install-only per UUID.** Once a UUID is
-  installed you can't re-import a newer build with the same UUID (and a stuck one
-  may not uninstall). **Most changes don't need a re-import — use the
-  `debug.exec_js` escape hatch.** For manifest/handler changes: stop the daemon,
-  uninstall, re-import; if it won't uninstall, ship a **fresh UUID** (`node -e
-  "console.log(crypto.randomUUID().replaceAll('-',''))"`) + restart EasyEDA.
+- **Re-importing the connector is install-only per UUID.** EasyEDA dedups by
+  UUID: re-importing a build whose uuid is already installed **silently fails** (a
+  version bump alone is NOT enough — this bit us on v0.4.2). **`make eext` now
+  mints a fresh uuid every build** (`scripts/bump.mjs`), so the printed `.eext`
+  always imports as a clean install — just import it, then remove the older
+  "EasyEDA Agent" entry (each fresh uuid is a separate extension). **Most changes
+  don't even need a re-import — use the `debug.exec_js` escape hatch** for
+  behavior you can script; only manifest/handler changes require `make eext`.
 - **EasyEDA schematic coords are y-UP** (+y renders upward); `createNetFlag` /
   `createNetPort` rotation is **identity** (no negation). Orientation table lives
   in `tools/schematic-lint/orientation.json` (single source of truth, derived by

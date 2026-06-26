@@ -1,9 +1,9 @@
 {
 	"name": "easyeda-agent-connector",
-	"uuid": "c802482c1d1c4f6aad0379c92198d062",
+	"uuid": "2cb36c11543044d98e023ade245366c3",
 	"displayName": "EasyEDA Agent Connector",
 	"description": "Bridges the easyeda-agent Go daemon to the official eda.* API over a local WebSocket, dispatching typed schematic actions.",
-	"version": "0.4.2",
+	"version": "0.4.3",
 	"publisher": "easyeda-agent",
 	"engines": {
 		"eda": "~3.2.0"
