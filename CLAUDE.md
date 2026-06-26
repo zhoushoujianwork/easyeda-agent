@@ -56,6 +56,32 @@ skills/easyeda-schematic/scripts/lint.sh <project>          # live lint (DIFF if
 skills/easyeda-schematic/scripts/lint.sh <project> --save   # full lint + record baseline
 ```
 
+## Skill scripts usage
+
+All tools live in `skills/easyeda-schematic/scripts/`.
+
+```bash
+# 原理图 lint
+skills/easyeda-schematic/scripts/lint.sh <project>           # 实时 lint；有 baseline 时只显示 DIFF
+skills/easyeda-schematic/scripts/lint.sh <project> --save    # 全量 lint + 记录 baseline
+
+# BOM 补全 LCSC C 号（导出后运行）
+skills/easyeda-schematic/scripts/bom-enrich.py <bom.tsv>             # 输出到 stdout
+skills/easyeda-schematic/scripts/bom-enrich.py <bom.tsv> --out <out> # 写入文件
+
+# 器件选型
+skills/easyeda-schematic/scripts/parts-select.py --help
+
+# flag 旋转真值表校准（导入新 .eext 后跑一次，需要已连接的 EasyEDA 窗口）
+# 在 EasyEDA 的 debug.exec_js 里粘贴 calibrate.js 内容
+skills/easyeda-schematic/scripts/calibrate.js   # 读 getPrimitivesBBox 实测锚点
+
+# lint 规则信任测试
+make lint-test    # = python3 skills/easyeda-schematic/scripts/tests/run.py
+```
+
+`references/standard-parts.json` — 标准器件库（libraryUuid + deviceUuid + LCSC C 号）。放置前先查这里；新选型后写回。
+
 For a connected window, EasyEDA must be open with the project AND have **"允许外部
 交互 / Allow external interaction"** enabled, or the connector's WebSocket never
 reaches the daemon.
