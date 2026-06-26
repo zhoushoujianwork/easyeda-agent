@@ -44,8 +44,20 @@ const MAX_RETRIES = 5;
 // Ping more often than that to keep the socket alive between actions, which
 // otherwise causes a register -> 5s silence -> close -> reconnect storm.
 const HEARTBEAT_INTERVAL_MS = 3000;
-const HEARTBEAT_TIMEOUT_MS = 2000;
+// Liveness is consecutive-miss based, NOT a single round-trip deadline. The
+// daemon never idle-closes, and EasyEDA's webview can lag pong delivery under
+// load (canvas redraw, GC). Tearing the socket down on ONE missed pong tore down
+// perfectly healthy connections every ~5s — the reconnect storm. Only give up
+// after this many pings go unanswered in a row (~9s of true silence).
+const MAX_MISSED_PONGS = 3;
 const CONNECTION_TIMEOUT_MS = 1500;
+// Delay between close() and register() of the same WS id. close() is async and
+// exposes no completion callback; if we re-register before EasyEDA releases the
+// id, register() silently ignores the new url/callback (documented in
+// pro-api-types index.d.ts:21025), leaving the previous callback bound. Observed
+// id-release is well under this; 200ms is a safety margin. The deferred register
+// is cancelled in settle() so a completed/aborted attempt never re-registers.
+const REGISTER_DELAY_MS = 200;
 const STORAGE_KEY_AUTO_CONNECT = 'autoConnectEnabled';
 
 // ─── State ────────────────────────────────────────────────────────────
@@ -56,10 +68,16 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatPending = false;
 let heartbeatSeq = 0;
+let missedPongs = 0;
 let retryCount = 0;
 let windowId: string | null = null;
 let isConnecting = false;
 let connectionSessionId = 0;
+// Whether we've already shown the "Connected" toast for the current connected
+// era. Stays true across silent auto-reconnects (heartbeat blips) so they don't
+// spam the toast; reset only on a real outage (daemon-not-found retry branch) or
+// an explicit user reconnect/stop, so the NEXT genuine connect announces once.
+let connectionAnnounced = false;
 
 // ─── Status ───────────────────────────────────────────────────────────
 
@@ -123,6 +141,7 @@ function cancelConnectionFlow(resetRetryCount = true): void {
  */
 export function reconnect(): void {
 	eda.sys_Message.showToastMessage(eda.sys_I18n.text('Reconnecting...'));
+	connectionAnnounced = false;
 	cancelConnectionFlow();
 	void scanAndConnect();
 }
@@ -133,6 +152,7 @@ export function reconnect(): void {
  * @param showToast - whether to show a toast confirming the stop
  */
 export function stop(showToast = true): void {
+	connectionAnnounced = false;
 	cancelConnectionFlow();
 	if (showToast) {
 		eda.sys_Message.showToastMessage(eda.sys_I18n.text('Connection stopped'));
@@ -185,6 +205,8 @@ async function scanAndConnect(): Promise<void> {
 		}
 
 		retryCount++;
+		// Daemon is genuinely gone — let the next successful connect announce again.
+		connectionAnnounced = false;
 		if (retryCount <= MAX_RETRIES) {
 			eda.sys_Message.showToastMessage(
 				`${eda.sys_I18n.text('Daemon not found, retrying...')} (${retryCount}/${MAX_RETRIES})`,
@@ -221,6 +243,7 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 	return new Promise((resolve) => {
 		let settled = false;
 		let timer: ReturnType<typeof setTimeout>;
+		let registerTimer: ReturnType<typeof setTimeout>;
 
 		const settle = (success: boolean) => {
 			if (settled) {
@@ -228,6 +251,7 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 			}
 			settled = true;
 			clearTimeout(timer);
+			clearTimeout(registerTimer);
 			if (!success && isConnectionSessionActive(sessionId)) {
 				closeWebSocket();
 			}
@@ -239,65 +263,85 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 			return;
 		}
 
-		// Close any stale connection first: register() ignores new params for an
-		// already-active connection with the same id.
+		// Close any stale connection first. CRITICAL: register() silently ignores
+		// the new url/callback if a connection with the same id is still "active"
+		// (per eda.sys_WebSocket docs). close() is async, so registering in the
+		// same tick leaves the PREVIOUS session's callback bound — it then swallows
+		// the daemon's pong, the heartbeat times out, and we reconnect forever.
+		// Wait a beat after close() so EasyEDA fully releases the id first.
 		closeWebSocket();
 
-		timer = setTimeout(() => settle(false), CONNECTION_TIMEOUT_MS);
-		handshakeVerified = false;
+		const doRegister = (): void => {
+			if (!isConnectionSessionActive(sessionId)) {
+				settle(false);
+				return;
+			}
+			timer = setTimeout(() => settle(false), CONNECTION_TIMEOUT_MS);
+			handshakeVerified = false;
+			diag(`register port=${port} session=${sessionId}`);
 
-		try {
-			eda.sys_WebSocket.register(
-				WS_ID,
-				`ws://127.0.0.1:${port}/eda`,
-				async (event: MessageEvent) => {
-					if (!isConnectionSessionActive(sessionId)) {
-						settle(false);
-						return;
-					}
-
-					let msg: InboundFrame;
-					try {
-						msg = JSON.parse(event.data) as InboundFrame;
-					}
-					catch (err) {
-						console.error('[easyeda-agent] Failed to parse frame:', err);
-						return;
-					}
-
-					// Handshake phase.
-					if (msg.type === 'handshake') {
-						if ((msg as { service?: string }).service === SERVICE_ID) {
-							handshakeVerified = true;
-							windowId = crypto.randomUUID();
-							sendRegister();
-							void sendContext();
-							eda.sys_Message.showToastMessage(
-								`${eda.sys_I18n.text('Connected to easyeda-agent')} (port ${port})`,
-							);
-							settle(true);
+			try {
+				eda.sys_WebSocket.register(
+					WS_ID,
+					`ws://127.0.0.1:${port}/eda`,
+					async (event: MessageEvent) => {
+						let msg: InboundFrame;
+						try {
+							msg = JSON.parse(event.data) as InboundFrame;
 						}
-						else {
-							console.warn(`[easyeda-agent] Unexpected handshake service "${(msg as { service?: string }).service}"`);
-							settle(false);
+						catch (err) {
+							console.error('[easyeda-agent] Failed to parse frame:', err);
+							return;
 						}
-						return;
-					}
 
-					if (!handshakeVerified) {
-						return;
-					}
+						// A callback left bound from a previous session (id-reuse race).
+						// Ignore it entirely — it must NOT touch the shared heartbeat
+						// state, or a stale pong would mask the CURRENT session's
+						// liveness. The current session's own loop tracks its misses.
+						if (!isConnectionSessionActive(sessionId)) {
+							diag(`onMessage STALE session=${sessionId} type=${msg?.type}`);
+							return;
+						}
 
-					await handleMessage(msg);
-				},
-				() => {},
-			);
-		}
-		catch (err) {
-			// register() throws when external-interaction permission is disabled.
-			console.error('[easyeda-agent] Failed to register WebSocket:', err);
-			settle(false);
-		}
+						// Handshake phase.
+						if (msg.type === 'handshake') {
+							if ((msg as { service?: string }).service === SERVICE_ID) {
+								handshakeVerified = true;
+								windowId = crypto.randomUUID();
+								sendRegister();
+								void sendContext();
+								if (!connectionAnnounced) {
+									connectionAnnounced = true;
+									eda.sys_Message.showToastMessage(
+										`${eda.sys_I18n.text('Connected to easyeda-agent')} (port ${port})`,
+									);
+								}
+								settle(true);
+							}
+							else {
+								console.warn(`[easyeda-agent] Unexpected handshake service "${(msg as { service?: string }).service}"`);
+								settle(false);
+							}
+							return;
+						}
+
+						if (!handshakeVerified) {
+							return;
+						}
+
+						await handleMessage(msg);
+					},
+					() => {},
+				);
+			}
+			catch (err) {
+				// register() throws when external-interaction permission is disabled.
+				console.error('[easyeda-agent] Failed to register WebSocket:', err);
+				settle(false);
+			}
+		};
+
+		registerTimer = setTimeout(doRegister, REGISTER_DELAY_MS);
 	});
 }
 
@@ -339,6 +383,20 @@ function sendFrame(frame: unknown): void {
 	}
 }
 
+/**
+ * Emit a low-volume diagnostic line to the daemon (surfaces in the daemon log as
+ * "connector LOG: ..."). Reserved for connection-lifecycle events — reconnect
+ * reasons and register attempts — to aid recovery/troubleshooting from the daemon
+ * side. Deliberately NOT called per ping/pong, to keep the daemon log readable.
+ * Best-effort; never throws.
+ */
+function diag(msg: string): void {
+	try {
+		eda.sys_WebSocket.send(WS_ID, JSON.stringify({ type: 'log', msg }));
+	}
+	catch { /* socket not ready — ignore */ }
+}
+
 // ─── Heartbeat ────────────────────────────────────────────────────────
 
 function startHeartbeat(sessionId: number): void {
@@ -351,24 +409,36 @@ function startHeartbeat(sessionId: number): void {
 		if (!handshakeVerified) {
 			return;
 		}
-		try {
-			heartbeatPending = true;
-			heartbeatSeq += 1;
-			sendFrame({ type: 'ping', id: `hb-${heartbeatSeq}` });
-			setTimeout(() => {
-				if (!isConnectionSessionActive(sessionId)) {
-					return;
-				}
-				if (heartbeatPending) {
-					console.warn('[easyeda-agent] Heartbeat timeout, reconnecting...');
-					cancelConnectionFlow();
-					void scanAndConnect();
-				}
-			}, HEARTBEAT_TIMEOUT_MS);
-		}
-		catch {
+
+		const reconnect = (reason: string): void => {
+			diag(`${reason}, session=${sessionId} -> reconnect`);
 			cancelConnectionFlow();
 			void scanAndConnect();
+		};
+
+		// Liveness check BEFORE sending the next ping: if the previous ping is
+		// still unanswered, count it as a miss. Only reconnect once we've missed
+		// MAX_MISSED_PONGS in a row — a single lagged pong is not a dead socket.
+		if (heartbeatPending) {
+			missedPongs += 1;
+			if (missedPongs >= MAX_MISSED_PONGS) {
+				reconnect(`liveness lost: ${missedPongs} pings unanswered`);
+				return;
+			}
+		}
+		else {
+			missedPongs = 0;
+		}
+
+		heartbeatPending = true;
+		heartbeatSeq += 1;
+		try {
+			// Send directly (not via sendFrame) so a throw — which means the
+			// underlying socket is gone — becomes an immediate reconnect signal.
+			eda.sys_WebSocket.send(WS_ID, JSON.stringify({ type: 'ping', id: `hb-${heartbeatSeq}` }));
+		}
+		catch {
+			reconnect('heartbeat send failed (socket gone)');
 		}
 	}, HEARTBEAT_INTERVAL_MS);
 }
@@ -379,6 +449,7 @@ function stopHeartbeat(): void {
 		heartbeatTimer = null;
 	}
 	heartbeatPending = false;
+	missedPongs = 0;
 }
 
 // ─── Retry ────────────────────────────────────────────────────────────
@@ -410,6 +481,7 @@ async function handleMessage(msg: InboundFrame): Promise<void> {
 			return;
 		case 'pong':
 			heartbeatPending = false;
+			missedPongs = 0;
 			return;
 		case 'request':
 			await handleRequest(msg as RequestFrame);
