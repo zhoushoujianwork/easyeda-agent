@@ -20,3 +20,6 @@
 # Python
 __pycache__/
 *.pyc
+
+# Videos
+videos/

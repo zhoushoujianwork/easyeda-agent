@@ -24,6 +24,14 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 > canonical orientation table + standard-parts library). This operational skill
 > **links** to it — single source, never copy the rules here.
 
+> ⚠️ **多器件 / 整板设计:先「事前分析」,再动手。** 非平凡板子(>~10 件,或要交付/排 PCB)
+> **在 place 之前**,按 [`design-pre-analysis.md`](../easyeda-conventions/references/design-pre-analysis.md)
+> 像设计师那样做事前分析(重器件识别、电源树、功能分组+信号流、网络分类、BOM/明细表、幅面+分页),
+> 产出一份「布局计划」并过 12 项 Gate;然后照
+> [`auto-layout-sop.md`](../easyeda-conventions/references/auto-layout-sop.md) 自顶向下执行。
+> **不出计划不落坐标** —— 跳过分析直接堆器件 = 散乱 + 返工(box-v2 实测教训)。
+> 单个 / 几个器件的小改可跳过,直接按下面放置。
+
 Place **real parts from the EasyEDA / 立创(LCSC) library**, then wire them.
 Hand-drawing a custom component symbol is the **fallback**, used only when the
 part genuinely isn't in the library (a hand-built symbol loses the
