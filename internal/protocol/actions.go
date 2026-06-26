@@ -253,6 +253,53 @@ func AllActions() []ActionSpec {
 			Description: "List all nets on the active PCB with name, length, and color.",
 			Outputs:     []string{"nets[].net", "nets[].length", "nets[].color", "count"},
 		},
+		// ─── PCB (Phase 2 — schematic→PCB sync + component layout) ────────
+		// Components arrive on the board via pcb.import_changes (from the
+		// schematic), then get laid out with pcb.component.modify. See
+		// docs/phase-2-pcb.md.
+		{
+			Name:        "pcb.board.info",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "Read the current Board (schematic+PCB linkage) and current PCB info — the prerequisite context for pcb.import_changes.",
+			Outputs:     []string{"linked", "board", "pcb"},
+		},
+		{
+			Name:         "pcb.import_changes",
+			Domain:       DomainPcb,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Sync the schematic netlist/components into the active PCB (从原理图导入变更) — the primary way components arrive on the board. Ensures a Board links the schematic and PCB first, then recomputes ratlines.",
+			Inputs:       []string{"schematicUuid optional", "ensureBoard optional (default true)", "recomputeRatline optional (default true)"},
+			Outputs:      []string{"imported", "createdBoard", "board", "reason"},
+			VerifyWith:   []string{"pcb.components.list", "pcb.nets.list"},
+		},
+		{
+			Name:        "pcb.component.modify",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Lay out a component on the active PCB: move (x/y), rotate, flip layer (top/bottom), lock, or set designator/BOM flags. Pull a fresh primitiveId first (no programmatic undo).",
+			Inputs:      []string{"primitiveId", "patch"},
+			Outputs:     []string{"component state"},
+			VerifyWith:  []string{"pcb.components.list"},
+		},
+		{
+			Name:         "pcb.component.delete",
+			Domain:       DomainPcb,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Delete PCB component primitives. No programmatic undo — snapshot before/after via the audit log.",
+			Inputs:       []string{"primitiveIds"},
+			Outputs:      []string{"deleted"},
+			VerifyWith:   []string{"pcb.components.list"},
+		},
 		{
 			Name:         "debug.exec_js",
 			Domain:       DomainDebug,

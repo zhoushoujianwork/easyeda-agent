@@ -1009,6 +1009,159 @@ const pcbNetsList: Handler = async () => {
 	return { result: { nets, count: nets.length } };
 };
 
+// ─── PCB layout (Phase 2 — schematic→PCB sync + component layout) ─────
+
+/**
+ * Read the current Board (the schematic↔PCB linkage) and current PCB — the
+ * prerequisite context for pcb.import_changes. IDMT_BoardItem / IDMT_PcbItem are
+ * plain data objects.
+ */
+const pcbBoardInfo: Handler = async () => {
+	let board;
+	try {
+		board = await eda.dmt_Board.getCurrentBoardInfo();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read current Board info.');
+	}
+	let pcb;
+	try {
+		pcb = await eda.dmt_Pcb.getCurrentPcbInfo();
+	}
+	catch { /* best-effort */ }
+	return {
+		result: {
+			linked: !!board,
+			board: board
+				? {
+					name: board.name,
+					schematicUuid: board.schematic.uuid,
+					schematicName: board.schematic.name,
+					pcbUuid: board.pcb.uuid,
+					pcbName: board.pcb.name,
+					parentProjectUuid: board.parentProjectUuid,
+				}
+				: null,
+			pcb: pcb ? { uuid: pcb.uuid, name: pcb.name } : null,
+		},
+	};
+};
+
+/**
+ * Sync the schematic netlist/components into the active PCB (从原理图导入变更) —
+ * the primary way components arrive on the board. `importChanges` returns false
+ * on a floating PCB, so ensure a Board ties the schematic and PCB together
+ * first, then recompute ratlines.
+ */
+const pcbImportChanges: Handler = async (payload) => {
+	const schematicUuid = optionalString(payload, 'schematicUuid');
+	const ensureBoard = optionalBoolean(payload, 'ensureBoard') !== false;
+	const recomputeRatline = optionalBoolean(payload, 'recomputeRatline') !== false;
+
+	let board;
+	try {
+		board = await eda.dmt_Board.getCurrentBoardInfo();
+	}
+	catch { board = undefined; }
+
+	let createdBoard = false;
+	if (!board && ensureBoard) {
+		let pcbUuid: string | undefined;
+		try {
+			pcbUuid = (await eda.dmt_Pcb.getCurrentPcbInfo())?.uuid;
+		}
+		catch { /* best-effort */ }
+		try {
+			await eda.dmt_Board.createBoard(schematicUuid, pcbUuid);
+			board = await eda.dmt_Board.getCurrentBoardInfo();
+			createdBoard = !!board;
+		}
+		catch (err) {
+			throw edaError(err, 'Failed to create a Board linking the schematic and PCB.');
+		}
+	}
+
+	let imported;
+	try {
+		imported = await eda.pcb_Document.importChanges(schematicUuid);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to import changes from the schematic.');
+	}
+
+	if (imported && recomputeRatline) {
+		try {
+			await eda.pcb_Document.startCalculatingRatline();
+		}
+		catch { /* best-effort */ }
+	}
+
+	return {
+		result: {
+			imported,
+			createdBoard,
+			board: board
+				? { name: board.name, schematicUuid: board.schematic.uuid, pcbUuid: board.pcb.uuid }
+				: null,
+			reason: imported
+				? null
+				: 'importChanges returned false — the PCB may be floating (no linked schematic) or schematicUuid is invalid.',
+		},
+	};
+};
+
+/**
+ * Lay out a component on the active PCB: move/rotate/flip-layer/lock or set
+ * designator/BOM flags. Mirrors schematic.component.modify against pcb_*.
+ */
+const pcbComponentModify: Handler = async (payload) => {
+	const primitiveId = requireString(payload, 'primitiveId');
+	const patch = payload.patch;
+	if (typeof patch !== 'object' || patch === null) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required object field "patch".');
+	}
+
+	let component;
+	try {
+		component = await eda.pcb_PrimitiveComponent.modify(
+			primitiveId,
+			patch as Parameters<typeof eda.pcb_PrimitiveComponent.modify>[1],
+		);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to modify PCB component.');
+	}
+	if (!component) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to modify PCB component "${primitiveId}".`);
+	}
+	return { result: { component: serializePcbComponent(component) } };
+};
+
+/**
+ * Delete PCB component primitives. No programmatic undo — the Skill snapshots
+ * before/after and confirmation-gates this.
+ */
+const pcbComponentDelete: Handler = async (payload) => {
+	const primitiveIds = payload.primitiveIds;
+	if (
+		!(typeof primitiveIds === 'string')
+		&& !(Array.isArray(primitiveIds) && primitiveIds.every(id => typeof id === 'string'))
+	) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			'Missing required field "primitiveIds" (string or string[]).',
+		);
+	}
+	let deleted;
+	try {
+		deleted = await eda.pcb_PrimitiveComponent.delete(primitiveIds);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete PCB components.');
+	}
+	return { result: { deleted } };
+};
+
 // ─── Debug escape hatch ──────────────────────────────────────────────
 
 /**
@@ -1060,6 +1213,10 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.components.list': pcbComponentsList,
 	'pcb.layers.list': pcbLayersList,
 	'pcb.nets.list': pcbNetsList,
+	'pcb.board.info': pcbBoardInfo,
+	'pcb.import_changes': pcbImportChanges,
+	'pcb.component.modify': pcbComponentModify,
+	'pcb.component.delete': pcbComponentDelete,
 	'debug.exec_js': debugExecJs,
 };
 
