@@ -1,6 +1,7 @@
 package version
 
-const (
+// Version is overridden at build time via -ldflags for release builds.
+var (
 	Name    = "easyeda-agent"
-	Version = "0.1.0-dev"
+	Version = "dev"
 )
