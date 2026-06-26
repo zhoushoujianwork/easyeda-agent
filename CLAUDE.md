@@ -8,6 +8,9 @@ running inside EasyEDA, which calls the official `eda.*` API.
 skill ──▶ Go CLI/daemon ──WebSocket──▶ connector .eext ──▶ eda.* API
           (typed actions)   49620-49629   (in EasyEDA Pro)
 ```
+## Notes
+
+reply as chiense! reply as chiense! reply as chiense!
 
 ## Layout
 
