@@ -19,7 +19,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$DIR/../.." && pwd)"
+ROOT="$(cd "$DIR/../../.." && pwd)"   # scripts → easyeda-schematic → skills → repo root
 BIN="$ROOT/bin/easyeda"
 
 # ---- arg parse: flags anywhere, positionals in order ----
