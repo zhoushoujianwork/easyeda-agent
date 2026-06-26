@@ -92,11 +92,11 @@ endif
 	@echo "── Building release $(VERSION) ──"
 	rm -rf $(DIST) && mkdir -p $(DIST)
 	@echo "  compiling..."
-	GOOS=darwin  GOARCH=amd64  go build -ldflags "$(value _LDFLAGS)" -o $(DIST)/easyeda_darwin_amd64      ./cmd/easyeda
-	GOOS=darwin  GOARCH=arm64  go build -ldflags "$(value _LDFLAGS)" -o $(DIST)/easyeda_darwin_arm64      ./cmd/easyeda
-	GOOS=linux   GOARCH=amd64  go build -ldflags "$(value _LDFLAGS)" -o $(DIST)/easyeda_linux_amd64       ./cmd/easyeda
-	GOOS=linux   GOARCH=arm64  go build -ldflags "$(value _LDFLAGS)" -o $(DIST)/easyeda_linux_arm64       ./cmd/easyeda
-	GOOS=windows GOARCH=amd64  go build -ldflags "$(value _LDFLAGS)" -o $(DIST)/easyeda_windows_amd64.exe ./cmd/easyeda
+	GOOS=darwin  GOARCH=amd64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_darwin_amd64      ./cmd/easyeda
+	GOOS=darwin  GOARCH=arm64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_darwin_arm64      ./cmd/easyeda
+	GOOS=linux   GOARCH=amd64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_linux_amd64       ./cmd/easyeda
+	GOOS=linux   GOARCH=arm64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_linux_arm64       ./cmd/easyeda
+	GOOS=windows GOARCH=amd64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_windows_amd64.exe ./cmd/easyeda
 	@echo "  packaging connector..."
 	@EEXT=$$(ls extension/build/dist/*.eext 2>/dev/null | sort -V | tail -1); \
 	 [ -n "$$EEXT" ] || { echo "no .eext found — run 'make eext' first"; exit 1; }; \
