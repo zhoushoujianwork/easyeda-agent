@@ -137,13 +137,16 @@ pending.
 
 ## Connector quirks (load-bearing)
 
-- **`createNetFlag` / `createNetPort` rotation is IDENTITY** — `getState_Rotation()`
-  reads back the exact value passed; there is **no** negation. (An earlier
-  "negation" theory was a misdiagnosis and was reverted, commit `8aace7e`; do not
-  re-introduce a compensating negation.) `connect_pin` derives the body rotation
-  from the stub direction and passes it **straight through**. The orientation table
-  is derived in one place — `orientation.json` — and asserted equal between the
-  linter and the connector by `make lint-test`.
+- **`createNetFlag` / `createNetPort` STORE rotation negated on the 2026-06 build.**
+  Despite the earlier "identity" assumption (commit `8aace7e` reverted a negation as
+  a misdiagnosis), a live test settled it: `connect_pin(direction=left)` passed `90`,
+  the flag stored `270` and rendered pointing **right**. (0/180 up/down are symmetric,
+  so only horizontal flags exposed it.) `connect_pin` now **auto-detects** the
+  behavior at runtime (`detectRotationNegation` — a one-shot probe flag, re-pulled)
+  and compensates, so its output is correct whether the build negates or not. The
+  orientation table (`orientation.json`, the **stored-rotation** truth) is still the
+  single source, derived in one place and asserted equal between linter and connector
+  by `make lint-test`; `calibrate.js` validates it read-only against real flags.
 - **Coordinates are y-UP** — `+y` renders **upward**. `connect_pin` honors this:
   `direction: up` increases `y`, `down` decreases it.
 - **No programmatic undo** in `eda.*`. `modify` only works on components, not

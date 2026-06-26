@@ -705,6 +705,49 @@ function rotationFor(kind: string, direction: Direction): number {
 	return BODY_ROTATION[flagFamily(kind)][direction];
 }
 
+// EasyEDA's createNetFlag/createNetPort STORES rotation negated relative to the value
+// passed, on some connector/webview builds (empirically verified 2026-06: pass 90 →
+// getState_Rotation re-pull reads 270 → a 'left' power flag renders pointing RIGHT).
+// The earlier "identity, pass it straight" assumption produced backward HORIZONTAL
+// flags (up/down are symmetric at 0/180 so it went unnoticed). We detect the behavior
+// once at runtime and compensate, so orientation is correct whichever way the API
+// behaves. DO NOT hard-revert to identity without re-checking connect_pin's RENDERED
+// output (place a left flag, confirm it points left).
+let rotationNegates: boolean | null = null;
+async function detectRotationNegation(): Promise<boolean> {
+	if (rotationNegates !== null) {
+		return rotationNegates;
+	}
+	try {
+		const probe = await eda.sch_PrimitiveComponent.createNetFlag('Power', '__ROTPROBE__', 990000, 990000, 90);
+		if (!probe) {
+			rotationNegates = false;
+			return false;
+		}
+		const pid = probe.getState_PrimitiveId();
+		// Re-pull (fresh getAll), NOT the immediate getState — the immediate value can
+		// echo the input while the persisted value is the negated one.
+		let stored = 90;
+		for (const c of await eda.sch_PrimitiveComponent.getAll()) {
+			if (c.getState_PrimitiveId() === pid) {
+				stored = c.getState_Rotation();
+				break;
+			}
+		}
+		await eda.sch_PrimitiveComponent.delete([pid]);
+		rotationNegates = stored === 270;
+	}
+	catch {
+		rotationNegates = false;
+	}
+	return rotationNegates;
+}
+
+// Value to PASS so the flag's STORED rotation equals `desired` (what the linter reads).
+async function appliedRotation(desired: number): Promise<number> {
+	return (await detectRotationNegation()) ? (((360 - desired) % 360) + 360) % 360 : desired;
+}
+
 const schematicPowerConnectPin: Handler = async (payload) => {
 	const pinX = requireNumber(payload, 'pinX');
 	const pinY = requireNumber(payload, 'pinY');
@@ -713,9 +756,12 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	const offset = optionalNumber(payload, 'offset') ?? 30;
 	const direction = (optionalString(payload, 'direction') ?? defaultDirection(kind)) as Direction;
 	// Orientation follows the stub direction; an explicit rotation overrides it.
-	// createNetFlag/createNetPort rotation is IDENTITY (getState_Rotation() ===
-	// the value passed), verified via bbox calibration — pass it straight.
+	// `rotation` is the desired STORED rotation (what the linter/calibrate read back);
+	// `applied` is what we actually pass, compensated for this connector's stored-
+	// rotation negation (see detectRotationNegation). Verify rendered orientation if
+	// in doubt — the negation is connector-build-dependent.
 	const rotation = optionalNumber(payload, 'rotation') ?? rotationFor(kind, direction);
+	const applied = await appliedRotation(rotation);
 
 	// EasyEDA is y-UP: +y renders upward. 'up' must increase y, 'down' decrease.
 	let endX = pinX;
@@ -755,10 +801,10 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	let flag;
 	try {
 		if (kind in NET_FLAG_KINDS) {
-			flag = await eda.sch_PrimitiveComponent.createNetFlag(NET_FLAG_KINDS[kind], net, endX, endY, rotation);
+			flag = await eda.sch_PrimitiveComponent.createNetFlag(NET_FLAG_KINDS[kind], net, endX, endY, applied);
 		}
 		else if (kind in NET_PORT_KINDS) {
-			flag = await eda.sch_PrimitiveComponent.createNetPort(NET_PORT_KINDS[kind], net, endX, endY, rotation);
+			flag = await eda.sch_PrimitiveComponent.createNetPort(NET_PORT_KINDS[kind], net, endX, endY, applied);
 		}
 		else {
 			throw new ActionError(
@@ -783,6 +829,7 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 			direction,
 			offset,
 			rotation,
+			appliedRotation: applied,
 		},
 	};
 };

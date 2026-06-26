@@ -71,17 +71,18 @@ reaches the daemon.
   OLD connector code and fights the freshly-imported one over the daemon socket;
   **fully quit and relaunch EasyEDA** to load new connector code.
 - **EasyEDA schematic coords are y-UP** (+y renders upward). The orientation table
-  in `tools/schematic-lint/orientation.json` is the single source of truth (derived
-  by both the linter and `connect_pin`), validated read-only against real placed
-  flags by `calibrate.js`. ⚠️ **Rotation behavior is connector-version-dependent and
-  must be VERIFIED, not assumed:** the code passes rotation through *identity*, and
-  the prior "negation" was reverted as a misdiagnosis — yet a 2026-06 connector
-  build empirically stored `createNetFlag` rotations **negated** (passed 90 →
-  re-pulled 270; flags only rendered correctly when the negated value was passed).
-  So: after creating flags, **read back / lint the orientation and compensate if it
-  reads wrong** — and beware `getState_Rotation()` *immediately* after create can
-  return the input value while a fresh re-pull shows the stored (possibly negated)
-  one. Resolve definitively by placing one flag via `connect_pin` and eyeballing it.
+  in `tools/schematic-lint/orientation.json` is the **stored-rotation** truth (the
+  value `getState_Rotation` reads back for a correctly-oriented flag), validated
+  read-only against real placed flags by `calibrate.js`. **`createNetFlag` /
+  `createNetPort` STORE rotation negated** on the 2026-06 build — confirmed via
+  `connect_pin(direction=left)`: it passed `90`, the flag stored `270` and rendered
+  pointing **right** (up/down at 0/180 are symmetric, which is why it hid for so
+  long). `connect_pin` now **auto-detects this at runtime** (`detectRotationNegation`,
+  a one-shot probe flag) and compensates, so its output is correct whether the build
+  negates or not. Two follow-ons: (1) if you create flags via **raw**
+  `eda.createNetFlag` (`debug.exec_js`), YOU must pass the negated value — or just
+  use `connect_pin`; (2) `getState_Rotation()` *immediately* after create can echo
+  the input — a fresh **re-pull** (`getAll`) shows the real stored value.
 - **A netflag must connect via a real wire** — overlapping the pin coordinate is
   NOT a connection (DRC won't see it).
 - No programmatic undo in `eda.*`; `modify` only works on components (not flags —
