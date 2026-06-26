@@ -26,6 +26,32 @@ itself (daemon/connector liveness, no window required).
 | `schematic.components.list` | Components on the active page (optional `allPages`, `includePins`) with designator, name, coords, and `getState_*` fields. |
 | `schematic.select` | Select primitives by id, return the active selection. |
 
+### View / navigation (4 actions, `document` domain — schematic + PCB)
+
+Editor canvas view shortcuts via `eda.dmt_EditorControl.*`; act on the focused
+canvas, so they apply to whichever document (schematic or PCB) is active. CLI: `easyeda view …`.
+
+| Action | What |
+|---|---|
+| `view.fit` | Zoom to fit all primitives — 适应全部, the `K` shortcut (`zoomToAllPrimitives`). |
+| `view.fit_selection` | Zoom to fit the current selection — 适应选中 (`zoomToSelectedPrimitives`). |
+| `view.zoom` | Pan/zoom to a center `x/y` and/or `scale` percent (`zoomTo`); omitted fields keep current. |
+| `view.region` | Zoom to a rectangular region `left/right/top/bottom` (`zoomToRegion`). |
+
+### Sheet / page management + 明细表 (6 actions, `schematic` domain)
+
+Map to `eda.dmt_Schematic.*`. **No set-paper-size (A4/A3) API exists** in EasyEDA
+Pro; the title block (明细表) is the editable "图纸" surface. CLI: `easyeda sch …`.
+
+| Action | What |
+|---|---|
+| `schematic.titleblock.get` | Read a page's 明细表 — `showTitleBlock` + per-field `titleBlockData` (read first to learn the field keys). |
+| `schematic.titleblock.modify` | Toggle title-block visibility and/or patch fields; only the passed items change, unknown keys ignored. Mutates. |
+| `schematic.page.create` | Create a new page under a schematic document. Mutates. |
+| `schematic.page.rename` | Rename a page. Mutates. |
+| `schematic.page.delete` | Delete a page (confirmation-gated, no undo). Mutates. |
+| `schematic.rename` | Rename a schematic document (whole sheet; may also rename a linked reuse-module symbol + PCB). Mutates. |
+
 ### Draw / edit (6 actions, all mutate)
 
 | Action | What |

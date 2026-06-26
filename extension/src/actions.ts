@@ -265,6 +265,122 @@ const schematicPageOpen: Handler = async (payload) => {
 	return { result: { tabId } };
 };
 
+// ─── Schematic / page管理 + 明细表 (title block) ───────────────────────
+// All map to eda.dmt_Schematic.*. The "明细表" (title block / parts list on the
+// drawing sheet) is the closest thing to "纸张属性" the public API exposes —
+// EasyEDA Pro has no set-paper-size (A4/A3) call. Page management = rename /
+// create / delete pages and rename the schematic document itself.
+
+/** Read a page's title-block state (show flag + field data). Defaults to the focused page. */
+const schematicTitleBlockGet: Handler = async (payload) => {
+	const pageUuid = optionalString(payload, 'pageUuid');
+	let info;
+	try {
+		info = pageUuid
+			? await eda.dmt_Schematic.getSchematicPageInfo(pageUuid)
+			: await eda.dmt_Schematic.getCurrentSchematicPageInfo();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read schematic page title block.');
+	}
+	if (!info) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'No schematic page found (open a page, or pass a valid pageUuid).');
+	}
+	return {
+		result: {
+			pageUuid: info.uuid,
+			name: info.name,
+			parentSchematicUuid: info.parentSchematicUuid,
+			showTitleBlock: info.showTitleBlock,
+			titleBlockData: info.titleBlockData,
+		},
+	};
+};
+
+/**
+ * Modify the focused page's 明细表 (title block): toggle visibility and/or patch
+ * fields. `titleBlockData` carries only the items to change; unknown keys are
+ * ignored by EasyEDA, untouched items keep their current value.
+ */
+const schematicTitleBlockModify: Handler = async (payload) => {
+	const showTitleBlock = optionalBoolean(payload, 'showTitleBlock');
+	const titleBlockData = payload.titleBlockData;
+	if (titleBlockData !== undefined && (typeof titleBlockData !== 'object' || titleBlockData === null)) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Field "titleBlockData" must be an object.');
+	}
+	if (showTitleBlock === undefined && titleBlockData === undefined) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Pass at least one of "showTitleBlock" or "titleBlockData".');
+	}
+	let ok;
+	try {
+		ok = await eda.dmt_Schematic.modifySchematicPageTitleBlock(
+			showTitleBlock,
+			titleBlockData as Parameters<typeof eda.dmt_Schematic.modifySchematicPageTitleBlock>[1],
+		);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to modify schematic page title block.');
+	}
+	return { result: { ok } };
+};
+
+/** Create a new schematic page under a schematic document. */
+const schematicPageCreate: Handler = async (payload) => {
+	const schematicUuid = requireString(payload, 'schematicUuid');
+	let uuid;
+	try {
+		uuid = await eda.dmt_Schematic.createSchematicPage(schematicUuid);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create schematic page.');
+	}
+	if (uuid === undefined) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Failed to create schematic page (check schematicUuid).');
+	}
+	return { result: { pageUuid: uuid } };
+};
+
+/** Rename a schematic page. */
+const schematicPageRename: Handler = async (payload) => {
+	const pageUuid = requireString(payload, 'pageUuid');
+	const name = requireString(payload, 'name');
+	let ok;
+	try {
+		ok = await eda.dmt_Schematic.modifySchematicPageName(pageUuid, name);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to rename schematic page.');
+	}
+	return { result: { ok } };
+};
+
+/** Delete a schematic page. */
+const schematicPageDelete: Handler = async (payload) => {
+	const pageUuid = requireString(payload, 'pageUuid');
+	let ok;
+	try {
+		ok = await eda.dmt_Schematic.deleteSchematicPage(pageUuid);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete schematic page.');
+	}
+	return { result: { ok } };
+};
+
+/** Rename a schematic document (the whole sheet, not a single page). */
+const schematicRename: Handler = async (payload) => {
+	const schematicUuid = requireString(payload, 'schematicUuid');
+	const name = requireString(payload, 'name');
+	let ok;
+	try {
+		ok = await eda.dmt_Schematic.modifySchematicName(schematicUuid, name);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to rename schematic.');
+	}
+	return { result: { ok } };
+};
+
 // ─── Components ───────────────────────────────────────────────────────
 
 const schematicComponentsList: Handler = async (payload) => {
@@ -1644,6 +1760,78 @@ const pcbOutlineClear: Handler = async () => {
 	return { result: { removed } };
 };
 
+// ─── View (editor canvas) ────────────────────────────────────────────
+// All map to eda.dmt_EditorControl.*, which acts on the last-focused canvas
+// (no tabId) and works on both schematic and PCB documents. These are the
+// toolbar/keyboard view shortcuts (适应全部 `K`, 适应选中, zoom-to, region).
+
+/** Zoom to fit all primitives — 适应全部 (the `K` shortcut). */
+const viewFit: Handler = async () => {
+	try {
+		const region = await eda.dmt_EditorControl.zoomToAllPrimitives();
+		if (region === false) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Canvas does not support fit-all (or no focused canvas).');
+		}
+		return { result: { region } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to fit all primitives.');
+	}
+};
+
+/** Zoom to fit the currently selected primitives — 适应选中. */
+const viewFitSelection: Handler = async () => {
+	try {
+		const region = await eda.dmt_EditorControl.zoomToSelectedPrimitives();
+		if (region === false) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Canvas does not support fit-selection (or no focused canvas).');
+		}
+		return { result: { region } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to fit selection.');
+	}
+};
+
+/** Pan/zoom to a center coordinate and/or scale ratio (percent). */
+const viewZoom: Handler = async (payload) => {
+	const x = optionalNumber(payload, 'x');
+	const y = optionalNumber(payload, 'y');
+	const scale = optionalNumber(payload, 'scale');
+	try {
+		const region = await eda.dmt_EditorControl.zoomTo(x, y, scale);
+		if (region === false) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Canvas does not support this zoom (or no focused canvas).');
+		}
+		return { result: { region } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to zoom.');
+	}
+};
+
+/** Zoom to a rectangular region (two X bounds, two Y bounds). */
+const viewRegion: Handler = async (payload) => {
+	const left = requireNumber(payload, 'left');
+	const right = requireNumber(payload, 'right');
+	const top = requireNumber(payload, 'top');
+	const bottom = requireNumber(payload, 'bottom');
+	try {
+		const ok = await eda.dmt_EditorControl.zoomToRegion(left, right, top, bottom);
+		if (!ok) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Canvas does not support region zoom (or no focused canvas).');
+		}
+		return { result: { ok } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to zoom to region.');
+	}
+};
+
 // ─── Debug escape hatch ──────────────────────────────────────────────
 
 /**
@@ -1675,8 +1863,18 @@ const HANDLERS: Record<string, Handler> = {
 	'project.current': projectCurrent,
 	'document.current': documentCurrent,
 	'document.open': documentOpen,
+	'view.fit': viewFit,
+	'view.fit_selection': viewFitSelection,
+	'view.zoom': viewZoom,
+	'view.region': viewRegion,
 	'schematic.pages.list': schematicPagesList,
 	'schematic.page.open': schematicPageOpen,
+	'schematic.page.create': schematicPageCreate,
+	'schematic.page.rename': schematicPageRename,
+	'schematic.page.delete': schematicPageDelete,
+	'schematic.rename': schematicRename,
+	'schematic.titleblock.get': schematicTitleBlockGet,
+	'schematic.titleblock.modify': schematicTitleBlockModify,
 	'schematic.components.list': schematicComponentsList,
 	'schematic.component.place': schematicComponentPlace,
 	'schematic.component.modify': schematicComponentModify,

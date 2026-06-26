@@ -51,6 +51,162 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		sch.AddCommand(c)
 	}
 
+	// ── titleblock get ─────────────────────────────────────────────────────
+	// schematic.titleblock.get — 明细表读取（含可编辑字段 key）
+	{
+		var page string
+		c := &cobra.Command{
+			Use:   "titleblock-get",
+			Short: "Read a page's 明细表 (title block): show flag + field keys/values",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda sch titleblock-get
+  easyeda sch titleblock-get --page <pageUuid>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				var payload map[string]any
+				if page != "" {
+					payload = map[string]any{"pageUuid": page}
+				}
+				return dispatch(cfg, "schematic.titleblock.get", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&page, "page", "", "schematic page UUID (default: focused page)")
+		sch.AddCommand(c)
+	}
+
+	// ── titleblock modify ──────────────────────────────────────────────────
+	// schematic.titleblock.modify — 明细表调整（显隐 + 字段值）
+	{
+		var dataJSON string
+		var show, hide bool
+		c := &cobra.Command{
+			Use:   "titleblock",
+			Short: "Adjust the focused page's 明细表 (title block): visibility and/or fields",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda sch titleblock --show
+  easyeda sch titleblock --hide
+  easyeda sch titleblock --data '{"Title":{"value":"电源模块"},"Designer":{"value":"Mika"}}'`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if show && hide {
+					return fmt.Errorf("--show and --hide are mutually exclusive")
+				}
+				payload := map[string]any{}
+				if show {
+					payload["showTitleBlock"] = true
+				}
+				if hide {
+					payload["showTitleBlock"] = false
+				}
+				if dataJSON != "" {
+					var data map[string]any
+					if err := json.Unmarshal([]byte(dataJSON), &data); err != nil {
+						return fmt.Errorf("invalid --data json: %w", err)
+					}
+					payload["titleBlockData"] = data
+				}
+				if len(payload) == 0 {
+					return fmt.Errorf("pass at least one of --show / --hide / --data")
+				}
+				return dispatch(cfg, "schematic.titleblock.modify", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&show, "show", false, "show the title block")
+		c.Flags().BoolVar(&hide, "hide", false, "hide the title block")
+		c.Flags().StringVar(&dataJSON, "data", "", `JSON of fields to patch, e.g. '{"Title":{"value":"..."}}'`)
+		sch.AddCommand(c)
+	}
+
+	// ── page-new ───────────────────────────────────────────────────────────
+	// schematic.page.create
+	{
+		var schUuid string
+		c := &cobra.Command{
+			Use:     "page-new",
+			Short:   "Create a new schematic page under a schematic document",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda sch page-new --schematic <schematicUuid>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if schUuid == "" {
+					return fmt.Errorf("--schematic is required")
+				}
+				return dispatch(cfg, "schematic.page.create", window,
+					map[string]any{"schematicUuid": schUuid}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&schUuid, "schematic", "", "parent schematic document UUID (required)")
+		sch.AddCommand(c)
+	}
+
+	// ── page-rename ────────────────────────────────────────────────────────
+	// schematic.page.rename
+	{
+		var page, name string
+		c := &cobra.Command{
+			Use:     "page-rename",
+			Short:   "Rename a schematic page",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda sch page-rename --page <pageUuid> --name "电源"`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if page == "" {
+					return fmt.Errorf("--page is required")
+				}
+				if name == "" {
+					return fmt.Errorf("--name is required")
+				}
+				return dispatch(cfg, "schematic.page.rename", window,
+					map[string]any{"pageUuid": page, "name": name}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&page, "page", "", "schematic page UUID (required)")
+		c.Flags().StringVar(&name, "name", "", "new page name (required)")
+		sch.AddCommand(c)
+	}
+
+	// ── page-delete ────────────────────────────────────────────────────────
+	// schematic.page.delete
+	{
+		var page string
+		c := &cobra.Command{
+			Use:     "page-delete",
+			Short:   "Delete a schematic page (no undo)",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda sch page-delete --page <pageUuid>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if page == "" {
+					return fmt.Errorf("--page is required")
+				}
+				return dispatch(cfg, "schematic.page.delete", window,
+					map[string]any{"pageUuid": page}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&page, "page", "", "schematic page UUID (required)")
+		sch.AddCommand(c)
+	}
+
+	// ── rename (whole schematic document) ──────────────────────────────────
+	// schematic.rename
+	{
+		var schUuid, name string
+		c := &cobra.Command{
+			Use:     "rename",
+			Short:   "Rename a schematic document (the whole sheet, not a single page)",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda sch rename --schematic <schematicUuid> --name "主原理图"`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if schUuid == "" {
+					return fmt.Errorf("--schematic is required")
+				}
+				if name == "" {
+					return fmt.Errorf("--name is required")
+				}
+				return dispatch(cfg, "schematic.rename", window,
+					map[string]any{"schematicUuid": schUuid, "name": name}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&schUuid, "schematic", "", "schematic document UUID (required)")
+		c.Flags().StringVar(&name, "name", "", "new schematic name (required)")
+		sch.AddCommand(c)
+	}
+
 	// ── list ─────────────────────────────────────────────────────────────
 	// schematic.components.list
 	{
@@ -320,14 +476,27 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 
 	// ── snapshot ──────────────────────────────────────────────────────────
 	// schematic.snapshot
-	sch.AddCommand(&cobra.Command{
-		Use:   "snapshot",
-		Short: "Capture the current schematic view as an image artifact",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return dispatch(cfg, "schematic.snapshot", window, nil, stdout, stderr)
-		},
-	})
+	{
+		var fit bool
+		c := &cobra.Command{
+			Use:   "snapshot",
+			Short: "Capture the current schematic view as an image artifact",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda sch snapshot
+  easyeda sch snapshot --fit   # zoom to fit all first (whole sheet in frame)`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				// --fit: zoom to fit all primitives before capturing so the
+				// whole sheet lands in frame. Best-effort — its output is
+				// discarded and a failure does not block the snapshot.
+				if fit {
+					_ = dispatch(cfg, "view.fit", window, nil, io.Discard, stderr)
+				}
+				return dispatch(cfg, "schematic.snapshot", window, nil, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&fit, "fit", false, "zoom to fit all (适应全部) before capturing")
+		sch.AddCommand(c)
+	}
 
 	// ── drc ───────────────────────────────────────────────────────────────
 	// schematic.drc.check

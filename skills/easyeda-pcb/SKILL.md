@@ -40,6 +40,15 @@ missing **and** the user explicitly accepts a debug path.
 - `document.open` — open any document (schematic page or PCB) by uuid; the cross-type switch entry.
 - `pcb.board.info` — current Board (schematic↔PCB linkage) + current PCB; the prerequisite context for `import_changes`.
 
+### View (canvas — shared with the schematic editor)
+
+Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
+
+- `view.fit` — zoom to fit all primitives (适应全部, the `K` shortcut) → `easyeda view fit`.
+- `view.fit_selection` — zoom to fit the current selection → `easyeda view fit-selection`.
+- `view.zoom` — pan/zoom to a center coordinate and/or scale percent (`--x/--y/--scale`; omitted keeps current).
+- `view.region` — zoom to a rectangular region (`--left/--right/--top/--bottom`, mil).
+
 ### Read / inspect
 
 - `pcb.components.list` — placed footprints. `includeBBox` → per-component rendered extent (for overlap/spacing reasoning); `includePads` → pads + net (the net-by-name connectivity).

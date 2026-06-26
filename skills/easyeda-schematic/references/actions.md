@@ -11,11 +11,31 @@ Run `easyeda actions` for the authoritative machine-readable list.
 - `schematic.pages.list` — 工程内全部原理图及页面
 - `schematic.page.open` — 切换到指定原理图页（兼容旧用法）
 
+## Sheet / 图页管理 + 明细表（title block）
+
+均映射 `eda.dmt_Schematic.*`。**注意：EasyEDA Pro 无设置纸张尺寸(A4/A3)的公开 API**；可编辑的「图纸」属性就是明细表(title block)。CLI：`easyeda sch …`。
+
+- `schematic.titleblock.get` — 读当前（或指定 `pageUuid`）图页的明细表：`showTitleBlock` + 各字段 `titleBlockData`。**改前先 get 拿到字段 key** → `easyeda sch titleblock-get`
+- `schematic.titleblock.modify` — 调整明细表：显隐 + 字段值（只传要改的项，未知 key 被忽略）→ `easyeda sch titleblock --show` / `--data '{"Title":{"value":"电源模块"}}'`
+- `schematic.page.create` — 新建图页（`schematicUuid`）→ `easyeda sch page-new --schematic <uuid>`
+- `schematic.page.rename` — 重命名图页 → `easyeda sch page-rename --page <uuid> --name ...`
+- `schematic.page.delete` — 删除图页（**需确认**，无 undo）→ `easyeda sch page-delete --page <uuid>`
+- `schematic.rename` — 重命名整张原理图文档（非单页；可能联动复用模块符号 + PCB）→ `easyeda sch rename --schematic <uuid> --name ...`
+
+## View（画布视图快捷键，原理图 + PCB 通用）
+
+作用于当前聚焦的画布，等价于编辑器工具栏/快捷键。CLI：`easyeda view …`。
+
+- `view.fit` — 适应全部（`K` 快捷键）；缩放至显示全部图元 → `easyeda view fit`
+- `view.fit_selection` — 适应选中；先 `schematic.select` 再缩放至选中图元 → `easyeda view fit-selection`
+- `view.zoom` — 缩放到坐标/比例（x/y/scale，scale 为百分比，省略则保持当前值）→ `easyeda view zoom --scale 200`
+- `view.region` — 缩放到矩形区域（left/right/top/bottom，单位：原理图 0.01inch、PCB mil）→ `easyeda view region --left 0 --right 1000 --top 1000 --bottom 0`
+
 ## Inspect Schematic
 
 - `schematic.components.list` — 当前页（或全页）所有元件，可含 pins
 - `schematic.select` — 按 primitiveId 选中图元
-- `schematic.snapshot` — 截取当前渲染区域为 PNG artifact
+- `schematic.snapshot` — 截取当前渲染区域为 PNG artifact（`easyeda sch snapshot --fit` 先适应全部再截，整张图入画）
 
 ## Mutate Schematic
 
@@ -47,6 +67,7 @@ Run `easyeda actions` for the authoritative machine-readable list.
 ## Confirmation Required
 
 - `schematic.component.delete`
+- `schematic.page.delete`（删除图页，无 undo）
 - `schematic.save`（未明确要求保存时）
 - 生成的多步 mutation 计划
 - `debug.exec_js`（任何情况）
