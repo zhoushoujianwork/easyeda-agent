@@ -109,6 +109,19 @@ writeback(): 把新解析件 diff 进 standard-parts.json(与原理图同 PR)
 ```
 **Step 0/1 不可跳过。** box-v2 散乱 = 跳过图纸自适应与主/辅分层、直接"放所有件+全按名 flag"。
 
+## 多页执行(>A4 容量,实测必备)
+分页是 >A4 的正解,但 EasyEDA 的页 API 有两个致命坑(box-v2 实测):
+- **`sch open` / `document.open` 不切换活动页**(实测:连开 3 个不同页,`getCurrentDocumentInfo` 始终停在最后一个);
+  但 **`sch page-new` 会把新建页设为活动页**。`getAll()` 是**按活动页**取的。
+- ⇒ **必须"交错"执行**:在**当前活动页**上 clear+place+wire(第 1 页),然后**每建一页就立刻在它上面 place+wire**
+  (新页即活动页),**绝不回头切页**。先把所有页建好再统一布线 = 全堆到最后一页(踩过)。
+- **清页前先保住预置件**:`_clear_active` 会删掉**所有** part 含预先放好的主 IC;这些 IC 的
+  `{libraryUuid,deviceUuid}` 若没存过就**删了找不回**(`design.json` 里 onboard 件 `deviceUuid=null`)。
+  动手前**先读 getState 存下它们的 lib/uuid**,或用 MPN 重新 `lib search` 解析(box-v2 14/14 靠 MPN 搜回)。
+- 跨页信号用 **`net_port`(同名跨页连)**;每页内坐标各自约束到该页 (W,H)。
+- `sch page-delete` 用 **`--page`**(不是 `--uuid`);删页能可靠清理误建页(zsh 下循环变量要显式分词,
+  `for U in $VAR` 在 zsh 不自动分词——用字面量或 python 循环)。
+
 ## 大批量(>~50 mutation)抗 churn(实测必备)
 (a) 显式传 `--project/--window`,中途重连不会打错窗口;(b) 用 `debug.exec_js` **批量**多图元/次,别一图元一 CLI;(c) 每个 exec_js 批**切到 <~20s**(place/wire 各分 N 块 ~20 op),长调用必被心跳杀;(d) 每块**重试 + 增量 `schematic.save`**(无 undo,半落未存=不可恢复);(e) 每块开头**重拉新 pid**。
 
