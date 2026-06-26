@@ -1,0 +1,52 @@
+== 概览 ==  parts=6 flags=25 wires=25 sheets=0 nets≈31
+
+🟠 悬空引脚 (6):
+  - U1.2(IO0) @(460, 440) 悬空（无导线/标识）
+  - U1.3(IO1) @(460, 430) 悬空（无导线/标识）
+  - U1.4(IO2) @(460, 420) 悬空（无导线/标识）
+  - U1.5(IO3) @(460, 410) 悬空（无导线/标识）
+  - U1.6(IO4) @(460, 400) 悬空（无导线/标识）
+  - U1.7(IO5) @(460, 390) 悬空（无导线/标识）
+
+🟠 单引脚孤网 (空连) (6):
+  - 引脚 U1.2(IO0) 所在网络只有它自己、且无电源/地/标识 → 空连
+  - 引脚 U1.3(IO1) 所在网络只有它自己、且无电源/地/标识 → 空连
+  - 引脚 U1.4(IO2) 所在网络只有它自己、且无电源/地/标识 → 空连
+  - 引脚 U1.5(IO3) 所在网络只有它自己、且无电源/地/标识 → 空连
+  - 引脚 U1.6(IO4) 所在网络只有它自己、且无电源/地/标识 → 空连
+  - 引脚 U1.7(IO5) 所在网络只有它自己、且无电源/地/标识 → 空连
+
+🟡 朝向不顺导线 (21):
+  - netflag       GND @(570, 520)  rot=  0 应为 180  (导线朝down, body应朝up, ground)
+  - netflag       GND @(1510, 520)  rot=  0 应为 180  (导线朝down, body应朝up, ground)
+  - netport       SIG @(280, 300)  rot=  0 应为 180  (导线朝right, body应朝left, port)
+  - netflag       GND @(940, 960)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 940)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 920)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 900)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 880)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 860)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 840)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 820)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 800)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 780)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 760)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 740)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 720)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 700)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 680)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 660)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 640)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+  - netflag       GND @(940, 620)  rot=  0 应为  90  (导线朝left, body应朝right, ground)
+
+🟠 去耦未就近 IC 电源脚 (§6/SOP) (1):
+  - C99 距最近 IC 电源引脚 1000u > 120u MUST → 去耦未就近 (§6 / SOP Step2，应贴 VCC 焊盘)
+
+🟡 net-port 同页近距离 (1):
+  - net-port 'SIG' @(240,300) 与 @(280,300) 仅隔 40 → 同页应改导线/net label
+
+🟡 短信号网用标识应改本地线 (1):
+  - 信号网 'SIG' (2脚, 跨度 80u < 250) 由分散标识连 → 同簇应本地 pin→wire→pin (SOP §3.6)
+
+🟡 过度按名接线 (flag≈pin) (1):
+  - 标识/端口 25 / 引脚 31 = 81% > 60% → 过度按名接线(flag-every-pin),簇内/短网络应改本地导线 (SOP Step3 决策表)

@@ -151,10 +151,11 @@ for w in wires:
 for pt in list(pin_pts) + list(flag_pts):
     ufind(pt)
 net_members = defaultdict(lambda: {'pins': set(), 'flags': set()})
+net_pts = defaultdict(set)   # root -> set of (x,y) pin/flag points on that net (for span/proximity)
 for pt in list(uf):
     root = ufind(pt)
-    if pt in pin_pts: net_members[root]['pins'].add(pin_pts[pt])
-    if pt in flag_pts: net_members[root]['flags'].add(f"{flag_pts[pt]['net']}")
+    if pt in pin_pts: net_members[root]['pins'].add(pin_pts[pt]); net_pts[root].add(pt)
+    if pt in flag_pts: net_members[root]['flags'].add(f"{flag_pts[pt]['net']}"); net_pts[root].add(pt)
 
 def is_power(n): return any(p in n.lower() for p in ('vcc','vdd','3v3','5v','+','vbat','vbus'))
 def is_gnd(n):   return any(g in n.lower() for g in ('gnd','vss','agnd'))
@@ -172,9 +173,65 @@ for root, m in net_members.items():
     if len(pins) >= 2 and not fset:
         problems['unnamed_net'].append(f"网络 {{{', '.join(sorted(pins))}}} 多引脚但无命名标识（建议加 net label / 电源地）")
 
+# ==== auto-layout SOP enforcement (auto-layout-sop.md) ====
+# These catch the bulk-realization defect (scattered decaps + flag-every-pin), which
+# only manifests at board scale — gate on total pin count so tiny focused fixtures
+# (which legitimately use a couple of flags) don't trip them.
+total_pins = sum(len(p.get('pins', [])) for p in parts)
+SOP_SCALE = total_pins >= 30
+if SOP_SCALE:
+    # IC pins on a power net = the "VCC pads" decoupling should hug.
+    ic_pins = {(pin['x'], pin['y']): p['designator']
+               for p in parts if len(p.get('pins', [])) > 4 for pin in p['pins']}
+    power_pin_pts = set()
+    for root, m in net_members.items():
+        if any(is_power(n) for n in m['flags']):
+            power_pin_pts |= {pt for pt in net_pts[root] if pt in ic_pins}
+
+    # ---- Check 13: decoupling not near its IC VCC pad (§6 / SOP Step 2) ----
+    for p in parts:
+        if not str(p.get('designator', '')).startswith('C') or len(p.get('pins', [])) != 2:
+            continue
+        if not power_pin_pts:
+            continue
+        on_power = any(any(is_power(n) for n in net_members[ufind((pin['x'], pin['y']))]['flags'])
+                       for pin in p['pins'])
+        if not on_power:
+            continue
+        cx, cy = p['x'], p['y']
+        dmin = min(abs(cx - px) + abs(cy - py) for px, py in power_pin_pts)
+        if dmin > 120:
+            problems['decap_far'].append(
+                f"{p['designator']} 距最近 IC 电源引脚 {dmin}u > 120u MUST → 去耦未就近 (§6 / SOP Step2，应贴 VCC 焊盘)")
+
+    # ---- Check 14: over-flagging — flag count ≈ pin count (SOP Step 3) ----
+    if len(flags) / total_pins > 0.6:
+        problems['flag_density'].append(
+            f"标识/端口 {len(flags)} / 引脚 {total_pins} = {len(flags)/total_pins:.0%} > 60% "
+            f"→ 过度按名接线(flag-every-pin),簇内/短网络应改本地导线 (SOP Step3 决策表)")
+
+    # ---- Check 15: short ≥2-pin signal net realized as scattered flags vs a local wire ----
+    # Group by net NAME, not union-find root: a "by-name" net is split into one root per
+    # pin (pin→stub→flag, no wire between them), so per-root it looks like single-pin nets.
+    sig_by_name = defaultdict(lambda: {'pins': set(), 'pts': set()})
+    for root, m in net_members.items():
+        for n in m['flags']:
+            if is_power(n) or is_gnd(n):
+                continue
+            sig_by_name[n]['pins'] |= m['pins']
+            sig_by_name[n]['pts'] |= net_pts[root]
+    for n, d in sig_by_name.items():
+        if not (2 <= len(d['pins']) <= 3) or len(d['pts']) < 2:
+            continue
+        pts = d['pts']
+        span = (max(x for x, y in pts) - min(x for x, y in pts)) + (max(y for x, y in pts) - min(y for x, y in pts))
+        if span < 250:
+            problems['local_net_as_flag'].append(
+                f"信号网 '{n}' ({len(d['pins'])}脚, 跨度 {span}u < 250) 由分散标识连 → 同簇应本地 pin→wire→pin (SOP §3.6)")
+
 order = ['flag_on_pin','zero_wire','dangling_wire','floating_pin','single_pin_net',
-         'flag_no_wire','orientation','bbox_overlap','dup_designator','netport_hop',
-         'collinear_flags','unnamed_net','off_grid']
+         'flag_no_wire','orientation','bbox_overlap','dup_designator','decap_far',
+         'netport_hop','local_net_as_flag','flag_density','collinear_flags','unnamed_net','off_grid']
 labels = {
   'flag_on_pin':'🔴 标识与引脚重叠 (DRC fatal)','zero_wire':'🔴 零长度导线',
   'dangling_wire':'🔴 导线空连端点','floating_pin':'🟠 悬空引脚',
@@ -183,6 +240,8 @@ labels = {
   'dup_designator':'🟠 重复位号','netport_hop':'🟡 net-port 同页近距离',
   'collinear_flags':'🟡 异网标识共线穿元件','unnamed_net':'🔵 多引脚网络未命名',
   'off_grid':'🔵 不在 5 网格',
+  'decap_far':'🟠 去耦未就近 IC 电源脚 (§6/SOP)','flag_density':'🟡 过度按名接线 (flag≈pin)',
+  'local_net_as_flag':'🟡 短信号网用标识应改本地线',
 }
 # Structured findings — (rule, msg) is a stable identity for diff.py: the same
 # problem yields the same deterministic msg across runs.
