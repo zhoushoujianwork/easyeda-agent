@@ -19,13 +19,7 @@ skill ──▶ Go CLI/daemon ──WebSocket──▶ connector .eext ──▶
 
 ## 首要准则 — CLI 子命令设计
 
-> **所有明确的功能模块必须以 Cobra 子命令方式暴露**，方便 AI 快速理解和调用。
->
-> - 每个功能领域（原理图、PCB、BOM、连接器……）对应一个顶级子命令（`easyeda sch`、`easyeda pcb`、`easyeda bom` 等）。
-> - 子命令下再细分动作（`easyeda sch place`、`easyeda sch wire`、`easyeda pcb layout` …）。
-> - `--help` 输出必须清晰描述参数含义和示例，AI 读 `--help` 即可知道怎么调用。
-> - 新增功能**必须先设计子命令接口**（命令名 + flags），再实现逻辑；Skill 里的工具描述与子命令签名保持一致。
-> - 不允许把功能藏进全局 flag 或隐式行为里——每一个明确的操作都是一条显式子命令。
+详见 [`docs/cli-design.md`](docs/cli-design.md)。核心约束：所有明确的功能模块必须以 **Cobra 子命令**方式暴露（`easyeda sch`、`easyeda pcb`、`easyeda bom` …），`--help` 自描述，新功能先设计命令接口再写实现，Skill 描述与子命令签名保持同步。开发闭环：`debug.exec_js` → typed action → Cobra 子命令。
 
 ## Notes
 

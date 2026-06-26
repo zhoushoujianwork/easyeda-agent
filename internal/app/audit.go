@@ -8,72 +8,57 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
-func runAudit(args []string, stdout io.Writer, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "audit: subcommand required (tail)")
-		return 2
+// newAuditCmd returns the "audit" subcommand group.
+func newAuditCmd(stdout, stderr io.Writer) *cobra.Command {
+	audit := &cobra.Command{
+		Use:   "audit",
+		Short: "Inspect the action audit log",
 	}
-	switch args[0] {
-	case "tail":
-		return runAuditTail(args[1:], stdout, stderr)
-	default:
-		fmt.Fprintf(stderr, "audit: unknown subcommand %q (expected: tail)\n", args[0])
-		return 2
-	}
+	audit.AddCommand(newAuditTailCmd(stdout, stderr))
+	return audit
 }
 
-func runAuditTail(args []string, stdout io.Writer, stderr io.Writer) int {
-	n := 20
-	dir := ""
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "-n":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "audit tail: -n requires a value")
-				return 2
+// newAuditTailCmd returns "audit tail [-n N] [--dir <dir>]".
+func newAuditTailCmd(stdout, stderr io.Writer) *cobra.Command {
+	var n int
+	var dir string
+
+	cmd := &cobra.Command{
+		Use:   "tail",
+		Short: "Show the most recent dispatches from the JSONL audit log",
+		Args:  cobra.NoArgs,
+		Example: `  easyeda audit tail
+  easyeda audit tail -n 50
+  easyeda audit tail --dir /path/to/audit`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if dir == "" {
+				home, err := os.UserHomeDir()
+				if err != nil || home == "" {
+					home = os.Getenv("HOME")
+				}
+				dir = filepath.Join(home, ".easyeda-agent", "audit")
 			}
-			v, err := strconv.Atoi(args[i])
-			if err != nil || v <= 0 {
-				fmt.Fprintf(stderr, "audit tail: invalid -n %q\n", args[i])
-				return 2
+
+			lines, err := readLastLines(dir, n)
+			if err != nil {
+				return err
 			}
-			n = v
-		case "--dir":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "audit tail: --dir requires a value")
-				return 2
+			for _, line := range lines {
+				fmt.Fprintln(stdout, line)
 			}
-			dir = args[i]
-		default:
-			fmt.Fprintf(stderr, "audit tail: unknown flag %q\n", args[i])
-			return 2
-		}
+			return nil
+		},
 	}
 
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			home = os.Getenv("HOME")
-		}
-		dir = filepath.Join(home, ".easyeda-agent", "audit")
-	}
-
-	lines, err := readLastLines(dir, n)
-	if err != nil {
-		fmt.Fprintf(stderr, "audit tail: %v\n", err)
-		return 1
-	}
-	for _, line := range lines {
-		fmt.Fprintln(stdout, line)
-	}
-	return 0
+	cmd.Flags().IntVarP(&n, "lines", "n", 20, "number of lines to show")
+	cmd.Flags().StringVar(&dir, "dir", "", "audit log directory (default ~/.easyeda-agent/audit)")
+	return cmd
 }
 
 // readLastLines walks the audit directory in reverse chronological order

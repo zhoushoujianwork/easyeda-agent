@@ -11,7 +11,7 @@ tmp_dir = "tmp"
   # build the CLI, then run it as the daemon
   cmd = "go build -o ./tmp/easyeda ./cmd/easyeda"
   bin = "./tmp/easyeda"
-  args_bin = ["daemon"]
+  args_bin = ["daemon","start"]
   # only watch Go sources of the daemon/CLI; ignore the connector, tools, docs
   include_ext = ["go"]
   include_dir = ["cmd", "internal"]
