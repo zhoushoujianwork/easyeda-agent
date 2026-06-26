@@ -28,8 +28,9 @@ var errActionFailed = errors.New("action returned ok=false")
 // action subcommands. The fields are bound directly to Cobra persistent
 // flags so they are populated before any RunE executes.
 type appConfig struct {
-	host  string
-	ports string // "49620-49629"
+	host    string
+	ports   string // "49620-49629"
+	project string // optional stable routing hint (project name/uuid) → windowId
 }
 
 // portRange parses the ports string and returns (start, end, err).
@@ -58,6 +59,9 @@ func dispatch(cfg *appConfig, action, window string, payload any, stdout, stderr
 	body := map[string]any{"action": action}
 	if window != "" {
 		body["windowId"] = window
+	}
+	if cfg.project != "" {
+		body["project"] = cfg.project
 	}
 	if payload != nil {
 		body["payload"] = payload

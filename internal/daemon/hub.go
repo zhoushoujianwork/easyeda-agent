@@ -195,6 +195,48 @@ func (h *hub) target(windowID string) (*conn, bool) {
 	return nil, false
 }
 
+// windowForProject resolves a project name or uuid to a single connected window
+// id, so callers can route by stable identity instead of the ephemeral windowId
+// (which changes on every reconnect — multi-window/multi-agent routing).
+//
+// A project may legitimately be open in MORE THAN ONE window (e.g. a schematic
+// window + a PCB window). When several match, disambiguate by preferDoc — the
+// document type implied by the action's domain (pcb.* → "pcb", schematic.* →
+// "schematic"). Returns (id, found, ambiguous): ambiguous is true only when the
+// project still maps to multiple windows after the preferDoc filter, in which
+// case the caller should fall back to an explicit --window.
+func (h *hub) windowForProject(project, preferDoc string) (id string, found bool, ambiguous bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var matches []Window
+	for _, c := range h.windows {
+		w := c.snapshot()
+		if w.Context.ProjectName == project || w.Context.ProjectUUID == project {
+			matches = append(matches, w)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", false, false
+	case 1:
+		return matches[0].WindowID, true, false
+	}
+	// Multiple windows for this project — narrow to the one whose active
+	// document matches the action's domain.
+	if preferDoc != "" {
+		var narrowed []Window
+		for _, w := range matches {
+			if w.Context.DocumentType == preferDoc {
+				narrowed = append(narrowed, w)
+			}
+		}
+		if len(narrowed) == 1 {
+			return narrowed[0].WindowID, true, false
+		}
+	}
+	return "", false, true
+}
+
 func (h *hub) list() []Window {
 	h.mu.RLock()
 	conns := make([]*conn, 0, len(h.windows))

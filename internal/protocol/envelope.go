@@ -12,7 +12,11 @@ type Envelope struct {
 
 type Request struct {
 	Envelope
-	Action  string         `json:"action"`
+	Action string `json:"action"`
+	// Project is an optional stable routing hint: a project name or uuid the
+	// daemon resolves to the current windowId. Use instead of WindowID when the
+	// ephemeral windowId churns (reconnects) — multi-window/multi-agent routing.
+	Project string         `json:"project,omitempty"`
 	Payload map[string]any `json:"payload,omitempty"`
 }
 

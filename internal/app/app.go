@@ -51,6 +51,8 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	root.PersistentFlags().StringVar(&cfg.ports, "ports",
 		fmt.Sprintf("%d-%d", defaultPortStart, defaultPortEnd),
 		"daemon port range (start-end)")
+	root.PersistentFlags().StringVar(&cfg.project, "project", "",
+		"route by project name/uuid instead of --window (survives windowId churn)")
 
 	root.AddCommand(
 		newVersionCmd(stdout),

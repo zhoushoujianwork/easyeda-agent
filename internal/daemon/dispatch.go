@@ -31,6 +31,30 @@ var knownActions = func() map[string]bool {
 	return set
 }()
 
+// actionDomain maps each action to its domain, used to pick the right window
+// when a project is open in several (a pcb.* action → the project's PCB window).
+var actionDomain = func() map[string]protocol.Domain {
+	m := map[string]protocol.Domain{}
+	for _, a := range protocol.AllActions() {
+		m[a.Name] = a.Domain
+	}
+	return m
+}()
+
+// docTypeForAction returns the documentType an action targets ("pcb" or
+// "schematic"), matching the connector's documentType labels. Domain-agnostic
+// actions (project/document/system/debug) return "" (no preference).
+func docTypeForAction(action string) string {
+	switch actionDomain[action] {
+	case protocol.DomainPcb:
+		return "pcb"
+	case protocol.DomainSchematic:
+		return "schematic"
+	default:
+		return ""
+	}
+}
+
 // handleAction accepts a typed action request, validates it, answers daemon-local
 // actions directly, and forwards the rest to the target connector.
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +91,28 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		s.audit.Append(fromResponse(started, &req, &resp))
 		writeJSON(w, http.StatusOK, resp)
 		return
+	}
+
+	// Stable-identity routing: resolve a --project hint to a windowId. The
+	// ephemeral windowId churns on reconnect, so callers can target a project
+	// name/uuid and let the daemon find its current window.
+	if req.WindowID == "" && req.Project != "" {
+		id, found, ambiguous := s.hub.windowForProject(req.Project, docTypeForAction(req.Action))
+		if ambiguous {
+			started := time.Now().UTC()
+			errResp := errorResponse(req.ID, "AMBIGUOUS_PROJECT", fmt.Sprintf("multiple connected windows match project %q", req.Project), "pass --window to pick one (see `easyeda health`)")
+			s.audit.Append(fromResponse(started, &req, &errResp))
+			writeJSON(w, http.StatusConflict, errResp)
+			return
+		}
+		if !found {
+			started := time.Now().UTC()
+			errResp := errorResponse(req.ID, "NO_CONNECTOR", fmt.Sprintf("no connected window for project %q", req.Project), "open the project in EasyEDA (connector enabled), or run `easyeda health`")
+			s.audit.Append(fromResponse(started, &req, &errResp))
+			writeJSON(w, http.StatusServiceUnavailable, errResp)
+			return
+		}
+		req.WindowID = id
 	}
 
 	target, ok := s.hub.target(req.WindowID)
