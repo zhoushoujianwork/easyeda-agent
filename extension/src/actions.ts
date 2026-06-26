@@ -941,6 +941,9 @@ const pcbDocumentsList: Handler = async () => {
 const pcbComponentsList: Handler = async (payload) => {
 	const layer = payload.layer as TPCB_LayersOfComponent | undefined;
 	const includePads = optionalBoolean(payload, 'includePads') === true;
+	// includeBBox attaches each component's rendered extent {minX,minY,maxX,maxY}
+	// so the agent can reason about size, spacing, and courtyard/overlap.
+	const includeBBox = optionalBoolean(payload, 'includeBBox') === true;
 	let components;
 	try {
 		components = await eda.pcb_PrimitiveComponent.getAll(layer);
@@ -952,6 +955,13 @@ const pcbComponentsList: Handler = async (payload) => {
 	const serialized: Array<Record<string, unknown>> = [];
 	for (const component of components) {
 		const record = serializePcbComponent(component);
+		if (includeBBox) {
+			try {
+				const box = await eda.pcb_Primitive.getPrimitivesBBox([component.getState_PrimitiveId()]);
+				if (box) record.bbox = box;
+			}
+			catch { /* bbox is optional */ }
+		}
 		if (includePads) {
 			try {
 				const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(
@@ -1338,6 +1348,138 @@ const pcbComponentsMove: Handler = async (payload) => {
 	return { result: { dx, dy, moved, count: moved.length } };
 };
 
+// ─── PCB auto-layout seed: cluster by shared local nets + grid-pack (P6) ──
+// The mechanical first pass. The agent then applies higher-priority rules
+// (mechanical/connectors → decoupling → thermal) per docs/pcb-layout-conventions.md.
+
+/** Global nets (GND/power/high-fanout) connect everything, so they are excluded from clustering. */
+function isGlobalNetName(net: string): boolean {
+	return /^(?:[adp])?gnd$|^v(?:cc|dd|ss|in|out|bus|bat|sys|ref)\b|^[+-]?\d+v\d*$|^[+-]/i.test(net)
+		|| /gnd|vcc|vdd|vss/i.test(net);
+}
+
+type ArrangeItem = {
+	id: string;
+	designator: string | undefined;
+	x: number;
+	y: number;
+	box: PcbBox;
+	locked: boolean;
+	nets: Array<string>;
+};
+
+/** Union-find clustering: components sharing a non-global, low-fanout local net join one group. */
+function clusterByLocalNets(items: Array<ArrangeItem>): Array<Array<ArrangeItem>> {
+	const netToIdx = new Map<string, Array<number>>();
+	items.forEach((it, idx) => {
+		for (const n of it.nets) {
+			if (!n || isGlobalNetName(n)) continue;
+			const arr = netToIdx.get(n) ?? [];
+			arr.push(idx);
+			netToIdx.set(n, arr);
+		}
+	});
+	const parent = items.map((_, i) => i);
+	const find = (a: number): number => {
+		while (parent[a] !== a) {
+			parent[a] = parent[parent[a]];
+			a = parent[a];
+		}
+		return a;
+	};
+	const union = (a: number, b: number) => { parent[find(a)] = find(b); };
+	for (const idxs of netToIdx.values()) {
+		if (idxs.length < 2 || idxs.length > 8) continue; // skip singletons + high-fanout buses
+		for (let i = 1; i < idxs.length; i++) union(idxs[0], idxs[i]);
+	}
+	const groups = new Map<number, Array<ArrangeItem>>();
+	items.forEach((it, idx) => {
+		const root = find(idx);
+		const g = groups.get(root) ?? [];
+		g.push(it);
+		groups.set(root, g);
+	});
+	return [...groups.values()].sort((a, b) => b.length - a.length);
+}
+
+const pcbComponentsArrange: Handler = async (payload) => {
+	const mode = optionalString(payload, 'mode') ?? 'cluster';
+	const pitch = optionalNumber(payload, 'pitch') ?? 50;    // gap between cells (mil)
+	const gutter = optionalNumber(payload, 'gutter') ?? 150;  // gap between cluster blocks (mil)
+	const colsIn = optionalNumber(payload, 'cols');
+	const ids = await resolvePcbTargetIds(payload);
+	if (ids.length < 2) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `arrange needs >= 2 components (got ${ids.length}); select components or pass primitiveIds.`);
+	}
+
+	const items: Array<ArrangeItem> = [];
+	for (const id of ids) {
+		const component = await eda.pcb_PrimitiveComponent.get(id);
+		if (!component) continue;
+		const box = await eda.pcb_Primitive.getPrimitivesBBox([id]);
+		if (!box) continue;
+		let nets: Array<string> = [];
+		try {
+			const pads = await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(id);
+			nets = [...new Set((pads ?? []).map(p => p.getState_Net()).filter((n): n is string => Boolean(n)))];
+		}
+		catch { /* nets optional */ }
+		items.push({
+			id,
+			designator: component.getState_Designator(),
+			x: component.getState_X(),
+			y: component.getState_Y(),
+			box,
+			locked: component.getState_PrimitiveLock(),
+			nets,
+		});
+	}
+
+	const movable = items.filter(i => !i.locked);
+	if (movable.length === 0) {
+		return { result: { mode, groups: 0, moved: [], count: 0, note: 'all target components are locked' } };
+	}
+
+	// Anchor at the top-left of the current movable region (y-up: top = max y).
+	const originX = Math.min(...movable.map(i => i.box.minX));
+	const originY = Math.max(...movable.map(i => i.box.maxY));
+
+	const groups: Array<Array<ArrangeItem>> = mode === 'grid' ? [movable] : clusterByLocalNets(movable);
+
+	const moved: Array<Record<string, unknown>> = [];
+	let blockX = originX;
+	for (const group of groups) {
+		const cellW = Math.max(...group.map(i => i.box.maxX - i.box.minX)) + pitch;
+		const cellH = Math.max(...group.map(i => i.box.maxY - i.box.minY)) + pitch;
+		const cols = colsIn ?? Math.max(1, Math.ceil(Math.sqrt(group.length)));
+		// Tidy, stable order within a block: by designator, numeric-aware (C2 before C10).
+		group.sort((a, b) => (a.designator ?? '').localeCompare(b.designator ?? '', undefined, { numeric: true }));
+		for (let k = 0; k < group.length; k++) {
+			const it = group[k];
+			const col = k % cols;
+			const row = Math.floor(k / cols);
+			const cellCenterX = blockX + col * cellW + cellW / 2;
+			const cellCenterY = originY - row * cellH - cellH / 2; // y-up: rows descend
+			const bcx = (it.box.minX + it.box.maxX) / 2;
+			const bcy = (it.box.minY + it.box.maxY) / 2;
+			// Preserve each component's anchor↔bbox-center offset.
+			const nx = cellCenterX - bcx + it.x;
+			const ny = cellCenterY - bcy + it.y;
+			try {
+				await eda.pcb_PrimitiveComponent.modify(it.id, { x: nx, y: ny });
+			}
+			catch (err) {
+				throw edaError(err, `Failed to arrange component ${it.designator ?? it.id}.`);
+			}
+			moved.push({ primitiveId: it.id, designator: it.designator, from: { x: it.x, y: it.y }, to: { x: nx, y: ny } });
+		}
+		const usedCols = Math.min(cols, group.length);
+		blockX += usedCols * cellW + gutter;
+	}
+
+	return { result: { mode, groups: groups.length, moved, count: moved.length } };
+};
+
 // ─── Debug escape hatch ──────────────────────────────────────────────
 
 /**
@@ -1397,6 +1539,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.distribute': pcbDistribute,
 	'pcb.grid_snap': pcbGridSnap,
 	'pcb.components.move': pcbComponentsMove,
+	'pcb.components.arrange': pcbComponentsArrange,
 	'debug.exec_js': debugExecJs,
 };
 

@@ -77,12 +77,28 @@ Run `easyeda actions` for the current machine-readable action list.
 - `schematic.export.bom`
 - `schematic.library.search`
 
-### PCB（Phase 2，只读）
+### PCB（Phase 2）
 
+坐标单位 = **mil**（原理图是 10 mil），**y-up**；元件绑定 TOP/BOTTOM 层，**无镜像只翻面**。布局动作默认作用于**当前选中**的元件，也可传 `primitiveIds`。
+
+**读**
 - `pcb.documents.list` — 列出工程内所有 PCB 文档（uuid + name），配合 `document.open` 切换到 PCB
-- `pcb.components.list` — 列出 PCB 上的封装/器件
-- `pcb.layers.list` — 列出 PCB 层信息
-- `pcb.nets.list` — 列出 PCB 网络
+- `pcb.components.list` — 列 PCB 器件；`includeBBox` 返回包围盒（判重叠/间距），`includePads` 返回焊盘 + net
+- `pcb.layers.list` — 层信息（含 `copperLayerCount`，判 2 层 / 4+ 层）
+- `pcb.nets.list` — 网络（net/length/color）
+- `pcb.board.info` — 当前 Board（原理图↔PCB 关联），`import_changes` 前置
+
+**同步 + 器件 CRUD**
+- `pcb.import_changes` — 从原理图同步元件/网表到 PCB（主入口；ensureBoard→importChanges→刷飞线；**需确认**）
+- `pcb.component.modify` — 移动/旋转/翻面/锁/位号
+- `pcb.component.delete` — 删元件（**需确认**；返回布尔是"操作完成"非"确实删了"，别依赖）
+
+**布局调整（确定性；EasyEDA 无原生对齐/网格 API，自实现）**
+- `pcb.align` — 对齐 `left|right|top|bottom|centerX|centerY`（y-up：top = 大 y）
+- `pcb.distribute` — 等间距 `axis=x|y`
+- `pcb.grid_snap` — 坐标吸附到 `grid`（mil）
+- `pcb.components.move` — 整组相对平移 `dx/dy`
+- `pcb.components.arrange` — 粗布局种子：按共享局部 net 聚簇（`mode=cluster`）或网格打包（`mode=grid`），跳过 locked
 
 ## Bundled Scripts
 
@@ -108,11 +124,29 @@ Run `easyeda actions` for the current machine-readable action list.
 
 ## Layout Conventions
 
+### 原理图
+
 When placing components, follow [docs/schematic-layout-conventions.md](../../docs/schematic-layout-conventions.md):
 - Zone map (power left, MCU center, RF/sensors right, big modules in corners)
 - Module spacing rules (80–500 units depending on size + pin count)
 - Wire stub lengths (20–40 units for power, 20–60 for signals)
 - Right-angle-only routing, decoupling caps within 30 units of VCC pins
+
+### PCB 布局
+
+PCB 自动布局/调整时遵循 [docs/pcb-layout-conventions.md](../../docs/pcb-layout-conventions.md)（完整规则 + 检测方法）。要点:
+
+**优先级裁决(冲突时高覆盖低)**:P0 机械/外壳锁定 > P1 安全间距/隔离 > P2 EMI 热回路 + 关键去耦贴近 > P3 参考平面/回流连续 > P4 热 keep-out > P5 功能分区 > P6 DFM > P7 网格/对齐/丝印(纯美化,**绝不覆盖功能位**)。
+
+**执行步骤**:
+1. 前置:`pcb.components.list`(`includeBBox`+`includePads`) + `pcb.layers.list`(取 `copperLayerCount`) + `pcb.nets.list`,按 net/designator 给每件打类(anchor/hot/sensitive/IC/passive)。
+2. **P0**:连接器(J/USB)、安装孔(H/MH)按外壳坐标先放 + `lock`,作不可动障碍;板边连接器开口朝外。
+3. **P6 粗聚簇**:`pcb.components.arrange mode=cluster` 得初始排布。
+4. **P2/P4 就地覆盖**:去耦电容贴 IC 电源脚(≤2 层 ≤150 mil;4+ 层 ≤250 mil 但**留打孔空间**);晶振 + 两负载电容贴 MCU 振荡脚带 200 mil 守护环;开关输入回路 {Cin+开关+续流} bbox 最小;热源彼此 ≥400 mil,怕热件(电解/晶振/传感器)离热源 ≥200 mil。
+5. **P7 收尾**:`pcb.align`/`pcb.distribute`/`pcb.grid_snap`(SMD 25 mil / THT 50 mil)对齐吸栅,不得破坏功能位。
+6. 复跑 `pcb.drc.check`;改前重取 primitiveId(无 undo),破坏性操作需确认,before/after 进审计日志。
+
+**关键纠偏**(评审结论):去耦有效性取决于电容自身**安装回路电感**(pad→via→平面),不是单纯"离 IC 多近";**默认单一完整地平面 + 摆位分区,不默认割地**;所有硬阈值条件化于叠层/工艺/外壳上下文。
 
 ## EasyEDA Electrical Rules (load-bearing — DRC will fatal if ignored)
 
