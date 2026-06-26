@@ -4,6 +4,13 @@ All notable changes to the **EasyEDA Agent Connector** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
 
+## [0.5.5] - 2026-06-27
+### Fixed
+- **Handshake reports the real connector version.** `connectorVersion` was a
+  hardcoded `0.1.0`, so `easyeda daemon health` could not reveal which build a
+  window was actually running — useless for spotting a stale open window. esbuild
+  now injects `extension.json`'s version at build time (`__CONNECTOR_VERSION__`).
+
 ## [0.5.4] - 2026-06-27
 ### Added
 - **Board (板子/组合) management** — `board.list`, `board.current`, `board.create`,
