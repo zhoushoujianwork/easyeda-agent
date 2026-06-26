@@ -44,7 +44,12 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		// errActionFailed without also suppressing "unknown command" etc.
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Setting Version enables `--version`; pre-registering the flag below
+		// adds the `-v` shorthand. Same output as the `version` subcommand.
+		Version: version.Version,
 	}
+	root.SetVersionTemplate(version.Name + " {{.Version}}\n")
+	root.Flags().BoolP("version", "v", false, "print version and exit")
 
 	root.PersistentFlags().StringVar(&cfg.host, "host", defaultHost,
 		"daemon host")
