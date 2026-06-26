@@ -91,7 +91,10 @@ def select(keyword, qty=100, n=20):
     # JLC's default search returns only extended parts in the top page; the few
     # BASIC parts must be requested explicitly. Fetch both and merge (dedup by C#).
     seen, cands = set(), []
-    for c in jlc_search(keyword, 10, library_type='base') + jlc_search(keyword, n):
+    # The base library per category is small (~tens); fetch enough that the right
+    # basic part (e.g. the 10k resistor C25744) is in the page, not just the first
+    # few — JLC ranks it below other basic 0402 parts. The relevance gate filters.
+    for c in jlc_search(keyword, 50, library_type='base') + jlc_search(keyword, n):
         code = c.get('componentCode')
         if code and code not in seen:
             seen.add(code)
