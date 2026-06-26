@@ -17,6 +17,28 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 6. Ask before destructive operations, multi-step mutation plans, or saving.
 7. Summarize changed primitives, warnings, and artifacts.
 
+## Drawing a schematic — library-first (default)
+
+Place **real parts from the EasyEDA / 立创(LCSC) library**, then wire them.
+Hand-drawing a custom component symbol is the **fallback**, used only when the
+part genuinely isn't in the library (a hand-built symbol loses the
+footprint/supplier linkage and is error-prone — prefer a library part, even a
+near-equivalent, first).
+
+1. **Search** `schematic.library.search` (free-text: an MPN, value+package, or a
+   name like `ESP32-S3-WROOM-1`). Each candidate carries `uuid`, `libraryUuid`,
+   `name`, `footprintName`, `supplierId` (LCSC). Refine the query if it returns
+   the wrong category — `100nF 0402` can match resistors; add `X7R` or use the MPN.
+2. **Place** `schematic.component.place` with the chosen `{libraryUuid, uuid}` at a
+   coordinate → a manufacturable part with correct symbol + footprint + LCSC number.
+3. **Read pins** (`schematic.components.list` / pin readback) for exact pin
+   coordinates before wiring.
+4. **Wire**: net flags for the power/ground rails; for a local signal net, route
+   short wires that all meet at ONE junction point (star node) so EasyEDA junctions
+   them — see the Electrical Rules below (pin → wire → flag, never flag-on-pin).
+5. **Verify** with `schematic.drc.check` + the data linter
+   (`tools/schematic-lint/lint.sh <project>`), and fix what it reports.
+
 ## Phase 1 Actions
 
 Run `easyeda actions` for the current machine-readable action list.
