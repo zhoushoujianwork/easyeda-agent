@@ -4,6 +4,36 @@ All notable changes to the **EasyEDA Agent Connector** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
 
+## [0.5.4] - 2026-06-27
+### Added
+- **Board (板子/组合) management** — `board.list`, `board.current`, `board.create`,
+  `board.rename`, `board.copy`, `board.delete`. A Board binds one schematic + one
+  PCB; these expose `eda.dmt_Board.*` so the schematic↔PCB grouping is editable
+  (and a floating PCB can be linked before `import_changes`).
+
+## [0.5.3] - 2026-06-27
+### Added
+- **Schematic page management** — `schematic.page.create`, `schematic.page.rename`,
+  `schematic.page.delete`, `schematic.rename` (`eda.dmt_Schematic.*`).
+- **明细表 (title block)** — `schematic.titleblock.get` / `schematic.titleblock.modify`
+  to read and adjust the drawing-sheet title block (the editable "图纸" surface;
+  EasyEDA Pro exposes no set-paper-size API).
+
+## [0.5.2] - 2026-06-27
+### Added
+- **Editor view shortcuts** — `view.fit` (适应全部 / `K`), `view.fit_selection`
+  (适应选中), `view.zoom`, `view.region` via `eda.dmt_EditorControl.*`; act on the
+  focused canvas, shared by schematic and PCB.
+
+## [0.5.1] - 2026-06-26
+### Added
+- **PCB layout intelligence** — `pcb.components.arrange` (cluster / grid auto-layout
+  seed) and rendered bounding boxes in `pcb.components.list`.
+- **PCB layout adjustment** — `pcb.align`, `pcb.distribute`, `pcb.grid_snap`,
+  `pcb.components.move`.
+- **Board outline (板框)** — `pcb.outline.set` / `pcb.outline.get` / `pcb.outline.clear`.
+- **PCB DRC** — `pcb.drc.check`, normalized to `{passed, violations}`.
+
 ## [0.4.10] - 2026-06-26
 ### Added
 - `homepage` pointing at the GitHub repository (open-source link for the listing),
