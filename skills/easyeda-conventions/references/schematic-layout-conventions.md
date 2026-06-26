@@ -2,6 +2,9 @@
 
 When an AI agent (via `easyeda-agent`) generates or modifies a schematic, it must follow these conventions. They are derived from EE best practices plus empirical study of real LCEDA / EasyEDA Pro reference designs (see §7、§8).
 
+> **自动批量实现** 一整张网表时,这些规则的执行**次序**见 [`auto-layout-sop.md`](./auto-layout-sop.md)
+> (图纸自适应 → 主器件分区 → 辅助件就近 → 微调)——它把下面的分区/间距/去耦/朝向串成机器可执行的 SOP。
+
 ## 0. 坐标系与单位
 
 - EasyEDA Pro 原理图网格单位 = `0.01 inch`（1 grid step = 10 raw units）。

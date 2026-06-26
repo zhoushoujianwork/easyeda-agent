@@ -51,6 +51,32 @@ near-equivalent, first).
 5. **Verify** with `schematic.drc.check` + the data linter
    (`scripts/lint.sh <project>`), and fix what it reports.
 
+## Bulk realization from a netlist (automated)
+
+For a whole board (place ~N parts + wire the full netlist at once), the manual flow
+above doesn't scale. Pipeline (proven on box-v2/110 parts):
+
+1. **PLACE-ALL** — for each part, resolve `{libraryUuid, deviceUuid}`
+   (standard-parts.json first, `lib.search` fallback), place at coords, then assign
+   the designator (`sch modify --patch '{"designator":...}'` — place leaves it `C?`).
+2. **READ-PINS** — ONE `sch list` / pin pull AFTER all placement for real pin coords
+   (don't trust pre-place maps; map IC functional names → physical pads first).
+3. **WIRE** — per net, decide flag vs local wire vs label (see the decision table in
+   the SOP); emit flags via `connect_pin direction=` (never blanket rot 0).
+4. **DRC + lint**, then a **MANDATORY clustering/zone pass** before "done".
+
+> ⚠️ **Layout is NOT optional.** Naive place-at-synthesis-coords + flag-every-pin is
+> electrically valid but **visually scattered** (box-v2: 327 flags, decaps far from
+> ICs). **Follow [`auto-layout-sop.md`](../easyeda-conventions/references/auto-layout-sop.md)**
+> (easyeda-conventions): fit sheet → mains by zone → auxiliaries pin-relative to their
+> owner IC → fine-tune. And **write resolved parts back into `standard-parts.json`** in
+> the same change (so the next board doesn't re-search non-deterministically).
+>
+> **Churn-resilience for >~50 mutations** (essential, see the SOP): route by
+> `--project`; batch many primitives per `debug.exec_js`; chunk each batch to <~20s
+> (long calls die to the heartbeat); heavy-retry + incremental `sch save` per chunk;
+> re-pull fresh pids each chunk.
+
 ## Actions
 
 Run `easyeda actions` for the current machine-readable action list.
