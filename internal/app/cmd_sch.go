@@ -8,6 +8,49 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// netflagKindAliases maps user-friendly CLI shorthands to the canonical kind
+// enum the connector (extension/src/actions.ts NET_FLAG_KINDS / NET_PORT_KINDS)
+// actually accepts. Canonical names also pass through unchanged so both
+// `--kind gnd` and `--kind ground` work. Keep this list in sync with the
+// connector's accepted set to avoid CLI↔connector drift.
+var netflagKindAliases = map[string]string{
+	// shorthands
+	"gnd":     "ground",
+	"agnd":    "analog_ground",
+	"pgnd":    "protective_ground",
+	"netport": "net_port_bi", // bidirectional port is the most general default
+	// canonical passthrough (connector-native names)
+	"power":             "power",
+	"ground":            "ground",
+	"analog_ground":     "analog_ground",
+	"protective_ground": "protective_ground",
+	"protect_ground":    "protect_ground",
+	"net_port_in":       "net_port_in",
+	"net_port_out":      "net_port_out",
+	"net_port_bi":       "net_port_bi",
+}
+
+// netflagKindHelp is the single source of truth for the --kind help text so the
+// listed values stay in sync with what resolveNetflagKind actually accepts.
+const netflagKindHelp = "flag kind (required). Shorthands: gnd→ground, agnd→analog_ground, " +
+	"pgnd→protective_ground, netport→net_port_bi. Canonical: power, ground, analog_ground, " +
+	"protective_ground, protect_ground, net_port_in, net_port_out, net_port_bi"
+
+// resolveNetflagKind translates a CLI --kind value (shorthand or canonical) to
+// the canonical kind the connector accepts. Unknown values get a friendly CLI
+// error listing every valid value, instead of leaking the raw connector error.
+func resolveNetflagKind(kind string) (string, error) {
+	if canonical, ok := netflagKindAliases[kind]; ok {
+		return canonical, nil
+	}
+	valid := []string{
+		"gnd", "agnd", "pgnd", "netport",
+		"power", "ground", "analog_ground", "protective_ground", "protect_ground",
+		"net_port_in", "net_port_out", "net_port_bi",
+	}
+	return "", fmt.Errorf("unknown --kind %q; expected one of: %v", kind, valid)
+}
+
 // newSchCmd returns the "sch" subcommand group with all schematic actions.
 // --window is a persistent flag on the group so every subcommand inherits it.
 func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
@@ -440,8 +483,12 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				if net == "" {
 					return fmt.Errorf("--net is required")
 				}
+				canonicalKind, err := resolveNetflagKind(kind)
+				if err != nil {
+					return err
+				}
 				payload := map[string]any{
-					"kind": kind,
+					"kind": canonicalKind,
 					"net":  net,
 					"x":    x,
 					"y":    y,
@@ -452,7 +499,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				return dispatch(cfg, "schematic.netflag.create", window, payload, stdout, stderr)
 			},
 		}
-		c.Flags().StringVar(&kind, "kind", "", "flag kind: power, gnd, agnd, pgnd, netport, short (required)")
+		c.Flags().StringVar(&kind, "kind", "", netflagKindHelp)
 		c.Flags().StringVar(&net, "net", "", "net name (required)")
 		c.Flags().Float64Var(&x, "x", 0, "X coordinate")
 		c.Flags().Float64Var(&y, "y", 0, "Y coordinate")
@@ -478,10 +525,14 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				if net == "" {
 					return fmt.Errorf("--net is required")
 				}
+				canonicalKind, err := resolveNetflagKind(kind)
+				if err != nil {
+					return err
+				}
 				payload := map[string]any{
 					"pinX": x,
 					"pinY": y,
-					"kind": kind,
+					"kind": canonicalKind,
 					"net":  net,
 				}
 				if cmd.Flags().Changed("direction") {
@@ -498,7 +549,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		}
 		c.Flags().Float64Var(&x, "x", 0, "pin X coordinate")
 		c.Flags().Float64Var(&y, "y", 0, "pin Y coordinate")
-		c.Flags().StringVar(&kind, "kind", "", "flag kind: power, gnd, agnd, pgnd, netport (required)")
+		c.Flags().StringVar(&kind, "kind", "", netflagKindHelp)
 		c.Flags().StringVar(&net, "net", "", "net name (required)")
 		c.Flags().StringVar(&direction, "direction", "", "wire direction: up, down, left, right")
 		c.Flags().Float64Var(&offset, "offset", 0, "wire length in schematic units")
