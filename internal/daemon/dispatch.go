@@ -157,6 +157,12 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 	s.persistArtifacts(resp, s.artifactDir(req.OutputDir))
 	s.audit.Append(fromResponse(started, &req, resp))
+	// After a successful content-changing action, arm a debounced autosave so the
+	// work reaches disk without the agent having to remember to save (no-op when
+	// autosave is disabled or the action doesn't mutate). See autosave.go.
+	if resp.OK {
+		s.maybeAutosave(&req)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

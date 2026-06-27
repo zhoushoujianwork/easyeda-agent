@@ -34,10 +34,21 @@ func newDaemonCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 // ── daemon start ──────────────────────────────────────────────────────────
 
 func newDaemonStartCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
-	return &cobra.Command{
+	var autosaveDebounce time.Duration
+	c := &cobra.Command{
 		Use:   "start",
 		Short: "Start the daemon (blocks until SIGINT/SIGTERM)",
-		Args:  cobra.NoArgs,
+		Long: `Start the daemon (blocks until SIGINT/SIGTERM).
+
+Daemon-level autosave (--autosave-debounce) is a safety net for in-memory edits:
+place/wire/modify only change the EasyEDA document in memory, so a window reload,
+daemon restart, or crash loses unsaved work. With autosave on, the daemon saves a
+window once its edits quiesce for the debounce window (a burst coalesces into one
+save). Set to 0 to disable.`,
+		Args: cobra.NoArgs,
+		Example: `  easyeda daemon start
+  easyeda daemon start --autosave-debounce 5s
+  easyeda daemon start --autosave-debounce 0   # disable autosave`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			portStart, portEnd, err := cfg.portRange()
 			if err != nil {
@@ -52,10 +63,11 @@ func newDaemonStartCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command 
 			defer stop()
 
 			srv := daemon.New(daemon.Options{
-				Host:      cfg.host,
-				PortStart: portStart,
-				PortEnd:   portEnd,
-				Version:   version.Version,
+				Host:             cfg.host,
+				PortStart:        portStart,
+				PortEnd:          portEnd,
+				Version:          version.Version,
+				AutosaveDebounce: autosaveDebounce,
 			})
 			if err := srv.Run(ctx, stdout); err != nil {
 				return err
@@ -63,6 +75,9 @@ func newDaemonStartCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command 
 			return nil
 		},
 	}
+	c.Flags().DurationVar(&autosaveDebounce, "autosave-debounce", 3*time.Second,
+		"autosave a window this long after its last mutating action (0 = disable)")
+	return c
 }
 
 // ── daemon health ─────────────────────────────────────────────────────────

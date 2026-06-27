@@ -181,6 +181,7 @@ move/rotate/align/distribute/grid_snap/cluster-arrange）在独立的 operationa
 
 - Confirm before deleting primitives.
 - Confirm before saving unless the user explicitly asked to save.
+- **持久化:`place`/`wire`/`modify` 只改 EasyEDA 内存,不 `schematic.save` 就不落盘** —— 窗口重载 / daemon 重启 / EasyEDA 崩溃会丢掉未保存的改动(实测踩过)。daemon 默认开**防抖 autosave(3s)** 兜底(`daemon start --autosave-debounce`,`0` 关),但防抖窗口内进程挂掉仍会丢最后几笔,所以多步改动仍**分批显式 `sch save`**,别只靠 autosave。整板流程的存盘节奏见 [`easyeda-design-flow`](../easyeda-design-flow/SKILL.md) 的 💾 检查点。
 - Confirm before running a generated multi-step mutation plan.
 - Do not claim completion after mutation until verification succeeds or the remaining risk is stated.
 - Treat `File` and `Blob` outputs as artifacts.

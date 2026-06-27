@@ -33,17 +33,23 @@ type Options struct {
 	// AuditDir is where per-day JSONL action logs are appended. Defaults to
 	// ~/.easyeda-agent/audit/ when empty.
 	AuditDir string
+
+	// AutosaveDebounce, when > 0, enables daemon-level debounced autosave: after a
+	// successful mutating action the daemon saves the window once edits quiesce for
+	// this long (a burst coalesces into one save). 0 disables it. See autosave.go.
+	AutosaveDebounce time.Duration
 }
 
 // Server is the long-running local HTTP server. It serves /health, accepts
 // connector WebSockets on /connect, and forwards typed actions on /action.
 // Artifact storage and audit logging come later.
 type Server struct {
-	opts   Options
-	hub    *hub
-	reqSeq atomic.Uint64
-	log    io.Writer
-	audit  *auditWriter
+	opts     Options
+	hub      *hub
+	reqSeq   atomic.Uint64
+	log      io.Writer
+	audit    *auditWriter
+	autosave *autosaver // nil when Options.AutosaveDebounce <= 0
 
 	// connCtx is cancelled on shutdown so connector read loops unblock.
 	connCtx    context.Context
@@ -59,11 +65,15 @@ func (s *Server) logf(format string, args ...any) {
 
 // New builds a Server. It does not bind a port until Run is called.
 func New(opts Options) *Server {
-	return &Server{
+	s := &Server{
 		opts:  opts,
 		hub:   newHub(),
 		audit: newAuditWriter(opts.AuditDir),
 	}
+	if opts.AutosaveDebounce > 0 {
+		s.autosave = newAutosaver(opts.AutosaveDebounce, s.dispatchSave)
+	}
+	return s
 }
 
 type health struct {
@@ -143,10 +153,14 @@ func (s *Server) Run(ctx context.Context, log io.Writer) error {
 	}()
 
 	fmt.Fprintf(log, "%s daemon listening on http://%s:%d (health: /health, connector: /eda, action: /action)\n", Service, s.opts.Host, port)
+	if s.autosave != nil {
+		s.logf("autosave on (debounce %s)", s.opts.AutosaveDebounce)
+	}
 
 	select {
 	case <-ctx.Done():
 		fmt.Fprintf(log, "%s daemon shutting down\n", Service)
+		s.autosave.stop()
 		// Unblock connector read loops so their handlers return and Shutdown
 		// does not wait the full timeout on long-lived WebSockets.
 		s.connCancel()
