@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -376,7 +377,9 @@ func TestActionArtifactPersisted(t *testing.T) {
 
 	waitForWindow(t, base, "win-1")
 
-	resp := postAction(t, base, `{"action":"schematic.snapshot","windowId":"win-1"}`)
+	// Send a CLI cwd via outputDir; artifacts must land under its hidden dir.
+	outDir := t.TempDir()
+	resp := postAction(t, base, fmt.Sprintf(`{"action":"schematic.snapshot","windowId":"win-1","outputDir":%q}`, outDir))
 	if !resp.OK || len(resp.Artifacts) != 1 {
 		t.Fatalf("expected one artifact, got ok=%v artifacts=%d err=%+v", resp.OK, len(resp.Artifacts), resp.Error)
 	}
@@ -401,5 +404,19 @@ func TestActionArtifactPersisted(t *testing.T) {
 	}
 	if string(got) != payload {
 		t.Fatalf("persisted bytes mismatch: %q", string(got))
+	}
+
+	// Lands in the CLI cwd's hidden .easyeda/artifacts dir...
+	wantDir := filepath.Join(outDir, ".easyeda", "artifacts")
+	if dir := filepath.Dir(a.Path); dir != wantDir {
+		t.Fatalf("artifact dir = %s, want %s", dir, wantDir)
+	}
+	// ...with a sortable, findable name: <YYYYMMDD-HHMMSS>-<kind>-<short>.png
+	bn := filepath.Base(a.Path)
+	if !strings.Contains(bn, "schematic_snapshot") || !strings.HasSuffix(bn, ".png") {
+		t.Fatalf("unexpected artifact name: %s", bn)
+	}
+	if _, err := time.Parse("20060102-150405", bn[:15]); err != nil {
+		t.Fatalf("name not timestamp-prefixed: %s (%v)", bn, err)
 	}
 }

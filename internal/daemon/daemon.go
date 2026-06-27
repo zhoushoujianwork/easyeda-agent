@@ -23,8 +23,11 @@ type Options struct {
 	PortEnd   int
 	Version   string
 
-	// ArtifactDir is where inline artifact bytes from the connector are written.
-	// Defaults to "artifacts" (relative to the working directory) when empty.
+	// ArtifactDir is the FALLBACK directory for inline artifact bytes from the
+	// connector, used only when a request carries no outputDir. The CLI sends its
+	// own working directory as outputDir, so artifacts normally land in
+	// <cwd>/.easyeda/artifacts (see artifactDir). Defaults to "artifacts"
+	// (relative to the daemon's working directory) when empty.
 	ArtifactDir string
 
 	// AuditDir is where per-day JSONL action logs are appended. Defaults to

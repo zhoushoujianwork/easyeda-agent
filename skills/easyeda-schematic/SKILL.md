@@ -129,7 +129,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.netflag.create`
 - `schematic.power.connect_pin`
 - `schematic.select`
-- `schematic.snapshot`
+- `schematic.snapshot` — 截图。**产物保存在 CLI 运行目录下的隐藏目录 `<cwd>/.easyeda/artifacts/`,文件名带本地时间戳**(`<YYYYMMDD-HHMMSS>-<kind>-<短id>.png`,便于排序/查找);响应里的 `artifacts[].path` 是绝对路径。netlist/BOM 等其他产物同此规则。
 - `schematic.drc.check`
 - `schematic.save`
 - `schematic.export.netlist`

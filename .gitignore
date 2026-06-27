@@ -23,3 +23,5 @@ __pycache__/
 
 # Videos
 videos/
+# Per-project artifacts (screenshots/exports) written by the CLI cwd
+.easyeda/

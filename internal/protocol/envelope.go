@@ -16,8 +16,13 @@ type Request struct {
 	// Project is an optional stable routing hint: a project name or uuid the
 	// daemon resolves to the current windowId. Use instead of WindowID when the
 	// ephemeral windowId churns (reconnects) — multi-window/multi-agent routing.
-	Project string         `json:"project,omitempty"`
-	Payload map[string]any `json:"payload,omitempty"`
+	Project string `json:"project,omitempty"`
+	// OutputDir is the CLI's working directory. The daemon (which has its own,
+	// different cwd) writes artifacts under <OutputDir>/.easyeda/artifacts so
+	// screenshots/exports land in the user's project, not the daemon's. Empty for
+	// callers that don't set it (the daemon then falls back to its ArtifactDir).
+	OutputDir string         `json:"outputDir,omitempty"`
+	Payload   map[string]any `json:"payload,omitempty"`
 }
 
 type Response struct {

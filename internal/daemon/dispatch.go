@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
@@ -154,23 +155,52 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	if resp.Type == "" {
 		resp.Type = protocol.TypeResponse
 	}
-	s.persistArtifacts(resp)
+	s.persistArtifacts(resp, s.artifactDir(req.OutputDir))
 	s.audit.Append(fromResponse(started, &req, resp))
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// artifactDir picks where to persist artifacts. The CLI sends its own working
+// directory (outputDir) so files land in the user's project under a hidden
+// .easyeda/artifacts dir — not the daemon's cwd. Callers that don't send one
+// (tests, raw HTTP) fall back to the configured ArtifactDir, then "artifacts".
+func (s *Server) artifactDir(outputDir string) string {
+	if outputDir != "" {
+		return filepath.Join(outputDir, ".easyeda", "artifacts")
+	}
+	if s.opts.ArtifactDir != "" {
+		return s.opts.ArtifactDir
+	}
+	return "artifacts"
+}
+
+// artifactFileName builds a sortable, findable filename: a local timestamp
+// prefix (YYYYMMDD-HHMMSS) so files list in chronological order, plus the kind
+// and a short id for findability and uniqueness within the same second.
+//
+//	e.g. 20260627-143022-schematic_snapshot-1a2b3c4d.png
+func artifactFileName(a *protocol.Artifact, ts time.Time) string {
+	parts := []string{ts.Local().Format("20060102-150405")}
+	if a.Kind != "" {
+		parts = append(parts, a.Kind)
+	}
+	short := strings.TrimPrefix(a.ID, "art_")
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	if short != "" {
+		parts = append(parts, short)
+	}
+	return strings.Join(parts, "-") + filepath.Ext(a.FileName)
+}
+
 // persistArtifacts writes any inline (base64) artifact bytes returned by the
-// connector to the artifact directory, fills Path/Size/SHA256, and clears the
-// inline bytes so they are not echoed back to the caller. Failures are reported
-// as warnings rather than failing the whole action.
-func (s *Server) persistArtifacts(resp *protocol.Response) {
+// connector to dir, fills Path/Size/SHA256, and clears the inline bytes so they
+// are not echoed back to the caller. Failures are reported as warnings rather
+// than failing the whole action.
+func (s *Server) persistArtifacts(resp *protocol.Response, dir string) {
 	if resp == nil || len(resp.Artifacts) == 0 {
 		return
-	}
-
-	dir := s.opts.ArtifactDir
-	if dir == "" {
-		dir = "artifacts"
 	}
 
 	for i := range resp.Artifacts {
@@ -190,11 +220,7 @@ func (s *Server) persistArtifacts(resp *protocol.Response) {
 			continue
 		}
 
-		name := a.ID
-		if ext := filepath.Ext(a.FileName); ext != "" {
-			name += ext
-		}
-		full := filepath.Join(dir, name)
+		full := filepath.Join(dir, artifactFileName(a, resp.CreatedAt))
 		if err := os.WriteFile(full, data, 0o644); err != nil {
 			resp.Warnings = append(resp.Warnings, fmt.Sprintf("artifact %s: write: %v", a.ID, err))
 			continue

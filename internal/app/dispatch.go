@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -221,6 +222,12 @@ func postAction(cfg *appConfig, action, window string, payload any) ([]byte, err
 	}
 	if cfg.project != "" {
 		body["project"] = cfg.project
+	}
+	// Tell the daemon where to drop artifacts: this CLI's working directory. The
+	// daemon writes them under <cwd>/.easyeda/artifacts so screenshots/exports
+	// land in the user's project, not the daemon's cwd. Best-effort.
+	if cwd, err := os.Getwd(); err == nil {
+		body["outputDir"] = cwd
 	}
 	if payload != nil {
 		body["payload"] = payload
