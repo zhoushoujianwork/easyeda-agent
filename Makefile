@@ -1,4 +1,4 @@
-.PHONY: help test fmt actions build install daemon dev eext eext-fresh connector lint-test release
+.PHONY: help test fmt actions build install dev-build daemon dev eext eext-fresh connector lint-test release
 
 DIST := dist
 
@@ -50,6 +50,12 @@ install: build ## build + install to $(PREFIX)/bin (default /usr/local/bin; may 
 		printf '✅ installed → %s/bin/easyeda  (%s)\n' "$(PREFIX)" "$(DEV_VERSION)"; \
 	fi
 
+dev-build: ## (air hook) version-stamped build to bin + best-effort refresh of the PATH CLI
+	@go build -ldflags "$(DEV_LDFLAGS)" -o bin/easyeda ./cmd/easyeda
+	@install -m 0755 bin/easyeda "$(PREFIX)/bin/easyeda" 2>/dev/null \
+		&& printf '  ↻ PATH CLI refreshed → %s/bin/easyeda (%s)\n' "$(PREFIX)" "$(DEV_VERSION)" \
+		|| printf '  ⚠ PATH CLI NOT refreshed (%s/bin not writable) — run `make install` once with sudo\n' "$(PREFIX)"
+
 daemon: ## one-shot daemon (no reload) — prefer `make dev`
 	go run ./cmd/easyeda daemon
 
@@ -60,7 +66,7 @@ dev: ## hot-reload the daemon (air) — mirrors output to tmp/daemon.log (trunca
 	@command -v air >/dev/null 2>&1 || { echo "air not found — install: go install github.com/air-verse/air@latest"; exit 1; }
 	@mkdir -p tmp
 	@# Kill any leftover daemon+watcher from a prior session so we always bind 49620.
-	@pkill -TERM -f 'tmp/easyeda daemon' 2>/dev/null || true
+	@pkill -TERM -f '/easyeda daemon' 2>/dev/null || true
 	@sleep 0.4
 	air 2>&1 | tee tmp/daemon.log
 

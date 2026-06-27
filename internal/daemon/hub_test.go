@@ -76,16 +76,19 @@ func TestConnectorVersionOK(t *testing.T) {
 		{"0.5.5", "v0.5.5", "0.5.5", boolp(true)},
 		{"v0.5.5", "0.5.5", "0.5.5", boolp(true)},
 		{"0.1.0", "0.5.5", "0.5.5", boolp(false)}, // stale vs daemon
-		{"0.5.5-dirty", "v0.5.5", "0.5.5", boolp(true)},
-		{"dev", "0.5.5", "0.5.5", nil}, // non-semver connector → no verdict
-		{"0.5.5", "dev", "0.5.5", nil}, // dev daemon, leads peers → no verdict
-		{"", "0.5.5", "0.5.5", nil},    // missing connector version
-		{"0.5", "0.5.0", "0.5.0", nil}, // not x.y.z
-		{"0.5.x", "0.5.0", "", nil},    // non-numeric component
+		{"dev", "0.5.5", "0.5.5", nil},            // non-semver connector → no verdict
+		{"0.5.5", "dev", "0.5.5", nil},            // dev daemon, leads peers → no verdict
+		{"", "0.5.5", "0.5.5", nil},               // missing connector version
+		{"0.5", "0.5.0", "0.5.0", nil},            // not x.y.z
+		{"0.5.x", "0.5.0", "", nil},               // non-numeric component
 		// cross-window: behind a peer is stale even when the daemon is non-semver
 		{"0.1.0", "dev", "0.5.6", boolp(false)},
 		{"0.5.6", "dev", "0.5.6", nil}, // newest peer, dev daemon → no verdict
 		{"0.5.6", "v0.5.6", "0.5.6", boolp(true)},
+		// git-describe dev daemon must NOT yield a hard verdict (core 0.5.1 is a
+		// stale tag, not the real code level) — only a clean release tag does
+		{"0.5.7", "v0.5.1-19-ge9552d8", "0.5.7", nil},
+		{"0.5.7", "v0.5.1-19-ge9552d8-dirty", "0.5.7", nil},
 	}
 	for _, c := range tt {
 		got := connectorVersionOK(c.conn, c.daemon, c.newestPeer)

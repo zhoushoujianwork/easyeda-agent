@@ -52,7 +52,16 @@ make dev          # air live-reload of `easyeda daemon` — leave running in a t
 ```
 
 Requires [air](https://github.com/air-verse/air): `go install github.com/air-verse/air@latest`.
-Config is `.air.toml` (builds to `./tmp/easyeda`, runs `daemon`, watches `cmd/`+`internal/`).
+Config is `.air.toml`: on any `.go` change it runs `make dev-build` (version-stamped
+build → `./bin/easyeda` **and** a best-effort copy to `$PREFIX/bin/easyeda`), then
+runs the daemon from that same `./bin/easyeda`. **So the `easyeda` CLI on your PATH
+is refreshed on every rebuild — daemon and CLI never drift.** (Before this, air only
+rebuilt the daemon; the PATH CLI stayed frozen at the last `make install`, so a new
+subcommand like `easyeda doc` was missing until you reinstalled.) If `$PREFIX/bin`
+isn't writable, air prints a warning and you run `make install` once with sudo to fix
+perms. The dev binary is git-describe-stamped (e.g. `v0.5.1-19-g…-dirty`); a
+non-clean stamp is treated as "dev" by the `health` connector-version check, so it
+never false-flags a connector as stale against a dev daemon.
 
 Other targets:
 

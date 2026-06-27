@@ -313,11 +313,22 @@ func connectorVersionOK(connector, daemon, newestPeer string) *bool {
 		stale := false
 		return &stale
 	}
-	if dn := semverCore(daemon); dn != "" {
-		ok := cn == dn
+	// Only a CLEAN release tag (vX.Y.Z, no -suffix) yields a hard verdict against
+	// the daemon. A dev daemon stamped by `git describe` (e.g. v0.5.1-19-ge9552d8)
+	// or "dev" must NOT — its semver core ("0.5.1") is an old tag, not the real
+	// code level, so comparing it to a newer connector would be a false mismatch.
+	if isCleanRelease(daemon) {
+		ok := cn == semverCore(daemon)
 		return &ok
 	}
 	return nil
+}
+
+// isCleanRelease reports whether v is a bare release tag (vX.Y.Z with no
+// pre-release/build suffix) — i.e. its semver core is the whole string.
+func isCleanRelease(v string) bool {
+	core := semverCore(v)
+	return core != "" && core == strings.TrimPrefix(v, "v")
 }
 
 // semverLess reports whether semver core a < b (both "x.y.z" or ""). An empty

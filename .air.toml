@@ -8,9 +8,12 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  # build the CLI, then run it as the daemon
-  cmd = "go build -o ./tmp/easyeda ./cmd/easyeda"
-  bin = "./tmp/easyeda"
+  # Version-stamped build to ./bin/easyeda AND best-effort refresh of the PATH
+  # CLI (via `make dev-build`), then run THAT same binary as the daemon. One
+  # build serves both roles, so the `easyeda` you invoke on PATH is never stale
+  # relative to the hot-reloaded daemon.
+  cmd = "make dev-build"
+  bin = "./bin/easyeda"
   args_bin = ["daemon","start"]
   # only watch Go sources of the daemon/CLI; ignore the connector, tools, docs
   include_ext = ["go"]
