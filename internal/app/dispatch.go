@@ -43,9 +43,83 @@ func (c *appConfig) portRange() (int, int, error) {
 // caller must return that error without printing again). Any other error
 // (daemon not found, network, etc.) is a fresh error the caller may print.
 func dispatch(cfg *appConfig, action, window string, payload any, stdout, stderr io.Writer) error {
-	portStart, portEnd, err := cfg.portRange()
+	respBody, err := postAction(cfg, action, window, payload)
 	if err != nil {
 		return err
+	}
+
+	_, _ = stdout.Write(respBody)
+	if len(respBody) > 0 && respBody[len(respBody)-1] != '\n' {
+		fmt.Fprintln(stdout)
+	}
+
+	var parsed struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil || !parsed.OK {
+		return errActionFailed
+	}
+	return nil
+}
+
+// actionContext mirrors the live project/document context the connector attaches
+// to every response (see protocol.Context). Used by the aggregating `doc`
+// commands.
+type actionContext struct {
+	ProjectUUID  string `json:"projectUuid,omitempty"`
+	ProjectName  string `json:"projectName,omitempty"`
+	DocumentUUID string `json:"documentUuid,omitempty"`
+	DocumentType string `json:"documentType,omitempty"`
+	TabID        string `json:"tabId,omitempty"`
+}
+
+// actionResult is the parsed form of an /action response, for callers that need
+// to read the result programmatically instead of streaming it to stdout.
+type actionResult struct {
+	OK       bool           `json:"ok"`
+	Result   map[string]any `json:"result"`
+	Context  *actionContext `json:"context"`
+	errorMsg string
+}
+
+// requestAction POSTs a typed action and returns the parsed response without
+// touching stdout. A non-nil error means the daemon was unreachable or the
+// action returned ok=false (with the connector's error message attached).
+func requestAction(cfg *appConfig, action, window string, payload any) (*actionResult, error) {
+	respBody, err := postAction(cfg, action, window, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var parsed struct {
+		OK      bool           `json:"ok"`
+		Result  map[string]any `json:"result"`
+		Context *actionContext `json:"context"`
+		Error   *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("decode %s response: %w", action, err)
+	}
+	res := &actionResult{OK: parsed.OK, Result: parsed.Result, Context: parsed.Context}
+	if !parsed.OK {
+		msg := "ok=false"
+		if parsed.Error != nil && parsed.Error.Message != "" {
+			msg = parsed.Error.Message
+		}
+		res.errorMsg = msg
+		return res, fmt.Errorf("%s failed: %s", action, msg)
+	}
+	return res, nil
+}
+
+// postAction is the shared HTTP core: find a live daemon, POST the typed action,
+// and return the raw response body.
+func postAction(cfg *appConfig, action, window string, payload any) ([]byte, error) {
+	portStart, portEnd, err := cfg.portRange()
+	if err != nil {
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -53,7 +127,7 @@ func dispatch(cfg *appConfig, action, window string, payload any, stdout, stderr
 
 	scan := scanHealth(ctx, hostPortOptions{host: cfg.host, portStart: portStart, portEnd: portEnd})
 	if scan.Found == nil {
-		return fmt.Errorf("no easyeda-agent daemon found on %s:%s (start it with `easyeda daemon start`)", cfg.host, scan.Ports)
+		return nil, fmt.Errorf("no easyeda-agent daemon found on %s:%s (start it with `easyeda daemon start`)", cfg.host, scan.Ports)
 	}
 
 	body := map[string]any{"action": action}
@@ -69,41 +143,29 @@ func dispatch(cfg *appConfig, action, window string, payload any, stdout, stderr
 
 	buf, err := json.Marshal(body)
 	if err != nil {
-		return fmt.Errorf("encode request: %w", err)
+		return nil, fmt.Errorf("encode request: %w", err)
 	}
 
 	url := fmt.Sprintf("http://%s:%d/action", cfg.host, scan.Found.Port)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
 	if err != nil {
-		return fmt.Errorf("build request: %w", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	closeErr := resp.Body.Close()
 	if readErr != nil {
-		return fmt.Errorf("read response: %w", readErr)
+		return nil, fmt.Errorf("read response: %w", readErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close response: %w", closeErr)
+		return nil, fmt.Errorf("close response: %w", closeErr)
 	}
-
-	_, _ = stdout.Write(respBody)
-	if len(respBody) > 0 && respBody[len(respBody)-1] != '\n' {
-		fmt.Fprintln(stdout)
-	}
-
-	var parsed struct {
-		OK bool `json:"ok"`
-	}
-	if err := json.Unmarshal(respBody, &parsed); err != nil || !parsed.OK {
-		return errActionFailed
-	}
-	return nil
+	return respBody, nil
 }
 
 // parsePortRange parses "start-end" into two ints.

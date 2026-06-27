@@ -89,7 +89,7 @@ func (s *Server) routes(port int) *http.ServeMux {
 			Version: s.opts.Version,
 			Status:  "ok",
 			Port:    port,
-			Windows: s.hub.list(),
+			Windows: s.hub.listAnnotated(s.opts.Version),
 		})
 	})
 	mux.HandleFunc("/eda", s.handleConnect)

@@ -91,13 +91,30 @@ Run `easyeda actions` for the current machine-readable action list.
 
 ### 导航 / Navigation
 
+**自助「发现 + 切换」闭环（首选）** — 不要让用户手动开窗口/切页,Agent 自己发现并切换:
+
+```bash
+easyeda daemon health                         # 发现:有哪些已连接窗口 + 各自实时上下文
+easyeda doc ls     --project <名字>            # 发现:列出该窗口所有可开文档(原理图页+PCB),★=当前前台
+easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名/uuid 切到前台,自动回读确认
+```
+
+- `easyeda doc ls` 聚合了 `schematic.pages.list` + `pcb.documents.list` + `document.current`,一条命令看全貌;`--json` 给机器读。
+- `easyeda doc switch` 按名字解析 → `document.open` → `document.current` 回读确认。**同名页(多个 P1)会报歧义并列出 uuid,改传 uuid**。
+
+底层 action(需要细控时再用):
+
 - `project.current` — 当前工程信息（uuid / name / teamUuid）
-- `document.current` — 当前激活文档信息（uuid / tabId / documentType）
+- `document.current` — 当前激活文档信息（uuid / tabId / documentType）—— **实时读取**,不是连接快照
 - `document.open` — 按 UUID 打开任意文档（原理图页或 PCB），通用版切换入口
 - `schematic.pages.list` — 列出工程内所有原理图及页面
 - `schematic.page.open` — 按 UUID 切换到指定原理图页（等同于 `document.open`，保留兼容）
 
-多窗口说明：EasyEDA 每个窗口对应一个独立的 connector（windowId）。`system.health` 列出所有已连接窗口；在任意 action 中传 `--window <windowId>` 可指定操作哪个工程。
+多窗口说明：EasyEDA 每个窗口对应一个独立的 connector（windowId）。`easyeda daemon health` 列出所有已连接窗口;**优先用 `--project <名字>` 路由**(windowId 重连会变),细控时才用 `--window <windowId>`。
+
+> **上下文是实时的,不会卡在 `home`。** daemon 用每次 action 响应里携带的实时上下文刷新它缓存的窗口状态——只要对某窗口跑过任意命令(例如 `easyeda project doc --project X`),`daemon health` 就会反映该窗口当前真正的前台文档,而不是连接那一刻的快照。所以若 health 显示某窗口是 `home`,说明它**连接后还没在真正的工程文档上跑过命令**(或者那个窗口跑的是旧连接器没连上)。
+>
+> **`connectorVersionOk: false`** = 该窗口加载的连接器版本与 daemon 不符(典型:开着的窗口跑着旧连接器代码)。处理:完全退出并重启 EasyEDA 重新加载连接器(re-import 不会刷新已开窗口)。`null` 表示版本号非 semver(dev 构建)无法判定。
 
 ### 原理图编辑
 

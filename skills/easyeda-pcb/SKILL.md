@@ -25,8 +25,8 @@ missing **and** the user explicitly accepts a debug path.
 
 ## Workflow
 
-1. `easyeda health` → confirm a connected window (multi-window: pass `--window <windowId>`).
-2. `document.current` → if not a PCB, `pcb.documents.list` then `document.open <pcbUuid>`.
+1. `easyeda daemon health` → confirm a connected window (route by `--project <name>`; `--window <windowId>` only for fine control). Each window's `context` is live; `connectorVersionOk: false` flags a stale connector (restart EasyEDA).
+2. `easyeda doc ls --project <name>` → see every openable doc (★=active). If the active doc isn't the target PCB, `easyeda doc switch <PCB-name|uuid> --project <name>`. (Low-level equivalent: `document.current` → `pcb.documents.list` → `document.open <pcbUuid>`.)
 3. **Inspect before mutating**: `pcb.components.list` (`includeBBox`+`includePads`), `pcb.layers.list` (read `copperLayerCount`), `pcb.nets.list`, `pcb.board.info`.
 4. Small additive operations; **verify each** by readback + `pcb.drc.check`.
 5. **Confirm** before destructive ops (`delete`, `import_changes`, bulk `arrange`) and before saving.

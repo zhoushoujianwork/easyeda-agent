@@ -115,6 +115,9 @@ func (s *Server) handleFrame(ctx context.Context, c *conn, data []byte) {
 			return
 		}
 		c.touch(now)
+		if resp.Context != nil {
+			c.applyResponseContext(*resp.Context, now)
+		}
 		c.deliver(&resp)
 
 	case protocol.TypeLog:

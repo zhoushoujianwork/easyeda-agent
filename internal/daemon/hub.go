@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,11 @@ type Window struct {
 	Context          protocol.Context `json:"context"`
 	ConnectedAt      time.Time        `json:"connectedAt"`
 	LastSeen         time.Time        `json:"lastSeen"`
+	// ConnectorVersionOK is set only by /health: true/false when both the
+	// connector and daemon report comparable semver (so a stale connector loaded
+	// in an open window is visible), nil when either version is non-semver (dev
+	// builds) and no verdict can be made.
+	ConnectorVersionOK *bool `json:"connectorVersionOk,omitempty"`
 }
 
 // conn is a single connected connector. The /connect read loop owns reads;
@@ -69,6 +75,36 @@ func (c *conn) applyContext(msg protocol.ContextMessage, now time.Time) {
 		c.windowID = msg.WindowID
 	}
 	c.ctx = msg.Context()
+	c.lastSeen = now
+}
+
+// applyResponseContext refreshes the cached window context from the live context
+// the connector attaches to every action response. This keeps /health and
+// project routing current as the user switches documents — without it, the
+// context stays frozen at the connect-time snapshot (so a window that opened on
+// the home page reads as "home" forever). Non-empty fields are merged so a
+// response that omits a field never clobbers a known value.
+func (c *conn) applyResponseContext(ctx protocol.Context, now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if ctx.ProjectUUID != "" {
+		c.ctx.ProjectUUID = ctx.ProjectUUID
+	}
+	if ctx.ProjectName != "" {
+		c.ctx.ProjectName = ctx.ProjectName
+	}
+	if ctx.DocumentUUID != "" {
+		c.ctx.DocumentUUID = ctx.DocumentUUID
+	}
+	if ctx.DocumentType != "" {
+		c.ctx.DocumentType = ctx.DocumentType
+	}
+	if ctx.TabID != "" {
+		c.ctx.TabID = ctx.TabID
+	}
+	if ctx.Unit != "" {
+		c.ctx.Unit = ctx.Unit
+	}
 	c.lastSeen = now
 }
 
@@ -235,6 +271,53 @@ func (h *hub) windowForProject(project, preferDoc string) (id string, found bool
 		}
 	}
 	return "", false, true
+}
+
+// listAnnotated returns the window list with each window's ConnectorVersionOK
+// computed against the daemon version, so /health surfaces stale connectors.
+func (h *hub) listAnnotated(daemonVersion string) []Window {
+	out := h.list()
+	for i := range out {
+		out[i].ConnectorVersionOK = connectorVersionOK(out[i].ConnectorVersion, daemonVersion)
+	}
+	return out
+}
+
+// connectorVersionOK compares a connector version against the daemon version,
+// but only when BOTH parse as semver (x.y.z, optional leading 'v' / -suffix).
+// Returns nil when either is non-semver (dev/commit-hash builds) — no verdict.
+func connectorVersionOK(connector, daemon string) *bool {
+	cn := semverCore(connector)
+	dn := semverCore(daemon)
+	if cn == "" || dn == "" {
+		return nil
+	}
+	ok := cn == dn
+	return &ok
+}
+
+// semverCore extracts the "x.y.z" core from a version string, dropping a leading
+// 'v' and any "-suffix". Returns "" if the string is not x.y.z.
+func semverCore(v string) string {
+	v = strings.TrimPrefix(v, "v")
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	for _, p := range parts {
+		if p == "" {
+			return ""
+		}
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				return ""
+			}
+		}
+	}
+	return v
 }
 
 func (h *hub) list() []Window {

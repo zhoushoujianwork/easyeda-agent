@@ -67,3 +67,37 @@ func TestDocTypeForAction(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectorVersionOK(t *testing.T) {
+	tt := []struct {
+		conn, daemon string
+		want         *bool // nil = no verdict
+	}{
+		{"0.5.5", "v0.5.5", boolp(true)},
+		{"v0.5.5", "0.5.5", boolp(true)},
+		{"0.1.0", "0.5.5", boolp(false)}, // stale connector in an open window
+		{"0.5.5-dirty", "v0.5.5", boolp(true)},
+		{"dev", "0.5.5", nil},   // non-semver connector → no verdict
+		{"0.5.5", "dev", nil},   // dev daemon → no verdict
+		{"", "0.5.5", nil},      // missing connector version
+		{"0.5", "0.5.0", nil},   // not x.y.z
+		{"0.5.x", "0.5.0", nil}, // non-numeric component
+	}
+	for _, c := range tt {
+		got := connectorVersionOK(c.conn, c.daemon)
+		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
+			t.Errorf("connectorVersionOK(%q,%q)=%v, want %v", c.conn, c.daemon, fmtBoolp(got), fmtBoolp(c.want))
+		}
+	}
+}
+
+func boolp(b bool) *bool { return &b }
+func fmtBoolp(p *bool) string {
+	if p == nil {
+		return "nil"
+	}
+	if *p {
+		return "true"
+	}
+	return "false"
+}
