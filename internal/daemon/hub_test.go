@@ -70,23 +70,27 @@ func TestDocTypeForAction(t *testing.T) {
 
 func TestConnectorVersionOK(t *testing.T) {
 	tt := []struct {
-		conn, daemon string
-		want         *bool // nil = no verdict
+		conn, daemon, newestPeer string
+		want                     *bool // nil = no verdict
 	}{
-		{"0.5.5", "v0.5.5", boolp(true)},
-		{"v0.5.5", "0.5.5", boolp(true)},
-		{"0.1.0", "0.5.5", boolp(false)}, // stale connector in an open window
-		{"0.5.5-dirty", "v0.5.5", boolp(true)},
-		{"dev", "0.5.5", nil},   // non-semver connector → no verdict
-		{"0.5.5", "dev", nil},   // dev daemon → no verdict
-		{"", "0.5.5", nil},      // missing connector version
-		{"0.5", "0.5.0", nil},   // not x.y.z
-		{"0.5.x", "0.5.0", nil}, // non-numeric component
+		{"0.5.5", "v0.5.5", "0.5.5", boolp(true)},
+		{"v0.5.5", "0.5.5", "0.5.5", boolp(true)},
+		{"0.1.0", "0.5.5", "0.5.5", boolp(false)}, // stale vs daemon
+		{"0.5.5-dirty", "v0.5.5", "0.5.5", boolp(true)},
+		{"dev", "0.5.5", "0.5.5", nil}, // non-semver connector → no verdict
+		{"0.5.5", "dev", "0.5.5", nil}, // dev daemon, leads peers → no verdict
+		{"", "0.5.5", "0.5.5", nil},    // missing connector version
+		{"0.5", "0.5.0", "0.5.0", nil}, // not x.y.z
+		{"0.5.x", "0.5.0", "", nil},    // non-numeric component
+		// cross-window: behind a peer is stale even when the daemon is non-semver
+		{"0.1.0", "dev", "0.5.6", boolp(false)},
+		{"0.5.6", "dev", "0.5.6", nil}, // newest peer, dev daemon → no verdict
+		{"0.5.6", "v0.5.6", "0.5.6", boolp(true)},
 	}
 	for _, c := range tt {
-		got := connectorVersionOK(c.conn, c.daemon)
+		got := connectorVersionOK(c.conn, c.daemon, c.newestPeer)
 		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
-			t.Errorf("connectorVersionOK(%q,%q)=%v, want %v", c.conn, c.daemon, fmtBoolp(got), fmtBoolp(c.want))
+			t.Errorf("connectorVersionOK(%q,%q,%q)=%v, want %v", c.conn, c.daemon, c.newestPeer, fmtBoolp(got), fmtBoolp(c.want))
 		}
 	}
 }

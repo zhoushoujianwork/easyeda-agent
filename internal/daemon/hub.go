@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -274,26 +275,73 @@ func (h *hub) windowForProject(project, preferDoc string) (id string, found bool
 }
 
 // listAnnotated returns the window list with each window's ConnectorVersionOK
-// computed against the daemon version, so /health surfaces stale connectors.
+// computed, so /health surfaces a stale connector loaded in an open window.
 func (h *hub) listAnnotated(daemonVersion string) []Window {
 	out := h.list()
+	// Newest connector semver among connected windows — a daemon-version-
+	// independent reference, so staleness is still flagged when the daemon
+	// version is non-semver (e.g. a `dev` build).
+	newest := ""
+	for _, w := range out {
+		if c := semverCore(w.ConnectorVersion); c != "" && semverLess(newest, c) {
+			newest = c
+		}
+	}
 	for i := range out {
-		out[i].ConnectorVersionOK = connectorVersionOK(out[i].ConnectorVersion, daemonVersion)
+		out[i].ConnectorVersionOK = connectorVersionOK(out[i].ConnectorVersion, daemonVersion, newest)
 	}
 	return out
 }
 
-// connectorVersionOK compares a connector version against the daemon version,
-// but only when BOTH parse as semver (x.y.z, optional leading 'v' / -suffix).
-// Returns nil when either is non-semver (dev/commit-hash builds) — no verdict.
-func connectorVersionOK(connector, daemon string) *bool {
+// connectorVersionOK decides whether a connector is up to date, from two
+// independent signals:
+//   - a connector strictly behind a peer window is definitely stale (→ false),
+//     regardless of the daemon version — this catches an old window left open
+//     after a re-import;
+//   - otherwise, when both the connector and daemon parse as semver, it must
+//     match the daemon (→ true/false).
+//
+// Returns nil (no verdict) when the connector is non-semver, or when it leads
+// all peers and the daemon version is non-semver (a dev build, nothing to
+// compare against).
+func connectorVersionOK(connector, daemon, newestPeer string) *bool {
 	cn := semverCore(connector)
-	dn := semverCore(daemon)
-	if cn == "" || dn == "" {
+	if cn == "" {
 		return nil
 	}
-	ok := cn == dn
-	return &ok
+	if newestPeer != "" && semverLess(cn, newestPeer) {
+		stale := false
+		return &stale
+	}
+	if dn := semverCore(daemon); dn != "" {
+		ok := cn == dn
+		return &ok
+	}
+	return nil
+}
+
+// semverLess reports whether semver core a < b (both "x.y.z" or ""). An empty
+// string is treated as lower than any real version.
+func semverLess(a, b string) bool {
+	if a == b {
+		return false
+	}
+	if a == "" {
+		return true
+	}
+	if b == "" {
+		return false
+	}
+	ap := strings.Split(a, ".")
+	bp := strings.Split(b, ".")
+	for i := range 3 {
+		x, _ := strconv.Atoi(ap[i])
+		y, _ := strconv.Atoi(bp[i])
+		if x != y {
+			return x < y
+		}
+	}
+	return false
 }
 
 // semverCore extracts the "x.y.z" core from a version string, dropping a leading
