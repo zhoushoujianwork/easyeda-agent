@@ -10,7 +10,7 @@
 |---|---|---|---|
 | **板框 布局** | `pcb.outline.set/get/clear`（已有 typed action + CLI）；`pcb_Document.zoomToBoardOutline` | ✅ 已支持 | 闭合多段线，曲线用线段逼近（native arc 当前 build 不提交）。CLI `pcb outline-set/get/clear` 已有。 |
 | **布线（手工走线）** | `pcb_PrimitiveLine.create/modify/delete/get/getAll`（铜层上的线=走线） | ✅ API 有 | **缺 CLI 子命令**；需活板验证 create 的层/线宽/网络参数。 |
-| **布线（自动布线）** | `pcb_Document.importAutoRouteJsonFile` / `importAutoRouteSesFile`；`pcb_ManufactureData.getAutoRouteJsonFile(ForJRouter)` | ⚠️ 受限 | **没有一次调用的内置自动布线**。是「导出 JSON → 外部 JRouter/布线器 → 导回 SES/JSON」的文件交换流程。要包成命令需串接外部布线器。 |
+| **布线（自动布线）** | 类型声明 `pcb_Document.autoRouting(props?)` @alpha；文件式 `importAutoRouteJsonFile` / `importAutoRouteSesFile`；`pcb_ManufactureData.getAutoRouteJsonFile(ForJRouter)` | ⚠️ 受限（类型 vs 实测有出入） | 发布类型**声明了**可直调的 `pcb_Document.autoRouting(props?)` → `{routedNets, totalNets}`（@alpha），**但 2026-06-26 实测运行 build(锁 ^0.2.21)上 `autoRouting`/`autoLayout` 为 `undefined`**——运行 build 落后于发布类型。复测确认前，文件式仍是唯一可靠路径。详见 [`ecosystem-survey.md`](ecosystem-survey.md) §6。 |
 | **铺铜** | `pcb_PrimitivePour`（铺铜区定义）+ `pcb_PrimitivePoured`（计算后的铜）+ `pcb_PrimitiveRegion` + `pcb_PrimitiveFill`，均 create/modify/delete/get/getAll | ✅ API 有 | **缺 CLI**；需验证 Pour.create 的多边形/net/层参数，以及 Pour→Poured 的重灌触发方式。 |
 | **过孔** | `pcb_PrimitiveVia.create/modify/delete/get/getAll` | ✅ API 有 | **缺 CLI**；需验证孔径/焊盘/网络/盲埋孔参数。 |
 | **4 层 / 2 层 设计** | `pcb_Layer.setTheNumberOfCopperLayers` / `getTheNumberOfCopperLayers` / `setPcbType` / `addCustomLayer` / `removeLayer`；物理叠层配置 `get/save/setDefault…PhysicalStackingConfiguration` | ✅ API 有 | **缺 CLI**；需验证 2↔4 层切换是否即时生效、叠层配置如何选。 |
@@ -42,3 +42,24 @@
 
 板框 ✅、过孔 ✅、铺铜 ✅、层叠(2/4) ✅、手工布线 ✅、DRC ✅(强) —— 都**有 API、可落 CLI**(明天验证 + 包命令)。
 **自动布线 ⚠️ 仅文件交换式**(需外接布线器)。**泪滴 ❌ 无公开 API**(列为不支持)。
+
+---
+
+## 活板验证结果（2026-06-28，真 PCB「PCB1」/ ceshi，connector 0.5.14）
+
+在已 import 的 ESP32 板（PCB1：2 层、8 器件、board linked）上逐项实测，纠正若干 API-表面推断：
+
+| 能力 | 活板结果 | 实测签名 / 备注 |
+|---|---|---|
+| **层数 2↔4** | ✅ **可用** | `pcb_Layer.setTheNumberOfCopperLayers(4)` 即时生效，`getTheNumberOfCopperLayers` 回读 4；改回 2 正常。 |
+| **手工走线** | ✅ **可用** | 真实签名 **`pcb_PrimitiveLine.create(net, layer, x1, y1, x2, y2, width, …)`**（net 是第 1 参!layer 第 2;width 在坐标之后)。回读 `{net,layer,startX/Y,endX/Y,lineWidth}` 正确。注意 create 很宽容、乱序也"成功"但参数错位——必须回读校验。 |
+| **过孔** | ✅ **可用** | 签名 **`pcb_PrimitiveVia.create(net, x, y, holeDiameter, diameter, …)`**;回读 `{net,x,y,holeDiameter,diameter,viaType,...}` 正确。 |
+| **PCB DRC** | ✅ **强,有逐条明细** | `pcb drc` 返回**嵌套明细**:`{count, list:[{errorObjType:"SMD Pad", errorType:"Connection Error", explanation:{errData:{net:"+3V3", obj1, obj1Suffix:"(+3V3): C2_2"}, str}, globalIndex}]}`。未布线时 28 条连接错误(ratline 未连),符合预期。**远强于原理图 DRC(仅聚合)**。 |
+| **铺铜** | ⚠️ **create 签名未破** | `pcb_PrimitivePour.create`(arity 9)所有猜测(`(net,layer,pts)`/`(layer,net,pts)`/`(net,layer,pts,clear)`/带 name)都报 **「错误:无法创建覆铜边框图元,可能是传入的参数不正确」**。API 在,但参数形态未知 → 需查官方 doc 或抓 UI 调用。**暂列受阻。** |
+| **自动布线(直调)** | ❌ **本 build 没有** | `eda.pcb_Document.autoRouting` 在 **3.2.148 实测 undefined**(与文档"@alpha 直调"不符——那可能来自更高版本/API 文档)。本 build **只有文件交换式**(`importAutoRouteJsonFile`/`importAutoRouteSesFile` + `getAutoRouteJsonFileForJRouter`)。 |
+| **泪滴** | ❌ **无 API**(同前) | 全命名空间无 teardrop。 |
+
+### 结论修正
+- **可立即落 CLI(签名已确认)**:`pcb layers --set-copper N`、`pcb track`(走线)、`pcb via`、`pcb drc`(已有)。
+- **受阻待解**:**铺铜**(create 签名)、**自动布线**(本 build 无直调,只能文件式或等平台)、**泪滴**(无 API)。
+- **下一步**:铺铜签名——抓 UI「铺铜」实际调用 或 查 eda-api `pcb_PrimitivePour.create` 定义;自动布线——评估文件交换流程是否值得包。
