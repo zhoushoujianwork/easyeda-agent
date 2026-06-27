@@ -153,6 +153,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.select`
 - `schematic.snapshot` — 截图。**产物保存在 CLI 运行目录下的隐藏目录 `<cwd>/.easyeda/artifacts/`,文件名带本地时间戳**(`<YYYYMMDD-HHMMSS>-<kind>-<短id>.png`,便于排序/查找);响应里的 `artifacts[].path` 是绝对路径。netlist/BOM 等其他产物同此规则。
 - `schematic.drc.check` — 用 `easyeda sch drc` 跑，**逐条**打印 `LEVEL <rule> <message> @(x,y)`(`--json` 给结构化)。返回含 `summary{fatal,error,warn,…}` 与 `fatal` 计数;**退出码仅在 `fatal>0` 时非零**(warning 不阻塞),据此判 S5 门「0 fatal」。
+- `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(官方 DRC 只给聚合 count,这里从图元几何重建):**floating-pin**(引脚悬空)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
 - `schematic.save`
 - `schematic.export.netlist`
 - `schematic.export.bom`

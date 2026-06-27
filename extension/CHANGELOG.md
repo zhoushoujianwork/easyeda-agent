@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed
+- **`schematic.check` no longer false-flags merged-stub endpoints as `wire-over-pin`,
+  and floating-pin findings now carry component-level detail.** A pin coincident with
+  a wire endpoint or a netflag/netport/netlabel anchor is the legitimate terminus of
+  its own `sch connect` stub; when EasyEDA auto-merges collinear touching stubs into
+  one long wire an inner pin lands in that wire's interior and was wrongly reported as
+  a through-pin short (the official DRC stays clean). Rule 3 now excludes pins that
+  coincide with a wire vertex or a net-marker anchor. Floating-pin findings now include
+  `primitiveId` and a `pinDetails[]` array (`number`, `name`, `x`, `y`) so the `--json`
+  report identifies the component and pin without a second lookup; the text report
+  prints the per-pin name + coordinates and falls back to `primitiveId` when the
+  designator is empty.
 
 ## [0.5.14] - 2026-06-28
 ### Fixed

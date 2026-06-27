@@ -16,14 +16,23 @@ import (
 // connectivity. This file renders that report and (with --strict) gates on it.
 // Output is by designator + pin number — feed it straight into `sch no-connect`.
 
+type checkPinDetail struct {
+	Number string  `json:"number"`
+	Name   string  `json:"name,omitempty"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+}
+
 type checkFinding struct {
-	Type       string   `json:"type"`
-	Level      string   `json:"level"`
-	Designator string   `json:"designator,omitempty"`
-	Pins       []string `json:"pins,omitempty"`
-	Count      int      `json:"count,omitempty"`
-	Message    string   `json:"message,omitempty"`
-	At         *struct {
+	Type        string           `json:"type"`
+	Level       string           `json:"level"`
+	Designator  string           `json:"designator,omitempty"`
+	PrimitiveId string           `json:"primitiveId,omitempty"`
+	Pins        []string         `json:"pins,omitempty"`
+	PinDetails  []checkPinDetail `json:"pinDetails,omitempty"`
+	Count       int              `json:"count,omitempty"`
+	Message     string           `json:"message,omitempty"`
+	At          *struct {
 		X float64 `json:"x"`
 		Y float64 `json:"y"`
 	} `json:"at,omitempty"`
@@ -123,8 +132,13 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 			msg = f.Type
 		}
 		line := fmt.Sprintf("  %-5s  %-14s  ", tag, f.Type)
-		if f.Designator != "" {
+		// Prefer the human designator; fall back to the primitiveId so a finding on
+		// a component with an empty designator is still identifiable.
+		switch {
+		case f.Designator != "":
 			line += f.Designator + "  "
+		case f.PrimitiveId != "":
+			line += f.PrimitiveId + "  "
 		}
 		line += msg
 		if len(f.Pins) > 0 {
@@ -134,6 +148,15 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 			line += fmt.Sprintf("  @(%.2f,%.2f)", f.At.X, f.At.Y)
 		}
 		fmt.Fprintln(w, line)
+		// Per-pin breakdown (floating-pin): pin number/name + coords so the report is
+		// actionable without a second lookup.
+		for _, pd := range f.PinDetails {
+			label := pd.Number
+			if pd.Name != "" {
+				label += " (" + pd.Name + ")"
+			}
+			fmt.Fprintf(w, "          pin %s  @(%.2f,%.2f)\n", label, pd.X, pd.Y)
+		}
 	}
 
 	if rep.Passed {
