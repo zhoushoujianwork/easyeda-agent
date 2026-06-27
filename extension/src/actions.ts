@@ -844,6 +844,27 @@ const schematicSelect: Handler = async (payload) => {
 
 // ─── Snapshot ─────────────────────────────────────────────────────────
 
+/**
+ * Best-effort count of the live primitives on the current schematic page
+ * (components + every standalone page primitive). It is the cheap anti-stale
+ * signal the snapshot caller compares across frames: if `primitiveCount`
+ * changed between two snapshots but the image bytes (sha256) did NOT, the
+ * EasyEDA canvas did not redraw and the latest frame is STALE (issue #2).
+ * Wrapped so a count failure never blocks the actual image capture.
+ */
+async function countLivePagePrimitives(): Promise<number | null> {
+	try {
+		let count = (await eda.sch_PrimitiveComponent.getAll()).length;
+		for (const kind of SCH_PAGE_PRIMITIVE_KINDS) {
+			count += (await kind.getAll()).length;
+		}
+		return count;
+	}
+	catch {
+		return null;
+	}
+}
+
 const schematicSnapshot: Handler = async (payload) => {
 	const tabId = optionalString(payload, 'tabId');
 	let blob;
@@ -857,7 +878,21 @@ const schematicSnapshot: Handler = async (payload) => {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Snapshot returned no image.');
 	}
 	const artifact = await blobToArtifact(blob, 'schematic_snapshot', 'snapshot.png', 'image/png');
-	return { result: { artifactId: artifact.id }, artifacts: [artifact] };
+	// Anti-stale metadata (issue #2): EasyEDA does NOT auto-redraw after eda.*
+	// edits, so getCurrentRenderedAreaImage can return a byte-identical STALE
+	// frame. The caller compares `primitiveCount` across two snapshots — if it
+	// changed while the image sha did not, the frame is stale; judge STATE by
+	// data, not by the picture.
+	const primitiveCount = await countLivePagePrimitives();
+	return {
+		result: {
+			artifactId: artifact.id,
+			primitiveCount,
+			capturedAt: new Date().toISOString(),
+			stale: 'EasyEDA may not auto-redraw after API edits; compare primitiveCount across snapshots to detect a stale frame. Judge state by data, screenshot for layout only.',
+		},
+		artifacts: [artifact],
+	};
 };
 
 // ─── DRC ──────────────────────────────────────────────────────────────
