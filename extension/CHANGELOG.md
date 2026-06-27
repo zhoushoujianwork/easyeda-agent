@@ -6,6 +6,13 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 ### Added
+- **`schematic.snapshot` anti-stale metadata (issue #2).** The snapshot result now
+  carries `primitiveCount` (live components + page primitives on the current page),
+  `capturedAt` (ISO timestamp), and a `stale` advisory string. EasyEDA does not
+  auto-redraw after `eda.*` edits, so `getCurrentRenderedAreaImage` can return a
+  byte-identical STALE frame; callers compare `primitiveCount` across two snapshots
+  to detect when the image didn't change but the page did. Judge state by data, use
+  the screenshot for layout only.
 - **`schematic.page.clear` — one-shot page reset.** Deletes every page-level
   primitive on the active page (components, net flags/ports/labels, wires, buses,
   and graphics — arcs/circles/rectangles/polygons/text), not just components.

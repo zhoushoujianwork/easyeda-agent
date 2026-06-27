@@ -530,7 +530,14 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		c := &cobra.Command{
 			Use:   "snapshot",
 			Short: "Capture the current schematic view as an image artifact",
-			Args:  cobra.NoArgs,
+			Long: `Capture the current schematic view as an image artifact.
+
+WARNING: EasyEDA does NOT auto-redraw after API edits, so the captured frame can
+be STALE (byte-identical to the previous one even though the page changed). The
+result includes primitiveCount + capturedAt — compare primitiveCount across two
+snapshots to detect a stale frame, and judge STATE by data (sch list/getAll), not
+by the screenshot. Touch the page in EasyEDA (scroll/click) to force a redraw.`,
+			Args: cobra.NoArgs,
 			Example: `  easyeda sch snapshot
   easyeda sch snapshot --fit   # zoom to fit all first (whole sheet in frame)`,
 			RunE: func(cmd *cobra.Command, args []string) error {

@@ -68,7 +68,10 @@ near-equivalent, first).
    auto-redraw** → `schematic.snapshot` / `getCurrentRenderedAreaImage` return a STALE
    frame (even `view fit` framing is stale). **Judge STATE by data (`sch list`/`getAll`),
    use the screenshot for visual layout only**, and touch the page in EasyEDA (scroll/
-   click) to force a redraw before trusting a snapshot.
+   click) to force a redraw before trusting a snapshot. `schematic.snapshot` now returns
+   `primitiveCount` + `capturedAt` alongside the artifact — **compare `primitiveCount`
+   across two adjacent snapshots: if it changed but the image bytes/sha did not, the
+   frame is stale** and must not be trusted for verification.
 
 ## Bulk realization from a netlist (automated)
 

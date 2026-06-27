@@ -303,8 +303,8 @@ func AllActions() []ActionSpec {
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
-			Description: "Capture current rendered area image as an artifact.",
-			Outputs:     []string{"artifact id", "file path", "mime type"},
+			Description: "Capture current rendered area image as an artifact. WARNING: EasyEDA may not auto-redraw after API edits, so the image can be a STALE frame — judge state by data (sch list/getAll), not the screenshot. Returns primitiveCount + capturedAt; if primitiveCount changed between two snapshots but the image is unchanged, the frame is stale.",
+			Outputs:     []string{"artifact id", "file path", "mime type", "primitiveCount", "capturedAt"},
 		},
 		{
 			Name:        "schematic.drc.check",
