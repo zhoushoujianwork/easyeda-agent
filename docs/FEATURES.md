@@ -26,6 +26,18 @@ itself (daemon/connector liveness, no window required).
 | `schematic.components.list` | Components on the active page (optional `allPages`, `includePins`) with designator, name, coords, and `getState_*` fields. |
 | `schematic.select` | Select primitives by id, return the active selection. |
 
+**Discover + switch loop (CLI, no new actions):** `easyeda doc ls [--project X]`
+aggregates `schematic.pages.list` + `pcb.documents.list` + `document.current`
+into one ★-active document list; `easyeda doc switch <name|uuid> [--project X]`
+resolves a page/PCB name → `document.open` → readback (cross-type PCB↔schematic).
+With 2+ windows connected, `--project`/`--window` is required.
+
+**Live window context:** each window's context in `system.health` stays fresh two
+ways — the daemon refreshes it from every action response, and the connector
+(≥ v0.5.7) pushes it on each heartbeat (~3s) when the active document changed, so
+health tracks a UI tab-switch with no command run. `health` also reports
+`connectorVersionOk` to flag a stale connector left in an open window.
+
 ### View / navigation (4 actions, `document` domain — schematic + PCB)
 
 Editor canvas view shortcuts via `eda.dmt_EditorControl.*`; act on the focused

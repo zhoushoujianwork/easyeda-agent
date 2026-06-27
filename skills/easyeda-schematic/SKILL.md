@@ -100,7 +100,8 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 ```
 
 - `easyeda doc ls` 聚合了 `schematic.pages.list` + `pcb.documents.list` + `document.current`,一条命令看全貌;`--json` 给机器读。
-- `easyeda doc switch` 按名字解析 → `document.open` → `document.current` 回读确认。**同名页(多个 P1)会报歧义并列出 uuid,改传 uuid**。
+- `easyeda doc switch` 按名字解析 → `document.open` → `document.current` 回读确认。**同名页(多个 P1)会报歧义并列出 uuid,改传 uuid**。跨类型也行(PCB ↔ 原理图)。
+- **多窗口时必须 `--project`(或 `--window`)**:`doc ls`/`doc switch` 不带目标时,只有「恰好一个窗口」才能自动命中;两个及以上窗口会报 `no EasyEDA connector is available`。同理,某窗口连接器正在重连(churn)的瞬间也可能瞬时报这个,重试即可。
 
 底层 action(需要细控时再用):
 
@@ -112,7 +113,9 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 
 多窗口说明：EasyEDA 每个窗口对应一个独立的 connector（windowId）。`easyeda daemon health` 列出所有已连接窗口;**优先用 `--project <名字>` 路由**(windowId 重连会变),细控时才用 `--window <windowId>`。
 
-> **上下文是实时的,不会卡在 `home`。** daemon 用每次 action 响应里携带的实时上下文刷新它缓存的窗口状态——只要对某窗口跑过任意命令(例如 `easyeda project doc --project X`),`daemon health` 就会反映该窗口当前真正的前台文档,而不是连接那一刻的快照。所以若 health 显示某窗口是 `home`,说明它**连接后还没在真正的工程文档上跑过命令**(或者那个窗口跑的是旧连接器没连上)。
+> **上下文是实时的,不会卡在 `home`。** 两条刷新路径:① daemon 用每次 action 响应里的实时上下文刷新缓存;② 连接器 **v0.5.7 起,心跳(~3s)会主动重读当前文档,变了就推**——所以用户在 EasyEDA 里**切了 tab、什么命令都没跑**,`daemon health` 也会在 ~3s 内自己跟上。若 health 显示某窗口是 `home`,说明它的前台 tab 停在开始页/欢迎页,或那个窗口跑的是旧连接器(< v0.5.7)没连上。
+>
+> **UI 切页要双击**:单击只选中 tab、不打开文档;双击才真正打开,`document.current` 读到的是「已打开」的那个文档。
 >
 > **`connectorVersionOk: false`** = 该窗口加载的连接器版本与 daemon 不符(典型:开着的窗口跑着旧连接器代码)。处理:完全退出并重启 EasyEDA 重新加载连接器(re-import 不会刷新已开窗口)。`null` 表示版本号非 semver(dev 构建)无法判定。
 
