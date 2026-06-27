@@ -45,7 +45,7 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		Short: "List all openable documents in the window (★ = active)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			docs, active, err := discoverDocs(cfg, window)
+			docs, active, _, err := discoverDocs(cfg, window)
 			if err != nil {
 				return err
 			}
@@ -70,7 +70,7 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			"  easyeda doc switch 6b3a2f01-... --project motobox2026",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
-			docs, _, err := discoverDocs(cfg, window)
+			docs, _, win, err := discoverDocs(cfg, window)
 			if err != nil {
 				return err
 			}
@@ -78,12 +78,13 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := requestAction(cfg, "document.open", window,
+			// Pin the open + readback to the SAME window discoverDocs resolved.
+			if _, err := requestAction(cfg, "document.open", win,
 				map[string]any{"uuid": match.UUID}); err != nil {
 				return err
 			}
 			// Re-read live context to confirm the switch took effect.
-			cur, err := requestAction(cfg, "document.current", window, nil)
+			cur, err := requestAction(cfg, "document.current", win, nil)
 			if err != nil {
 				return err
 			}
@@ -106,22 +107,30 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	return doc
 }
 
-// discoverDocs aggregates schematic.pages.list + pcb.documents.list into a
-// single openable-document list and marks the one matching the live active
-// document (document.current). Failures of the PCB listing are tolerated (a
-// project may have no PCB).
-func discoverDocs(cfg *appConfig, window string) (docs []openableDoc, activeUUID string, err error) {
-	cur, err := requestAction(cfg, "document.current", window, nil)
+// discoverDocs resolves the target window ONCE, then aggregates
+// schematic.pages.list + pcb.documents.list into a single openable-document list
+// and marks the one matching the live active document (document.current). Every
+// sub-call is pinned to the resolved windowId, so a second window appearing or a
+// single-window auto-target racing mid-command can't break it. Returns the
+// resolved windowId so a caller (e.g. `doc switch`) can pin its own follow-ups.
+// PCB-listing failures are tolerated (a project may have no PCB).
+func discoverDocs(cfg *appConfig, window string) (docs []openableDoc, activeUUID, resolvedWindow string, err error) {
+	resolvedWindow, err = resolveTargetWindow(cfg, window)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
+	}
+
+	cur, err := requestAction(cfg, "document.current", resolvedWindow, nil)
+	if err != nil {
+		return nil, "", "", err
 	}
 	if cur.Context != nil {
 		activeUUID = cur.Context.DocumentUUID
 	}
 
-	pages, err := requestAction(cfg, "schematic.pages.list", window, nil)
+	pages, err := requestAction(cfg, "schematic.pages.list", resolvedWindow, nil)
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
 	for _, p := range mapsField(pages.Result, "pages") {
 		docs = append(docs, openableDoc{
@@ -133,7 +142,7 @@ func discoverDocs(cfg *appConfig, window string) (docs []openableDoc, activeUUID
 	}
 
 	// PCBs are optional — a schematic-only project legitimately has none.
-	if pcbs, perr := requestAction(cfg, "pcb.documents.list", window, nil); perr == nil {
+	if pcbs, perr := requestAction(cfg, "pcb.documents.list", resolvedWindow, nil); perr == nil {
 		for _, p := range mapsField(pcbs.Result, "pcbs") {
 			docs = append(docs, openableDoc{
 				UUID:   strField(p, "uuid"),
@@ -155,7 +164,7 @@ func discoverDocs(cfg *appConfig, window string) (docs []openableDoc, activeUUID
 		}
 		return docs[i].Name < docs[j].Name
 	})
-	return docs, activeUUID, nil
+	return docs, activeUUID, resolvedWindow, nil
 }
 
 // resolveDoc maps a user-supplied name or uuid to exactly one openable doc.

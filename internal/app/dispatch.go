@@ -114,6 +114,91 @@ func requestAction(cfg *appConfig, action, window string, payload any) (*actionR
 	return res, nil
 }
 
+// healthWindow is the subset of a /health window entry the doc commands need to
+// resolve a routing target.
+type healthWindow struct {
+	WindowID         string `json:"windowId"`
+	ConnectorVersion string `json:"connectorVersion"`
+	Context          struct {
+		ProjectUUID  string `json:"projectUuid"`
+		ProjectName  string `json:"projectName"`
+		DocumentUUID string `json:"documentUuid"`
+		DocumentType string `json:"documentType"`
+	} `json:"context"`
+}
+
+// listWindows scans for the live daemon and returns its connected windows.
+func listWindows(cfg *appConfig) ([]healthWindow, error) {
+	portStart, portEnd, err := cfg.portRange()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	scan := scanHealth(ctx, hostPortOptions{host: cfg.host, portStart: portStart, portEnd: portEnd})
+	if scan.Found == nil {
+		return nil, fmt.Errorf("no easyeda-agent daemon found on %s:%s (start it with `easyeda daemon start`)", cfg.host, scan.Ports)
+	}
+	var parsed struct {
+		Windows []healthWindow `json:"windows"`
+	}
+	if err := json.Unmarshal(scan.Found.Raw, &parsed); err != nil {
+		return nil, fmt.Errorf("parse health windows: %w", err)
+	}
+	return parsed.Windows, nil
+}
+
+// resolveTargetWindow picks the single window a multi-call command (e.g. `doc
+// ls`/`doc switch`) should act on and returns its concrete windowId, so every
+// sub-call pins to that id — immune to a second window appearing or the
+// single-window auto-target racing mid-command. An explicit --window wins; then
+// --project; else the sole connected window. Ambiguity is a hard error naming
+// the fix.
+func resolveTargetWindow(cfg *appConfig, window string) (string, error) {
+	if window != "" {
+		return window, nil
+	}
+	windows, err := listWindows(cfg)
+	if err != nil {
+		return "", err
+	}
+	return selectWindow(windows, cfg.project, window)
+}
+
+// selectWindow is the pure routing rule resolveTargetWindow applies once a window
+// list is in hand: explicit --window wins; then --project (exactly one match);
+// else the sole connected window. Ambiguity / no-match is a hard error naming the
+// fix. Kept separate from the HTTP scan so it is unit-testable.
+func selectWindow(windows []healthWindow, project, window string) (string, error) {
+	if window != "" {
+		return window, nil
+	}
+	if project != "" {
+		var matches []healthWindow
+		for _, w := range windows {
+			if w.Context.ProjectName == project || w.Context.ProjectUUID == project {
+				matches = append(matches, w)
+			}
+		}
+		switch len(matches) {
+		case 1:
+			return matches[0].WindowID, nil
+		case 0:
+			return "", fmt.Errorf("no connected window for project %q (run `easyeda daemon health`)", project)
+		default:
+			return "", fmt.Errorf("project %q maps to %d windows — pass --window <id>", project, len(matches))
+		}
+	}
+	switch len(windows) {
+	case 1:
+		return windows[0].WindowID, nil
+	case 0:
+		return "", fmt.Errorf("no EasyEDA connector is available")
+	default:
+		return "", fmt.Errorf("%d windows connected — pass --project <name> or --window <id>", len(windows))
+	}
+}
+
 // postAction is the shared HTTP core: find a live daemon, POST the typed action,
 // and return the raw response body.
 func postAction(cfg *appConfig, action, window string, payload any) ([]byte, error) {
