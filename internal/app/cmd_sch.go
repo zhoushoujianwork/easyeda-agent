@@ -233,14 +233,15 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	// ── list ─────────────────────────────────────────────────────────────
 	// schematic.components.list
 	{
-		var allPages, includeBBox bool
+		var allPages, includeBBox, includePins bool
 		c := &cobra.Command{
 			Use:   "list",
 			Short: "List components on the active (or all) schematic page(s)",
 			Args:  cobra.NoArgs,
 			Example: `  easyeda sch list
   easyeda sch list --all-pages
-  easyeda sch list --include-bbox`,
+  easyeda sch list --include-bbox
+  easyeda sch list --include-pins`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				payload := map[string]any{}
 				if allPages {
@@ -248,6 +249,9 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				}
 				if includeBBox {
 					payload["includeBBox"] = true
+				}
+				if includePins {
+					payload["includePins"] = true
 				}
 				if len(payload) == 0 {
 					return dispatch(cfg, "schematic.components.list", window, nil, stdout, stderr)
@@ -257,6 +261,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		}
 		c.Flags().BoolVar(&allPages, "all-pages", false, "list components across all schematic pages")
 		c.Flags().BoolVar(&includeBBox, "include-bbox", false, "attach each component's rendered extent {minX,minY,maxX,maxY}")
+		c.Flags().BoolVar(&includePins, "include-pins", false, "attach each pin's {pinName,pinNumber,x,y,noConnected} — the data plane for routing/connectivity checks (output grows, esp. with --all-pages)")
 		sch.AddCommand(c)
 	}
 
