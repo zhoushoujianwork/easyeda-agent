@@ -494,6 +494,213 @@ const schematicComponentDelete: Handler = async (payload) => {
 	return { result: { deleted } };
 };
 
+// ─── Page clear / generalized primitive delete ────────────────────────
+
+/** A schematic primitive exposing its id — the only field clear/delete needs. */
+interface SchPrimitiveLike { getState_PrimitiveId(): string }
+
+/**
+ * Page-level schematic primitive classes that own standalone primitives — each
+ * exposes `getAll()` (current page) and `delete(ids)`. Components are handled
+ * separately because they carry a componentType (and the sheet/title block).
+ * Pins and attributes are intentionally excluded: they belong to a parent
+ * primitive, not the page.
+ */
+const SCH_PAGE_PRIMITIVE_KINDS: Array<{
+	key: string;
+	getAll: () => Promise<Array<SchPrimitiveLike>>;
+	del: (ids: Array<string>) => Promise<boolean>;
+}> = [
+	{ key: 'wires', getAll: () => eda.sch_PrimitiveWire.getAll(), del: ids => eda.sch_PrimitiveWire.delete(ids) },
+	{ key: 'buses', getAll: () => eda.sch_PrimitiveBus.getAll(), del: ids => eda.sch_PrimitiveBus.delete(ids) },
+	{ key: 'arcs', getAll: () => eda.sch_PrimitiveArc.getAll(), del: ids => eda.sch_PrimitiveArc.delete(ids) },
+	{ key: 'circles', getAll: () => eda.sch_PrimitiveCircle.getAll(), del: ids => eda.sch_PrimitiveCircle.delete(ids) },
+	{ key: 'rectangles', getAll: () => eda.sch_PrimitiveRectangle.getAll(), del: ids => eda.sch_PrimitiveRectangle.delete(ids) },
+	{ key: 'polygons', getAll: () => eda.sch_PrimitivePolygon.getAll(), del: ids => eda.sch_PrimitivePolygon.delete(ids) },
+	{ key: 'texts', getAll: () => eda.sch_PrimitiveText.getAll(), del: ids => eda.sch_PrimitiveText.delete(ids) },
+];
+
+/** Map a component's getState_ComponentType() to a stable result-count key. */
+const SCH_COMPONENT_TYPE_KEY: Record<string, string> = {
+	part: 'components',
+	netflag: 'netflags',
+	netport: 'netports',
+	netlabel: 'netlabels',
+	nonElectrical_symbol: 'nonElectricalFlags',
+	short_symbol: 'shortCircuitFlags',
+	sheet: 'sheets',
+};
+
+/** componentType value for the drawing sheet / title block (图框). */
+const SCH_SHEET_TYPE = 'sheet';
+
+/** Format a caught error for a non-fatal warning entry. */
+function warnText(label: string, err: unknown): string {
+	return `${label}: ${err instanceof Error ? err.message : String(err)}`;
+}
+
+/** Delete a group of ids via its owning class (components fall through to the component class). */
+async function deleteSchGroup(key: string, ids: Array<string>): Promise<void> {
+	const kind = SCH_PAGE_PRIMITIVE_KINDS.find(k => k.key === key);
+	if (kind) await kind.del(ids);
+	else await eda.sch_PrimitiveComponent.delete(ids);
+}
+
+/**
+ * Clear the ACTIVE schematic page — delete every page-level primitive, not just
+ * components. `schematic.component.delete` leaves wires/buses/graphics behind
+ * (forcing a fall back to raw `debug.exec_js`); this enumerates every
+ * `sch_Primitive*` class so a page reset is actually clean. `preserveSheet`
+ * (default true) keeps the sheet/title block; `dryRun` counts without deleting.
+ * No undo.
+ */
+const schematicPageClear: Handler = async (payload) => {
+	const preserveSheet = optionalBoolean(payload, 'preserveSheet') !== false;
+	const dryRun = optionalBoolean(payload, 'dryRun') === true;
+
+	const idsByKey: Record<string, Array<string>> = {};
+	const warnings: Array<string> = [];
+
+	// 1) Components — net flags/ports/labels are components too, so this single
+	//    class covers them all. Honor preserveSheet by skipping the sheet.
+	let components;
+	try {
+		components = await eda.sch_PrimitiveComponent.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to enumerate schematic components.');
+	}
+	for (const c of components) {
+		const type = String(c.getState_ComponentType());
+		if (preserveSheet && type === SCH_SHEET_TYPE) continue;
+		const key = SCH_COMPONENT_TYPE_KEY[type] ?? 'otherComponents';
+		(idsByKey[key] ??= []).push(c.getState_PrimitiveId());
+	}
+
+	// 2) Wires, buses, and graphics — each its own class.
+	for (const kind of SCH_PAGE_PRIMITIVE_KINDS) {
+		try {
+			for (const p of await kind.getAll()) (idsByKey[kind.key] ??= []).push(p.getState_PrimitiveId());
+		}
+		catch (err) {
+			warnings.push(warnText(`enumerate ${kind.key}`, err));
+		}
+	}
+
+	// 3) Delete (unless dryRun).
+	if (!dryRun) {
+		for (const [key, ids] of Object.entries(idsByKey)) {
+			if (!ids.length) continue;
+			try {
+				await deleteSchGroup(key, ids);
+			}
+			catch (err) {
+				warnings.push(warnText(`delete ${key}`, err));
+			}
+		}
+	}
+
+	const deleted: Record<string, number> = {};
+	let total = 0;
+	for (const [key, ids] of Object.entries(idsByKey)) { deleted[key] = ids.length; total += ids.length; }
+
+	return {
+		result: {
+			deleted,
+			total,
+			deletedIds: idsByKey,
+			preserveSheet,
+			dryRun,
+			...(warnings.length ? { warnings } : {}),
+		},
+	};
+};
+
+/**
+ * Delete schematic primitives of any type by id — generalizes
+ * `schematic.component.delete` beyond components (wires, buses, graphics, flags).
+ * Each id is routed to its owning `sch_Primitive*` class. With no `primitiveIds`,
+ * the current selection is deleted (select first via `schematic.select`). No undo.
+ */
+const schematicPrimitivesDelete: Handler = async (payload) => {
+	const raw = payload.primitiveIds;
+	let requested: Array<string> | null;
+	if (raw === undefined) {
+		requested = null;
+	}
+	else if (typeof raw === 'string') {
+		requested = [raw];
+	}
+	else if (Array.isArray(raw) && raw.every(id => typeof id === 'string')) {
+		requested = raw as Array<string>;
+	}
+	else {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			'"primitiveIds" must be a string or string[] (omit it to delete the current selection).',
+		);
+	}
+
+	// Build an id → owning-kind index across components + every page class.
+	const index = new Map<string, string>();
+	try {
+		for (const c of await eda.sch_PrimitiveComponent.getAll()) index.set(c.getState_PrimitiveId(), 'components');
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to enumerate schematic components.');
+	}
+	for (const kind of SCH_PAGE_PRIMITIVE_KINDS) {
+		try {
+			for (const p of await kind.getAll()) index.set(p.getState_PrimitiveId(), kind.key);
+		}
+		catch { /* a missing class type is non-fatal for id routing */ }
+	}
+
+	// Resolve targets: explicit ids, or the current selection.
+	let targets = requested;
+	if (targets === null) {
+		try {
+			targets = (await eda.sch_SelectControl.getAllSelectedPrimitives_PrimitiveId()) ?? [];
+		}
+		catch (err) {
+			throw edaError(err, 'Failed to read the current selection.');
+		}
+	}
+
+	const idsByKey: Record<string, Array<string>> = {};
+	const notFound: Array<string> = [];
+	for (const id of targets) {
+		const key = index.get(id);
+		if (!key) { notFound.push(id); continue; }
+		(idsByKey[key] ??= []).push(id);
+	}
+
+	const warnings: Array<string> = [];
+	for (const [key, ids] of Object.entries(idsByKey)) {
+		if (!ids.length) continue;
+		try {
+			await deleteSchGroup(key, ids);
+		}
+		catch (err) {
+			warnings.push(warnText(`delete ${key}`, err));
+		}
+	}
+
+	const deleted: Record<string, number> = {};
+	let total = 0;
+	for (const [key, ids] of Object.entries(idsByKey)) { deleted[key] = ids.length; total += ids.length; }
+
+	return {
+		result: {
+			deleted,
+			total,
+			deletedIds: idsByKey,
+			...(notFound.length ? { notFound } : {}),
+			...(warnings.length ? { warnings } : {}),
+		},
+	};
+};
+
 // ─── Wire ─────────────────────────────────────────────────────────────
 
 const schematicWireCreate: Handler = async (payload) => {
@@ -1976,6 +2183,8 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.page.create': schematicPageCreate,
 	'schematic.page.rename': schematicPageRename,
 	'schematic.page.delete': schematicPageDelete,
+	'schematic.page.clear': schematicPageClear,
+	'schematic.primitives.delete': schematicPrimitivesDelete,
 	'schematic.rename': schematicRename,
 	'schematic.titleblock.get': schematicTitleBlockGet,
 	'schematic.titleblock.modify': schematicTitleBlockModify,

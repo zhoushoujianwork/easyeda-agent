@@ -5,9 +5,9 @@ planned. Ground truth for the action catalog is `make actions`
 (`internal/protocol/actions.go`); the connector's handler map is
 `extension/src/actions.ts`.
 
-**20 typed actions** total — 14 in the `schematic` domain, 2 in `artifact`
+**22 typed actions** total — 16 in the `schematic` domain, 2 in `artifact`
 (netlist/BOM export), and one each in `system`, `project`, `document`, `debug`.
-19 are dispatched to the connector; `system.health` is answered by the daemon
+21 are dispatched to the connector; `system.health` is answered by the daemon
 itself (daemon/connector liveness, no window required).
 
 ---
@@ -79,13 +79,15 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `board.copy` | Duplicate a board (schematic + PCB). Mutates. |
 | `board.delete` | Delete a board by name (confirmation-gated, no undo). Mutates. |
 
-### Draw / edit (6 actions, all mutate)
+### Draw / edit (8 actions, all mutate)
 
 | Action | What |
 |---|---|
 | `schematic.component.place` | Place a device by library identity (`libraryUuid` + `uuid`) at `x,y` with optional rotation/mirror/BOM flags. |
 | `schematic.component.modify` | Patch position, designator, name, BOM flags, or custom properties (components only — not flags). |
-| `schematic.component.delete` | Delete component primitives (confirmation-gated). |
+| `schematic.component.delete` | Delete component primitives (confirmation-gated). **Only removes components** — wires/buses/graphics survive; use `schematic.page.clear` for a full page reset. |
+| `schematic.primitives.delete` | Delete primitives of **any** type by id (components, flags, wires, buses, graphics) — routes each id to its owning class. Omit ids to delete the current selection (select-all → delete). Confirmation-gated, no undo. |
+| `schematic.page.clear` | Clear the **active page**: delete every page-level primitive (components, net flags/ports/labels, wires, buses, graphics), optionally keeping the sheet/title block (`preserveSheet`, default true). `dryRun` reports per-type counts without deleting. Returns `{deleted:{...}, total, deletedIds}`. Confirmation-gated, no undo. |
 | `schematic.wire.create` | Create a wire polyline (optional net/color/width/lineType). |
 | `schematic.netflag.create` | Power / ground / analog-ground / protective-ground / net-port (IN/OUT/BI) / short-circuit flag. |
 | `schematic.power.connect_pin` | Composite: draw a stub wire out of a pin **and** place a netflag/netport at its far end in one call. Structurally prevents the "netflag overlaps pin" DRC fatal and orients the flag body outward along the stub (顺着导线方向). Default direction inferred from kind, default offset 30u. |

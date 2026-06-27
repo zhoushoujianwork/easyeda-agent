@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSchCmd returns the "sch" subcommand group with all 14 schematic actions.
+// newSchCmd returns the "sch" subcommand group with all schematic actions.
 // --window is a persistent flag on the group so every subcommand inherits it.
 func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	var window string
@@ -182,6 +182,29 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		sch.AddCommand(c)
 	}
 
+	// ── clear ──────────────────────────────────────────────────────────────
+	// schematic.page.clear
+	{
+		var noPreserveSheet, dryRun bool
+		c := &cobra.Command{
+			Use:   "clear",
+			Short: "Clear the active schematic page (delete all page primitives: components, flags, wires, buses, graphics)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda sch clear                      # clear the page, keep the sheet/title block (图框)
+  easyeda sch clear --dry-run            # report what would be deleted, delete nothing
+  easyeda sch clear --no-preserve-sheet  # also delete the sheet/title block`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return dispatch(cfg, "schematic.page.clear", window, map[string]any{
+					"preserveSheet": !noPreserveSheet,
+					"dryRun":        dryRun,
+				}, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "report counts without deleting anything")
+		c.Flags().BoolVar(&noPreserveSheet, "no-preserve-sheet", false, "also delete the sheet/title block (图框); by default it is kept")
+		sch.AddCommand(c)
+	}
+
 	// ── rename (whole schematic document) ──────────────────────────────────
 	// schematic.rename
 	{
@@ -324,6 +347,32 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			},
 		}
 		c.Flags().StringVar(&idsJSON, "ids", "", `JSON array of primitive IDs to delete (required), e.g. '["id1","id2"]'`)
+		sch.AddCommand(c)
+	}
+
+	// ── prim-delete ─────────────────────────────────────────────────────────
+	// schematic.primitives.delete
+	{
+		var idsJSON string
+		c := &cobra.Command{
+			Use:   "prim-delete",
+			Short: "Delete schematic primitives of ANY type by id (or the current selection if --ids omitted)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda sch prim-delete --ids '["id1","id2"]'   # delete these (any primitive type)
+  easyeda sch prim-delete                         # delete the current selection`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if idsJSON != "" {
+					var ids []any
+					if err := json.Unmarshal([]byte(idsJSON), &ids); err != nil {
+						return fmt.Errorf("invalid --ids json (expected array): %w", err)
+					}
+					payload["primitiveIds"] = ids
+				}
+				return dispatch(cfg, "schematic.primitives.delete", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&idsJSON, "ids", "", `JSON array of primitive IDs to delete (any type); omit to delete the current selection`)
 		sch.AddCommand(c)
 	}
 

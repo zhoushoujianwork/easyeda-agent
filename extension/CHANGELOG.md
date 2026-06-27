@@ -4,6 +4,21 @@ All notable changes to the **EasyEDA Agent Connector** are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+### Added
+- **`schematic.page.clear` — one-shot page reset.** Deletes every page-level
+  primitive on the active page (components, net flags/ports/labels, wires, buses,
+  and graphics — arcs/circles/rectangles/polygons/text), not just components.
+  `preserveSheet` (default true) keeps the sheet/title block; `dryRun` reports
+  per-type counts without deleting. Returns `{deleted:{...}, total, deletedIds}`.
+  Fixes the trap where `schematic.component.delete` left wires/buses behind while
+  `components.list` reported a clean page, forcing a fall back to raw
+  `debug.exec_js`.
+- **`schematic.primitives.delete` — generalized, any-type delete.** Routes each
+  requested id to its owning `sch_Primitive*` class so wires/buses/graphics/flags
+  can be deleted alongside components; omit `primitiveIds` to delete the current
+  selection (select-all → delete). Reports `notFound` ids.
+
 ## [0.5.8] - 2026-06-27
 ### Changed
 - **Version bump to pair with the daemon/CLI artifact-path change.** No connector
