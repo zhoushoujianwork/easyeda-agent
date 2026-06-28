@@ -26,8 +26,10 @@
 - **去耦**:读引脚 name 找 VCC/GND → 电容贴 VCC 焊盘 ~100u → `VCC→cap` 短线(无引脚通道)→ cap 另一脚 GND flag。
 
 ## 图纸 / 多页(工具坑,实测)
-- **纸张改不大**:`titleblock.modify` 写操作是坏的(EDA_CALL_FAILED,连文本字段都失败)→ 默认 **A4 1170×825**,
-  放不下就**多页**,别赌放大单页。坐标落界内、避开右下角明细表;放完断言全在 (W,H) 内。
+- **先有图纸,默认 A4**:`sch sheet-geometry --json` 必须能读到 `componentType:"sheet"` 的实测 bbox,再进入生产级 place/wire。若页面显示“无图纸”或 sheet bbox 缺失,这是**阻塞项**:让用户在 EasyEDA 选择/创建默认 A4 图纸,不要用 union bbox/provisional title block 继续落子。
+- **纸张改不大**:`titleblock.modify` 写操作是坏的(EDA_CALL_FAILED,连文本字段都失败)→ 默认 **A4**(以 `sch sheet-geometry` 实测 bbox 为准;常见约 1170×825/1188×840 一类比例),
+  放不下就**多页**,别赌放大单页。坐标落界内、避开右下角明细表;放完断言全在 sheet bbox 内。
+- **分页先于摆件**:按模块粗估每页容量。经验门槛:一页 A4 优先放 1 个主 IC/模块簇 + 2–4 个小外围簇;若超过 ~20–30 个可见器件、或任意两组之间无法保留 40–80 units 通道,拆页。跨页用同名 net port 表达连接。
 - **多页交错执行**:`doc switch` 能切页;`page-new` 把新页设为活动页;`getAll` 按活动页取。
   → 在当前页 place+wire,然后**每 `page-new` 一页就立刻**在它上面 place+wire(别先全建页再统一布线 = 全堆最后一页);跨页用 `net_port` 同名连。
 - **清页前先存预置件的 `{libraryUuid,deviceUuid}`**(或用 MPN 重 `lib search` 搜回),否则删了找不回

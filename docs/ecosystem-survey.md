@@ -9,6 +9,10 @@
 > **数据来源**:`@jlceda/pro-api-types@0.2.63`(`index.d.ts`,21302 行,权威定义,`eda` 暴露
 > **86 个命名空间**)+ 6 个官方扩展源码逐行 grep + `prodocs.easyeda.com` API 文档。
 > **方法**:四路并行源码挖矿(布线/铺铜、器件标准化、网表/DRC、命名空间全扫)。
+>
+> **项目记忆 / Issue 策略**:遇到官方 API 未暴露、类型声明与运行时不一致、或官方文档没有说明的能力时,
+> 不把猜测实现当成稳定能力。先记录官方类型/文档证据、运行时探测结果、官方扩展源码用法和我们的替代路线。
+> 若缺口影响正确性或可维护性,整理最小复现和期望行为,去官方 `easyeda/pro-api-sdk` 或相关官方库提 issue。
 
 ---
 
@@ -139,6 +143,24 @@ eda.sch_ManufactureData.getNetlistFile()   // 制造网表 File → .text() → 
 - **原理图侧 = 聚合-only(坐实)**:`sch_Drc` 只有 `check`,三个官方报告扩展无一拿到逐条 violation,
   export-design-report 的 `pcb_Drc.*` 也只读 net-class/差分对/等长组**约束定义**。我们 `sch check`
   几何重建路线正确且唯一可行。
+- **2026-06-29 复查(ceshi / EasyEDA 3.2.121 / connector 0.5.19)**:
+  - 类型定义声明 `sch_Drc.check(strict,userInterface,includeVerboseError:true) -> Array<any>`,但运行时
+    **8 组参数全返回 boolean**,不是数组:`strict=false -> true`,`strict=true -> false`;`userInterface`
+    只影响是否打开 UI 面板,不改变返回形态。
+  - `sys_Log.clear/sort/find` 在 `sch_Drc.check(true,true,true)` 后返回空日志;UI DRC 面板结果**不会进入**
+    public log API。
+  - `sys_MessageBus.pullAsyncPublic` 试探 `schDrcResult`/`drcResult`/`SCHEMATIC_DRC`/`drc` 等公共 topic
+    均 timeout;未发现可订阅的 UI DRC 结果 topic。
+  - `SCH_Event` 运行时只暴露 mouse / primitive / simulation 事件;**没有** schematic DRC result listener。
+    `PCB_Event` 类型有 `addRealTimeDrcResultEventListener`,但 3.2.121 运行时 prototype 未暴露该方法。
+  - `sch_Net.getAllNets*()` 在当前异常原理图上返回空数组,不能作为 DRC 明细源。
+  - `sch_ManufactureData.getNetlistFile()` 能导出完整 JSON,包含 `components.*.pinInfoMap.*.net`
+    和 `designRule.netRule`;这是比 `sch_Net` 更可靠的官方数据源,可用于 `sch check` 与几何连通结果交叉校验。
+  - 结论保持:原理图 UI DRC 明细没有 public API;要对齐 UI warning,必须用 `sch check` 从 primitives +
+    netlist JSON 重建。并且 connector 不能假设 verbose overload 一定返回数组。
+  - 已在官方 issue 跟进:[easyeda/pro-api-sdk#27](https://github.com/easyeda/pro-api-sdk/issues/27)。在官方支持
+    `includeVerboseError=true` 稳定返回结构化明细、或提供 DRC 面板读取 API 之前,生产流程暂以我们的
+    `sch check` 作为逐条 warning/定位/自动修复依据,`sch_Drc.check` 只作为 boolean SDK 门禁。
 - **PCB 侧 = 有逐条明细(已活板确认,见 [`pcb-feature-discovery.md`](pcb-feature-discovery.md))**:
   `pcb_Drc.check` 在 3.2.148 真板上返回**嵌套明细** `{count, list:[{errorObjType, errorType,
   explanation:{errData:{net, obj1, ...}}, globalIndex}]}`(我们 `pcb drc` CLI 已在用)——远强于原理图侧。

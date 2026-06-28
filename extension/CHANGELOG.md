@@ -6,6 +6,23 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-06-29
+### Fixed
+- `schematic.drc.check` now treats boolean SDK results as first-class normalized
+  output instead of assuming the verbose overload always returns an array. This
+  matches current EasyEDA runtime behavior for `SCH_Drc.check`.
+- `schematic.check` now reconstructs additional UI-like warnings for schematic
+  validation: net-marker/wire-name mismatches and multi-net wires.
+- Floating-pin detection now cross-checks the official manufacture netlist JSON
+  (`sch_ManufactureData.getNetlistFile`) before reporting a pin as floating.
+- Net-marker checks now dedupe repeated wire/marker segment matches and only treat
+  a marker as attached when it touches a wire vertex, reducing false positives from
+  malformed merged polylines.
+
+### Changed
+- CLI and skill docs now distinguish the official SDK DRC gate (`sch drc`) from
+  the reconstructed per-item checker (`sch check`).
+
 ## [0.5.18] - 2026-06-28
 ### Added
 - **PCB routing roadmap R1 (copper pour) + R2 (rip-up/list)** from

@@ -132,7 +132,8 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 
 | Action | What |
 |---|---|
-| `schematic.drc.check` | Run schematic DRC, normalized to `{passed, violations}`. |
+| `schematic.drc.check` | Run the official schematic DRC SDK gate; current EasyEDA builds may return only boolean/aggregate detail. Use `schematic.check` for reconstructed per-item warnings. |
+| `schematic.check` | Reconstructed schematic design check from primitives + official netlist JSON: net-marker mismatch, multi-net wire, floating pins, wire crossings, and wire-over-pin hazards. |
 | `schematic.snapshot` | Capture the current rendered area as a PNG artifact. |
 
 ### Export (2 actions)

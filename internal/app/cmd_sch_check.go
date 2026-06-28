@@ -24,15 +24,20 @@ type checkPinDetail struct {
 }
 
 type checkFinding struct {
-	Type        string           `json:"type"`
-	Level       string           `json:"level"`
-	Designator  string           `json:"designator,omitempty"`
-	PrimitiveId string           `json:"primitiveId,omitempty"`
-	Pins        []string         `json:"pins,omitempty"`
-	PinDetails  []checkPinDetail `json:"pinDetails,omitempty"`
-	Count       int              `json:"count,omitempty"`
-	Message     string           `json:"message,omitempty"`
-	At          *struct {
+	Type              string           `json:"type"`
+	Level             string           `json:"level"`
+	Designator        string           `json:"designator,omitempty"`
+	PrimitiveId       string           `json:"primitiveId,omitempty"`
+	WirePrimitiveId   string           `json:"wirePrimitiveId,omitempty"`
+	MarkerPrimitiveId string           `json:"markerPrimitiveId,omitempty"`
+	WireNet           string           `json:"wireNet,omitempty"`
+	MarkerNet         string           `json:"markerNet,omitempty"`
+	Nets              []string         `json:"nets,omitempty"`
+	Pins              []string         `json:"pins,omitempty"`
+	PinDetails        []checkPinDetail `json:"pinDetails,omitempty"`
+	Count             int              `json:"count,omitempty"`
+	Message           string           `json:"message,omitempty"`
+	At                *struct {
 		X float64 `json:"x"`
 		Y float64 `json:"y"`
 	} `json:"at,omitempty"`
@@ -41,6 +46,8 @@ type checkFinding struct {
 type checkSummary struct {
 	FloatingPins           int `json:"floatingPins"`
 	ComponentsWithFloating int `json:"componentsWithFloating"`
+	NetMarkerMismatches    int `json:"netMarkerMismatches"`
+	MultiNetWires          int `json:"multiNetWires"`
 	WireCrossings          int `json:"wireCrossings"`
 	WireOverPins           int `json:"wireOverPins"`
 	Total                  int `json:"total"`
@@ -122,8 +129,8 @@ func checkLevelTag(level string) string {
 
 func renderCheckReport(rep checkReport, w io.Writer) {
 	s := rep.Summary
-	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d wire-crossing(s), %d wire-over-pin(s)\n",
-		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.WireCrossings, s.WireOverPins)
+	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d net-marker mismatch(es), %d multi-net wire(s), %d wire-crossing(s), %d wire-over-pin(s)\n",
+		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.NetMarkerMismatches, s.MultiNetWires, s.WireCrossings, s.WireOverPins)
 
 	for _, f := range rep.Findings {
 		tag := checkLevelTag(f.Level)
@@ -139,10 +146,20 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 			line += f.Designator + "  "
 		case f.PrimitiveId != "":
 			line += f.PrimitiveId + "  "
+		case f.WirePrimitiveId != "":
+			line += f.WirePrimitiveId + "  "
+		case f.MarkerPrimitiveId != "":
+			line += f.MarkerPrimitiveId + "  "
 		}
 		line += msg
 		if len(f.Pins) > 0 {
 			line += "  [" + strings.Join(f.Pins, ",") + "]"
+		}
+		if f.WireNet != "" || f.MarkerNet != "" {
+			line += fmt.Sprintf("  marker=%s wire=%s", f.MarkerNet, f.WireNet)
+		}
+		if len(f.Nets) > 0 {
+			line += "  nets=[" + strings.Join(f.Nets, ",") + "]"
 		}
 		if f.At != nil {
 			line += fmt.Sprintf("  @(%.2f,%.2f)", f.At.X, f.At.Y)
@@ -169,5 +186,8 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 	}
 	if s.WireCrossings > 0 || s.WireOverPins > 0 {
 		fmt.Fprintln(w, "→ routing: reroute crossings in clear channels (L-bends); never run a wire through a pin")
+	}
+	if s.NetMarkerMismatches > 0 || s.MultiNetWires > 0 {
+		fmt.Fprintln(w, "→ net names: fix mismatched flags/ports/labels before treating schematic DRC as clean")
 	}
 }

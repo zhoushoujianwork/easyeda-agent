@@ -716,14 +716,15 @@ compare primitiveCount and judge STATE by data (sch list/getAll), not the pixels
 		var strict, verbose, asJSON bool
 		c := &cobra.Command{
 			Use:   "drc",
-			Short: "Run schematic DRC and print per-violation detail (rule/message/coords)",
-			Long: `Run schematic DRC and print each violation, not just an aggregate count.
+			Short: "Run the official schematic DRC SDK gate (may be boolean/aggregate only)",
+			Long: `Run the official schematic DRC SDK gate.
 
-The connector normalizes the EDA result into per-violation records — each with a
-severity level, rule, message, related primitive/designator ids, and (when the
-build provides it) x/y coordinates — plus a severity summary. The human view
-prints one line per violation (LEVEL <rule> <message> @(x,y)), mirroring
-layout-lint; --json emits the structured report.
+Current EasyEDA builds may return only boolean/aggregate data even when the SDK
+type declares verbose per-item detail. The connector normalizes whatever the SDK
+returns, but 'sch drc' must not be treated as the full UI DRC warning list.
+
+Use 'easyeda sch check' for reconstructed per-item warnings such as floating pins
+and net-marker/wire-name mismatches.
 
 Exit code: non-zero ONLY when the fatal count (error + fatal severities) is > 0.
 Warnings alone exit 0, so the design-flow S5 gate can demand "0 fatal" while
@@ -731,8 +732,8 @@ still surfacing warnings for review.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda sch drc
   easyeda sch drc --strict          # treat warnings as errors (SDK strict mode)
-  easyeda sch drc --json            # structured per-violation output
-  easyeda sch drc --verbose         # also dump each violation's raw EDA object`,
+  easyeda sch drc --json            # normalized SDK result
+  easyeda sch check --json          # reconstructed per-item warnings`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				return runSchDrc(cfg, window, strict, verbose, asJSON, stdout, stderr)
 			},
@@ -752,14 +753,16 @@ still surfacing warnings for review.`,
 		var allPages, strict, asJSON bool
 		c := &cobra.Command{
 			Use:   "check",
-			Short: "Reconstructed per-item design check (floating pins) the SDK DRC can't itemize",
+			Short: "Reconstructed per-item design check the SDK DRC can't itemize",
 			Long: `Reconstructed per-item design check — the detail the EDA schematic DRC API can't expose.
 
-eda.sch_Drc.check (what 'sch drc' uses) returns only an aggregate {count,type}; the
-itemized findings the UI DRC panel shows are not in any public API. 'sch check'
-recomputes them from the primitives. Rule 1: floating pins — geometric connectivity
-(a pin is connected iff a wire touches its coordinate; NC-marked pins excluded),
-grouped by component.
+eda.sch_Drc.check (what 'sch drc' uses) may return only a boolean/aggregate result;
+the itemized findings the UI DRC panel shows are not in any public API. 'sch check'
+recomputes them from primitives and the official manufacture netlist JSON.
+
+Covered rules include net-marker/wire-name mismatches, duplicate/multiple net names
+on a wire, floating pins (netlist-confirmed and geometric), wire crossings, and
+wire-over-pin hazards.
 
 The floating-pin output is the exact input 'sch no-connect' takes, so the loop is:
 sch check → wire the real ones / sch no-connect the intentional ones → sch check.

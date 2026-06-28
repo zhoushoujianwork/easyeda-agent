@@ -1265,14 +1265,29 @@ function flattenDrcNodes(
 	});
 }
 
-/** Normalize a raw DRC result array into `{passed, fatal, summary, violations}`. */
-function normalizeDrc(violations: Array<unknown>): {
+/** Normalize a raw DRC result into `{passed, fatal, summary, violations}`. */
+function normalizeDrc(raw: unknown): {
 	passed: boolean;
 	fatal: number;
 	summary: DrcSummary;
 	violations: Array<DrcViolation>;
-	raw: Array<unknown>;
+	raw: unknown;
 } {
+	if (typeof raw === 'boolean') {
+		const summary: DrcSummary = raw
+			? { fatal: 0, error: 0, warn: 0, info: 0, unknown: 0, total: 0 }
+			: { fatal: 0, error: 0, warn: 0, info: 0, unknown: 1, total: 1 };
+		const violations: Array<DrcViolation> = raw ? [] : [{
+			level: 'unknown',
+			type: 'boolean-fail',
+			rule: 'sch_Drc.check',
+			message: 'EDA SDK returned false without per-item detail',
+			count: 1,
+			raw,
+		}];
+		return { passed: raw, fatal: 0, summary, violations, raw };
+	}
+	const violations = Array.isArray(raw) ? raw : [];
 	const leaves: Array<DrcViolation> = [];
 	flattenDrcNodes(violations, {}, leaves);
 
@@ -1284,11 +1299,11 @@ function normalizeDrc(violations: Array<unknown>): {
 	}
 	// `fatal` (the S5 gate input) = the must-fix class: fatal + error severities.
 	const fatal = summary.fatal + summary.error;
-	return { passed: leaves.length === 0, fatal, summary, violations: leaves, raw: violations };
+	return { passed: leaves.length === 0, fatal, summary, violations: leaves, raw };
 }
 
 const schematicDrcCheck: Handler = async (payload) => {
-	const strict = optionalBoolean(payload, 'strict') !== false;
+	const strict = optionalBoolean(payload, 'strict') === true;
 	// `includeVerboseError` selects the SDK overload: the literal `true` overload
 	// returns the violations array (what we normalize); the literal `false` one
 	// returns a bare boolean. Default true so we always get detail — and ACTUALLY
@@ -1317,7 +1332,7 @@ const schematicDrcCheck: Handler = async (payload) => {
 			},
 		};
 	}
-	let violations: Array<unknown>;
+	let violations: unknown;
 	try {
 		violations = await eda.sch_Drc.check(strict, false, true);
 	}
@@ -1356,10 +1371,15 @@ interface CheckPinDetail {
 
 // One reconstructed design-check finding. Reuses the DRC severity buckets.
 interface CheckFinding {
-	type: string; // 'floating-pin' | 'wire-crossing' | 'wire-over-pin'
+	type: string; // 'floating-pin' | 'wire-crossing' | 'wire-over-pin' | 'net-marker-mismatch' | 'multi-net-wire'
 	level: DrcSeverity;
 	designator?: string;
 	primitiveId?: string; // owning component (floating-pin / wire-over-pin)
+	wirePrimitiveId?: string;
+	markerPrimitiveId?: string;
+	wireNet?: string;
+	markerNet?: string;
+	nets?: Array<string>;
 	pins?: Array<string>; // pin numbers — kept flat for `sch no-connect`
 	pinDetails?: Array<CheckPinDetail>; // number+name+coords for each pin
 	count?: number;
@@ -1380,19 +1400,65 @@ function pointOnSegment(px: number, py: number, x1: number, y1: number, x2: numb
 	return Math.abs(cross) <= CHECK_EPS * Math.max(1, Math.hypot(x2 - x1, y2 - y1));
 }
 
+interface CheckWireSegment {
+	seg: Seg;
+	wirePrimitiveId: string;
+	net: string;
+}
+
+interface NetlistPinInfo {
+	net?: string;
+}
+
+interface NetlistComponentInfo {
+	props?: Record<string, unknown>;
+	pinInfoMap?: Record<string, NetlistPinInfo>;
+}
+
 // Flatten every wire's polyline (getState_Line → flat [x0,y0,x1,y1,…]) into segments.
-function collectWireSegments(wires: Array<{ getState_Line: () => Array<number> }>): Array<[number, number, number, number]> {
-	const segs: Array<[number, number, number, number]> = [];
+function collectWireSegments(wires: Array<{ getState_Line: () => Array<number>; getState_Net?: () => string; getState_PrimitiveId?: () => string }>): Array<CheckWireSegment> {
+	const segs: Array<CheckWireSegment> = [];
 	for (const w of wires) {
 		let line: Array<number> | undefined;
 		try { line = w.getState_Line(); }
 		catch { continue; }
 		if (!Array.isArray(line)) continue;
+		let wirePrimitiveId = '';
+		let net = '';
+		try { wirePrimitiveId = String(w.getState_PrimitiveId?.() ?? ''); }
+		catch { /* optional */ }
+		try { net = String(w.getState_Net?.() ?? ''); }
+		catch { /* optional */ }
 		for (let i = 0; i + 3 < line.length; i += 2) {
-			segs.push([line[i], line[i + 1], line[i + 2], line[i + 3]]);
+			segs.push({ seg: [line[i], line[i + 1], line[i + 2], line[i + 3]], wirePrimitiveId, net });
 		}
 	}
 	return segs;
+}
+
+async function collectNetlistPinNets(): Promise<Map<string, Map<string, string>>> {
+	const byDesignator = new Map<string, Map<string, string>>();
+	let file: File | undefined;
+	try { file = await eda.sch_ManufactureData.getNetlistFile(); }
+	catch { return byDesignator; }
+	if (!file) return byDesignator;
+	let parsed: unknown;
+	try { parsed = JSON.parse(await file.text()); }
+	catch { return byDesignator; }
+	const components = (parsed as { components?: Record<string, NetlistComponentInfo> })?.components;
+	if (!components || typeof components !== 'object') return byDesignator;
+	for (const comp of Object.values(components)) {
+		const designator = String(comp.props?.Designator ?? '');
+		if (!designator || !comp.pinInfoMap) continue;
+		const pins = byDesignator.get(designator) ?? new Map<string, string>();
+		for (const pin of Object.values(comp.pinInfoMap)) {
+			const number = String((pin as { number?: unknown })?.number ?? '');
+			const net = String(pin?.net ?? '');
+			if (number && net) pins.set(number, net);
+		}
+		byDesignator.set(designator, pins);
+	}
+	return byDesignator;
 }
 
 type Seg = [number, number, number, number];
@@ -1439,6 +1505,7 @@ function interiorOnSegment(px: number, py: number, s: Seg): boolean {
 const schematicCheck: Handler = async (payload) => {
 	const allPages = optionalBoolean(payload, 'allPages') === true;
 	let components, wires;
+	const netlistPinNets = await collectNetlistPinNets();
 	try {
 		components = await eda.sch_PrimitiveComponent.getAll(undefined, allPages);
 		wires = await eda.sch_PrimitiveWire.getAll();
@@ -1446,7 +1513,8 @@ const schematicCheck: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to read schematic for design check.');
 	}
-	const segs = collectWireSegments((wires ?? []) as Array<{ getState_Line: () => Array<number> }>);
+	const wireSegs = collectWireSegments((wires ?? []) as Array<{ getState_Line: () => Array<number>; getState_Net?: () => string; getState_PrimitiveId?: () => string }>);
+	const segs = wireSegs.map(w => w.seg);
 
 	// Connection anchors that legitimately terminate a stub but are NOT real pins:
 	// netflag / netport / netlabel components. A pin sitting on one of these (e.g. an
@@ -1454,13 +1522,21 @@ const schematicCheck: Handler = async (payload) => {
 	// is intentionally connected — it must be excluded from wire-over-pin so the
 	// check agrees with the official DRC instead of flagging the merged stub endpoint.
 	const NET_MARKER_TYPES = new Set(['netflag', 'netport', 'netlabel', 'short_symbol']);
-	const connectionMarkers: Array<{ x: number; y: number }> = [];
+	const connectionMarkers: Array<{ x: number; y: number; net: string; primitiveId: string; componentType: string }> = [];
 	for (const c of components ?? []) {
 		let type: string;
 		try { type = String(c.getState_ComponentType?.() ?? ''); }
 		catch { continue; }
 		if (!NET_MARKER_TYPES.has(type)) continue;
-		try { connectionMarkers.push({ x: c.getState_X(), y: c.getState_Y() }); }
+		try {
+			connectionMarkers.push({
+				x: c.getState_X(),
+				y: c.getState_Y(),
+				net: String(c.getState_Net?.() ?? ''),
+				primitiveId: String(c.getState_PrimitiveId?.() ?? ''),
+				componentType: type,
+			});
+		}
 		catch { /* marker without coords — skip */ }
 	}
 	// Every wire vertex (segment endpoint). A pin coincident with a wire endpoint is
@@ -1476,6 +1552,65 @@ const schematicCheck: Handler = async (payload) => {
 		|| wireEndpoints.some(e => Math.hypot(x - e.x, y - e.y) <= COINCIDE_TOL);
 
 	const findings: Array<CheckFinding> = [];
+	let netMarkerMismatches = 0;
+	let multiNetWires = 0;
+
+	// Rule 0: net marker/port/label names must agree with the wire they touch.
+	// The UI DRC reports this as "网络标识 X 的名称与所连导线 Y 名称不一致", but
+	// eda.sch_Drc.check does not expose it through the SDK on current builds.
+	const wireMarkerNets = new Map<string, Array<{ net: string; markerPrimitiveId: string; at: { x: number; y: number } }>>();
+	const seenMarkerWire = new Set<string>();
+	const seenMismatch = new Set<string>();
+	for (const m of connectionMarkers) {
+		if (!m.net) continue;
+		for (const ws of wireSegs) {
+			const touchesEndpoint = Math.hypot(m.x - ws.seg[0], m.y - ws.seg[1]) <= COINCIDE_TOL
+				|| Math.hypot(m.x - ws.seg[2], m.y - ws.seg[3]) <= COINCIDE_TOL;
+			if (!touchesEndpoint) continue;
+			if (ws.wirePrimitiveId) {
+				const markerWireKey = `${ws.wirePrimitiveId}\u0000${m.primitiveId || m.x + ',' + m.y}\u0000${m.net}`;
+				if (!seenMarkerWire.has(markerWireKey)) {
+					seenMarkerWire.add(markerWireKey);
+					const arr = wireMarkerNets.get(ws.wirePrimitiveId) ?? [];
+					arr.push({ net: m.net, markerPrimitiveId: m.primitiveId, at: { x: m.x, y: m.y } });
+					wireMarkerNets.set(ws.wirePrimitiveId, arr);
+				}
+			}
+			if (ws.net && ws.net !== m.net) {
+				const mismatchKey = `${ws.wirePrimitiveId}\u0000${m.primitiveId || m.x + ',' + m.y}\u0000${ws.net}\u0000${m.net}`;
+				if (seenMismatch.has(mismatchKey)) continue;
+				seenMismatch.add(mismatchKey);
+				netMarkerMismatches++;
+				findings.push({
+					type: 'net-marker-mismatch',
+					level: 'warn',
+					wirePrimitiveId: ws.wirePrimitiveId || undefined,
+					markerPrimitiveId: m.primitiveId || undefined,
+					wireNet: ws.net,
+					markerNet: m.net,
+					at: { x: m.x, y: m.y },
+					message: `网络标识 ${m.net} 与所连导线 ${ws.net} 名称不一致`,
+				});
+			}
+		}
+	}
+	for (const [wireId, refs] of wireMarkerNets) {
+		const nets = refs.map(r => r.net).filter(Boolean);
+		if (nets.length <= 1) continue;
+		const unique = [...new Set(nets)];
+		if (unique.length > 1 || nets.length !== unique.length) {
+			multiNetWires++;
+			findings.push({
+				type: 'multi-net-wire',
+				level: 'warn',
+				wirePrimitiveId: wireId,
+				nets,
+				count: nets.length,
+				message: `导线有多个网络名: ${nets.join('、')}`,
+			});
+		}
+	}
+
 	let floatingTotal = 0;
 	let componentsWithFloating = 0;
 	// All component pins, kept for the wire-over-pin rule below.
@@ -1502,7 +1637,9 @@ const schematicCheck: Handler = async (payload) => {
 			// Intentionally-NC pins (the X marker) are not "floating" — skip them.
 			try { if (p.getState_NoConnected && p.getState_NoConnected()) continue; }
 			catch { /* treat as not-NC */ }
-			const connected = segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]))
+			const netlistNet = netlistPinNets.get(designator)?.get(num) ?? '';
+			const connected = Boolean(netlistNet)
+				|| segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]))
 				// A pin landing directly on a netflag/netport/netlabel is connected too.
 				|| connectionMarkers.some(m => Math.hypot(px - m.x, py - m.y) <= COINCIDE_TOL);
 			if (!connected) {
@@ -1580,6 +1717,8 @@ const schematicCheck: Handler = async (payload) => {
 	const summary = {
 		floatingPins: floatingTotal,
 		componentsWithFloating,
+		netMarkerMismatches,
+		multiNetWires,
 		wireCrossings: crossingTotal,
 		wireOverPins: overPinTotal,
 		total: findings.length,

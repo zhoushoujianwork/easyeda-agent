@@ -72,6 +72,47 @@ func TestRenderCheck_Routing(t *testing.T) {
 	}
 }
 
+func TestRenderCheck_NetNames(t *testing.T) {
+	at := &struct {
+		X float64 `json:"x"`
+		Y float64 `json:"y"`
+	}{X: 545, Y: 295}
+	rep := checkReport{
+		Passed: false,
+		Summary: checkSummary{
+			NetMarkerMismatches: 1,
+			MultiNetWires:       1,
+			Total:               2,
+		},
+		Findings: []checkFinding{
+			{
+				Type:            "net-marker-mismatch",
+				Level:           "warn",
+				WirePrimitiveId: "w1",
+				MarkerNet:       "+3V3",
+				WireNet:         "BOOT_IO0",
+				Message:         "网络标识 +3V3 与所连导线 BOOT_IO0 名称不一致",
+				At:              at,
+			},
+			{
+				Type:            "multi-net-wire",
+				Level:           "warn",
+				WirePrimitiveId: "w2",
+				Nets:            []string{"EN", "EN"},
+				Message:         "导线有多个网络名: EN、EN",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	renderCheckReport(rep, &buf)
+	out := buf.String()
+	for _, want := range []string{"net-marker mismatch", "multi-net wire", "marker=+3V3 wire=BOOT_IO0", "nets=[EN,EN]", "net names"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+}
+
 // Clean board: no findings → passed, and the "no findings" line.
 func TestRenderCheck_Clean(t *testing.T) {
 	rep := checkReport{Passed: true, Summary: checkSummary{}}

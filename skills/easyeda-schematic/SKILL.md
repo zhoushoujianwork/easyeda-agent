@@ -16,6 +16,14 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 5. Verify each mutation by readback, snapshot, or DRC.
 6. Ask before destructive operations, multi-step mutation plans, or saving.
 7. Summarize changed primitives, warnings, and artifacts.
+8. If an official EasyEDA API is missing, undocumented, or differs from runtime behavior, record the evidence and workaround; when it affects correctness or maintainability, prepare a minimal repro and file an issue with the relevant official EasyEDA repository.
+
+## Production preflight gates
+
+- **Sheet first, default A4.** Before any whole-board placement/routing, run `easyeda doc ls`, switch to the target schematic page, then run `easyeda sch sheet-geometry --json`. If no `componentType:"sheet"` bbox is available, stop and ask the user to select/create the default A4 sheet in EasyEDA; do not place parts, wire nets, or run `sch autolayout --apply` on a sheetless page.
+- **Page plan before coordinates.** For non-trivial designs, decide the page/module split from the A4 usable area before placing anything. If the modules do not fit with route channels and title-block keep-out, create/rename pages and split modules instead of expanding coordinates outside the sheet.
+- **Clear is destructive.** Use `easyeda sch clear --dry-run` first, report the delete counts, and wait for explicit confirmation before `easyeda sch clear`. Preserve the sheet by default; only use `--no-preserve-sheet` when the user explicitly wants the drawing frame removed too. After clearing, read back the page and confirm only the intended sheet/template primitives remain.
+- **Honor step confirmations.** If the user asks to confirm each step, stop after every stage report (preflight, clear dry-run, clear apply, page creation, placement dry-run, placement apply, wiring, verification, save) until they approve the next mutation.
 
 ## Drawing a schematic — library-first (default)
 
@@ -250,7 +258,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.component.place`
 - `schematic.component.modify`
 - `schematic.component.delete` — ⚠️ **只删组件,不删导线/总线/图形**。删完 `schematic.components.list` 只剩 A4 sheet 会让你误以为页面已干净,实际残留导线还在(DRC 仍会报)。要真正清页用 `schematic.page.clear`。
-- `schematic.page.clear` — **一键清空当前页**:删除所有页级 primitive(组件、网络标志/端口/标签、导线、总线、图形),默认保留图框 sheet(`--no-preserve-sheet` 连图框一起删)。`--dry-run` 只统计不删。返回各类型删除计数 `{deleted:{...}, total, deletedIds}`。**无 undo**,确认门控。生成→检测→清页→重试闭环用这个。CLI:`easyeda sch clear [--dry-run] [--no-preserve-sheet]`。
+- `schematic.page.clear` — **一键清空当前页**:删除所有页级 primitive(组件、网络标志/端口/标签、导线、总线、图形),默认保留图框 sheet(`--no-preserve-sheet` 连图框一起删)。`--dry-run` 只统计不删。返回各类型删除计数 `{deleted:{...}, total, deletedIds}`。**无 undo**,确认门控。生成→检测→清页→重试闭环用这个。生产流程必须先 dry-run、报告、等用户确认;清完再读回确认 sheet 仍在。CLI:`easyeda sch clear [--dry-run] [--no-preserve-sheet]`。
 - `schematic.primitives.delete` — 按 id **跨类型**删除(组件/标志/导线/总线/图形都行),省略 `--ids` 则删当前选区(配合 `schematic.select` 做"全选→删除")。无 undo,确认门控。CLI:`easyeda sch prim-delete [--ids '[...]']`。
 - `schematic.wire.create`
 - `schematic.netflag.create`
@@ -258,8 +266,8 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.pin.set_no_connect` — 打/清「非连接标识」(NC, X 标记),让 DRC 不再对故意悬空的引脚报"未连接"。按位号+引脚号定位:`easyeda sch no-connect --designator U1 --pin 23,24[,…]`(`--clear` 清除)。
 - `schematic.select`
 - `schematic.snapshot` — 截图。**产物保存在 CLI 运行目录下的隐藏目录 `<cwd>/.easyeda/artifacts/`,文件名带本地时间戳**(`<YYYYMMDD-HHMMSS>-<kind>-<短id>.png`,便于排序/查找);响应里的 `artifacts[].path` 是绝对路径。netlist/BOM 等其他产物同此规则。
-- `schematic.drc.check` — 用 `easyeda sch drc` 跑，**逐条**打印 `LEVEL <rule> <message> @(x,y)`(`--json` 给结构化)。返回含 `summary{fatal,error,warn,…}` 与 `fatal` 计数;**退出码仅在 `fatal>0` 时非零**(warning 不阻塞),据此判 S5 门「0 fatal」。
-- `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(官方 DRC 只给聚合 count,这里从图元几何重建):**floating-pin**(引脚悬空)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
+- `schematic.drc.check` — 用 `easyeda sch drc` 跑 EasyEDA SDK 的 `sch_Drc.check`。**注意:当前 EasyEDA build 可能只返回布尔/聚合结果,不会暴露 UI DRC 面板里的逐条 warning**(例如网络标识与导线名不一致、悬空脚明细)。所以它只能作为 SDK DRC 门,不能单独宣称“官方 DRC 干净”。
+- `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(补 SDK DRC 暴露不全):**net-marker-mismatch**(网络标识/端口/标签名与所连导线 net 名不一致)、**multi-net-wire**(同一导线多个网络名)、**floating-pin**(引脚悬空)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
 - `schematic.save`
 - `schematic.export.netlist`
 - `schematic.export.bom`

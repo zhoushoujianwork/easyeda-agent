@@ -9,7 +9,8 @@ When an AI agent (via `easyeda-agent`) generates or modifies a schematic, it mus
 
 - EasyEDA Pro 原理图网格单位 = `0.01 inch`（1 grid step = 10 raw units）。
 - 所有坐标必须**对齐网格**（10 的倍数）。`x % 10 == 0 && y % 10 == 0`。
-- A3 typical sheet ≈ `2400 × 1600` units (= 24" × 16")。A4 ≈ `1700 × 1100`。
+- 生产级布局必须先有可读 sheet primitive;默认选择/保留 A4。无图纸时不得用坐标外扩或已有器件 union bbox 代替图纸。
+- A 系列图纸尺寸以 `easyeda sch sheet-geometry` 的实测 bbox 为准;不同 EasyEDA build 的 A4 可能约 `1170 × 825` / `1188 × 840` 等同类比例。不要硬编码单一尺寸。
 - 元件中心 `(x, y)` = 元件参考点；元件 pin 在中心周围。
 
 ## 1. 分区 (Zone Map)

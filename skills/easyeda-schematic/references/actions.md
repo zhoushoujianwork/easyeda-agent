@@ -54,7 +54,8 @@ Run `easyeda actions` for the authoritative machine-readable list.
 
 ## Verify & Export
 
-- `schematic.drc.check` — 运行 DRC，返回**逐条** violation（`{level, rule, message, primitiveIds, designators, x, y}`）+ 严重度 `summary` + `fatal` 计数（error+fatal）。CLI 推荐 `easyeda sch drc`（人类逐条视图 `LEVEL <rule> <message> @(x,y)`）或 `--json`（结构化）；**退出码仅在 `fatal>0` 时非零**，warning 不阻塞 → 供 design-flow S5 门「0 fatal」判定。
+- `schematic.drc.check` — 调官方 `eda.sch_Drc.check` 作为 SDK DRC 门。当前 EasyEDA build 可能只返回 boolean/聚合结果,即使 `includeVerboseError=true` 也不保证有逐条 UI warning；CLI: `easyeda sch drc [--json]`。**不要单靠它宣称“官方 UI DRC 干净”**。
+- `schematic.check` — 我们的逐条重建检查:从 primitives + 官方 `sch_ManufactureData.getNetlistFile()` 交叉校验,报告 net-marker/wire-name mismatch、multi-net wire、floating-pin、wire-crossing、wire-over-pin。CLI: `easyeda sch check [--json] [--strict]`。
 - `schematic.export.netlist` — 导出网表为 artifact
 - `schematic.export.bom` — 导出 BOM（csv 或 xlsx）为 artifact
 

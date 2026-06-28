@@ -125,6 +125,9 @@ func runAutolayout(cfg *appConfig, window string, spec alSpec, rules autolayoutR
 		return err
 	}
 	parts, sheet := parseAutolayoutParts(res.Result)
+	if apply && rules.AvoidTitleBlock && sheet == nil {
+		return fmt.Errorf("autolayout: no sheet bbox found; select/create an A4 sheet and verify with 'easyeda sch sheet-geometry' before --apply")
+	}
 
 	modules := make([]alModuleSpec, 0, len(spec.Modules))
 	for _, m := range spec.Modules {
@@ -267,6 +270,7 @@ that are already placed (it does not create missing parts).
 
   --dry-run  return proposed coordinates + warnings, mutate nothing (default)
   --apply    move parts via schematic.component.modify, then self-check overlaps
+             (requires a real sheet bbox when title-block avoidance is enabled)
   --json     emit the structured report
 
 Spec shape:

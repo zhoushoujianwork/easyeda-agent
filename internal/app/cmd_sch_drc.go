@@ -7,14 +7,12 @@ import (
 	"strings"
 )
 
-// ── sch drc: electrical rule check with per-violation detail ────────────────
+// ── sch drc: official SDK electrical rule check ────────────────────────────
 //
-// The connector normalizes `sch_Drc.check` into per-violation leaves plus a
-// severity summary (see extension/src/actions.ts normalizeDrc). This file is the
-// human/JSON view over that shape: it prints each violation as
-// `LEVEL <rule> <message> @(x,y)` (mirroring layout-lint) and exits non-zero
-// only when the fatal (error/fatal) count is > 0 — so the design-flow S5 gate
-// can demand "0 fatal" while tolerating warnings. issue #7
+// EasyEDA's schematic DRC SDK may return only boolean/aggregate data even when
+// includeVerboseError=true. The connector normalizes whatever shape the runtime
+// provides into drcReport; itemized UI-panel warnings are reconstructed by
+// `sch check`, not by this command.
 
 // drcViolation mirrors one normalized violation from the connector.
 type drcViolation struct {
