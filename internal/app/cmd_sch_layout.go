@@ -27,9 +27,37 @@ type layoutBBox struct {
 
 // layoutComp is the minimal per-component shape layout-lint reasons about.
 type layoutComp struct {
-	ID         string
-	Designator string
-	BBox       *layoutBBox
+	ID            string
+	Designator    string
+	ComponentType string // "part" | "sheet" | "netflag" | "netport" | … (from the connector)
+	BBox          *layoutBBox
+}
+
+// schLayoutPartType is the componentType of a real placed device. Only these
+// participate in placement geometry by default. The drawing sheet / title block
+// (componentType "sheet") spans the whole page, so including it false-flags an
+// overlap against nearly every component; the various flag/label/port primitives
+// (netflag/netport/netlabel/…) are likewise not physical parts. See issue #13.
+const schLayoutPartType = "part"
+
+// filterLayoutComps keeps only real parts unless includeNonParts is set. It
+// returns the kept slice plus the count of excluded non-part primitives (sheet,
+// netflag, netport, …) so the report can disclose what was skipped. Components
+// with an empty componentType are KEPT — an older connector build that doesn't
+// emit the field must not have every component silently dropped.
+func filterLayoutComps(comps []layoutComp, includeNonParts bool) (kept []layoutComp, skipped int) {
+	if includeNonParts {
+		return comps, 0
+	}
+	kept = make([]layoutComp, 0, len(comps))
+	for _, c := range comps {
+		if c.ComponentType == "" || c.ComponentType == schLayoutPartType {
+			kept = append(kept, c)
+			continue
+		}
+		skipped++
+	}
+	return kept, skipped
 }
 
 // layoutFinding is one pairwise issue (overlap or tight spacing).
@@ -44,14 +72,15 @@ type layoutFinding struct {
 
 // layoutReport is the full normalized result of a layout-lint run.
 type layoutReport struct {
-	OK         bool            `json:"ok"`
-	MinGap     float64         `json:"minGap"`
-	Total      int             `json:"componentCount"`
-	WithBBox   int             `json:"withBBox"`
-	NoBBox     []string        `json:"noBBox,omitempty"`
-	Overlaps   []layoutFinding `json:"overlaps"`
-	TightPairs []layoutFinding `json:"tightSpacing"`
-	Summary    string          `json:"summary"`
+	OK              bool            `json:"ok"`
+	MinGap          float64         `json:"minGap"`
+	Total           int             `json:"componentCount"`
+	WithBBox        int             `json:"withBBox"`
+	SkippedNonParts int             `json:"skippedNonParts,omitempty"`
+	NoBBox          []string        `json:"noBBox,omitempty"`
+	Overlaps        []layoutFinding `json:"overlaps"`
+	TightPairs      []layoutFinding `json:"tightSpacing"`
+	Summary         string          `json:"summary"`
 }
 
 // analyzeLayout is the pure core: given components and a min-gap threshold,
@@ -144,7 +173,7 @@ func sortFindings(f []layoutFinding) {
 
 // runLayoutLint fetches components with bbox, analyzes, renders, and returns a
 // non-nil error when overlaps exist so the command exits non-zero (gate-able).
-func runLayoutLint(cfg *appConfig, window string, minGap float64, allPages, asJSON bool, stdout, stderr io.Writer) error {
+func runLayoutLint(cfg *appConfig, window string, minGap float64, allPages, asJSON, includeNonParts bool, stdout, stderr io.Writer) error {
 	payload := map[string]any{"includeBBox": true}
 	if allPages {
 		payload["allPages"] = true
@@ -158,7 +187,9 @@ func runLayoutLint(cfg *appConfig, window string, minGap float64, allPages, asJS
 	if perr != nil {
 		return perr
 	}
-	rep := analyzeLayout(comps, minGap)
+	parts, skipped := filterLayoutComps(comps, includeNonParts)
+	rep := analyzeLayout(parts, minGap)
+	rep.SkippedNonParts = skipped
 
 	if asJSON {
 		enc := json.NewEncoder(stdout)
@@ -190,8 +221,9 @@ func parseLayoutComps(result map[string]any) ([]layoutComp, error) {
 			continue
 		}
 		c := layoutComp{
-			ID:         asString(m["primitiveId"]),
-			Designator: asString(m["designator"]),
+			ID:            asString(m["primitiveId"]),
+			Designator:    asString(m["designator"]),
+			ComponentType: asString(m["componentType"]),
 		}
 		if bm, ok := m["bbox"].(map[string]any); ok {
 			c.BBox = &layoutBBox{
@@ -232,6 +264,9 @@ func renderLayoutReport(rep layoutReport, w io.Writer) {
 	}
 	for _, f := range rep.TightPairs {
 		fmt.Fprintf(w, "  WARN   spacing  %s ↔ %s   (gap %.2fmm < %.2fmm)\n", f.A, f.B, f.Gap, rep.MinGap)
+	}
+	if rep.SkippedNonParts > 0 {
+		fmt.Fprintf(w, "  note: %d non-part primitive(s) excluded (sheet/title-frame, netflag/netport/…); pass --include-non-parts to include\n", rep.SkippedNonParts)
 	}
 	if len(rep.NoBBox) > 0 {
 		fmt.Fprintf(w, "  note: %d component(s) had no bbox (skipped): %v\n", len(rep.NoBBox), rep.NoBBox)

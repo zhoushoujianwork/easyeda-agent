@@ -20,6 +20,11 @@ const (
 	defaultPortEnd   = 49629
 )
 
+// defaultActionTimeout bounds how long the CLI waits for a single /action
+// round-trip before giving up. Most actions return well under a second; a
+// hang here means the connector's underlying eda.* call never settled.
+const defaultActionTimeout = 20 * time.Second
+
 // errActionFailed is returned by dispatch when the daemon responds with
 // ok=false. The response body has already been written to stdout so the
 // caller must NOT print an additional error message.
@@ -44,7 +49,14 @@ func (c *appConfig) portRange() (int, int, error) {
 // caller must return that error without printing again). Any other error
 // (daemon not found, network, etc.) is a fresh error the caller may print.
 func dispatch(cfg *appConfig, action, window string, payload any, stdout, stderr io.Writer) error {
-	respBody, err := postAction(cfg, action, window, payload)
+	return dispatchTimed(cfg, action, window, payload, defaultActionTimeout, stdout, stderr)
+}
+
+// dispatchTimed is dispatch with a caller-chosen round-trip timeout. Use it for
+// actions that should fail fast instead of hanging the full default window when
+// the connector's eda.* call never settles (e.g. `sch place` with a bad uuid).
+func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout time.Duration, stdout, stderr io.Writer) error {
+	respBody, err := postAction(cfg, action, window, payload, timeout)
 	if err != nil {
 		return err
 	}
@@ -87,7 +99,7 @@ type actionResult struct {
 // touching stdout. A non-nil error means the daemon was unreachable or the
 // action returned ok=false (with the connector's error message attached).
 func requestAction(cfg *appConfig, action, window string, payload any) (*actionResult, error) {
-	respBody, err := postAction(cfg, action, window, payload)
+	respBody, err := postAction(cfg, action, window, payload, defaultActionTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -202,13 +214,16 @@ func selectWindow(windows []healthWindow, project, window string) (string, error
 
 // postAction is the shared HTTP core: find a live daemon, POST the typed action,
 // and return the raw response body.
-func postAction(cfg *appConfig, action, window string, payload any) ([]byte, error) {
+func postAction(cfg *appConfig, action, window string, payload any, timeout time.Duration) ([]byte, error) {
 	portStart, portEnd, err := cfg.portRange()
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	if timeout <= 0 {
+		timeout = defaultActionTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	scan := scanHealth(ctx, hostPortOptions{host: cfg.host, portStart: portStart, portEnd: portEnd})

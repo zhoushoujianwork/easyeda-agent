@@ -60,6 +60,15 @@ function edaError(err: unknown, message: string): ActionError {
  * Serialize a schematic component primitive to plain JSON using its public
  * getState_* accessors.
  *
+ * NOTE: the `uniqueId`, `component`, `symbol`, and `footprint` fields are
+ * placed-INSTANCE identifiers (sub-primitive ids of this specific placement).
+ * They are NOT the device-library uuid that `schematicComponentPlace`
+ * ({ libraryUuid, uuid }) expects — replaying one of them into `sch place`
+ * makes `eda.sch_PrimitiveComponent.create` hang. To re-place the same part,
+ * fetch a fresh device uuid via `schematicLibrarySearch` (lib search). The
+ * connector exposes no replayable deviceUuid because `eda.sch_*` does not
+ * surface the source device-library identity of a placed instance.
+ *
  * @param component - the component primitive object
  * @returns a plain JSON record
  */
@@ -1254,12 +1263,23 @@ const schematicDrcCheck: Handler = async (payload) => {
 // — the exact input schematic.pin.set_no_connect takes, so "find floating → mark
 // NC" is one loop. More rules (empty value, standardization) can be added here.
 
+// Per-pin detail attached to a floating-pin finding so the report is actionable
+// without a second lookup: which pin (number+name) on which primitive, and where.
+interface CheckPinDetail {
+	number: string;
+	name?: string;
+	x: number;
+	y: number;
+}
+
 // One reconstructed design-check finding. Reuses the DRC severity buckets.
 interface CheckFinding {
 	type: string; // 'floating-pin' | 'wire-crossing' | 'wire-over-pin'
 	level: DrcSeverity;
 	designator?: string;
-	pins?: Array<string>;
+	primitiveId?: string; // owning component (floating-pin / wire-over-pin)
+	pins?: Array<string>; // pin numbers — kept flat for `sch no-connect`
+	pinDetails?: Array<CheckPinDetail>; // number+name+coords for each pin
 	count?: number;
 	message?: string;
 	at?: { x: number; y: number }; // location of a crossing / through-pin
@@ -1346,6 +1366,33 @@ const schematicCheck: Handler = async (payload) => {
 	}
 	const segs = collectWireSegments((wires ?? []) as Array<{ getState_Line: () => Array<number> }>);
 
+	// Connection anchors that legitimately terminate a stub but are NOT real pins:
+	// netflag / netport / netlabel components. A pin sitting on one of these (e.g. an
+	// overlapping `sch connect` stub that EasyEDA auto-merged into a collinear wire)
+	// is intentionally connected — it must be excluded from wire-over-pin so the
+	// check agrees with the official DRC instead of flagging the merged stub endpoint.
+	const NET_MARKER_TYPES = new Set(['netflag', 'netport', 'netlabel', 'short_symbol']);
+	const connectionMarkers: Array<{ x: number; y: number }> = [];
+	for (const c of components ?? []) {
+		let type: string;
+		try { type = String(c.getState_ComponentType?.() ?? ''); }
+		catch { continue; }
+		if (!NET_MARKER_TYPES.has(type)) continue;
+		try { connectionMarkers.push({ x: c.getState_X(), y: c.getState_Y() }); }
+		catch { /* marker without coords — skip */ }
+	}
+	// Every wire vertex (segment endpoint). A pin coincident with a wire endpoint is
+	// a legitimate termination/junction even if a merged collinear wire also runs
+	// through it — that's a connection, not a pass-through short.
+	const wireEndpoints: Array<{ x: number; y: number }> = [];
+	for (const s of segs) {
+		wireEndpoints.push({ x: s[0], y: s[1] }, { x: s[2], y: s[3] });
+	}
+	const COINCIDE_TOL = CHECK_EPS * 8;
+	const coincidesWithAnchor = (x: number, y: number): boolean =>
+		connectionMarkers.some(m => Math.hypot(x - m.x, y - m.y) <= COINCIDE_TOL)
+		|| wireEndpoints.some(e => Math.hypot(x - e.x, y - e.y) <= COINCIDE_TOL);
+
 	const findings: Array<CheckFinding> = [];
 	let floatingTotal = 0;
 	let componentsWithFloating = 0;
@@ -1355,14 +1402,16 @@ const schematicCheck: Handler = async (payload) => {
 	for (const c of components ?? []) {
 		// Net flags/ports/labels are components too but have no real pins to float
 		// — getAllPinsByPrimitiveId returns empty for them, so they're skipped.
+		const primitiveId = c.getState_PrimitiveId();
 		let pins;
-		try { pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(c.getState_PrimitiveId()); }
+		try { pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId); }
 		catch { continue; }
 		if (!pins || pins.length === 0) continue;
 		const designator = c.getState_Designator?.() ?? '';
 
 		// Rule 1: floating pins (geometric connectivity).
 		const floating: Array<string> = [];
+		const floatingDetails: Array<CheckPinDetail> = [];
 		for (const p of pins) {
 			const px = p.getState_X();
 			const py = p.getState_Y();
@@ -1371,8 +1420,17 @@ const schematicCheck: Handler = async (payload) => {
 			// Intentionally-NC pins (the X marker) are not "floating" — skip them.
 			try { if (p.getState_NoConnected && p.getState_NoConnected()) continue; }
 			catch { /* treat as not-NC */ }
-			const connected = segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]));
-			if (!connected) floating.push(num);
+			const connected = segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]))
+				// A pin landing directly on a netflag/netport/netlabel is connected too.
+				|| connectionMarkers.some(m => Math.hypot(px - m.x, py - m.y) <= COINCIDE_TOL);
+			if (!connected) {
+				floating.push(num);
+				const name = (() => {
+					try { return String(p.getState_PinName?.() ?? ''); }
+					catch { return ''; }
+				})();
+				floatingDetails.push({ number: num, name: name || undefined, x: px, y: py });
+			}
 		}
 		if (floating.length > 0) {
 			floatingTotal += floating.length;
@@ -1381,7 +1439,9 @@ const schematicCheck: Handler = async (payload) => {
 				type: 'floating-pin',
 				level: 'warn',
 				designator,
+				primitiveId,
 				pins: floating,
+				pinDetails: floatingDetails,
 				count: floating.length,
 				message: `${floating.length} 个引脚悬空(无导线连接,未打 NC 标识)`,
 			});
@@ -1412,8 +1472,15 @@ const schematicCheck: Handler = async (payload) => {
 
 	// Rule 3: wire-over-pin — a pin sits in a wire's INTERIOR (the wire passes
 	// through it). EasyEDA trims+connects there, an unintended connection.
+	// EXCLUDE intended connections: a pin coincident with a wire endpoint or a
+	// netflag/netport/netlabel anchor is the legitimate terminus of its own stub.
+	// When EasyEDA auto-merges collinear touching stubs into one long wire, an inner
+	// pin lands in that merged wire's interior even though it's connected at its own
+	// stub endpoint/marker — without this guard those merged stubs produce the
+	// wire-over-pin false positives the official DRC does not report.
 	let overPinTotal = 0;
 	for (const p of allPins) {
+		if (coincidesWithAnchor(p.x, p.y)) continue;
 		const hit = segs.some(s => interiorOnSegment(p.x, p.y, s));
 		if (hit) {
 			overPinTotal++;

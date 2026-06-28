@@ -54,6 +54,12 @@ near-equivalent, first).
    carries `uuid`, `libraryUuid`, `name`, `footprintName`, `lcsc`, `manufacturerId`.
 2. **Place** `schematic.component.place` with the chosen `{libraryUuid, uuid}` at a
    coordinate → a manufacturable part with correct symbol + footprint + LCSC number.
+   ⚠️ **`--uuid` must be a DEVICE-library uuid** (from `lib search` / `standard-parts.json`),
+   **never** one of the uuid-looking fields `component`/`symbol`/`footprint`/`uniqueId`
+   that `sch list` reports — those are placed-INSTANCE ids and **cannot be replayed**.
+   Feeding an instance uuid hangs the EasyEDA API; `sch place` now fails fast (~8s) with
+   a hint instead of stalling 20s on `context deadline exceeded`. To re-place an existing
+   part, run `lib search` again to get its device uuid.
 3. **Read pins** (`schematic.components.list` / pin readback) for exact pin
    coordinates before wiring.
 4. **Wire** (reference-validated — see **画线 / flag / 去耦(CLI 级硬规则)** in
@@ -140,7 +146,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 ### 原理图编辑
 
 - `schematic.components.list` — `--include-bbox` 附带每个元件渲染范围 `{minX,minY,maxX,maxY}`(供布局推理);`--include-pins` 附带每脚 `{pinName,pinNumber,x,y,noConnected}`(布线/连通性判断的数据面,布线前读引脚功能名→坐标用它,**不要**再用 `easyeda call schematic.components.list --payload '{"includePins":true}'` 绕过)。两个 flag 可与 `--all-pages` 叠加(输出会显著变大)。
-- **`easyeda sch layout-lint`** — **布局自检**(治覆盖的机械真值)。拉 `components.list --include-bbox`,Go 侧两两几何检查:**bbox 重叠 = ERROR**(命令非零退出,可当门禁)、**间距 < `--min-gap`(默认 2.54mm)= WARN**。`--all-pages`、`--json`。摆放后跑它判覆盖/间距,比肉眼/截图可靠(截图可能 stale)。是 place→verify→adjust 闭环的输入。
+- **`easyeda sch layout-lint`** — **布局自检**(治覆盖的机械真值)。拉 `components.list --include-bbox`,Go 侧两两几何检查:**bbox 重叠 = ERROR**(命令非零退出,可当门禁)、**间距 < `--min-gap`(默认 2.54mm)= WARN**。`--all-pages`、`--json`。**默认只检真实器件(`componentType == "part"`)**:图框/标题栏(sheet)铺满整页、netflag/netport/netlabel 等非器件原语都会被自动排除,否则它们会与几乎每个器件误报重叠(见 issue #13)。需要把这些也纳入检查时加 `--include-non-parts`;被排除的数量会在报告里以 `skippedNonParts` 透明列出。摆放后跑它判覆盖/间距,比肉眼/截图可靠(截图可能 stale)。是 place→verify→adjust 闭环的输入。
 - `schematic.component.place`
 - `schematic.component.modify`
 - `schematic.component.delete` — ⚠️ **只删组件,不删导线/总线/图形**。删完 `schematic.components.list` 只剩 A4 sheet 会让你误以为页面已干净,实际残留导线还在(DRC 仍会报)。要真正清页用 `schematic.page.clear`。
@@ -153,6 +159,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.select`
 - `schematic.snapshot` — 截图。**产物保存在 CLI 运行目录下的隐藏目录 `<cwd>/.easyeda/artifacts/`,文件名带本地时间戳**(`<YYYYMMDD-HHMMSS>-<kind>-<短id>.png`,便于排序/查找);响应里的 `artifacts[].path` 是绝对路径。netlist/BOM 等其他产物同此规则。
 - `schematic.drc.check` — 用 `easyeda sch drc` 跑，**逐条**打印 `LEVEL <rule> <message> @(x,y)`(`--json` 给结构化)。返回含 `summary{fatal,error,warn,…}` 与 `fatal` 计数;**退出码仅在 `fatal>0` 时非零**(warning 不阻塞),据此判 S5 门「0 fatal」。
+- `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(官方 DRC 只给聚合 count,这里从图元几何重建):**floating-pin**(引脚悬空)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
 - `schematic.save`
 - `schematic.export.netlist`
 - `schematic.export.bom`

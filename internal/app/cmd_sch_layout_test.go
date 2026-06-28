@@ -88,6 +88,70 @@ func TestAnalyzeLayout_UnassignedDesignatorFallsBackToID(t *testing.T) {
 	}
 }
 
+func TestFilterLayoutComps_ExcludesNonPartsByDefault(t *testing.T) {
+	comps := []layoutComp{
+		{Designator: "R1", ComponentType: "part", BBox: bb(0, 0, 10, 10)},
+		{Designator: "SHEET", ComponentType: "sheet", BBox: bb(-100, -100, 400, 300)}, // full-page frame
+		{ID: "nf1", ComponentType: "netflag", BBox: bb(0, 0, 2, 2)},
+		{Designator: "C2", ComponentType: "part", BBox: bb(20, 0, 30, 10)},
+	}
+	kept, skipped := filterLayoutComps(comps, false)
+	if len(kept) != 2 {
+		t.Fatalf("expected 2 parts kept, got %d", len(kept))
+	}
+	if skipped != 2 {
+		t.Fatalf("expected 2 non-parts skipped, got %d", skipped)
+	}
+	for _, c := range kept {
+		if c.ComponentType != "part" {
+			t.Errorf("non-part leaked through: %+v", c)
+		}
+	}
+}
+
+func TestFilterLayoutComps_IncludeNonPartsKeepsAll(t *testing.T) {
+	comps := []layoutComp{
+		{Designator: "R1", ComponentType: "part", BBox: bb(0, 0, 10, 10)},
+		{Designator: "SHEET", ComponentType: "sheet", BBox: bb(-100, -100, 400, 300)},
+	}
+	kept, skipped := filterLayoutComps(comps, true)
+	if len(kept) != 2 || skipped != 0 {
+		t.Fatalf("include-non-parts must keep all, got kept=%d skipped=%d", len(kept), skipped)
+	}
+}
+
+func TestFilterLayoutComps_EmptyTypeKept(t *testing.T) {
+	// An older connector that doesn't emit componentType must not have every
+	// component silently dropped.
+	comps := []layoutComp{
+		{Designator: "R1", BBox: bb(0, 0, 10, 10)},
+		{Designator: "C2", BBox: bb(20, 0, 30, 10)},
+	}
+	kept, skipped := filterLayoutComps(comps, false)
+	if len(kept) != 2 || skipped != 0 {
+		t.Fatalf("empty componentType must be kept, got kept=%d skipped=%d", len(kept), skipped)
+	}
+}
+
+func TestFilterLayoutComps_SheetNoLongerFalseOverlaps(t *testing.T) {
+	// Regression for issue #13: a full-page sheet bbox overlaps every real part.
+	// After filtering, the analysis must report a clean layout.
+	comps := []layoutComp{
+		{Designator: "SHEET", ComponentType: "sheet", BBox: bb(-100, -100, 400, 300)},
+		{Designator: "R1", ComponentType: "part", BBox: bb(0, 0, 10, 10)},
+		{Designator: "C2", ComponentType: "part", BBox: bb(20, 0, 30, 10)},
+	}
+	parts, skipped := filterLayoutComps(comps, false)
+	rep := analyzeLayout(parts, 2.54)
+	rep.SkippedNonParts = skipped
+	if !rep.OK {
+		t.Fatalf("expected clean report after excluding sheet, got %+v", rep.Overlaps)
+	}
+	if rep.SkippedNonParts != 1 {
+		t.Errorf("expected SkippedNonParts=1, got %d", rep.SkippedNonParts)
+	}
+}
+
 func TestAnalyzeLayout_NoBBoxSkipped(t *testing.T) {
 	comps := []layoutComp{
 		{Designator: "R1", BBox: bb(0, 0, 10, 10)},

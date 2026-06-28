@@ -60,6 +60,7 @@ S0 预分析 → S1 分页💾 → S2 模块编组 → S3 按组摆放💾 → S
 1. **布局门** `easyeda sch layout-lint`(可加 `--min-gap`、`--all-pages`)
    - **任何 `overlap` ERROR = 必须修**(命令非零退出,可直接当 gate)。
    - `spacing` WARN = 评估是否太挤,外围贴芯片可接受、模块间过近要拉开。
+   - **默认只检真实器件**:图框/标题栏(sheet)与 netflag/netport 等非器件原语已自动排除,不会再误报"器件压图框"(issue #13);要连这些一起检查才加 `--include-non-parts`。
 2. **电气门** `easyeda sch drc`(+ `scripts/lint.sh <project>` 数据 lint)
    - **逐条**输出 `LEVEL <rule> <message> @(x,y)`;命令**仅在 `fatal>0`(error/fatal)时非零退出**,可直接当 gate(`0 fatal` = 过门)。
    - fatal / 未连接网络 = 必须修;`summary.warn` 警告(如未用 IO 悬空)逐条复核、可接受则放行。
