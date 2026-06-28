@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1774" height="887" viewBox="0 0 1774 887" role="img" aria-labelledby="title desc">
+  <title id="title">easyeda-agent workflow</title>
+  <desc id="desc">A generic workflow diagram showing how an agent or skill sends typed actions through the Go CLI and local daemon, across WebSocket to the EasyEDA connector, into the official eda API, with status, artifacts, validation, and audit data flowing back.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#041114"/>
+      <stop offset="0.52" stop-color="#071b20"/>
+      <stop offset="1" stop-color="#02080b"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071d22" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#020d10" stop-opacity="0.92"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#43f7f2"/>
+      <stop offset="1" stop-color="#16b6d4"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2.5" cy="2.5" r="1.6" fill="#2ff3ee" opacity="0.24"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M2,2 L9,5 L2,8 Z" fill="#40f2ef"/>
+    </marker>
+    <style>
+      .label { fill: #f4fbfb; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 760; }
+      .small { fill: #a9d9dc; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 520; }
+      .mono { fill: #d6fffd; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-weight: 640; }
+      .stroke { stroke: #35edf0; stroke-width: 2.5; fill: none; }
+      .soft { stroke: #35edf0; stroke-width: 2; fill: none; opacity: 0.5; }
+    </style>
+  </defs>
+
+  <rect width="1774" height="887" fill="url(#bg)"/>
+  <rect width="1774" height="887" fill="url(#dots)"/>
+
+  <g opacity="0.5" class="soft">
+    <path d="M35 115 H160 M160 115 l28 -28 h115"/>
+    <path d="M1510 70 h95 l34 -34 h88"/>
+    <path d="M1475 151 h126 l44 -44 h92"/>
+    <path d="M24 742 h112 l42 42 h106"/>
+    <path d="M1560 743 h90 l35 -35 h71"/>
+    <circle cx="35" cy="115" r="8"/>
+    <circle cx="1510" cy="70" r="8"/>
+    <circle cx="1475" cy="151" r="8"/>
+    <circle cx="24" cy="742" r="8"/>
+    <circle cx="1560" cy="743" r="8"/>
+  </g>
+
+  <text x="88" y="116" class="label" font-size="68">easyeda-agent</text>
+  <text x="91" y="164" class="small" font-size="26">Typed local automation for the official EasyEDA API</text>
+
+  <g transform="translate(86 248)">
+    <rect x="0" y="0" width="282" height="250" rx="26" fill="url(#card)" stroke="#37edf0" stroke-width="3"/>
+    <text x="34" y="63" class="label" font-size="34">Agent / Skill</text>
+    <text x="34" y="111" class="small" font-size="22">plans the workflow</text>
+    <text x="34" y="145" class="small" font-size="22">applies guardrails</text>
+    <text x="34" y="179" class="small" font-size="22">asks for stable tools</text>
+    <path d="M216 69 h30 v30 M246 69 l-48 48" class="stroke" stroke-linecap="round" stroke-linejoin="round" opacity="0.28"/>
+  </g>
+
+  <g transform="translate(464 248)">
+    <rect x="0" y="0" width="282" height="250" rx="26" fill="url(#card)" stroke="#37edf0" stroke-width="3"/>
+    <text x="34" y="63" class="label" font-size="34">Go CLI</text>
+    <text x="34" y="111" class="small" font-size="22">turns intent into</text>
+    <text x="34" y="145" class="mono" font-size="22">typed JSON actions</text>
+    <text x="34" y="179" class="small" font-size="22">with explicit inputs</text>
+    <path d="M202 92 h50 M202 124 h50 M202 156 h50" class="stroke" stroke-linecap="round" opacity="0.22"/>
+    <path d="M185 82 l-28 26 28 26" class="stroke" stroke-linecap="round" stroke-linejoin="round" opacity="0.22"/>
+  </g>
+
+  <g transform="translate(842 248)">
+    <rect x="0" y="0" width="282" height="250" rx="26" fill="url(#card)" stroke="#37edf0" stroke-width="3"/>
+    <text x="34" y="63" class="label" font-size="34">Local daemon</text>
+    <text x="34" y="111" class="small" font-size="22">routes by window</text>
+    <text x="34" y="145" class="small" font-size="22">tracks state</text>
+    <text x="34" y="179" class="small" font-size="22">stores audit + files</text>
+    <circle cx="218" cy="119" r="39" class="stroke" opacity="0.22"/>
+    <path d="M218 80 v78 M179 119 h78" class="stroke" stroke-linecap="round" opacity="0.22"/>
+  </g>
+
+  <g transform="translate(1220 248)">
+    <rect x="0" y="0" width="282" height="250" rx="26" fill="url(#card)" stroke="#37edf0" stroke-width="3"/>
+    <text x="34" y="63" class="label" font-size="34">Connector</text>
+    <text x="34" y="111" class="small" font-size="22">runs inside EasyEDA</text>
+    <text x="34" y="145" class="small" font-size="22">receives WebSocket</text>
+    <text x="34" y="179" class="small" font-size="22">executes approved calls</text>
+    <path d="M210 76 l48 28 v58 l-48 28 -48 -28 v-58 z" class="stroke" stroke-linejoin="round" opacity="0.22"/>
+    <path d="M194 119 v42 M226 119 v42 M182 161 h56" class="stroke" stroke-linecap="round" opacity="0.22"/>
+  </g>
+
+  <g transform="translate(842 598)">
+    <rect x="0" y="0" width="660" height="168" rx="24" fill="#021014" fill-opacity="0.8" stroke="#1dbdc4" stroke-width="2"/>
+    <text x="34" y="58" class="label" font-size="34">Official EasyEDA surface</text>
+    <text x="34" y="103" class="small" font-size="22">the connector calls the supported</text>
+    <text x="34" y="137" class="mono" font-size="23">eda.* API</text>
+    <text x="191" y="137" class="small" font-size="22">and the active document changes or reports state</text>
+    <path d="M555 50 h58 a24 24 0 0 1 0 48 h-92 a28 28 0 0 1 -2 -56 44 44 0 0 1 79 8" class="stroke" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g filter="url(#glow)">
+    <line x1="384" y1="373" x2="444" y2="373" stroke="#40f2ef" stroke-width="5" stroke-linecap="round" stroke-dasharray="7 14" marker-end="url(#arrow)"/>
+    <line x1="762" y1="373" x2="822" y2="373" stroke="#40f2ef" stroke-width="5" stroke-linecap="round" stroke-dasharray="7 14" marker-end="url(#arrow)"/>
+    <line x1="1140" y1="373" x2="1200" y2="373" stroke="#40f2ef" stroke-width="5" stroke-linecap="round" stroke-dasharray="7 14" marker-end="url(#arrow)"/>
+    <path d="M1361 514 V574 C1361 598 1376 614 1400 614 H1505" stroke="#40f2ef" stroke-width="5" stroke-linecap="round" stroke-dasharray="7 14" marker-end="url(#arrow)" fill="none"/>
+  </g>
+
+  <text x="389" y="324" class="mono" font-size="19">command</text>
+  <text x="782" y="312" class="mono" font-size="17">HTTP</text>
+  <text x="768" y="337" class="mono" font-size="17">/action</text>
+  <text x="1147" y="312" class="mono" font-size="17">WebSocket</text>
+  <text x="1150" y="337" class="mono" font-size="17">49620-49629</text>
+  <text x="1324" y="563" class="mono" font-size="20">eda.*</text>
+
+  <g transform="translate(86 598)">
+    <rect x="0" y="0" width="660" height="168" rx="24" fill="#021014" fill-opacity="0.8" stroke="#1dbdc4" stroke-width="2"/>
+    <text x="34" y="58" class="label" font-size="34">Feedback loop</text>
+    <text x="34" y="103" class="small" font-size="22">context, status, artifacts, validation results, and audit records</text>
+    <text x="34" y="137" class="small" font-size="22">flow back to the CLI and Skill for the next decision</text>
+  </g>
+
+  <path d="M828 682 H766" stroke="#40f2ef" stroke-width="5" stroke-linecap="round" stroke-dasharray="7 14" marker-end="url(#arrow)" filter="url(#glow)"/>
+  <path d="M700 598 C700 548 630 548 630 509" stroke="#38e7e8" stroke-width="3" fill="none" opacity="0.72"/>
+  <path d="M1095 598 C1095 548 982 548 982 509" stroke="#38e7e8" stroke-width="3" fill="none" opacity="0.72"/>
+
+  <g transform="translate(86 800)">
+    <line x1="0" y1="0" x2="1416" y2="0" stroke="url(#accent)" stroke-width="2"/>
+    <text x="0" y="42" class="small" font-size="22">Raw JavaScript remains a confirmation-gated debug escape hatch; normal automation stays typed, observable, and replayable.</text>
+  </g>
+</svg>
