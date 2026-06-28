@@ -16,6 +16,7 @@ import {
 	asPayload,
 	blobToBase64,
 	newArtifactId,
+	normalizeRegion,
 	normalizeWirePoints,
 	optionalBoolean,
 	optionalNumber,
@@ -1004,6 +1005,54 @@ async function countLivePagePrimitives(): Promise<number | null> {
 	}
 }
 
+/**
+ * Wait for the canvas to settle (commit any pending viewport change + redraw)
+ * before we read a frame. EasyEDA does NOT synchronously repaint after an
+ * `eda.*` view call, so `getCurrentRenderedAreaImage` issued back-to-back can
+ * return the PREVIOUS frame (issue #20: `view region` followed immediately by
+ * `snapshot --no-fit` captures the stale, pre-region viewport). The `--fit`
+ * path only "worked" because `zoomToAllPrimitives` happened to nudge a redraw;
+ * `--no-fit` had no such nudge. Two animation frames straddle a paint, and the
+ * timeout is the fallback for runtimes where rAF never fires (e.g. a
+ * backgrounded tab). Best-effort: never throws.
+ */
+async function waitForCanvasSettle(): Promise<void> {
+	const raf: typeof requestAnimationFrame | undefined
+		= typeof requestAnimationFrame === 'function' ? requestAnimationFrame : undefined;
+	await new Promise<void>((resolve) => {
+		let done = false;
+		const settle = () => {
+			if (done) return;
+			done = true;
+			resolve();
+		};
+		// Fallback so we never hang if rAF is throttled/unavailable.
+		setTimeout(settle, 120);
+		if (raf) {
+			raf(() => raf(settle));
+		}
+	});
+}
+
+/**
+ * Hex SHA-256 of an image blob, used to tell whether two captures are the
+ * byte-identical STALE frame (issue #2/#20). Best-effort: returns null when
+ * SubtleCrypto is unavailable rather than blocking the capture.
+ */
+async function blobSha256(blob: Blob): Promise<string | null> {
+	try {
+		if (typeof crypto === 'undefined' || !crypto.subtle) return null;
+		const buf = await blob.arrayBuffer();
+		const digest = await crypto.subtle.digest('SHA-256', buf);
+		return Array.from(new Uint8Array(digest))
+			.map(b => b.toString(16).padStart(2, '0'))
+			.join('');
+	}
+	catch {
+		return null;
+	}
+}
+
 const schematicSnapshot: Handler = async (payload) => {
 	const tabId = optionalString(payload, 'tabId');
 	// Auto fit-to-all before capturing (适应全部) is ON by default so the whole
@@ -1012,6 +1061,11 @@ const schematicSnapshot: Handler = async (payload) => {
 	// not block the capture. Bonus: changing the viewport also nudges EasyEDA to
 	// redraw, which mitigates the stale-frame problem documented below.
 	const fit = optionalBoolean(payload, 'fit') !== false;
+	// Optional sha256 of the PREVIOUS snapshot (caller threads it back in). When
+	// present we can DETECT a stale frame ourselves (issue #20) instead of only
+	// emitting advisory text: if the canvas state changed but the image bytes are
+	// byte-identical, the capture is stale — we retry once after another settle.
+	const previousSha = optionalString(payload, 'previousSha256');
 	let fitted = false;
 	if (fit) {
 		try {
@@ -1022,30 +1076,58 @@ const schematicSnapshot: Handler = async (payload) => {
 			/* best-effort — fall through and capture at the current viewport */
 		}
 	}
-	let blob;
-	try {
-		blob = await eda.dmt_EditorControl.getCurrentRenderedAreaImage(tabId);
+
+	// Let any pending viewport change (a preceding `view region`/`view zoom`, or
+	// the zoomToAllPrimitives above) commit + repaint before we read the frame.
+	// Without this the --no-fit path captures the PRE-region viewport (issue #20).
+	await waitForCanvasSettle();
+
+	const capture = async (): Promise<Blob> => {
+		let b;
+		try {
+			b = await eda.dmt_EditorControl.getCurrentRenderedAreaImage(tabId);
+		}
+		catch (err) {
+			throw edaError(err, 'Failed to capture snapshot.');
+		}
+		if (!b) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Snapshot returned no image.');
+		}
+		return b;
+	};
+
+	let blob = await capture();
+	let sha256 = await blobSha256(blob);
+	// Built-in stale detection: if the caller told us the prior frame's sha and we
+	// got the exact same bytes back, the canvas almost certainly didn't repaint —
+	// give it one more settle + recapture before reporting.
+	let staleRetry = false;
+	if (previousSha && sha256 && sha256 === previousSha) {
+		staleRetry = true;
+		await waitForCanvasSettle();
+		blob = await capture();
+		sha256 = await blobSha256(blob);
 	}
-	catch (err) {
-		throw edaError(err, 'Failed to capture snapshot.');
-	}
-	if (!blob) {
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Snapshot returned no image.');
-	}
+	const stale = Boolean(previousSha && sha256 && sha256 === previousSha);
+
 	const artifact = await blobToArtifact(blob, 'schematic_snapshot', 'snapshot.png', 'image/png');
-	// Anti-stale metadata (issue #2): EasyEDA does NOT auto-redraw after eda.*
+	// Anti-stale metadata (issue #2/#20): EasyEDA does NOT auto-redraw after eda.*
 	// edits, so getCurrentRenderedAreaImage can return a byte-identical STALE
-	// frame. The caller compares `primitiveCount` across two snapshots — if it
-	// changed while the image sha did not, the frame is stale; judge STATE by
-	// data, not by the picture.
+	// frame. We now (a) settle the canvas before capturing, (b) expose the frame
+	// `sha256` so the caller can thread it back as `previousSha256` to let us
+	// detect+retry a stale frame, and (c) still surface `primitiveCount` for the
+	// data-over-picture judgement.
 	const primitiveCount = await countLivePagePrimitives();
 	return {
 		result: {
 			artifactId: artifact.id,
 			primitiveCount,
 			fitted,
+			sha256,
+			stale,
+			staleRetry,
 			capturedAt: new Date().toISOString(),
-			stale: 'EasyEDA may not auto-redraw after API edits; compare primitiveCount across snapshots to detect a stale frame. Judge state by data, screenshot for layout only.',
+			staleHint: 'EasyEDA may not auto-redraw after API edits. Thread this sha256 back as previousSha256 on the next snapshot to auto-detect a stale frame; judge state by data, screenshot for layout only.',
 		},
 		artifacts: [artifact],
 	};
@@ -3014,12 +3096,16 @@ const viewRegion: Handler = async (payload) => {
 	const right = requireNumber(payload, 'right');
 	const top = requireNumber(payload, 'top');
 	const bottom = requireNumber(payload, 'bottom');
+	// Order the bounds (and reject a zero-area box) before handing them to
+	// zoomToRegion — a reversed/degenerate rectangle otherwise renders as a tiny
+	// sliver in a mostly-blank frame (issue #20).
+	const region = normalizeRegion(left, right, top, bottom);
 	try {
-		const ok = await eda.dmt_EditorControl.zoomToRegion(left, right, top, bottom);
+		const ok = await eda.dmt_EditorControl.zoomToRegion(region.left, region.right, region.top, region.bottom);
 		if (!ok) {
 			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Canvas does not support region zoom (or no focused canvas).');
 		}
-		return { result: { ok } };
+		return { result: { ok, region } };
 	}
 	catch (err) {
 		if (err instanceof ActionError) throw err;

@@ -211,3 +211,59 @@ export function normalizeWirePoints(points: unknown): number[] {
 
 	return flat as number[];
 }
+
+/** A canvas rectangle with X/Y bounds already normalized to min/max order. */
+export interface NormalizedRegion {
+	left: number;
+	right: number;
+	top: number;
+	bottom: number;
+}
+
+/**
+ * Normalize a `view region` rectangle so `zoomToRegion` always receives a
+ * sane, non-degenerate box.
+ *
+ * `eda.dmt_EditorControl.zoomToRegion(left, right, top, bottom)` expects two X
+ * bounds and two Y bounds, but it does NOT defensively order them — passing a
+ * reversed pair (e.g. `right < left`, or `top`/`bottom` in the wrong order for
+ * the y-DOWN schematic coords, issue #19/#20) yields a zero/negative-area box
+ * that the canvas resolves to a tiny sliver in a mostly-blank frame. We sort
+ * each axis here so the rectangle is the same regardless of which corner the
+ * caller passed first, and reject a fully degenerate (zero-area) request up
+ * front instead of letting it render as blank.
+ *
+ * @param left - first X bound
+ * @param right - second X bound
+ * @param top - first Y bound
+ * @param bottom - second Y bound
+ * @returns the rectangle with `left<=right` and `top<=bottom`
+ * @throws ActionError when any bound is non-finite or the box has zero area
+ */
+export function normalizeRegion(
+	left: number,
+	right: number,
+	top: number,
+	bottom: number,
+): NormalizedRegion {
+	for (const [name, value] of [['left', left], ['right', right], ['top', top], ['bottom', bottom]] as const) {
+		if (typeof value !== 'number' || !Number.isFinite(value)) {
+			throw new ActionError(
+				ErrorCodes.MISSING_PAYLOAD_FIELD,
+				`Invalid region: "${name}" must be a finite number.`,
+			);
+		}
+	}
+	const minX = Math.min(left, right);
+	const maxX = Math.max(left, right);
+	const minY = Math.min(top, bottom);
+	const maxY = Math.max(top, bottom);
+	if (minX === maxX || minY === maxY) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			`Invalid region: zero-area box (x span ${maxX - minX}, y span ${maxY - minY}). `
+			+ 'left/right and top/bottom must each be two distinct bounds.',
+		);
+	}
+	return { left: minX, right: maxX, top: minY, bottom: maxY };
+}

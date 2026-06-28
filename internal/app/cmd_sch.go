@@ -667,6 +667,7 @@ command fails fast after a short timeout with a hint instead of stalling.`,
 	// schematic.snapshot
 	{
 		var noFit bool
+		var previousSha string
 		c := &cobra.Command{
 			Use:   "snapshot",
 			Short: "Capture the current schematic view as an image artifact",
@@ -679,12 +680,16 @@ current viewport.
 For a PARTIAL / zoomed-in shot, frame the area first with "easyeda view region
 --left --right --top --bottom" (or "view zoom --x --y --scale"), then capture
 with --no-fit so the snapshot keeps that viewport instead of zooming back out.
+The snapshot now waits for the canvas to repaint before grabbing the frame, so
+"view region && sch snapshot --no-fit" reliably captures the requested region
+(issue #20).
 
-WARNING: EasyEDA does NOT auto-redraw after API edits, so the captured frame can
-be STALE (byte-identical to the previous one even though the page changed). The
-result includes primitiveCount + capturedAt — compare primitiveCount across two
-snapshots to detect a stale frame, and judge STATE by data (sch list/getAll), not
-by the screenshot. (The auto-fit also nudges a redraw, which helps.)`,
+STALE FRAMES: EasyEDA does NOT auto-redraw after API edits, so a capture can be
+byte-identical to a previous one even though the page changed. The result now
+includes a frame "sha256" — pass it back via --previous-sha256 on the next
+snapshot and the connector will detect a byte-identical (stale) frame, retry
+once after another redraw, and report stale=true if it is still identical. Also
+compare primitiveCount and judge STATE by data (sch list/getAll), not the pixels.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda sch snapshot           # auto fit-to-all, then capture
   easyeda sch snapshot --no-fit  # keep the current viewport (partial shot)
@@ -693,11 +698,15 @@ by the screenshot. (The auto-fit also nudges a redraw, which helps.)`,
 				// Auto-fit is built into the schematic.snapshot action (default on);
 				// the CLI just forwards the opt-out so a single round-trip both fits
 				// and captures.
-				return dispatch(cfg, "schematic.snapshot", window,
-					map[string]any{"fit": !noFit}, stdout, stderr)
+				payload := map[string]any{"fit": !noFit}
+				if previousSha != "" {
+					payload["previousSha256"] = previousSha
+				}
+				return dispatch(cfg, "schematic.snapshot", window, payload, stdout, stderr)
 			},
 		}
 		c.Flags().BoolVar(&noFit, "no-fit", false, "do NOT zoom to fit before capturing (keep current viewport)")
+		c.Flags().StringVar(&previousSha, "previous-sha256", "", "sha256 of the previous snapshot; enables stale-frame detection + auto-retry")
 		sch.AddCommand(c)
 	}
 

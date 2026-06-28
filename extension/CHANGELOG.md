@@ -32,6 +32,20 @@ follow [SemVer](https://semver.org/).
   edits were protected from (`saveActionForDocType` now maps `pcb`→`pcb.save`).
 
 ### Fixed
+- **`view region` + `schematic.snapshot --no-fit` now reliably captures the
+  requested local region (issue #20).** Three coordinated fixes: (1) the snapshot
+  handler now waits for the canvas to repaint (two `requestAnimationFrame`s with a
+  timeout fallback) BEFORE reading the frame, so a preceding `view region` viewport
+  has actually landed — previously `--no-fit` grabbed the pre-region frame because
+  EasyEDA does not synchronously repaint after `eda.*` view calls (the `--fit` path
+  only "worked" by accident, since `zoomToAllPrimitives` nudged a redraw). (2)
+  Built-in stale-frame detection: the snapshot result now exposes the frame
+  `sha256`; thread it back via `sch snapshot --previous-sha256 <sha>` and the
+  connector detects a byte-identical (stale) frame, retries once after another
+  redraw, and reports `stale`/`staleRetry`. (3) `view.region` now normalizes the
+  rectangle (sorts each axis to min/max) and rejects a zero-area box, so a
+  reversed/degenerate bound no longer renders as a tiny sliver in a blank frame;
+  `view region` CLI help documents the y-DOWN schematic axis semantics and units.
 - **`schematic.power.connect_pin` (`sch connect`) `--direction up/down` no longer
   inverts the stub/netport endpoint.** EasyEDA Pro schematic coords are y-DOWN (a
   larger stored y renders LOWER on screen, verified on 3.2.121, issue #19), but the

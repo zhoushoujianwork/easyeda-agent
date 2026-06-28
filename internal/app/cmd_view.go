@@ -78,8 +78,23 @@ func newViewCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	{
 		var left, right, top, bottom float64
 		c := &cobra.Command{
-			Use:     "region",
-			Short:   "Zoom to a rectangular region (canvas units: sch 0.01inch, PCB mil)",
+			Use:   "region",
+			Short: "Zoom to a rectangular region (canvas units: sch 0.01inch, PCB mil)",
+			Long: `Zoom to a rectangular region of the canvas.
+
+--left/--right are the two X bounds, --top/--bottom the two Y bounds. Order does
+NOT matter: the connector sorts each axis to a min/max box, so a reversed pair
+still frames the same rectangle. A zero-area box (a bound repeated, e.g.
+--left == --right) is rejected.
+
+Units are canvas units: schematic 0.01inch, PCB mil. NOTE the schematic canvas
+is y-DOWN — a LARGER stored y renders LOWER on screen (verified on Pro 3.2.121,
+issue #19). The flag names are just "two Y bounds"; you do not need to guess
+which is visually higher.
+
+For a partial / zoomed-in screenshot, frame the area here first, then capture
+with "easyeda sch snapshot --no-fit" so the snapshot keeps this viewport. The
+snapshot waits for the canvas to repaint before grabbing the frame (issue #20).`,
 			Args:    cobra.NoArgs,
 			Example: `  easyeda view region --left 0 --right 1000 --top 1000 --bottom 0`,
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -94,7 +109,7 @@ func newViewCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		}
 		c.Flags().Float64Var(&left, "left", 0, "first X bound")
 		c.Flags().Float64Var(&right, "right", 0, "second X bound")
-		c.Flags().Float64Var(&top, "top", 0, "first Y bound")
+		c.Flags().Float64Var(&top, "top", 0, "first Y bound (canvas is y-DOWN: larger y renders lower)")
 		c.Flags().Float64Var(&bottom, "bottom", 0, "second Y bound")
 		view.AddCommand(c)
 	}
