@@ -32,6 +32,13 @@ follow [SemVer](https://semver.org/).
   edits were protected from (`saveActionForDocType` now maps `pcb`→`pcb.save`).
 
 ### Fixed
+- **`pcb.outline.set` now LOCKS each board-outline segment.** An unlocked line on
+  the board-outline layer (11) is treated as an ordinary primitive and gets wiped by
+  the UI "清除布线 / clear routing" command — the entire board outline silently
+  vanished mid-layout (observed live). Each segment is now created and immediately
+  `primitiveLock`ed, so the outline survives clear-routing and accidental drag/delete
+  (verified live: a locked outline survived a UI clear-routing that previously
+  deleted it). A board outline should never move during layout/routing anyway.
 - **`view region` + `schematic.snapshot --no-fit` now reliably captures the
   requested local region (issue #20).** Three coordinated fixes: (1) the snapshot
   handler now waits for the canvas to repaint (two `requestAnimationFrame`s with a

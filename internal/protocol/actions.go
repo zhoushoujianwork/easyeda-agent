@@ -647,7 +647,7 @@ func AllActions() []ActionSpec {
 			Mutates:      true,
 			NeedsWindow:  true,
 			NeedsConfirm: true,
-			Description:  "Set the board outline from a closed polygon of points (mil, y-up). Replaces any existing outline. The agent generates the points for the desired shape (rectangle/rounded-rect/circle/instrument); curves are approximated by line segments. Reports whether all components fall inside.",
+			Description:  "Set the board outline from a closed polygon of points (mil, y-up). Replaces any existing outline. Each segment is LOCKED on create — an unlocked line on the board-outline layer is wiped by the UI '清除布线 / clear routing' command (observed: the whole outline vanished), so locking makes it immune to clear-routing and accidental drag. The agent generates the points for the desired shape (rectangle/rounded-rect/circle/instrument); curves are approximated by line segments. Reports whether all components fall inside.",
 			Inputs:       []string{"points ([[x,y],...] mil)", "replace optional (default true)", "lineWidth optional"},
 			Outputs:      []string{"segments", "zoomed", "bbox", "allInside", "outside"},
 			VerifyWith:   []string{"pcb.outline.get"},

@@ -2950,7 +2950,15 @@ const pcbOutlineSet: Handler = async (payload) => {
 			const a = points[i];
 			const b = points[(i + 1) % points.length];
 			const ln = await eda.pcb_PrimitiveLine.create('', BOARD_OUTLINE_LAYER, a[0], a[1], b[0], b[1], lineWidth);
-			if (ln) segments++;
+			if (!ln) continue;
+			segments++;
+			// LOCK each outline segment. An unlocked line on the board-outline layer is
+			// treated as an ordinary primitive and gets wiped by the UI "清除布线 / clear
+			// routing" command (observed: the whole board outline vanished). Locking it
+			// makes the outline immune to clear-routing and accidental drag/delete — a
+			// board outline should never move during layout/routing anyway.
+			try { await eda.pcb_PrimitiveLine.modify(ln.getState_PrimitiveId(), { primitiveLock: true }); }
+			catch { /* lock is best-effort; the segment is still created */ }
 		}
 
 		let zoomed = false;
