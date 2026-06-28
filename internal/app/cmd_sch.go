@@ -834,6 +834,42 @@ Exits non-zero when any overlap is found, so it can gate a workflow.`,
 		sch.AddCommand(c)
 	}
 
+	// ── sheet-geometry ────────────────────────────────────────────────────
+	// Normalized sheet bounds + title-block keep-out (issue #26). The single
+	// source placement/routing planners (autoconnect/autolayout) consume, so A4
+	// coordinates aren't re-hardcoded per tool. Derives the keep-out from the
+	// live sheet bbox + a known-template ratio, with explicit provenance +
+	// warnings (never false precision). Pure core in cmd_sch_sheet.go.
+	{
+		var asJSON bool
+		c := &cobra.Command{
+			Use:   "sheet-geometry",
+			Short: "Report sheet bounds + title-block keep-out geometry (provenance-tagged)",
+			Long: `Report the schematic sheet's bounds and the title-block (图框/明细表) keep-out.
+
+Placement/routing planners must avoid dropping flags or parts on top of the
+title block. EasyEDA Pro exposes no set-paper-size API and no separate bbox for
+the title block, so the geometry is DERIVED:
+
+  • sheet bbox  — live, from the componentType "sheet" primitive
+  • template    — matched best-effort by the sheet's aspect ratio (A-series ≈ √2)
+  • title block — a corner sub-rect from the matched template's normalized ratio
+  • visibility  — schematic.titleblock.get → showTitleBlock (hidden ⇒ no keep-out)
+
+The result tags provenance (known-template-ratio / fallback-ratio / none) and
+emits warnings instead of false precision when geometry can't be determined.
+The keepouts[] format is what sch autoconnect / autolayout consume.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda sch sheet-geometry
+  easyeda sch sheet-geometry --json`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runSheetGeometry(cfg, window, asJSON, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&asJSON, "json", false, "emit the geometry as JSON")
+		sch.AddCommand(c)
+	}
+
 	// ── autoconnect ───────────────────────────────────────────────────────
 	// Pin-aware deterministic connect planner: pick direction/offset by scoring
 	// real geometry, then delegate to schematic.power.connect_pin. Scorer is pure

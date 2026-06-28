@@ -159,26 +159,21 @@ func buildScene(result map[string]any) acScene {
 	return scene
 }
 
-// titleBlockKeepout derives the title-block keep-out. EasyEDA's 明细表/图框 sits in
-// the BOTTOM-RIGHT corner (y-DOWN: larger y is lower). When the sheet bbox is
-// known we carve a corner sub-rect from it; when it is NOT exposed we report a
-// provisional fallback and apply NO geometric penalty (returning nil), so a
-// guessed absolute box can't corrupt scoring — the caller still surfaces
-// `titleBlockProvisional` so a human knows the keep-out was not enforced.
+// titleBlockKeepout derives the title-block keep-out for the autoconnect scorer.
+// It delegates to deriveSheetGeometry (the issue #26 single source of the keep-out
+// ratio) so the geometry is computed in exactly one place. When the sheet bbox is
+// NOT exposed it reports a provisional fallback and applies NO geometric penalty
+// (returning nil), so a guessed absolute box can't corrupt scoring — the caller
+// still surfaces `titleBlockProvisional` so a human knows it was not enforced.
 func titleBlockKeepout(sheet *layoutBBox) (*layoutBBox, bool) {
 	if sheet == nil {
 		return nil, true // provisional: not applied
 	}
-	w := sheet.MaxX - sheet.MinX
-	h := sheet.MaxY - sheet.MinY
-	// Bottom-right corner: rightmost ~22% width × bottom ~14% height — the usual
-	// EasyEDA A-series title block footprint.
-	return &layoutBBox{
-		MinX: sheet.MaxX - 0.22*w,
-		MinY: sheet.MaxY - 0.14*h,
-		MaxX: sheet.MaxX,
-		MaxY: sheet.MaxY,
-	}, false
+	g := deriveSheetGeometry(sheet, nil)
+	if g.TitleBlock.BBox == nil {
+		return nil, true // could not derive (e.g. degenerate bbox) → not enforced
+	}
+	return g.TitleBlock.BBox, false
 }
 
 // resolvePinCoord finds a pin's coordinate from a "designator:pinNumberOrName"

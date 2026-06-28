@@ -292,3 +292,24 @@ LED 也可用 `LED1` 这种语义化命名（兼容 `D1`），EasyEDA 不强制 
 - 多页之间通过 `net_port` (`createNetPort('IN/OUT/BI')`) 在页间建立电气连接，net 名称相同视为同网。
 - `getCurrentRenderedAreaImage` **实测不可靠**：在后台标签 / 某些状态下它返回的是**缓存的旧渲染**——既不跟随 `zoomToSelectedPrimitives` / `zoomToRegion`，也可能不反映刚做的增删（实测：两次不同板面状态下截图逐字节相同、md5 一致）。用它做"改完截图确认"前，务必先确认它真的刷新了（例如截图前后做一处明显改动并比对像素）；否则改用纯数据校验（如 schematic-lint）或直接肉眼看 EasyEDA 界面。
 - 目前两份 reference（§7 motobox、§8 ESP32S3R8N8）覆盖了「贴近 3×3 理想」与「RF MCU 占角 + 横向电源链」两种典型。若再采集到第三种（例如纯模拟前端、或多电源域工控板），应继续补充以避免 agent 过拟合到单一案例。
+
+## 11. 图纸边界与标题栏 keep-out (sheet / title-block keep-out)
+
+放置 / 布线规划器（`sch autoconnect`、`sch autolayout`）**绝不能**把 net flag / net port /
+器件压在图纸的 **图框/明细表（title block）** 上。但 EasyEDA Pro 既没有 set-paper-size API，
+也不单独暴露标题栏的 bbox，所以 keep-out 几何只能**推导**——不要在各工具里散落硬编码 A4 坐标，
+统一走 **`easyeda sch sheet-geometry`**（实现见 `internal/app/cmd_sch_sheet.go`，运行时权威）。
+
+推导链（issue #26，Option D 混合）：
+
+1. **sheet bbox**（实测）：`schematic.components.list --include-bbox` 里 `componentType == "sheet"` 的图元。
+2. **模板识别**：用 sheet bbox 的**长宽比**匹配已知模板（A 系列横/纵向 ≈ √2）。公共 API 不暴露
+   可靠的模板 id（deviceUuid / 符号名都拿不到），所以长宽比是识别键。
+3. **标题栏矩形**：按匹配模板的**归一化比例**在 sheet bbox 的**右下角**（坐标空间中 x、y 都偏大的角）
+   切出子矩形。比例表见 [`sheet-templates.json`](./sheet-templates.json)（Go 表 `sheetTemplates` 为运行时权威，
+   此 JSON 为人/skill 可读镜像，二者须保持同步）。
+4. **可见性**：`schematic.titleblock.get` 的 `showTitleBlock`；隐藏时**不**输出 keep-out。
+
+返回的每条结果都带 **provenance**（`known-template-ratio` / `fallback-ratio` / `none`）与 `warnings`，
+无法确定时只给警告、**绝不输出虚假精度**。规划器消费 `keepouts[]`（`{name, bbox, hard}`）即可，
+不必关心几何怎么算出来的。

@@ -147,9 +147,10 @@ Spec JSON (`--spec`): `{"connections":[{"pin":"U1:41","kind":"gnd","net":"GND"},
 "avoidPinFanout":true,"staggerLabels":true,"offsetRange":[18,80],"offsetStep":6,
 "minLabelGap":12}}`. Each result reports the `selected` candidate (direction /
 offset / endPoint / score), the `rejected` alternatives with reasons, and the
-`wirePrimitiveId` / `flagPrimitiveId`. When the sheet bbox isn't exposed, the
-title-block keep-out is reported as **provisional** and not geometrically
-enforced (so a guessed box can't corrupt scoring). **Prefer `sch autoconnect`
+`wirePrimitiveId` / `flagPrimitiveId`. The title-block keep-out comes from the
+shared `sch sheet-geometry` derivation (issue #26) — when the sheet bbox isn't
+exposed it is reported as **provisional** and not geometrically enforced (so a
+guessed box can't corrupt scoring). **Prefer `sch autoconnect`
 over hand-picking `sch connect --direction/--offset`** for power/ground/netport
 stubs; `sch connect` stays for when you deliberately override the geometry.
 
@@ -191,6 +192,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 
 - `schematic.components.list` — `--include-bbox` 附带每个元件渲染范围 `{minX,minY,maxX,maxY}`(供布局推理);`--include-pins` 附带每脚 `{pinName,pinNumber,x,y,noConnected}`(布线/连通性判断的数据面,布线前读引脚功能名→坐标用它,**不要**再用 `easyeda call schematic.components.list --payload '{"includePins":true}'` 绕过)。两个 flag 可与 `--all-pages` 叠加(输出会显著变大)。
 - **`easyeda sch layout-lint`** — **布局自检**(治覆盖的机械真值)。拉 `components.list --include-bbox`,Go 侧两两几何检查:**bbox 重叠 = ERROR**(命令非零退出,可当门禁)、**间距 < `--min-gap`(默认 2.54mm)= WARN**。`--all-pages`、`--json`。**默认只检真实器件(`componentType == "part"`)**:图框/标题栏(sheet)铺满整页、netflag/netport/netlabel 等非器件原语都会被自动排除,否则它们会与几乎每个器件误报重叠(见 issue #13)。需要把这些也纳入检查时加 `--include-non-parts`;被排除的数量会在报告里以 `skippedNonParts` 透明列出。摆放后跑它判覆盖/间距,比肉眼/截图可靠(截图可能 stale)。是 place→verify→adjust 闭环的输入。
+- **`easyeda sch sheet-geometry`** — **图纸边界 + 标题栏 keep-out**(放置/布线规划器的统一几何源,issue #26)。读 `components.list --include-bbox` 里 `componentType == "sheet"` 的实测 bbox,按**长宽比**匹配已知模板(A 系列横/纵向 ≈ √2),在**右下角**按归一化比例切出标题栏(图框/明细表)子矩形;`schematic.titleblock.get` 的 `showTitleBlock` 隐藏时不输出 keep-out。返回 `{sheet, titleBlock, keepouts[], warnings[]}`,每项带 **provenance**(`known-template-ratio` / `fallback-ratio` / `none`),无法确定时只给 warning、不输出虚假精度。`--json`。规划器消费 `keepouts[]`(`{name,bbox,hard}`)即可,**不要再各处硬编码 A4 坐标**。比例表见 `easyeda-conventions/references/sheet-templates.json`。
 - `schematic.component.place`
 - `schematic.component.modify`
 - `schematic.component.delete` — ⚠️ **只删组件,不删导线/总线/图形**。删完 `schematic.components.list` 只剩 A4 sheet 会让你误以为页面已干净,实际残留导线还在(DRC 仍会报)。要真正清页用 `schematic.page.clear`。

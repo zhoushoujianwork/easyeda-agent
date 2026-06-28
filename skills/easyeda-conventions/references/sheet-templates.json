@@ -1,0 +1,42 @@
+{
+  "_doc": [
+    "Sheet -> title-block keep-out RATIO table for the easyeda-agent placement/routing planners.",
+    "EasyEDA Pro exposes NO set-paper-size API and NO separate bbox for the 图框/明细表 (title block),",
+    "so the keep-out is DERIVED: read the live sheet bbox (componentType == 'sheet'), match a template",
+    "by ASPECT RATIO (the API exposes no reliable template id), then carve a corner sub-rect by ratio.",
+    "",
+    "RUNTIME AUTHORITY is the Go table `sheetTemplates` in internal/app/cmd_sch_sheet.go and the CLI",
+    "`easyeda sch sheet-geometry --json`. This JSON is the human/skill-readable mirror — keep the two in",
+    "sync. Planners should CALL the CLI (it tags provenance + warnings), not read these numbers directly.",
+    "",
+    "Coordinate note: the title block sits in the BOTTOM-RIGHT corner of the bbox space returned by",
+    "getPrimitivesBBox (larger y is lower on the page), so the carved rect anchors to the high-x/high-y",
+    "corner of the sheet bbox. widthFrac/heightFrac are fractions of the sheet width/height."
+  ],
+  "defaultTitleBlockRatio": {
+    "widthFrac": 0.22,
+    "heightFrac": 0.14,
+    "corner": "bottom-right",
+    "note": "Applied as a FALLBACK when no template matches; provenance downgrades to 'fallback-ratio' + a warning."
+  },
+  "templates": [
+    {
+      "name": "a-series-landscape",
+      "aspect": 1.414,
+      "aspectTol": 0.06,
+      "titleBlock": { "widthFrac": 0.22, "heightFrac": 0.14, "corner": "bottom-right" },
+      "note": "A0..A4 landscape share the same √2 aspect; EasyEDA's default drawing-symbol_a4 is landscape A-series."
+    },
+    {
+      "name": "a-series-portrait",
+      "aspect": 0.707,
+      "aspectTol": 0.04,
+      "titleBlock": { "widthFrac": 0.31, "heightFrac": 0.10, "corner": "bottom-right" }
+    }
+  ],
+  "provenance": {
+    "known-template-ratio": "sheet bbox is live AND its aspect matched a template here",
+    "fallback-ratio": "sheet bbox is live but aspect matched no template -> defaultTitleBlockRatio",
+    "none": "no sheet bbox available, or the title block is hidden (showTitleBlock=false)"
+  }
+}
