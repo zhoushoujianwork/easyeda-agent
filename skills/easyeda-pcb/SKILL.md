@@ -66,6 +66,27 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 - `pcb.components.list` — placed footprints. `includeBBox` → per-component rendered extent (for overlap/spacing reasoning); `includePads` → pads + net (the net-by-name connectivity).
 - `pcb.layers.list` — layers (id/name/type), `currentLayer`, and `copperLayerCount` (2-layer vs 4+-layer — gates the decoupling rules).
 - `pcb.nets.list` — nets (`net` / `length` / `color`).
+- `pcb.report` — **read-only design report** driven by per-net copper length: every net's routed length, each **net class**'s aggregate length, **differential-pair** P/N lengths + `skew` (`|lenP−lenN|`), and **equal-length-group** per-net lengths + `spread` (`max−min`). No DRC run — the quantitative companion to `pcb.drc.check` for routing-quality gates (diff skew / length matching). Pure read.
+- `pcb.drc.rules` — read the active PCB's **DRC rule configuration** (clearances, track widths, via sizes, …) **without running a check**. Use to feed real rule values into layout reasoning / gates, or to see what `pcb.drc.check` enforces.
+
+### Routing (copper tracks + vias)
+
+Real routing primitives — **additive creates** (no confirm), like the schematic
+`wire.create`. Bind to a net **by name** (pull from `pcb.nets.list`); layer ids from
+`pcb.layers.list`. EasyEDA's `create()` is **lenient** — it can return no primitive on a
+bad layer/coords without throwing, so each action verifies a primitive came back and
+fails honestly otherwise. **No PCB autosave yet** (autosave is schematic-only) → **save
+explicitly** after routing. There is **no one-call autorouter** on this build
+(`pcb_Document.autoRouting` is undefined — see `docs/ecosystem-survey.md` §6); route
+segment-by-segment, or use the file-exchange autoroute flow.
+
+- `pcb.line.create` — a copper **track** (导线): line segment on a copper layer
+  (`TOP=1`, `BOTTOM=2`; **inner-copper ids are higher** — `id 3` is silkscreen, not
+  copper, so read real ids from `pcb.layers.list`) between `(startX,startY)` and
+  `(endX,endY)` (mil, y-up), `lineWidth` (default 6 mil), optional `net`. Verify with
+  `pcb.drc.check`.
+- `pcb.via.create` — a **via** (过孔) at `(x,y)` with `holeDiameter` (drill, default 12
+  mil) + `diameter` (outer pad, default 24 mil), optional `net`.
 
 ### Schematic → PCB sync + component CRUD
 

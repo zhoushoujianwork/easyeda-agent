@@ -44,5 +44,30 @@ func newLibCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		lib.AddCommand(c)
 	}
 
+	// ── lib by-lcsc ─────────────────────────────────────────────────────────
+	// schematic.library.get_by_lcsc — deterministic resolve of LCSC C-numbers to
+	// { libraryUuid, uuid } ready for schematic.component.place (the standard-
+	// parts.json / BOM path; no free-text ranking).
+	{
+		var lcsc []string
+		c := &cobra.Command{
+			Use:   "by-lcsc",
+			Short: "Resolve LCSC C-numbers directly to device-library identity (libraryUuid + uuid)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda lib by-lcsc --lcsc C6186
+  easyeda lib by-lcsc --lcsc C6186 --lcsc C9900163599
+  easyeda lib by-lcsc --lcsc C6186,C9900163599`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if len(lcsc) == 0 {
+					return fmt.Errorf("--lcsc is required (one or more LCSC C-numbers)")
+				}
+				return dispatch(cfg, "schematic.library.get_by_lcsc", window,
+					map[string]any{"lcscIds": lcsc}, stdout, stderr)
+			},
+		}
+		c.Flags().StringSliceVar(&lcsc, "lcsc", nil, "LCSC C-number(s); repeat the flag or comma-separate (required)")
+		lib.AddCommand(c)
+	}
+
 	return lib
 }

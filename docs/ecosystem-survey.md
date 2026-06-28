@@ -159,6 +159,12 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 
 ## 5. 可吸收功能清单(按优先级,映射 skill/action + 落地难度)
 
+> **进度(2026-06-28)**:**A1 / A2 / A3 / A5 已落地**(typed action + 连接器 handler + Cobra 子命令 +
+> skill 文档;A1 另带 `scripts/parts-add.py` 缓存写回)。代码已通过 Go 构建/vet/测试 + 连接器
+> 类型检查;`eda.*` 调用均按权威 `pro-api-types` 签名实现,**真机行为验证待连上 EasyEDA**。
+> A4(直调自动布线)本 build 不可用,阻塞中。详见 [`FEATURES.md`](FEATURES.md) 的「Absorbed from the
+> official extension ecosystem」小节。
+
 | # | 吸收什么 | API | 落到哪 | 难度 |
 |---|---|---|---|---|
 | **A1** | **在线器件搜索**,把 standard-parts.json 从"唯一来源"降级为"缓存层":未命中则在线搜并自动写回 | `lib_Device.search` / `getByLcscIds` | `easyeda-schematic` 放置链 + 新 action `lib.device.search`/`lib.device.by-lcsc`(CLI `easyeda lib …`) + `easyeda-conventions` | **低** |

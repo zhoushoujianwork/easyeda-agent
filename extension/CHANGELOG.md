@@ -5,6 +5,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **Five actions absorbed from the official open-source extension ecosystem**
+  (see `docs/ecosystem-survey.md`), each grounded in `pro-api-types` signatures:
+  - `schematic.library.get_by_lcsc` — resolve LCSC C-numbers directly to
+    `{libraryUuid, uuid}` via `eda.lib_Device.getByLcscIds` (deterministic, no
+    free-text ranking; reports `notFound`). CLI `easyeda lib by-lcsc --lcsc C…`.
+  - `pcb.line.create` — create a copper track via `eda.pcb_PrimitiveLine.create`
+    (mutating). CLI `easyeda pcb track`.
+  - `pcb.via.create` — place a via via `eda.pcb_PrimitiveVia.create` (mutating).
+    CLI `easyeda pcb via`.
+  - `pcb.report` — read-only design report (per-net length, net-class totals,
+    differential-pair skew, equal-length spread) over `eda.pcb_Net.getNetLength` +
+    `eda.pcb_Drc.getAll{NetClasses,DifferentialPairs,EqualLengthNetGroups}`. CLI
+    `easyeda pcb report`.
+  - `pcb.drc.rules` — read `eda.pcb_Drc.getCurrentRuleConfiguration` without
+    running a check. CLI `easyeda pcb drc-rules`.
+  - Live behavioral verification on a connected board is still pending.
+
 ### Fixed
 - **`schematic.check` no longer false-flags merged-stub endpoints as `wire-over-pin`,
   and floating-pin findings now carry component-level detail.** A pin coincident with

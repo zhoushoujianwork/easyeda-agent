@@ -1643,6 +1643,72 @@ const schematicLibrarySearch: Handler = async (payload) => {
 	return { result: { count: components.length, query, components } };
 };
 
+/**
+ * Resolve one or more LCSC C-numbers directly to device-library identity via
+ * `eda.lib_Device.getByLcscIds` — the deterministic counterpart to the free-text
+ * search. Returns the same projected component shape ({ libraryUuid, uuid, … })
+ * that `schematic.component.place` consumes, plus a `notFound` list for any
+ * requested C-number the library did not resolve.
+ */
+const schematicLibraryGetByLcscIds: Handler = async (payload) => {
+	const rawIds = payload.lcscIds;
+	let lcscIds: Array<string>;
+	if (typeof rawIds === 'string') lcscIds = [rawIds];
+	else if (Array.isArray(rawIds) && rawIds.every(id => typeof id === 'string')) lcscIds = rawIds as Array<string>;
+	else {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			'Missing required field "lcscIds" (a string or string[] of LCSC C-numbers, e.g. "C6186").',
+		);
+	}
+
+	let raw: Array<unknown>;
+	try {
+		// The array overload returns Array<ILIB_DeviceSearchItem> (same record
+		// shape as lib_Device.search).
+		raw = await eda.lib_Device.getByLcscIds(lcscIds);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to look up devices by LCSC id.');
+	}
+	if (!Array.isArray(raw)) {
+		return { result: { count: 0, requested: lcscIds, components: [], notFound: lcscIds } };
+	}
+
+	const components = (raw as Array<Record<string, unknown>>).map((r) => {
+		const otherProperty = (r.otherProperty as Record<string, unknown> | undefined) ?? {};
+		// supplierId / manufacturer(Id) are deprecated top-level fields, moved into
+		// otherProperty (canonical EasyEDA property names). Read top-level first —
+		// current builds still emit it — then fall back to otherProperty.
+		return {
+			uuid: r.uuid,
+			libraryUuid: r.libraryUuid,
+			name: r.name,
+			value: otherProperty.Value,
+			footprintName: r.footprintName,
+			symbolName: r.symbolName,
+			lcsc: r.supplierId ?? otherProperty['Supplier Part'],
+			manufacturer: r.manufacturer ?? otherProperty.Manufacturer,
+			manufacturerId: r.manufacturerId ?? otherProperty['Manufacturer Part'],
+			description: typeof r.description === 'string' ? r.description.slice(0, 200) : r.description,
+		};
+	});
+
+	// notFound must never INVERT: if no C-number could be read back (e.g. a future
+	// build stops emitting supplierId), report nothing missing rather than falsely
+	// claiming every resolved part is missing.
+	const found = new Set(components.map(c => String(c.lcsc ?? '')).filter(Boolean));
+	const notFound = found.size ? lcscIds.filter(id => !found.has(id)) : [];
+	return {
+		result: {
+			count: components.length,
+			requested: lcscIds,
+			components,
+			...(notFound.length ? { notFound } : {}),
+		},
+	};
+};
+
 // ─── Composite: pin → wire → netflag/netport in one call ────────────
 
 type Direction = 'up' | 'down' | 'left' | 'right';
@@ -1969,6 +2035,83 @@ const pcbNetsList: Handler = async () => {
 		throw edaError(err, 'Failed to list PCB nets.');
 	}
 	return { result: { nets, count: nets.length } };
+};
+
+/**
+ * Read-only PCB design report driven by per-net copper length:
+ *   - nets[]                  — every net + its routed length (mil)
+ *   - netClasses[]            — each class's member nets + aggregate length
+ *   - differentialPairs[]     — P/N lengths + skew (|lenP − lenN|)
+ *   - equalLengthNetGroups[]  — per-net lengths + spread (max − min)
+ * Each sub-read is best-effort: a failing query degrades to a `*Error` field
+ * rather than failing the whole report. The pcb_Drc.* reads may require the PCB
+ * to be the active/foreground tab (same constraint as pcb.drc.check).
+ */
+const pcbReport: Handler = async () => {
+	const result: Record<string, unknown> = {};
+
+	// Per-net length, cached so the differential/equal-length views reuse it.
+	const lengthOf = new Map<string, number | null>();
+	const len = async (net: string): Promise<number | null> => {
+		if (lengthOf.has(net)) return lengthOf.get(net) ?? null;
+		let l: number | null = null;
+		try { l = (await eda.pcb_Net.getNetLength(net)) ?? null; }
+		catch { /* per-net length best-effort */ }
+		lengthOf.set(net, l);
+		return l;
+	};
+
+	try {
+		const names = (await eda.pcb_Net.getAllNetsName()) ?? [];
+		const nets: Array<{ net: string; length: number | null }> = [];
+		for (const net of names) nets.push({ net, length: await len(net) });
+		result.nets = nets;
+		result.netCount = nets.length;
+	}
+	catch (err) {
+		result.netsError = err instanceof Error ? err.message : String(err);
+	}
+
+	try {
+		const classes = (await eda.pcb_Drc.getAllNetClasses()) ?? [];
+		result.netClasses = await Promise.all(classes.map(async (c) => {
+			let total = 0, measured = 0;
+			for (const n of c.nets ?? []) { const l = await len(n); if (typeof l === 'number') { total += l; measured++; } }
+			// null (not 0) when nothing measured — consistent with equalLength spread.
+			return { name: c.name, nets: c.nets, totalLength: measured ? total : null };
+		}));
+	}
+	catch (err) { result.netClassesError = err instanceof Error ? err.message : String(err); }
+
+	try {
+		const pairsRaw = await eda.pcb_Drc.getAllDifferentialPairs();
+		// Since EDA v3.4 this may return an object map instead of an array (a
+		// documented breaking change) — normalize both shapes to a list of pairs.
+		const pairs = (Array.isArray(pairsRaw) ? pairsRaw : Object.values(pairsRaw ?? {}))
+			.filter((p): p is { name: string; positiveNet: string; negativeNet: string } =>
+				!!p && typeof p === 'object' && 'positiveNet' in p && 'negativeNet' in p);
+		result.differentialPairs = await Promise.all(pairs.map(async (p) => {
+			const lp = await len(p.positiveNet);
+			const ln = await len(p.negativeNet);
+			const skew = (typeof lp === 'number' && typeof ln === 'number') ? Math.abs(lp - ln) : null;
+			return { name: p.name, positiveNet: p.positiveNet, negativeNet: p.negativeNet, positiveLength: lp, negativeLength: ln, skew };
+		}));
+	}
+	catch (err) { result.differentialPairsError = err instanceof Error ? err.message : String(err); }
+
+	try {
+		const groups = (await eda.pcb_Drc.getAllEqualLengthNetGroups()) ?? [];
+		result.equalLengthNetGroups = await Promise.all(groups.map(async (g) => {
+			const members: Array<{ net: string; length: number | null }> = [];
+			const vals: Array<number> = [];
+			for (const n of g.nets ?? []) { const l = await len(n); members.push({ net: n, length: l }); if (typeof l === 'number') vals.push(l); }
+			const spread = vals.length ? Math.max(...vals) - Math.min(...vals) : null;
+			return { name: g.name, members, spread };
+		}));
+	}
+	catch (err) { result.equalLengthNetGroupsError = err instanceof Error ? err.message : String(err); }
+
+	return { result };
 };
 
 // ─── PCB layout (Phase 2 — schematic→PCB sync + component layout) ─────
@@ -2555,6 +2698,92 @@ const pcbDrcCheck: Handler = async (payload) => {
 	return { result: { passed: violations.length === 0, violations } };
 };
 
+/**
+ * Read the active PCB's DRC rule configuration (design rules: clearances, track
+ * widths, via sizes, …) without running a check — inspect what pcb.drc.check
+ * enforces. Returned verbatim from `eda.pcb_Drc.getCurrentRuleConfiguration`.
+ */
+const pcbDrcRules: Handler = async () => {
+	let rules;
+	try {
+		rules = await eda.pcb_Drc.getCurrentRuleConfiguration();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read PCB DRC rule configuration (ensure the PCB document is the active/foreground tab).');
+	}
+	return { result: { rules: rules ?? null } };
+};
+
+// ─── PCB routing (copper tracks + vias) ──────────────────────────────
+// Real routing primitives: a track is a line on a copper layer; a via is a
+// plated hole. Both bind to a net by NAME (pull names from pcb.nets.list). Layer
+// ids are numeric (TOP=1, BOTTOM=2; inner-copper ids are HIGHER — id 3 is silkscreen,
+// not copper — read real ids from pcb.layers.list) cast to the layer type — the
+// EPCB_LayerId enum may not exist as a runtime global (same reason as
+// BOARD_OUTLINE_LAYER). create() is lenient and can return undefined on bad
+// params without throwing, so each handler verifies a primitive came back.
+
+const pcbLineCreate: Handler = async (payload) => {
+	const startX = requireNumber(payload, 'startX');
+	const startY = requireNumber(payload, 'startY');
+	const endX = requireNumber(payload, 'endX');
+	const endY = requireNumber(payload, 'endY');
+	const net = optionalString(payload, 'net') ?? '';
+	const lineWidth = optionalNumber(payload, 'lineWidth') ?? 6;
+	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfLine;
+
+	let line;
+	try {
+		line = await eda.pcb_PrimitiveLine.create(net, layer, startX, startY, endX, endY, lineWidth);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create PCB track (导线).');
+	}
+	if (!line) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'PCB track creation returned no primitive (check the layer id and coordinates).');
+	}
+	return {
+		result: {
+			primitiveId: line.getState_PrimitiveId(),
+			net,
+			layer: Number(layer),
+			start: { x: startX, y: startY },
+			end: { x: endX, y: endY },
+			lineWidth,
+		},
+	};
+};
+
+const pcbViaCreate: Handler = async (payload) => {
+	const x = requireNumber(payload, 'x');
+	const y = requireNumber(payload, 'y');
+	const net = optionalString(payload, 'net') ?? '';
+	const holeDiameter = optionalNumber(payload, 'holeDiameter') ?? 12;
+	const diameter = optionalNumber(payload, 'diameter') ?? 24;
+
+	let via;
+	try {
+		// Signature (confirmed in pro-api-types): create(net, x, y, holeDiameter, diameter, …).
+		via = await eda.pcb_PrimitiveVia.create(net, x, y, holeDiameter, diameter);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create PCB via (过孔).');
+	}
+	if (!via) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'PCB via creation returned no primitive (check coordinates and diameters).');
+	}
+	return {
+		result: {
+			primitiveId: via.getState_PrimitiveId(),
+			net,
+			x,
+			y,
+			holeDiameter,
+			diameter,
+		},
+	};
+};
+
 // ─── Board outline (板框) ──────────────────────────────────────────────
 // The board outline is a closed loop of lines on the BOARD_OUTLINE layer (11).
 // Native arcs do not commit on the current build, so curves are line-segment
@@ -2833,10 +3062,12 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.export.bom': schematicExportBom,
 	'schematic.power.connect_pin': schematicPowerConnectPin,
 	'schematic.library.search': schematicLibrarySearch,
+	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
 	'pcb.documents.list': pcbDocumentsList,
 	'pcb.components.list': pcbComponentsList,
 	'pcb.layers.list': pcbLayersList,
 	'pcb.nets.list': pcbNetsList,
+	'pcb.report': pcbReport,
 	'pcb.board.info': pcbBoardInfo,
 	'board.list': boardList,
 	'board.current': boardCurrent,
@@ -2853,6 +3084,9 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.components.move': pcbComponentsMove,
 	'pcb.components.arrange': pcbComponentsArrange,
 	'pcb.drc.check': pcbDrcCheck,
+	'pcb.drc.rules': pcbDrcRules,
+	'pcb.line.create': pcbLineCreate,
+	'pcb.via.create': pcbViaCreate,
 	'pcb.outline.set': pcbOutlineSet,
 	'pcb.outline.get': pcbOutlineGet,
 	'pcb.outline.clear': pcbOutlineClear,

@@ -426,5 +426,101 @@ curves are approximated by line segments. Reports whether all components fall in
 		},
 	})
 
+	// ── report / drc-rules (read-only PCB analysis) ────────────────────────
+	// pcb.report (per-net length + net-class/diff-pair/equal-length views),
+	// pcb.drc.rules (the design-rule config without running a check).
+	pcb.AddCommand(&cobra.Command{
+		Use:   "report",
+		Short: "Read-only design report: per-net length, net-class totals, diff-pair skew, equal-length spread",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return dispatch(cfg, "pcb.report", window, nil, stdout, stderr)
+		},
+	})
+	pcb.AddCommand(&cobra.Command{
+		Use:   "drc-rules",
+		Short: "Read the active PCB's DRC rule configuration without running a check",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return dispatch(cfg, "pcb.drc.rules", window, nil, stdout, stderr)
+		},
+	})
+
+	// ── track / via (copper routing) ───────────────────────────────────────
+	// pcb.line.create / pcb.via.create — real routing primitives. Bind to a net
+	// by NAME (pull from `pcb nets`); layer ids from `pcb layers`. No PCB autosave
+	// yet, so save explicitly after routing.
+	{
+		var net string
+		var layer int
+		var x1, y1, x2, y2, width float64
+		c := &cobra.Command{
+			Use:   "track",
+			Short: "Create a copper track (导线) on a layer between two points (mil, y-up)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb track --x1 1000 --y1 1000 --x2 1500 --y2 1000 --net GND
+  easyeda pcb track --x1 0 --y1 0 --x2 500 --y2 0 --layer 2 --width 10`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				for _, f := range []string{"x1", "y1", "x2", "y2"} {
+					if !cmd.Flags().Changed(f) {
+						return fmt.Errorf("--x1 --y1 --x2 --y2 are all required")
+					}
+				}
+				payload := map[string]any{"startX": x1, "startY": y1, "endX": x2, "endY": y2}
+				if net != "" {
+					payload["net"] = net
+				}
+				if cmd.Flags().Changed("layer") {
+					payload["layer"] = layer
+				}
+				if cmd.Flags().Changed("width") {
+					payload["lineWidth"] = width
+				}
+				return dispatch(cfg, "pcb.line.create", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().Float64Var(&x1, "x1", 0, "start X (mil, required)")
+		c.Flags().Float64Var(&y1, "y1", 0, "start Y (mil, required)")
+		c.Flags().Float64Var(&x2, "x2", 0, "end X (mil, required)")
+		c.Flags().Float64Var(&y2, "y2", 0, "end Y (mil, required)")
+		c.Flags().IntVar(&layer, "layer", 1, "copper layer id: TOP=1, BOTTOM=2; inner ids via 'easyeda pcb layers'")
+		c.Flags().Float64Var(&width, "width", 0, "track width (mil; default 6)")
+		c.Flags().StringVar(&net, "net", "", "net name to bind the track to")
+		pcb.AddCommand(c)
+	}
+	{
+		var net string
+		var x, y, hole, diameter float64
+		c := &cobra.Command{
+			Use:   "via",
+			Short: "Place a via (过孔) at (x,y) with hole + outer diameter (mil, y-up)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb via --x 1200 --y 1000 --net GND
+  easyeda pcb via --x 1200 --y 1000 --hole 12 --diameter 24 --net GND`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if !cmd.Flags().Changed("x") || !cmd.Flags().Changed("y") {
+					return fmt.Errorf("--x and --y are required")
+				}
+				payload := map[string]any{"x": x, "y": y}
+				if net != "" {
+					payload["net"] = net
+				}
+				if cmd.Flags().Changed("hole") {
+					payload["holeDiameter"] = hole
+				}
+				if cmd.Flags().Changed("diameter") {
+					payload["diameter"] = diameter
+				}
+				return dispatch(cfg, "pcb.via.create", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().Float64Var(&x, "x", 0, "via center X (mil, required)")
+		c.Flags().Float64Var(&y, "y", 0, "via center Y (mil, required)")
+		c.Flags().Float64Var(&hole, "hole", 0, "hole (drill) diameter (mil; default 12)")
+		c.Flags().Float64Var(&diameter, "diameter", 0, "outer pad diameter (mil; default 24)")
+		c.Flags().StringVar(&net, "net", "", "net name to bind the via to")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
 }

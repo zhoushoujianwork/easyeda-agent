@@ -290,6 +290,15 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"components[].libraryUuid", "components[].uuid", "components[].name", "components[].value", "components[].footprintName", "components[].lcsc", "components[].description"},
 		},
 		{
+			Name:        "schematic.library.get_by_lcsc",
+			Domain:      DomainSchematic,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Resolve one or more LCSC C-numbers (e.g. C6186) directly to device-library identity — libraryUuid + uuid ready for schematic.component.place — skipping free-text ranking. Use when you already know the exact part (from standard-parts.json or a BOM). Reports a notFound list for any C-number the library did not resolve.",
+			Inputs:      []string{"lcscIds (string or string[] of C-numbers)"},
+			Outputs:     []string{"components[].lcsc", "components[].libraryUuid", "components[].uuid", "components[].name", "components[].value", "components[].footprintName", "components[].description", "notFound"},
+		},
+		{
 			Name:        "schematic.power.connect_pin",
 			Domain:      DomainSchematic,
 			Phase:       1,
@@ -399,6 +408,14 @@ func AllActions() []ActionSpec {
 			NeedsWindow: true,
 			Description: "List all nets on the active PCB with name, length, and color.",
 			Outputs:     []string{"nets[].net", "nets[].length", "nets[].color", "count"},
+		},
+		{
+			Name:        "pcb.report",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "Read-only PCB design report driven by per-net copper length: every net's routed length, each net class's aggregate length, differential-pair P/N lengths + skew (|lenP-lenN|), and equal-length-group per-net lengths + spread (max-min). Pure read — no DRC run. pcb_Drc.* reads may require the PCB to be the active/foreground tab.",
+			Outputs:     []string{"nets[].net", "nets[].length", "netClasses[].name", "netClasses[].totalLength", "differentialPairs[].skew", "equalLengthNetGroups[].spread"},
 		},
 		// ─── PCB (Phase 2 — schematic→PCB sync + component layout) ────────
 		// Components arrive on the board via pcb.import_changes (from the
@@ -575,6 +592,40 @@ func AllActions() []ActionSpec {
 			Description: "Run PCB DRC, normalized to {passed, violations}; violations are grouped by error type then net. Requires the PCB to be the active/foreground document.",
 			Inputs:      []string{"strict optional"},
 			Outputs:     []string{"passed", "violations"},
+		},
+		{
+			Name:        "pcb.drc.rules",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "Read the active PCB's DRC rule configuration (clearances, track widths, via sizes, …) WITHOUT running a check — inspect what pcb.drc.check enforces, or feed real rule values into layout-lint / design-flow gates. Requires the PCB to be the active/foreground document.",
+			Outputs:     []string{"rules"},
+		},
+		// ─── PCB routing (copper tracks + vias) ──────────────────────────
+		// Real routing primitives — additive creates (no confirm), like the
+		// schematic wire/netflag creates. Bind to a net by NAME; pull layer ids
+		// from pcb.layers.list and net names from pcb.nets.list first.
+		{
+			Name:        "pcb.line.create",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Create a copper track (导线) on the active PCB: a line segment on a copper layer (TOP=1, BOTTOM=2; inner-copper ids are higher — read them from pcb.layers.list, id 3 is silkscreen not copper) with a width, optionally bound to a net. Coordinates are mil, y-up. create() is lenient — the action verifies a primitive came back. No PCB autosave yet; save explicitly.",
+			Inputs:      []string{"startX", "startY", "endX", "endY", "layer optional (default 1=TOP)", "lineWidth optional (default 6)", "net optional"},
+			Outputs:     []string{"primitiveId", "net", "layer", "start", "end", "lineWidth"},
+			VerifyWith:  []string{"pcb.drc.check"},
+		},
+		{
+			Name:        "pcb.via.create",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Place a via (过孔) at (x,y) on the active PCB with a hole + outer diameter (mil), optionally bound to a net. Coordinates are mil, y-up. create() is lenient — the action verifies a primitive came back. No PCB autosave yet; save explicitly.",
+			Inputs:      []string{"x", "y", "holeDiameter optional", "diameter optional", "net optional"},
+			Outputs:     []string{"primitiveId", "net", "x", "y", "holeDiameter", "diameter"},
+			VerifyWith:  []string{"pcb.drc.check"},
 		},
 		// ─── Board outline (板框) — closed polyline on the BOARD_OUTLINE layer ──
 		// Curves are line-segment approximated (native arcs do not commit on the

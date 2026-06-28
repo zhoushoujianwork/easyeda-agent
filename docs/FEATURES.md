@@ -9,14 +9,33 @@ planned. Ground truth for the action catalog is `make actions`
 > [`ecosystem-survey.md`](ecosystem-survey.md) 系统对比了官方开源扩展用到的 API、我们的盲区,
 > 以及一份带优先级的可吸收功能清单(A1–A9),是下一阶段 roadmap 的主要输入。
 
-**22 typed actions** total — 16 in the `schematic` domain, 2 in `artifact`
-(netlist/BOM export), and one each in `system`, `project`, `document`, `debug`.
-21 are dispatched to the connector; `system.health` is answered by the daemon
-itself (daemon/connector liveness, no window required).
+**63 typed actions** total — 25 `schematic`, 21 `pcb`, 6 `document`, 6 `board`,
+2 `artifact` (netlist/BOM export), and one each in `system`, `project`, `debug`.
+All but `system.health` are dispatched to the connector; `system.health` is
+answered by the daemon itself (daemon/connector liveness, no window required).
+(Run `make actions` for the authoritative list — this prose count can lag.)
 
 ---
 
 ## Completed
+
+### Absorbed from the official extension ecosystem (A1/A2/A3/A5)
+
+Shipped from the [`ecosystem-survey.md`](ecosystem-survey.md) absorb-list — features
+mined from open-source `eext-*` extensions' real `eda.*` usage:
+
+| Action | CLI | What | absorb # |
+|---|---|---|---|
+| `schematic.library.get_by_lcsc` | `lib by-lcsc --lcsc C…` | Deterministically resolve LCSC C-numbers → `{libraryUuid, uuid}` (no free-text rank); `notFound` for misses. Companion script `scripts/parts-add.py` writes results back into `standard-parts.json`. | A1 |
+| `pcb.line.create` | `pcb track` | Create a copper track (导线) on a layer between two points (mil, y-up). **Mutates.** | A2 |
+| `pcb.via.create` | `pcb via` | Place a via (过孔) with hole + outer diameter. **Mutates.** | A2 |
+| `pcb.report` | `pcb report` | Read-only design report: per-net length, net-class totals, differential-pair skew, equal-length spread. | A3 |
+| `pcb.drc.rules` | `pcb drc-rules` | Read the DRC rule configuration without running a check. | A5 |
+
+All five are statically grounded in `pro-api-types` signatures + build/typecheck/tests;
+**live behavioral verification on a connected board is pending** (the `eda.*` calls
+themselves are only exercisable with EasyEDA open + external interaction enabled).
+No one-call PCB autorouter exists on this build (A4 blocked — see survey §6).
 
 ### Read context (7 actions)
 

@@ -47,6 +47,11 @@ near-equivalent, first).
    `{ libraryUuid, deviceUuid }` — deterministic, BOM-ready, with the real LCSC
    C-number. Only search when the category is missing, and ADD the chosen part back
    to `standard-parts.json` (with its C-number) so the next design is reproducible.
+   When you already know the **exact C-number** (from a BOM or standard-parts.json),
+   resolve it deterministically with `lib by-lcsc --lcsc C…` (`schematic.library.get_by_lcsc`)
+   → `{libraryUuid, uuid}` ready to place, skipping free-text ranking. After a new
+   selection, `scripts/parts-add.py` appends the resolved part into `standard-parts.json`
+   so the curated cache grows (it reads the JSON `lib by-lcsc` / `lib search` emits).
 1. **Search** (fallback) `schematic.library.search` (free-text: an MPN, value+package,
    or a name like `ESP32-S3-WROOM-1`). Results are **reranked by relevance** (best
    category first; each carries a `score`), so the right part usually leads — but
@@ -164,6 +169,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.export.netlist`
 - `schematic.export.bom`
 - `schematic.library.search`
+- `schematic.library.get_by_lcsc` — 用 `easyeda lib by-lcsc --lcsc C…`(可重复或逗号分隔多个)把 LCSC C 号**确定性**解析成 `{libraryUuid, uuid}`(免 free-text 排序),返回里带 `notFound` 列出未解析的 C 号。已知确切器件(BOM / standard-parts.json)时优先用它。
 
 ### PCB
 
