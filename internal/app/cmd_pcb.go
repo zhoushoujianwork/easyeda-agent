@@ -534,5 +534,201 @@ curves are approximated by line segments. Reports whether all components fall in
 		},
 	})
 
+	// ── track-list / via-list (read what's routed) ─────────────────────────
+	{
+		var net string
+		var layer int
+		c := &cobra.Command{
+			Use:     "track-list",
+			Short:   "List copper tracks (导线), optionally by net/layer",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb track-list --net GND`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if net != "" {
+					payload["net"] = net
+				}
+				if cmd.Flags().Changed("layer") {
+					payload["layer"] = layer
+				}
+				return dispatch(cfg, "pcb.line.list", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&net, "net", "", "filter by net name")
+		c.Flags().IntVar(&layer, "layer", 0, "filter by copper layer id (TOP=1, BOTTOM=2)")
+		pcb.AddCommand(c)
+	}
+	{
+		var net string
+		c := &cobra.Command{
+			Use:     "via-list",
+			Short:   "List vias (过孔), optionally by net",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb via-list --net GND`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if net != "" {
+					payload["net"] = net
+				}
+				return dispatch(cfg, "pcb.via.list", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&net, "net", "", "filter by net name")
+		pcb.AddCommand(c)
+	}
+
+	// ── rip-up / clear-routing ─────────────────────────────────────────────
+	{
+		var nets []string
+		c := &cobra.Command{
+			Use:   "rip-up",
+			Short: "Rip up routing (delete tracks+vias); --net to scope, omit = all. Outline/locked are safe",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb rip-up --net GND
+  easyeda pcb rip-up --net GND --net +3V3
+  easyeda pcb rip-up            # rip up ALL routing (board outline + locked survive)`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if len(nets) > 0 {
+					payload["net"] = nets
+				}
+				return dispatch(cfg, "pcb.route.rip_up", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringSliceVar(&nets, "net", nil, "net(s) to rip up; repeat or comma-separate; omit = all")
+		pcb.AddCommand(c)
+	}
+	{
+		var typ string
+		c := &cobra.Command{
+			Use:     "clear-routing",
+			Short:   "Native clearRouting (@alpha — may be unavailable; prefer rip-up)",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb clear-routing --type all`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if typ != "" {
+					payload["type"] = typ
+				}
+				return dispatch(cfg, "pcb.clear_routing", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&typ, "type", "all", "all | net | connection")
+		pcb.AddCommand(c)
+	}
+
+	// ── pour (铺铜) ────────────────────────────────────────────────────────
+	{
+		var pointsJSON, net, fill, name string
+		var layer, priority int
+		var width float64
+		c := &cobra.Command{
+			Use:   "pour",
+			Short: "Create a copper pour (铺铜) from a closed polygon, bound to a net (usually GND)",
+			Long: `Create a copper pour (铺铜) from a closed polygon of [x,y] points (mil, y-up).
+
+Builds the polygon internally — pass raw points, not a polygon object — then
+rebuilds the poured copper. Size it to the board outline; bind to GND for a ground
+plane. fill = solid (default) | grid | grid45.`,
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb pour --points '[[0,0],[2000,0],[2000,1500],[0,1500]]' --net GND --layer 2`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if pointsJSON == "" {
+					return fmt.Errorf("--points is required")
+				}
+				var points any
+				if err := json.Unmarshal([]byte(pointsJSON), &points); err != nil {
+					return fmt.Errorf("invalid --points json (expected array): %w", err)
+				}
+				payload := map[string]any{"points": points}
+				if net != "" {
+					payload["net"] = net
+				}
+				if cmd.Flags().Changed("layer") {
+					payload["layer"] = layer
+				}
+				if fill != "" {
+					payload["fill"] = fill
+				}
+				if name != "" {
+					payload["name"] = name
+				}
+				if cmd.Flags().Changed("priority") {
+					payload["priority"] = priority
+				}
+				if cmd.Flags().Changed("width") {
+					payload["lineWidth"] = width
+				}
+				return dispatch(cfg, "pcb.pour.create", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&pointsJSON, "points", "", `JSON array of [x,y] points in mil (required)`)
+		c.Flags().StringVar(&net, "net", "", "net to bind the pour to (e.g. GND)")
+		c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2; inner via 'easyeda pcb layers')")
+		c.Flags().StringVar(&fill, "fill", "", "fill style: solid (default) | grid | grid45")
+		c.Flags().StringVar(&name, "name", "", "pour name")
+		c.Flags().IntVar(&priority, "priority", 0, "pour priority (higher wins overlaps)")
+		c.Flags().Float64Var(&width, "width", 0, "pour border/track width (mil)")
+		pcb.AddCommand(c)
+	}
+	{
+		var net string
+		c := &cobra.Command{
+			Use:     "pour-list",
+			Short:   "List copper pours (铺铜), optionally by net",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb pour-list`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if net != "" {
+					payload["net"] = net
+				}
+				return dispatch(cfg, "pcb.pour.list", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&net, "net", "", "filter by net name")
+		pcb.AddCommand(c)
+	}
+	{
+		var idsJSON string
+		c := &cobra.Command{
+			Use:     "pour-delete",
+			Short:   "Delete copper pour regions by primitiveId",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb pour-delete --ids '["id1","id2"]'`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if idsJSON == "" {
+					return fmt.Errorf("--ids is required")
+				}
+				var ids []any
+				if err := json.Unmarshal([]byte(idsJSON), &ids); err != nil {
+					return fmt.Errorf("invalid --ids json (expected array): %w", err)
+				}
+				return dispatch(cfg, "pcb.pour.delete", window,
+					map[string]any{"primitiveIds": ids}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&idsJSON, "ids", "", `JSON array of pour primitiveIds to delete (required)`)
+		pcb.AddCommand(c)
+	}
+	{
+		var net string
+		c := &cobra.Command{
+			Use:     "pour-rebuild",
+			Short:   "Re-pour (recompute) all pours after layout/routing changes",
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb pour-rebuild`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if net != "" {
+					payload["net"] = net
+				}
+				return dispatch(cfg, "pcb.pour.rebuild", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&net, "net", "", "filter by net name")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
 }

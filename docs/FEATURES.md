@@ -9,8 +9,10 @@ planned. Ground truth for the action catalog is `make actions`
 > [`ecosystem-survey.md`](ecosystem-survey.md) 系统对比了官方开源扩展用到的 API、我们的盲区,
 > 以及一份带优先级的可吸收功能清单(A1–A9),是下一阶段 roadmap 的主要输入。
 
-**63 typed actions** total — 25 `schematic`, 21 `pcb`, 6 `document`, 6 `board`,
+**72 typed actions** total — 30 `pcb`, 25 `schematic`, 6 `document`, 6 `board`,
 2 `artifact` (netlist/BOM export), and one each in `system`, `project`, `debug`.
+(PCB now includes routing R1/R2: copper pour create/list/delete/rebuild, track/via
+list, rip-up, clear-routing — see `ecosystem-survey.md` §7.)
 All but `system.health` are dispatched to the connector; `system.health` is
 answered by the daemon itself (daemon/connector liveness, no window required).
 (Run `make actions` for the authoritative list — this prose count can lag.)

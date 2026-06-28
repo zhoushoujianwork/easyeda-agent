@@ -6,6 +6,25 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 ### Added
+- **PCB routing roadmap R1 (copper pour) + R2 (rip-up/list)** from
+  `docs/ecosystem-survey.md §7` — 8 new actions, d.ts-grounded + adversarially reviewed:
+  - `pcb.pour.create` / `pcb.pour.list` / `pcb.pour.delete` / `pcb.pour.rebuild` —
+    **copper pour (铺铜)**. create takes raw `points`; the connector builds the
+    `IPCB_Polygon` via `pcb_MathPolygon.createPolygon` (the missing piece behind the old
+    "无法创建覆铜边框图元" failures — you must pass a polygon object, not raw points),
+    then `rebuildCopperRegion()` computes the fill. `fill = solid|grid|grid45`. CLI
+    `easyeda pcb pour / pour-list / pour-delete / pour-rebuild`.
+  - `pcb.route.rip_up` — **reliable rip-up** (getAll → filter → delete on stable
+    primitive APIs, the official kirouting pattern). Deletes tracks+arcs+vias on
+    **copper layers only** (TOP/BOTTOM/INNER) — never the board outline,
+    silkscreen/assembly/mechanical artwork, or **locked** primitives. `--net` scopes;
+    omit = all. CLI `easyeda pcb rip-up`.
+  - `pcb.line.list` / `pcb.via.list` — read routed tracks/vias. CLI `pcb track-list` /
+    `pcb via-list`.
+  - `pcb.clear_routing` — wraps native `clearRouting` (`@alpha`, may be undefined;
+    prefer `pcb.route.rip_up`). CLI `easyeda pcb clear-routing`.
+  - Smart/interactive routing (single/multi/diff routing, stretch, optimize,
+    length-tuning, fanout) has NO `eda.*` API — documented as a hard boundary (§7).
 - **Five actions absorbed from the official open-source extension ecosystem**
   (see `docs/ecosystem-survey.md`), each grounded in `pro-api-types` signatures:
   - `schematic.library.get_by_lcsc` — resolve LCSC C-numbers directly to

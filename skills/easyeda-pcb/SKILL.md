@@ -75,9 +75,9 @@ Real routing primitives — **additive creates** (no confirm), like the schemati
 `wire.create`. Bind to a net **by name** (pull from `pcb.nets.list`); layer ids from
 `pcb.layers.list`. EasyEDA's `create()` is **lenient** — it can return no primitive on a
 bad layer/coords without throwing, so each action verifies a primitive came back and
-fails honestly otherwise. **No PCB autosave yet** (autosave is schematic-only) → **save
-explicitly** after routing. There is **no one-call autorouter** on this build
-(`pcb_Document.autoRouting` is undefined — see `docs/ecosystem-survey.md` §6); route
+fails honestly otherwise. **PCB autosave is on** (debounced) — still **save explicitly**
+at checkpoints. There is **no one-call autorouter** on this build
+(`pcb_Document.autoRouting` is undefined — see `docs/ecosystem-survey.md` §6/§7); route
 segment-by-segment, or use the file-exchange autoroute flow.
 
 - `pcb.line.create` — a copper **track** (导线): line segment on a copper layer
@@ -87,16 +87,38 @@ segment-by-segment, or use the file-exchange autoroute flow.
   `pcb.drc.check`.
 - `pcb.via.create` — a **via** (过孔) at `(x,y)` with `holeDiameter` (drill, default 12
   mil) + `diameter` (outer pad, default 24 mil), optional `net`.
+- `pcb.line.list` / `pcb.via.list` — read what's routed (filter by net/layer) before
+  rip-up or reroute.
+- `pcb.route.rip_up` — **reliable rip-up**: delete tracks+arcs+vias, `--net` to scope
+  (string or list) or omit for ALL. **Copper layers only** — never deletes the board
+  outline, silkscreen/assembly/mechanical artwork, or **locked** primitives. The
+  iteration primitive: `rip_up → re-route`. (Reports `{requested, ok}` per type, since
+  `delete()` is a batch boolean.)
+- `pcb.clear_routing` — native `clearRouting` (`@alpha`, may be undefined on this build,
+  and does NOT protect unlocked outline) — prefer `pcb.route.rip_up`.
+
+### Copper pour (铺铜)
+
+A pour is a net-bound copper region (usually GND/power plane). **The agent passes raw
+points** — the connector builds the `IPCB_Polygon` (`pcb_MathPolygon.createPolygon`)
+and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建覆铜边框图元").
+
+- `pcb.pour.create` — pour from a closed polygon `points` (`[[x,y],…]`, mil, y-up) on a
+  copper layer, bound to a `net`. `fill = solid` (default) `| grid | grid45`. Size it to
+  the board outline; verify `poured:true` + `pcb.drc.check`.
+- `pcb.pour.list` / `pcb.pour.delete` — inspect / remove pours.
+- `pcb.pour.rebuild` — re-pour all (or by net) after moving components/routing so the
+  copper reflows around new obstacles.
 
 > **Routing boundary (load-bearing — see `docs/ecosystem-survey.md` §7):** EasyEDA's
-> interactive 布线 menu (single/multi/differential routing, stretch, optimize,
+> interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,
 > length-tuning/serpentine, fanout, remove-loops) has **NO `eda.*` API** — the agent
-> cannot do smart/avoiding/push-and-shove routing. The only programmatic routing is:
-> create tracks/vias by coordinate (here), the `@alpha` `autoRouting` (undefined on
-> 3.2.148), or read-primitives → external engine → write (the official kirouting
-> pattern). So route segment-by-segment from known coordinates, or leave smart routing
-> to the human/UI. Copper pour, rip-up, and net-class/diff-pair/equal-length **definitions**
-> have full APIs but aren't wrapped yet (roadmap R1–R3 in the survey).
+> cannot do smart/avoiding/push-and-shove routing. Programmatic routing is limited to:
+> create tracks/vias/pours by coordinate (above), rip-up, the `@alpha` `autoRouting`
+> (undefined on 3.2.148), or read-primitives → external engine → write (the official
+> kirouting pattern). So route segment-by-segment, pour planes, and leave smart routing
+> to the human/UI. **Shipped: copper pour + rip-up (R1/R2).** Still pending:
+> net-class/diff-pair/equal-length **definitions** (R3 — read side is in `pcb.report`).
 
 ### Schematic → PCB sync + component CRUD
 

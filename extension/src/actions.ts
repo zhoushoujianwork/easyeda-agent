@@ -2892,6 +2892,242 @@ const pcbSave: Handler = async () => {
 	return { result: { saved } };
 };
 
+// ─── PCB copper pour (铺铜) ──────────────────────────────────────────
+// pour.create needs an IPCB_Polygon (NOT raw points) — build it with
+// pcb_MathPolygon.createPolygon first (this was the missing piece behind the
+// earlier "无法创建覆铜边框图元" failures). After create, rebuildCopperRegion()
+// computes the actual poured copper (Pour region → Poured copper).
+
+const pcbPourCreate: Handler = async (payload) => {
+	const rawPts = payload.points;
+	if (!Array.isArray(rawPts) || rawPts.length < 3) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'points must be an array of >= 3 [x,y] pairs (mil).');
+	}
+	const pts: Array<[number, number]> = [];
+	for (const p of rawPts) {
+		if (!Array.isArray(p) || p.length < 2 || typeof p[0] !== 'number' || typeof p[1] !== 'number') {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each point must be [x, y] numbers.');
+		}
+		pts.push([p[0], p[1]]);
+	}
+	const net = optionalString(payload, 'net') ?? '';
+	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfCopper;
+	// Enum VALUES are the strings 'solid'/'90grid'/'45grid'; pass the string (the
+	// EPCB_PrimitivePourFillMethod enum is not a runtime global).
+	const fillMap: Record<string, string> = { solid: 'solid', grid: '90grid', grid45: '45grid' };
+	const fill = (fillMap[optionalString(payload, 'fill') ?? 'solid'] ?? 'solid') as unknown as EPCB_PrimitivePourFillMethod;
+	const pourName = optionalString(payload, 'name');
+	const priority = optionalNumber(payload, 'priority');
+	const lineWidth = optionalNumber(payload, 'lineWidth');
+
+	// Polygon source array: [x0,y0,'L',x1,y1,...,x0,y0] — a single 'L' command then
+	// a run of vertex pairs, EXPLICITLY closed by repeating the first vertex. Matches
+	// the proven balance-copper path format (patternGenerator.ts).
+	const src: Array<number | string> = [pts[0][0], pts[0][1], 'L'];
+	for (let i = 1; i < pts.length; i++) src.push(pts[i][0], pts[i][1]);
+	src.push(pts[0][0], pts[0][1]);
+	const poly = eda.pcb_MathPolygon.createPolygon(src as unknown as TPCB_PolygonSourceArray);
+	if (!poly) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Failed to build pour polygon from points (createPolygon returned undefined — points must form a valid closed polygon).');
+	}
+
+	let pour;
+	try {
+		pour = await eda.pcb_PrimitivePour.create(net, layer, poly, fill, undefined, pourName, priority, lineWidth);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create copper pour (铺铜).');
+	}
+	if (!pour) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Copper pour creation returned no primitive (check layer/net/points).');
+	}
+
+	let poured = false;
+	try { poured = !!(await pour.rebuildCopperRegion()); }
+	catch { /* rebuild best-effort — the pour region exists even if the fill compute fails */ }
+
+	return {
+		result: {
+			primitiveId: pour.getState_PrimitiveId(),
+			net,
+			layer: Number(layer),
+			fill: String(fill),
+			poured,
+		},
+	};
+};
+
+const pcbPourList: Handler = async (payload) => {
+	const net = optionalString(payload, 'net');
+	let pours;
+	try {
+		pours = await eda.pcb_PrimitivePour.getAll(net);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list copper pours.');
+	}
+	const list = (pours ?? []).map(p => ({
+		primitiveId: p.getState_PrimitiveId(),
+		net: p.getState_Net(),
+		layer: p.getState_Layer(),
+		pourName: p.getState_PourName(),
+		fillMethod: p.getState_PourFillMethod(),
+		priority: p.getState_PourPriority(),
+		lineWidth: p.getState_LineWidth(),
+		locked: p.getState_PrimitiveLock(),
+	}));
+	return { result: { pours: list, count: list.length } };
+};
+
+const pcbPourDelete: Handler = async (payload) => {
+	const raw = payload.primitiveIds;
+	let ids: Array<string>;
+	if (typeof raw === 'string') ids = [raw];
+	else if (Array.isArray(raw) && raw.every(id => typeof id === 'string')) ids = raw as Array<string>;
+	else throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "primitiveIds" (string or string[]).');
+
+	let deleted;
+	try {
+		deleted = await eda.pcb_PrimitivePour.delete(ids);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete copper pours.');
+	}
+	return { result: { deleted, primitiveIds: ids } };
+};
+
+const pcbPourRebuild: Handler = async (payload) => {
+	const net = optionalString(payload, 'net');
+	let pours;
+	try {
+		pours = await eda.pcb_PrimitivePour.getAll(net);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list pours for rebuild.');
+	}
+	let rebuilt = 0;
+	for (const p of pours ?? []) {
+		try { if (await p.rebuildCopperRegion()) rebuilt++; }
+		catch { /* per-pour best-effort */ }
+	}
+	return { result: { pours: (pours ?? []).length, rebuilt } };
+};
+
+// ─── PCB routing: list + rip-up ──────────────────────────────────────
+// Reliable rip-up is hand-rolled (getAll → filter → delete) on the @public/@beta
+// primitive APIs — the same pattern the official kirouting extension uses. It
+// NEVER touches the board outline (layer 11) or locked primitives. clearRouting
+// is the native @alpha alternative (may be undefined on this build).
+
+const pcbLineList: Handler = async (payload) => {
+	const net = optionalString(payload, 'net');
+	const layer = optionalNumber(payload, 'layer') as unknown as TPCB_LayersOfLine | undefined;
+	let lines;
+	try {
+		lines = await eda.pcb_PrimitiveLine.getAll(net, layer);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list PCB tracks.');
+	}
+	const list = (lines ?? []).map(l => ({
+		primitiveId: l.getState_PrimitiveId(),
+		net: l.getState_Net(),
+		layer: l.getState_Layer(),
+		startX: l.getState_StartX(),
+		startY: l.getState_StartY(),
+		endX: l.getState_EndX(),
+		endY: l.getState_EndY(),
+		lineWidth: l.getState_LineWidth(),
+		locked: l.getState_PrimitiveLock(),
+	}));
+	return { result: { lines: list, count: list.length } };
+};
+
+const pcbViaList: Handler = async (payload) => {
+	const net = optionalString(payload, 'net');
+	let vias;
+	try {
+		vias = await eda.pcb_PrimitiveVia.getAll(net);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list PCB vias.');
+	}
+	const list = (vias ?? []).map(v => ({
+		primitiveId: v.getState_PrimitiveId(),
+		net: v.getState_Net(),
+		x: v.getState_X(),
+		y: v.getState_Y(),
+		holeDiameter: v.getState_HoleDiameter(),
+		diameter: v.getState_Diameter(),
+		locked: v.getState_PrimitiveLock(),
+	}));
+	return { result: { vias: list, count: list.length } };
+};
+
+const pcbRouteRipUp: Handler = async (payload) => {
+	// Optional net filter (string or string[]); no net → rip up ALL routing.
+	const rawNet = payload.net ?? payload.nets;
+	let nets: Array<string> | null = null;
+	if (typeof rawNet === 'string') nets = [rawNet];
+	else if (Array.isArray(rawNet) && rawNet.every(n => typeof n === 'string')) nets = rawNet as Array<string>;
+	const want = nets ? new Set(nets) : null;
+
+	// COPPER layers only: TOP=1, BOTTOM=2, INNER_1..30 = 15..44. This excludes the
+	// board outline (11) AND all silkscreen/assembly/mechanical/doc/custom artwork —
+	// rip-up deletes COPPER routing only, never artwork (getAll() returns ALL layers).
+	const onCopper = (layer: unknown) => { const n = Number(layer); return n === 1 || n === 2 || (n >= 15 && n <= 44); };
+
+	let lines, arcs, vias;
+	try {
+		lines = await eda.pcb_PrimitiveLine.getAll();
+		arcs = await eda.pcb_PrimitiveArc.getAll();
+		vias = await eda.pcb_PrimitiveVia.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read tracks/arcs/vias for rip-up.');
+	}
+
+	// Never touch locked primitives (e.g. a locked board outline).
+	const lineIds = (lines ?? [])
+		.filter(l => (!want || want.has(l.getState_Net())) && onCopper(l.getState_Layer()) && !l.getState_PrimitiveLock())
+		.map(l => l.getState_PrimitiveId());
+	const arcIds = (arcs ?? [])
+		.filter(a => (!want || want.has(a.getState_Net())) && onCopper(a.getState_Layer()) && !a.getState_PrimitiveLock())
+		.map(a => a.getState_PrimitiveId());
+	const viaIds = (vias ?? [])
+		.filter(v => (!want || want.has(v.getState_Net())) && !v.getState_PrimitiveLock())
+		.map(v => v.getState_PrimitiveId());
+
+	// delete() returns an OVERALL boolean (a partial/failed batch is possible), so
+	// report what we REQUESTED + the ok flag rather than asserting a deleted count.
+	const ripDelete = async (
+		kind: string,
+		ids: Array<string>,
+		fn: (ids: Array<string>) => Promise<boolean>,
+	): Promise<{ requested: number; ok: boolean }> => {
+		if (!ids.length) return { requested: 0, ok: true };
+		try { return { requested: ids.length, ok: await fn(ids) }; }
+		catch (err) { throw edaError(err, `Failed to delete ${kind} during rip-up.`); }
+	};
+	const linesRes = await ripDelete('tracks', lineIds, ids => eda.pcb_PrimitiveLine.delete(ids));
+	const arcsRes = await ripDelete('arcs', arcIds, ids => eda.pcb_PrimitiveArc.delete(ids));
+	const viasRes = await ripDelete('vias', viaIds, ids => eda.pcb_PrimitiveVia.delete(ids));
+
+	return { result: { nets: nets ?? 'all', lines: linesRes, arcs: arcsRes, vias: viasRes } };
+};
+
+const pcbClearRouting: Handler = async (payload) => {
+	const type = (optionalString(payload, 'type') ?? 'all') as 'all' | 'net' | 'connection';
+	let cleared;
+	try {
+		cleared = await eda.pcb_Document.clearRouting(type);
+	}
+	catch (err) {
+		throw edaError(err, 'clearRouting is @alpha and may be unavailable on this build — use pcb.route.rip_up for a reliable net-scoped rip-up.');
+	}
+	return { result: { cleared, type } };
+};
+
 // ─── Board outline (板框) ──────────────────────────────────────────────
 // The board outline is a closed loop of lines on the BOARD_OUTLINE layer (11).
 // Native arcs do not commit on the current build, so curves are line-segment
@@ -3207,6 +3443,14 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.drc.rules': pcbDrcRules,
 	'pcb.line.create': pcbLineCreate,
 	'pcb.via.create': pcbViaCreate,
+	'pcb.line.list': pcbLineList,
+	'pcb.via.list': pcbViaList,
+	'pcb.route.rip_up': pcbRouteRipUp,
+	'pcb.clear_routing': pcbClearRouting,
+	'pcb.pour.create': pcbPourCreate,
+	'pcb.pour.list': pcbPourList,
+	'pcb.pour.delete': pcbPourDelete,
+	'pcb.pour.rebuild': pcbPourRebuild,
 	'pcb.save': pcbSave,
 	'pcb.outline.set': pcbOutlineSet,
 	'pcb.outline.get': pcbOutlineGet,

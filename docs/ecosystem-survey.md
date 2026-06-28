@@ -250,8 +250,8 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 
 ### 7.4 据此可补的布线 roadmap(API 齐全、按价值)
 
-- 🟠 **R1 铺铜** `pcb pour`(`pcb_PrimitivePour.create` + getAll/delete)——真实板必需,目前最大缺口。
-- 🟢 **R2 走线/过孔 rip-up + list + modify** ——补 `Line/Via.modify/delete/getAll`,让布线可迭代(改/删/查),而非只能 create。配 `pcb clear-routing`(`clearRouting`)。
+- ✅ **R1 铺铜(已落地)** `pcb pour` / `pour-list` / `pour-delete` / `pour-rebuild`(`pcb_PrimitivePour.create` 需先 `pcb_MathPolygon.createPolygon` 建多边形 → `rebuildCopperRegion()` 重灌;连接器内部完成,调用方传裸点)。
+- ✅ **R2 走线/过孔 rip-up + list(已落地)** `pcb track-list` / `via-list` / `rip-up` / `clear-routing`。rip-up 是可靠手撸(getAll→过滤→删),**只删铜层**(TOP/BOTTOM/INNER),绝不碰板框/丝印/装配/机械/锁定图元;含 arc。(`modify` 暂未包,delete+recreate 即可。)
 - 🟢 **R3 布线约束定义** ——`pcb netclass` / `pcb diffpair` / `pcb eqlen` 写侧(create/add/remove/delete),与已有 `pcb report` 读侧配套;是自动布线/等长校验的前置。
 - 🟡 **R4 规则配置写** ——`saveRuleConfiguration`/`setAsDefault` 等,让 agent 能设/切 DRC 规则集。
 - 🔴 **R5 自动布线** ——`autoRouting` 本 build undefined,维持文件式/等平台。
