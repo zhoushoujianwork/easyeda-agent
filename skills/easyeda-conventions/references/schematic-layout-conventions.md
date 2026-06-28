@@ -138,7 +138,9 @@ EasyEDA 默认 lineWidth = 1。约定：
 
 > ⚠️ **createNetFlag / createNetPort 存储时取反**（2026-06 build）：传 `R` → 存储/渲染是 `(360-R)`。**坑**：建完**立即** `getState_Rotation()` 会回显 `R`（看着像恒等），**重新拉取**（`getAll`）才看到真正的取反值。`connect_pin` 已**运行时自探测并补偿**（`detectRotationNegation`），所以**经 connect_pin 传下表的值就能得到正确朝向**，对调用者透明;若直接调 raw `eda.createNetFlag`（debug.exec_js），需自己传取反值 `(360-表值)`。
 >
-> ⚠️ **坐标是 y-UP**：+y 在屏幕上是**向上**（实测：R2@y=250 显示在图纸底部、C1/C2@y=600 在顶部，且 bbox 校准 ground rot0 的 body 偏移 dy=-14.5=向下）。所以判断"导线朝哪/flag 放哪一侧"时，`dy>0` 是**向上**不是向下。`schematic.power.connect_pin` 的 `direction='up'` 用 `endY = pinY + offset`。
+> ⚠️ **坐标 y 轴方向是 build-dependent，端点几何按 y-DOWN 处理（EasyEDA Pro 3.2.121 实测，issue #19）**：在 3.2.121 上**较大的 y 在屏幕上更靠下**（y-DOWN）——报告者实测顶部引脚 `(525,320)`、底部引脚 `(560,540)`，底部引脚 y 更大，只有 y-DOWN 才自洽。因此 `schematic.power.connect_pin` 的 `direction='up'` 现在用 `endY = pinY - offset`（视觉向上），`'down'` 用 `endY = pinY + offset`（视觉向下）。**`--direction` 一律按"视觉方向"理解，不是坐标符号。**
+>
+> ⚠️ **历史校准曾记录 y-UP**（更早的 build：R2@y=250 在图纸底部、C1/C2@y=600 在顶部，且 ground rot0 的 bbox 偏移 dy=-14.5=向下）。EasyEDA 构建间会**静默翻转符号约定**（参见同节 createNetFlag 旋转取反的先例），y 轴方向亦然。**flag 旋转表(下表 12 项)不受影响**：它由 `calibrate.js` 对**实际渲染** bbox 校准、按**视觉方向**索引（`rotationFor('port','up')===90` 恰是报告者手动 workaround `--direction down --rotation 90` 用的值），修正端点符号后导线与 flag 朝向自动一致，**无需改那 12 个数字**。**合入前必须在已连接的 3.2.121 窗口跑一遍 `calibrate.js` / ESP32 端到端用例确认 y 轴方向**;若需同时兼容两类 build，应仿照 `detectRotationNegation` 加运行时 y 轴探测而非硬翻符号。
 >
 > ⛔ **走过的弯路（勿重蹈）**：取反是**真的**——实测 `connect_pin(direction=left)` 传 `90` → 存 `270` → 渲染**朝右**（0/180 上下对称，所以只有横向 flag 才暴露,藏了很久）。曾把这个取反当"误判"、撤掉 connect_pin 的补偿(commit `8aace7e`)，那次 **revert 才是 bug**;现已用运行时自探测重新锁死。**不要再据"恒等"撤补偿,除非先用 `connect_pin` 放个 left flag 肉眼确认朝向。** 校准方法：对 flag 调 `sch_Primitive.getPrimitivesBBox([pid])`，bbox 中心相对放置点 (x,y) 的偏移方向 = body 真实朝向（纯数据，不靠截图）。
 

@@ -1831,12 +1831,22 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	const rotation = optionalNumber(payload, 'rotation') ?? rotationFor(kind, direction);
 	const applied = await appliedRotation(rotation);
 
-	// EasyEDA is y-UP: +y renders upward. 'up' must increase y, 'down' decrease.
+	// `--direction` is the VISUAL outward direction (what the caller sees on the
+	// canvas), NOT a raw coordinate sign. On EasyEDA Pro (verified 3.2.121, issue
+	// #19) the schematic document coords are y-DOWN: a LARGER stored y renders
+	// LOWER on screen. So 'up' (visually higher) must DECREASE y and 'down'
+	// (visually lower) must INCREASE y. The earlier y-UP assumption pushed top-pin
+	// stubs/netports DOWN into the IC body and vice-versa even when DRC was clean.
+	// (The flag-rotation table below is independent: it is calibrated against real
+	// rendered bbox via calibrate.js and already keyed to visual directions — e.g.
+	// rotationFor('port','up')===90, the exact rotation a reporter had to pass by
+	// hand alongside `--direction down`; fixing the endpoint sign makes the wire and
+	// the flag orientation agree without touching that calibrated table.)
 	let endX = pinX;
 	let endY = pinY;
 	switch (direction) {
-		case 'up': endY = pinY + offset; break;
-		case 'down': endY = pinY - offset; break;
+		case 'up': endY = pinY - offset; break;
+		case 'down': endY = pinY + offset; break;
 		case 'left': endX = pinX - offset; break;
 		case 'right': endX = pinX + offset; break;
 		default:

@@ -592,7 +592,7 @@ command fails fast after a short timeout with a hint instead of stalling.`,
 		c.Flags().Float64Var(&y, "y", 0, "pin Y coordinate")
 		c.Flags().StringVar(&kind, "kind", "", netflagKindHelp)
 		c.Flags().StringVar(&net, "net", "", "net name (required)")
-		c.Flags().StringVar(&direction, "direction", "", "wire direction: up, down, left, right")
+		c.Flags().StringVar(&direction, "direction", "", "visual stub direction (up=higher on canvas, down=lower): up, down, left, right")
 		c.Flags().Float64Var(&offset, "offset", 0, "wire length in schematic units")
 		c.Flags().Float64Var(&rotation, "rotation", 0, "flag rotation override in degrees")
 		sch.AddCommand(c)

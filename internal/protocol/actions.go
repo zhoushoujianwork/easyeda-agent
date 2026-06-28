@@ -304,7 +304,7 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Composite: stub a wire out of a pin and place a netflag/netport at its far end in one call — structurally prevents the 'netflag overlaps pin' DRC fatal. Direction/offset/rotation default from kind and can be overridden; flag orientation follows schematic-layout-conventions.md §3.5.",
+			Description: "Composite: stub a wire out of a pin and place a netflag/netport at its far end in one call — structurally prevents the 'netflag overlaps pin' DRC fatal. `direction` is the VISUAL outward direction on the canvas (up=higher, down=lower; coords are y-DOWN so 'up' moves the endpoint to a smaller y). Direction/offset/rotation default from kind and can be overridden; flag orientation follows schematic-layout-conventions.md §3.5.",
 			Inputs:      []string{"pinX", "pinY", "kind", "net", "direction optional", "offset optional", "rotation optional"},
 			Outputs:     []string{"wire primitiveId", "flag primitiveId", "end point", "rotation"},
 			VerifyWith:  []string{"schematic.snapshot", "schematic.drc.check"},

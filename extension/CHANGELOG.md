@@ -24,6 +24,16 @@ follow [SemVer](https://semver.org/).
   - Live behavioral verification on a connected board is still pending.
 
 ### Fixed
+- **`schematic.power.connect_pin` (`sch connect`) `--direction up/down` no longer
+  inverts the stub/netport endpoint.** EasyEDA Pro schematic coords are y-DOWN (a
+  larger stored y renders LOWER on screen, verified on 3.2.121, issue #19), but the
+  endpoint math assumed y-UP, so `--direction up` pushed a top-pin stub DOWN into the
+  IC body and `--direction down` pushed a bottom-pin stub UP — visually wrong even
+  when DRC was clean. `up` now decreases y (visually higher) and `down` increases y
+  (visually lower). The flag-rotation table is unchanged: it is calibrated against
+  real rendered bbox and already keyed to visual directions, so the corrected
+  endpoint and the flag orientation now agree (callers no longer need the
+  `--direction down --rotation 90` workaround to get a visually-upward netport).
 - **`schematic.check` no longer false-flags merged-stub endpoints as `wire-over-pin`,
   and floating-pin findings now carry component-level detail.** A pin coincident with
   a wire endpoint or a netflag/netport/netlabel anchor is the legitimate terminus of
