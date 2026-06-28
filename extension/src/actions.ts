@@ -2794,6 +2794,22 @@ const pcbViaCreate: Handler = async (payload) => {
 	};
 };
 
+/**
+ * Save the active PCB document to disk. The PCB counterpart to schematic.save —
+ * PCB edits (track/via/move/import) are in-memory until saved, and this is what
+ * the daemon's debounced autosave fires for a PCB window.
+ */
+const pcbSave: Handler = async () => {
+	let saved;
+	try {
+		saved = await eda.pcb_Document.save();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to save PCB.');
+	}
+	return { result: { saved } };
+};
+
 // ─── Board outline (板框) ──────────────────────────────────────────────
 // The board outline is a closed loop of lines on the BOARD_OUTLINE layer (11).
 // Native arcs do not commit on the current build, so curves are line-segment
@@ -3097,6 +3113,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.drc.rules': pcbDrcRules,
 	'pcb.line.create': pcbLineCreate,
 	'pcb.via.create': pcbViaCreate,
+	'pcb.save': pcbSave,
 	'pcb.outline.set': pcbOutlineSet,
 	'pcb.outline.get': pcbOutlineGet,
 	'pcb.outline.clear': pcbOutlineClear,

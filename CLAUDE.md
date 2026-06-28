@@ -172,9 +172,10 @@ reaches the daemon.
   EasyEDA document in memory; a window reload / daemon restart / crash loses
   unsaved work (bit us: placed parts vanished after an air hot-reload). The daemon
   now runs **debounced autosave** (`daemon start --autosave-debounce`, default
-  **3s**, `0` disables) — after any successful *mutating* action it fires one
-  `schematic.save` once edits quiesce (excludes the save action itself, so no
-  recursion; schematic-only until a `pcb.save` action exists). It's a safety net,
+  **3s**, `0` disables) — after any successful *mutating* action it fires the
+  matching typed save once edits quiesce (`schematic.save` for a schematic edit,
+  `pcb.save` for a PCB edit; excludes the save action itself, so no recursion).
+  It's a safety net,
   not a substitute for an explicit save at a known-good checkpoint (a process death
   within the debounce window still loses the last edits). Catalog `Mutates` flag
   drives which actions arm it; see `internal/daemon/autosave.go`.

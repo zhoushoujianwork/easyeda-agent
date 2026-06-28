@@ -21,7 +21,15 @@ follow [SemVer](https://semver.org/).
     `easyeda pcb report`.
   - `pcb.drc.rules` — read `eda.pcb_Drc.getCurrentRuleConfiguration` without
     running a check. CLI `easyeda pcb drc-rules`.
-  - Live behavioral verification on a connected board is still pending.
+  - **Live-verified on a real board (PCB1, connector 0.5.15):** A1 resolves
+    C6186→AMS1117-3.3 identity; A5 returns the full rule config; A3 reports 4 nets
+    with length/net-class/diff/equal-length; A2 creates a GND track (net length
+    read back 0→500, confirming it bound to the right net); `pcb drc` + save pass.
+- **`pcb.save` — save the active PCB to disk** (`eda.pcb_Document.save`), the PCB
+  counterpart to `schematic.save`. CLI `easyeda pcb save`. **PCB autosave is now
+  on:** the daemon's debounced autosave fires `pcb.save` after a PCB-mutating
+  action, closing the in-memory-edit data-loss gap that previously only schematic
+  edits were protected from (`saveActionForDocType` now maps `pcb`→`pcb.save`).
 
 ### Fixed
 - **`schematic.power.connect_pin` (`sch connect`) `--direction up/down` no longer

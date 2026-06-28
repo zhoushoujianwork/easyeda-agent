@@ -29,12 +29,15 @@ var mutatesAction = func() map[string]bool {
 }()
 
 // saveActionForDocType returns the typed save action for a documentType, or ""
-// when none exists. Only schematic has a typed save today; PCB autosave waits on
-// a pcb.save action being added to the catalog.
+// when none exists. Schematic and PCB both have a typed save; a PCB-mutating
+// action therefore arms a debounced pcb.save the same way a schematic edit arms
+// schematic.save.
 func saveActionForDocType(docType string) string {
 	switch docType {
 	case "schematic":
 		return "schematic.save"
+	case "pcb":
+		return "pcb.save"
 	}
 	return ""
 }

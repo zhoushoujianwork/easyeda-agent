@@ -71,8 +71,8 @@ func TestSaveActionForDocType(t *testing.T) {
 	if got := saveActionForDocType("schematic"); got != "schematic.save" {
 		t.Errorf("schematic → %q, want schematic.save", got)
 	}
-	if got := saveActionForDocType("pcb"); got != "" {
-		t.Errorf("pcb has no typed save yet → want \"\", got %q", got)
+	if got := saveActionForDocType("pcb"); got != "pcb.save" {
+		t.Errorf("pcb → %q, want pcb.save", got)
 	}
 	if got := saveActionForDocType(""); got != "" {
 		t.Errorf("unknown docType → want \"\", got %q", got)

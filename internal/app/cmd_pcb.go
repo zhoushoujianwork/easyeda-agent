@@ -522,5 +522,17 @@ curves are approximated by line segments. Reports whether all components fall in
 		pcb.AddCommand(c)
 	}
 
+	// ── save ───────────────────────────────────────────────────────────────
+	// pcb.save — PCB counterpart to `sch save`. PCB edits are in-memory until
+	// saved; the daemon also autosaves (debounced) after PCB mutations.
+	pcb.AddCommand(&cobra.Command{
+		Use:   "save",
+		Short: "Save the active PCB document to disk",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return dispatch(cfg, "pcb.save", window, nil, stdout, stderr)
+		},
+	})
+
 	return pcb
 }

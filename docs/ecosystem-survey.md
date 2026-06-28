@@ -159,11 +159,12 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 
 ## 5. 可吸收功能清单(按优先级,映射 skill/action + 落地难度)
 
-> **进度(2026-06-28)**:**A1 / A2 / A3 / A5 已落地**(typed action + 连接器 handler + Cobra 子命令 +
-> skill 文档;A1 另带 `scripts/parts-add.py` 缓存写回)。代码已通过 Go 构建/vet/测试 + 连接器
-> 类型检查;`eda.*` 调用均按权威 `pro-api-types` 签名实现,**真机行为验证待连上 EasyEDA**。
-> A4(直调自动布线)本 build 不可用,阻塞中。详见 [`FEATURES.md`](FEATURES.md) 的「Absorbed from the
-> official extension ecosystem」小节。
+> **进度(2026-06-28)**:**A1 / A2 / A3 / A5 已落地并真机验证通过**(PCB1 / connector 0.5.15):
+> A1 解析 C6186→AMS1117-3.3 身份、A5 返回完整规则配置、A3 报告 4 网络含网长/net-class/差分/等长、
+> A2 建 GND 走线(网长回读 0→500,确认挂对网)、`pcb drc` + 存盘通过。真机验证另暴露一个 gap——
+> **缺 `pcb.save` 且 PCB 不在 autosave 覆盖内**——已补(新增 `pcb.save` action + `saveActionForDocType`
+> 加 `pcb`→`pcb.save`,PCB 编辑现与原理图一样自动落盘)。A4(直调自动布线)本 build 不可用,阻塞中。
+> 详见 [`FEATURES.md`](FEATURES.md)。
 
 | # | 吸收什么 | API | 落到哪 | 难度 |
 |---|---|---|---|---|

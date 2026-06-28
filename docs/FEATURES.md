@@ -31,10 +31,14 @@ mined from open-source `eext-*` extensions' real `eda.*` usage:
 | `pcb.via.create` | `pcb via` | Place a via (过孔) with hole + outer diameter. **Mutates.** | A2 |
 | `pcb.report` | `pcb report` | Read-only design report: per-net length, net-class totals, differential-pair skew, equal-length spread. | A3 |
 | `pcb.drc.rules` | `pcb drc-rules` | Read the DRC rule configuration without running a check. | A5 |
+| `pcb.save` | `pcb save` | Save the active PCB to disk; also the action the daemon's debounced autosave now fires for PCB windows. | gap fix |
 
-All five are statically grounded in `pro-api-types` signatures + build/typecheck/tests;
-**live behavioral verification on a connected board is pending** (the `eda.*` calls
-themselves are only exercisable with EasyEDA open + external interaction enabled).
+All five absorb-items are **live-verified on a real board (PCB1, connector 0.5.15):**
+A1 resolved C6186→AMS1117-3.3 identity, A5 returned the full rule config, A3 reported
+4 nets with length/net-class/diff/equal-length, A2 created a GND track (net length read
+back 0→500 — bound to the right net), and `pcb drc` + save passed. The live run surfaced
+a gap — **no `pcb.save` + PCB not covered by autosave** — now fixed (`pcb.save` action +
+`saveActionForDocType` maps `pcb`→`pcb.save`, so PCB edits autosave like schematic edits).
 No one-call PCB autorouter exists on this build (A4 blocked — see survey §6).
 
 ### Read context (7 actions)
