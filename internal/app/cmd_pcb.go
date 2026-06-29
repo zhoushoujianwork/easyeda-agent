@@ -907,5 +907,148 @@ exported DSN contains keepout entries before trusting the result.`,
 		pcb.AddCommand(c)
 	}
 
+	// ── auto-place ────────────────────────────────────────────────────────
+	// Module-aware heuristic placement (daemon-side; see pcb_autoplace.go).
+	{
+		var mainPins int
+		var gap, pitch float64
+		var dryRun bool
+		c := &cobra.Command{
+			Use:   "auto-place",
+			Short: "Module-aware auto placement: pull each satellite (cap/R/LED) to the chip pin it connects to",
+			Long: `Heuristic "hug the chip" placement, run in the daemon (not the connector, so
+'make dev' hot-reloads tweaks with no re-import). Main chips (>= --main-pins
+distinct pins) are anchors and stay put; every small satellite is moved to the
+chip edge nearest the pad it actually connects to, then packed along that edge so
+nothing overlaps:
+  • decoupling caps land by their power pin (3V3/VCC), resistors by their signal pin
+  • an LED chains next to its series resistor (shared signal net)
+This is a SEED, not a final layout — verify with 'pcb layout-lint' + 'pcb drc'.
+
+  easyeda pcb auto-place --project ceshi --dry-run   # print the plan, move nothing
+  easyeda pcb auto-place --project ceshi             # apply it`,
+			Args: cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				// 1. Read placed components with pads (net surface) + rendered bbox.
+				res, err := requestAction(cfg, "pcb.components.list", window,
+					map[string]any{"includePads": true, "includeBBox": true})
+				if err != nil {
+					return err
+				}
+				comps := parseApComps(res.Result)
+				if len(comps) == 0 {
+					return fmt.Errorf("no components on the active PCB (run `pcb import-changes` first)")
+				}
+
+				// 2. Plan (pure, daemon-side).
+				opt := defaultApOptions()
+				if mainPins > 0 {
+					opt.mainPins = mainPins
+				}
+				if gap > 0 {
+					opt.gap = gap
+				}
+				if pitch > 0 {
+					opt.pitch = pitch
+				}
+				moves, diags := planAutoPlace(comps, opt)
+
+				// 3. Apply (unless --dry-run), one modify per satellite.
+				applied := 0
+				var failures []map[string]any
+				if !dryRun {
+					for _, m := range moves {
+						if _, err := requestAction(cfg, "pcb.component.modify", window,
+							map[string]any{"primitiveId": m.ID, "patch": map[string]any{"x": m.NewX, "y": m.NewY}}); err != nil {
+							failures = append(failures, map[string]any{"designator": m.Designator, "error": err.Error()})
+							continue
+						}
+						applied++
+					}
+				}
+
+				// 4. Report.
+				out := map[string]any{
+					"ok":       true,
+					"dryRun":   dryRun,
+					"mains":    apMainDesignators(comps, opt),
+					"planned":  len(moves),
+					"applied":  applied,
+					"moves":    moves,
+					"diags":    diags,
+					"failures": failures,
+				}
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(out)
+			},
+		}
+		c.Flags().IntVar(&mainPins, "main-pins", 0, "distinct-pin threshold to treat a component as a main chip (default 8)")
+		c.Flags().Float64Var(&gap, "gap", 0, "clearance from chip edge to satellite (mil, default 40)")
+		c.Flags().Float64Var(&pitch, "pitch", 0, "spacing between satellites packed on the same edge (mil, default 30)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the placement plan without moving anything")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
+}
+
+// parseApComps converts a pcb.components.list result (with includePads +
+// includeBBox) into the planner's component slice. Missing/odd fields degrade to
+// zero values; a component with no bbox is flagged so the planner skips it.
+func parseApComps(result map[string]any) []apComp {
+	raw, _ := result["components"].([]any)
+	out := make([]apComp, 0, len(raw))
+	for _, ri := range raw {
+		cm, ok := ri.(map[string]any)
+		if !ok {
+			continue
+		}
+		c := apComp{
+			id:         asString(cm["primitiveId"]),
+			designator: asString(cm["designator"]),
+			x:          asFloat(cm["x"]),
+			y:          asFloat(cm["y"]),
+			locked:     asBool(cm["locked"]),
+		}
+		if bb, ok := cm["bbox"].(map[string]any); ok {
+			c.hasBBox = true
+			c.minX, c.minY = asFloat(bb["minX"]), asFloat(bb["minY"])
+			c.maxX, c.maxY = asFloat(bb["maxX"]), asFloat(bb["maxY"])
+		}
+		if pads, ok := cm["pads"].([]any); ok {
+			for _, pi := range pads {
+				pm, ok := pi.(map[string]any)
+				if !ok {
+					continue
+				}
+				c.pads = append(c.pads, apPad{
+					num: asString(pm["padNumber"]),
+					net: asString(pm["net"]),
+					x:   asFloat(pm["x"]),
+					y:   asFloat(pm["y"]),
+				})
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// apMainDesignators lists which components the planner treats as anchors, for the report.
+func apMainDesignators(comps []apComp, opt apOptions) []string {
+	var out []string
+	for _, c := range comps {
+		if c.hasBBox && c.distinctPins() >= opt.mainPins {
+			out = append(out, c.designator)
+		}
+	}
+	return out
+}
+
+func asBool(v any) bool {
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return false
 }
