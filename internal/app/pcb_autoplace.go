@@ -24,12 +24,13 @@ import (
 // nothing overlaps. Decoupling caps land by their power pin; signal R's by their
 // signal pin; an LED chains next to its series resistor.
 
-// apPad is one component pad: its net (by name) and rendered center.
+// apPad is one component pad: its net (by name), rendered center, and copper layer.
 type apPad struct {
-	num string
-	net string
-	x   float64
-	y   float64
+	num   string
+	net   string
+	x     float64
+	y     float64
+	layer int
 }
 
 // apComp is a placed component with the geometry the planner reasons over.

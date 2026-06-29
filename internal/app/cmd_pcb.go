@@ -990,7 +990,112 @@ This is a SEED, not a final layout — verify with 'pcb layout-lint' + 'pcb drc'
 		pcb.AddCommand(c)
 	}
 
+	// ── route-short ───────────────────────────────────────────────────────
+	// Short-trace self-routing (daemon-side; see pcb_shortroute.go).
+	{
+		var maxLen, width float64
+		var dryRun, routeGnd bool
+		c := &cobra.Command{
+			Use:   "route-short",
+			Short: "Self-route the short, clear hops: per-net MST, L-shaped tracks on the pads' layer",
+			Long: `Heuristic short-trace router, run in the daemon (the "heuristic tier" — NOT the
+@alpha autoRouting() API, NOT an external Freerouting; that is 'pcb autoroute').
+Per net it builds a minimum spanning tree over the pads and routes each hop that
+is short enough (<= --max-len, Manhattan) as an L-shaped track on the pads'
+shared layer. Skips: GND (poured, unless --route-gnd), already-routed nets,
+cross-layer hops (need a via), and over-long hops (left for the maze tier).
+No obstacle avoidance in v1 — run AFTER 'pcb auto-place' (hops are then short and
+clear) and verify with 'pcb drc'.
+
+  easyeda pcb route-short --project ceshi --dry-run   # print the plan, draw nothing
+  easyeda pcb route-short --project ceshi             # draw the tracks`,
+			Args: cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				// 1. Read pads (net + coords + layer) and which nets already have copper.
+				res, err := requestAction(cfg, "pcb.components.list", window,
+					map[string]any{"includePads": true})
+				if err != nil {
+					return err
+				}
+				comps := parseApComps(res.Result)
+				if len(comps) == 0 {
+					return fmt.Errorf("no components on the active PCB (run `pcb import-changes` first)")
+				}
+				routed := map[string]bool{}
+				if lr, err := requestAction(cfg, "pcb.line.list", window, nil); err == nil {
+					routed = parseRoutedNets(lr.Result)
+				}
+
+				// 2. Plan (pure, daemon-side).
+				opt := defaultRtOptions()
+				if maxLen > 0 {
+					opt.maxLen = maxLen
+				}
+				opt.width = width
+				opt.skipGnd = !routeGnd
+				segs, diags := planShortRoutes(comps, routed, opt)
+
+				// 3. Draw (unless --dry-run), one line.create per segment.
+				drawn := 0
+				var failures []map[string]any
+				if !dryRun {
+					for _, s := range segs {
+						payload := map[string]any{"startX": s.X1, "startY": s.Y1, "endX": s.X2, "endY": s.Y2, "net": s.Net, "layer": s.Layer}
+						if width > 0 {
+							payload["lineWidth"] = width
+						}
+						if _, err := requestAction(cfg, "pcb.line.create", window, payload); err != nil {
+							failures = append(failures, map[string]any{"net": s.Net, "error": err.Error()})
+							continue
+						}
+						drawn++
+					}
+				}
+
+				// 4. Report.
+				out := map[string]any{
+					"ok":       true,
+					"dryRun":   dryRun,
+					"segments": len(segs),
+					"drawn":    drawn,
+					"routes":   segs,
+					"skipped":  diags,
+					"failures": failures,
+				}
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(out)
+			},
+		}
+		c.Flags().Float64Var(&maxLen, "max-len", 0, "longest hop to route (Manhattan mil, default 1000)")
+		c.Flags().Float64Var(&width, "width", 0, "track width (mil; 0 = connector default)")
+		c.Flags().BoolVar(&routeGnd, "route-gnd", false, "also route GND (default skip — GND is poured)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the routing plan without drawing anything")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
+}
+
+// parseRoutedNets extracts the set of nets that already have copper tracks from a
+// pcb.line.list result, so route-short skips them.
+func parseRoutedNets(result map[string]any) map[string]bool {
+	out := map[string]bool{}
+	var arr []any
+	for _, key := range []string{"tracks", "lines"} {
+		if a, ok := result[key].([]any); ok {
+			arr = a
+			break
+		}
+	}
+	for _, ri := range arr {
+		if m, ok := ri.(map[string]any); ok {
+			if net := asString(m["net"]); net != "" {
+				out[net] = true
+			}
+		}
+	}
+	return out
 }
 
 // parseApComps converts a pcb.components.list result (with includePads +
@@ -1023,10 +1128,11 @@ func parseApComps(result map[string]any) []apComp {
 					continue
 				}
 				c.pads = append(c.pads, apPad{
-					num: asString(pm["padNumber"]),
-					net: asString(pm["net"]),
-					x:   asFloat(pm["x"]),
-					y:   asFloat(pm["y"]),
+					num:   asString(pm["padNumber"]),
+					net:   asString(pm["net"]),
+					x:     asFloat(pm["x"]),
+					y:     asFloat(pm["y"]),
+					layer: int(asFloat(pm["layer"])),
 				})
 			}
 		}

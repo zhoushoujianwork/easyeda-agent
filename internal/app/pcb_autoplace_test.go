@@ -19,25 +19,30 @@ func mkComp(id, des string, cx, cy, w, h float64, pads []apPad) apComp {
 	}
 }
 
+// p builds a TOP-layer pad (layer 1) — all fixture parts are single-sided.
+func p(num, net string, x, y float64) apPad {
+	return apPad{num: num, net: net, x: x, y: y, layer: 1}
+}
+
 func ceshiBoard() []apComp {
 	// U1 key pads at their real coordinates (left edge: GND/3V3/EN; right edge:
 	// IO0/BLINK/GND), plus a couple of center thermal GND pads to push the pin
 	// count over the main-chip threshold.
 	u1pads := []apPad{
-		{"1", "GND", 2050, -1640}, {"2", "3V3", 2050, -1690}, {"3", "EN", 2050, -1740},
-		{"27", "IO0", 2740, -2290}, {"38", "BLINK", 2740, -1740}, {"40", "GND", 2740, -1640},
-		{"41", "GND", 2336, -1944}, {"42", "", 2400, -2360}, {"43", "", 2400, -1350},
-		{"44", "", 2100, -2360},
+		p("1", "GND", 2050, -1640), p("2", "3V3", 2050, -1690), p("3", "EN", 2050, -1740),
+		p("27", "IO0", 2740, -2290), p("38", "BLINK", 2740, -1740), p("40", "GND", 2740, -1640),
+		p("41", "GND", 2336, -1944), p("42", "", 2400, -2360), p("43", "", 2400, -1350),
+		p("44", "", 2100, -2360),
 	}
 	return []apComp{
 		mkComp("u1", "U1", 2395, -1855, 748, 1030, u1pads),
-		mkComp("c3", "C3", 259, -1128, 74.8, 45.3, []apPad{{"2", "EN", 0, 0}, {"1", "GND", 0, 0}}),
-		mkComp("r1", "R1", 1855, -1128, 80.4, 45.3, []apPad{{"2", "EN", 0, 0}, {"1", "3V3", 0, 0}}),
-		mkComp("r2", "R2", 259, -2209, 80.3, 45.3, []apPad{{"2", "3V3", 0, 0}, {"1", "IO0", 0, 0}}),
-		mkComp("r3", "R3", 1057, -2209, 80.3, 45.3, []apPad{{"2", "LED_A", 0, 0}, {"1", "BLINK", 0, 0}}),
-		mkComp("c2", "C2", 2509, -652, 160.6, 77.2, []apPad{{"2", "3V3", 0, 0}, {"1", "GND", 0, 0}}),
-		mkComp("led1", "LED1", 1062, -1128, 176, 91, []apPad{{"2", "GND", 0, 0}, {"1", "LED_A", 0, 0}}),
-		mkComp("c1", "C1", 2827, -636, 74.8, 45.3, []apPad{{"2", "GND", 0, 0}, {"1", "3V3", 0, 0}}),
+		mkComp("c3", "C3", 259, -1128, 74.8, 45.3, []apPad{p("2", "EN", 0, 0), p("1", "GND", 0, 0)}),
+		mkComp("r1", "R1", 1855, -1128, 80.4, 45.3, []apPad{p("2", "EN", 0, 0), p("1", "3V3", 0, 0)}),
+		mkComp("r2", "R2", 259, -2209, 80.3, 45.3, []apPad{p("2", "3V3", 0, 0), p("1", "IO0", 0, 0)}),
+		mkComp("r3", "R3", 1057, -2209, 80.3, 45.3, []apPad{p("2", "LED_A", 0, 0), p("1", "BLINK", 0, 0)}),
+		mkComp("c2", "C2", 2509, -652, 160.6, 77.2, []apPad{p("2", "3V3", 0, 0), p("1", "GND", 0, 0)}),
+		mkComp("led1", "LED1", 1062, -1128, 176, 91, []apPad{p("2", "GND", 0, 0), p("1", "LED_A", 0, 0)}),
+		mkComp("c1", "C1", 2827, -636, 74.8, 45.3, []apPad{p("2", "GND", 0, 0), p("1", "3V3", 0, 0)}),
 	}
 }
 
@@ -125,8 +130,8 @@ func TestPlanAutoPlace_Ceshi(t *testing.T) {
 // A board with no chip (only 2-pad parts) places nothing and says why.
 func TestPlanAutoPlace_NoMainChip(t *testing.T) {
 	comps := []apComp{
-		mkComp("r1", "R1", 0, 0, 80, 45, []apPad{{"1", "A", 0, 0}, {"2", "B", 0, 0}}),
-		mkComp("c1", "C1", 100, 0, 75, 45, []apPad{{"1", "B", 0, 0}, {"2", "GND", 0, 0}}),
+		mkComp("r1", "R1", 0, 0, 80, 45, []apPad{p("1", "A", 0, 0), p("2", "B", 0, 0)}),
+		mkComp("c1", "C1", 100, 0, 75, 45, []apPad{p("1", "B", 0, 0), p("2", "GND", 0, 0)}),
 	}
 	moves, diags := planAutoPlace(comps, defaultApOptions())
 	if len(moves) != 0 {
