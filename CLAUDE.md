@@ -8,6 +8,10 @@ running inside EasyEDA, which calls the official `eda.*` API.
 skill ──▶ Go CLI/daemon ──WebSocket──▶ connector .eext ──▶ eda.* API
           (typed actions)   49620-49629   (in EasyEDA Pro)
 ```
+
+## 官方插件库调研参考
+文章：docs/ecosystem-survey.md，遇到什么不确认的情况可以来这里参考分析，并更新认知到相应文档；
+
 ## 首要准则 — Skill 优先
 
 > **本项目是「边开发、边更新 Agent Skill」的联合开发模式。**
