@@ -133,6 +133,7 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
 - `pcb.grid_snap` — round component anchors to `grid` (mil; SMD 25, THT 50).
 - `pcb.components.move` — translate a group by relative `dx` / `dy`.
 - `pcb.components.arrange` — coarse auto-layout **seed** (priority P6): `mode=cluster` groups by shared local nets then grid-packs each cluster into a tidy non-overlapping block; `mode=grid` packs a flat grid. Skips locked parts.
+- `easyeda pcb auto-place` — **module-aware** heuristic placement (daemon-side). Main chips (≥ `--main-pins`, default 8, distinct pins) are anchors that stay put; every satellite (cap/R/LED) is pulled to the chip edge nearest the pad it connects to, then packed along that edge with no overlap: decoupling caps land by their power pin (3V3/VCC), signal R's by their signal pin, an LED chains beside its series resistor. `--dry-run` prints the plan without moving. A SEED (v1 translates only, no rotation) — refine by hand + verify with `pcb drc`. Prefer this over `arrange` when there is a clear main chip; use `arrange` for chip-less or flat-grid cases.
 
 ### Board outline (板框)
 
@@ -173,7 +174,7 @@ Operational order:
 
 1. **Read state** — `pcb.components.list` (`includeBBox`+`includePads`) + `pcb.layers.list` (`copperLayerCount`) + `pcb.nets.list`; classify each part by net/designator (anchor / hot / sensitive / IC / passive).
 2. **P0** — place connectors (J/USB) and mounting holes (H/MH) at enclosure coords and **`lock`** them; treat as immovable obstacles; edge connectors open outward.
-3. **P6 coarse seed** — `pcb.components.arrange mode=cluster` for an initial net-clustered layout.
+3. **P6 coarse seed** — when the board has a clear main chip, `easyeda pcb auto-place` (module-aware: satellites hug the chip pin they connect to); otherwise `pcb.components.arrange mode=cluster` for a net-clustered seed. Run `--dry-run` first to review the plan.
 4. **P2/P4 local overrides** — decoupling caps tight to the IC power pin (≤2-layer ≤150 mil; 4+-layer ≤250 mil **but leave via room**); crystal + 2 load caps tight to the MCU osc pins inside a 200 mil guard; minimize the switcher input loop `{Cin + switch + catch-diode}` bbox; spread hot parts ≥400 mil; keep heat-sensitive parts (electrolytics/crystals/sensors) ≥200 mil from heat.
 5. **P7 tidy-up** — `pcb.align` / `pcb.distribute` / `pcb.grid_snap`, **without breaking any function-driven position**.
 6. **Verify** — `pcb.drc.check` (and the PCB linter once it lands); fix by rule number. Pull fresh primitiveIds before each mutation; confirm destructive ops; log before/after.
