@@ -86,13 +86,23 @@ type actionContext struct {
 	TabID        string `json:"tabId,omitempty"`
 }
 
+// artifactRef is the subset of a response artifact a CLI caller needs to locate
+// the persisted file (the daemon fills Path after decoding the connector's
+// inlineBase64). Mirrors protocol.Artifact without importing it here.
+type artifactRef struct {
+	Path     string `json:"path,omitempty"`
+	FileName string `json:"fileName,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+}
+
 // actionResult is the parsed form of an /action response, for callers that need
 // to read the result programmatically instead of streaming it to stdout.
 type actionResult struct {
-	OK       bool           `json:"ok"`
-	Result   map[string]any `json:"result"`
-	Context  *actionContext `json:"context"`
-	errorMsg string
+	OK        bool           `json:"ok"`
+	Result    map[string]any `json:"result"`
+	Artifacts []artifactRef  `json:"artifacts"`
+	Context   *actionContext `json:"context"`
+	errorMsg  string
 }
 
 // requestAction POSTs a typed action and returns the parsed response without
@@ -105,17 +115,18 @@ func requestAction(cfg *appConfig, action, window string, payload any) (*actionR
 	}
 
 	var parsed struct {
-		OK      bool           `json:"ok"`
-		Result  map[string]any `json:"result"`
-		Context *actionContext `json:"context"`
-		Error   *struct {
+		OK        bool           `json:"ok"`
+		Result    map[string]any `json:"result"`
+		Artifacts []artifactRef  `json:"artifacts"`
+		Context   *actionContext `json:"context"`
+		Error     *struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, fmt.Errorf("decode %s response: %w", action, err)
 	}
-	res := &actionResult{OK: parsed.OK, Result: parsed.Result, Context: parsed.Context}
+	res := &actionResult{OK: parsed.OK, Result: parsed.Result, Artifacts: parsed.Artifacts, Context: parsed.Context}
 	if !parsed.OK {
 		msg := "ok=false"
 		if parsed.Error != nil && parsed.Error.Message != "" {
@@ -125,6 +136,32 @@ func requestAction(cfg *appConfig, action, window string, payload any) (*actionR
 		return res, fmt.Errorf("%s failed: %s", action, msg)
 	}
 	return res, nil
+}
+
+// dispatchCapture runs an action like dispatch (streaming the raw response to
+// stdout, preserving the exact output shape) but also returns the parsed result
+// so the caller can post-process artifacts. The streamed bytes are unchanged;
+// callers read res.Artifacts for the persisted file path.
+func dispatchCapture(cfg *appConfig, action, window string, payload any, stdout io.Writer) (*actionResult, error) {
+	respBody, err := postAction(cfg, action, window, payload, defaultActionTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	_, _ = stdout.Write(respBody)
+	if len(respBody) > 0 && respBody[len(respBody)-1] != '\n' {
+		fmt.Fprintln(stdout)
+	}
+
+	var parsed struct {
+		OK        bool           `json:"ok"`
+		Result    map[string]any `json:"result"`
+		Artifacts []artifactRef  `json:"artifacts"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil || !parsed.OK {
+		return nil, errActionFailed
+	}
+	return &actionResult{OK: parsed.OK, Result: parsed.Result, Artifacts: parsed.Artifacts}, nil
 }
 
 // healthWindow is the subset of a /health window entry the doc commands need to

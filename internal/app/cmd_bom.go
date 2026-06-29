@@ -33,13 +33,23 @@ func newBomCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 // schematic.export.bom
 
 func newBomExportCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
-	var fileType, template, columnsJSON string
+	var fileType, template, columnsJSON, partsPath, scriptPath string
+	var enrich bool
 
 	c := &cobra.Command{
 		Use:   "export",
 		Short: "Export schematic BOM as csv or xlsx artifact",
 		Args:  cobra.NoArgs,
+		Long: `Export the schematic BOM as a csv or xlsx artifact.
+
+By default a csv export is enriched in place with LCSC C-numbers (joined from
+standard-parts.json by Manufacturer Part) so the "Supplier Part" column is
+directly orderable — EasyEDA's own export writes <MPN>.1 there, which is not.
+Pass --enrich=false to keep the raw export. Enrichment is csv-only (xlsx is
+binary) and best-effort: if it fails the exported file is left un-enriched and
+a warning is printed, but the export itself still succeeds.`,
 		Example: `  easyeda bom export --type csv
+  easyeda bom export --type csv --enrich=false
   easyeda bom export --type xlsx --columns '["designator","value","footprint","lcsc"]'`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if fileType == "" {
@@ -56,13 +66,65 @@ func newBomExportCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *
 				}
 				payload["columns"] = cols
 			}
-			return dispatch(cfg, "schematic.export.bom", *window, payload, stdout, stderr)
+
+			res, err := dispatchCapture(cfg, "schematic.export.bom", *window, payload, stdout)
+			if err != nil {
+				return err
+			}
+			if !enrich {
+				return nil
+			}
+
+			// Enrichment joins LCSC C-numbers into a TEXT BOM; xlsx is binary.
+			if fileType != "csv" {
+				fmt.Fprintf(stderr, "note: --enrich skipped — C-number enrichment is csv-only (got %s); use --type csv for an orderable BOM\n", fileType)
+				return nil
+			}
+			bomPath := ""
+			for _, a := range res.Artifacts {
+				if a.Path != "" {
+					bomPath = a.Path
+					break
+				}
+			}
+			if bomPath == "" {
+				fmt.Fprintln(stderr, "warning: --enrich skipped — export returned no file path")
+				return nil
+			}
+			// Best-effort: a missing python3 / script must NOT fail an
+			// already-exported BOM. Warn and keep the raw file.
+			if err := enrichBomFile(scriptPath, bomPath, partsPath, stderr); err != nil {
+				fmt.Fprintf(stderr, "warning: BOM exported but enrichment failed (file left un-enriched): %v\n", err)
+			}
+			return nil
 		},
 	}
 	c.Flags().StringVar(&fileType, "type", "", "output file type: csv or xlsx (required)")
 	c.Flags().StringVar(&template, "template", "", "BOM template name")
 	c.Flags().StringVar(&columnsJSON, "columns", "", `JSON array of column names, e.g. '["designator","value"]'`)
+	c.Flags().BoolVar(&enrich, "enrich", true, "enrich csv export in place with LCSC C-numbers (best-effort)")
+	c.Flags().StringVar(&partsPath, "parts", "", "path to standard-parts.json (auto-detected if omitted)")
+	c.Flags().StringVar(&scriptPath, "script", "", "path to bom-enrich.py (auto-detected if omitted)")
 	return c
+}
+
+// enrichBomFile rewrites a text BOM in place, joining LCSC C-numbers from
+// standard-parts.json via bom-enrich.py. Best-effort: callers treat a returned
+// error as non-fatal (the raw export already succeeded). The script's
+// human-readable match report goes to stderr so stdout stays the action JSON.
+func enrichBomFile(scriptOverride, bomPath, partsPath string, stderr io.Writer) error {
+	script, err := findBomEnrichScript(scriptOverride)
+	if err != nil {
+		return err
+	}
+	cmdArgs := []string{script, bomPath, "--out", bomPath}
+	if partsPath != "" {
+		cmdArgs = append(cmdArgs, "--parts", partsPath)
+	}
+	py := exec.Command("python3", cmdArgs...)
+	py.Stdout = stderr // match report -> stderr, never the BOM file or action JSON
+	py.Stderr = stderr
+	return py.Run()
 }
 
 // ── bom enrich ────────────────────────────────────────────────────────────
@@ -112,27 +174,51 @@ func newBomEnrichCmd(stdout, stderr io.Writer) *cobra.Command {
 // findBomEnrichScript resolves the bom-enrich.py script path.
 // Priority:
 //  1. --script flag value (returned as-is)
-//  2. Walk up from the running binary to find skills/.../bom-enrich.py
-//  3. PATH lookup for bom-enrich.py
+//  2. $EASYEDA_SKILLS_DIR/easyeda-schematic/scripts/bom-enrich.py (install layout)
+//  3. Walk up from the running binary to find skills/.../bom-enrich.py (dev: ./bin/easyeda)
+//  4. Walk up from the working directory (agent run inside the repo/project)
+//  5. PATH lookup for bom-enrich.py
+//
+// 2 and 4 matter once `bom export` enriches by default: the installed binary
+// lives at /usr/local/bin (so exe walk-up can't reach the repo's skills/), but
+// the agent usually runs from the repo/project dir or sets EASYEDA_SKILLS_DIR.
 func findBomEnrichScript(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
 
-	// Walk up from the executable directory.
-	exe, err := os.Executable()
-	if err == nil {
-		dir := filepath.Dir(exe)
+	const rel = "easyeda-schematic/scripts/bom-enrich.py"
+	if skillsDir := os.Getenv("EASYEDA_SKILLS_DIR"); skillsDir != "" {
+		candidate := filepath.Join(skillsDir, filepath.FromSlash(rel))
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	// Walk up from a start directory looking for skills/.../bom-enrich.py.
+	walkUp := func(dir string) (string, bool) {
 		for i := 0; i < 8; i++ {
-			candidate := filepath.Join(dir, "skills", "easyeda-schematic", "scripts", "bom-enrich.py")
+			candidate := filepath.Join(dir, "skills", filepath.FromSlash(rel))
 			if _, err := os.Stat(candidate); err == nil {
-				return candidate, nil
+				return candidate, true
 			}
 			parent := filepath.Dir(dir)
 			if parent == dir {
 				break
 			}
 			dir = parent
+		}
+		return "", false
+	}
+
+	if exe, err := os.Executable(); err == nil {
+		if path, ok := walkUp(filepath.Dir(exe)); ok {
+			return path, nil
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if path, ok := walkUp(cwd); ok {
+			return path, nil
 		}
 	}
 

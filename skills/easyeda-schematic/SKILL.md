@@ -287,7 +287,7 @@ move/rotate/align/distribute/grid_snap/cluster-arrange）在独立的 operationa
 | `scripts/sch.py` | **稳定执行器**（import 用）— 把核心 CLI 封成 churn-resilient API:`read()`/`place()`/`move()`/`wire()`(SOP-W 正交避引脚)/`rail_flag()`(SOP-F 定向)/`decouple()`(SOP-D)/`connectivity()`(union-find 真连通)/`snapshot()`(取 .easyeda/artifacts)。AI 数据自调闭环用:放→`read`→判→`move`→`connectivity` 验。 |
 | `scripts/lint.sh <project>` | 原理图数据 lint（几何 + 连通性检查，无需截图）。有 baseline 时显示 DIFF |
 | `scripts/lint.sh <project> --save` | 全量 lint 并记录 baseline |
-| `scripts/bom-enrich.py <bom.tsv>` | 将导出的 BOM 里 `SupplierId` 从 MPN 补全为 LCSC C 号 |
+| `scripts/bom-enrich.py <bom.tsv>` | 将导出的 BOM 里 `SupplierId` 从 MPN 补全为 LCSC C 号。**`easyeda bom export --type csv` 已默认自动调用它就地补全**（`--enrich=false` 关闭）；本脚本仅在手动后处理已有 BOM 时单独用 |
 | `scripts/parts-select.py` | 器件选型辅助工具 |
 
 标准器件库（`standard-parts.json`）、flag 旋转真值表（`orientation.json`）、布局/选型约定都在
