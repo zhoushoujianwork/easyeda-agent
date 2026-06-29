@@ -816,16 +816,23 @@ plane. fill = solid (default) | grid | grid45.`,
 		c := &cobra.Command{
 			Use:   "autoroute",
 			Short: "Auto-route the active PCB via an external Freerouting engine (DSN→route→SES→import→DRC)",
-			Long: `One-command Freerouting round-trip: export the PCB as a Specctra DSN, run an
-external Freerouting engine on it, import the routed SES, then DRC.
+			Long: `Orchestrate a DSN→route→SES→import→DRC round-trip. The routing ENGINE is
+external and pluggable (--router / FREEROUTING_CMD with {in}/{out}); we do NOT
+bundle one.
 
-The router is external (Freerouting needs Java 17+). Provide its command via
---router or the FREEROUTING_CMD env var, with {in}/{out} placeholders:
+NOTE — there is no built-in, no-popup, programmatically-callable autorouter today:
+  • eda.pcb_Document.autoRouting() is declared but @alpha / undefined at runtime.
+  • easyeda-pcb-router (official headless Freerouting) is a separate WS service you
+    must run yourself.
+  • the marketplace Freerouting extension can't be invoked from another extension.
+So this command needs an external engine YOU provide, and is SUPERSEDED once a
+native autoRouting() API ships. The building blocks (pcb export-dsn /
+import-autoroute / snapshot) work regardless.
 
-  easyeda pcb autoroute --router 'java -jar /path/freerouting.jar -de {in} -do {out}'
+  easyeda pcb autoroute --router '<your-dsn→ses-router-cmd> {in} {out}'
 
 Without a router configured, autoroute exports the DSN and stops — route it
-yourself, then run 'easyeda pcb import-autoroute <file.ses>'.
+externally, then run 'easyeda pcb import-autoroute <file.ses>'.
 
 PREREQUISITE (see docs/test-case-esp32-pcb.md): keep-out zones (antenna / board
 edge) MUST be in the DSN, else the router will route under the antenna. Verify the
