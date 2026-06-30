@@ -6,6 +6,17 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.25] - 2026-06-30
+### Added
+- **PCB keep-out / rule regions** (task #11): `pcb.region.create` / `pcb.region.list`
+  / `pcb.region.delete` (`eda.pcb_PrimitiveRegion.*`). A polygon carrying rule types
+  — `no-components(2)` / `no-wires(5)` / `no-fills(6)` / `no-pours(7)` /
+  `no-inner-electrical(8)` / `follow-rule(9)`; default is a hard keep-out
+  `[no-components, no-wires, no-pours]` for antenna clearance / board-edge inset.
+  NOT net-bound filled copper (that's `pcb.pour.create`). CLI: `easyeda pcb region
+  create / list / delete`. (DSN keep-out injection for the Freerouting maze tier is a
+  separate follow-up — `getDsnFile` drops regions.)
+
 ## [0.5.24] - 2026-06-29
 ### Added
 - **Freerouting round-trip building blocks** (task #5): `pcb.export.dsn`

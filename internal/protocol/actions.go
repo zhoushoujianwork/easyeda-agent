@@ -751,6 +751,42 @@ func AllActions() []ActionSpec {
 			Inputs:      []string{"net optional"},
 			Outputs:     []string{"pours", "rebuilt"},
 		},
+		// ─── PCB region (禁止区域 / 规则区域 keep-out) ──────────────────────
+		// pcb_PrimitiveRegion: a polygon carrying RULE types (keep components/
+		// wires/copper out) — antenna clearance, board-edge inset, mechanical
+		// exclusion. NOT net-bound filled copper (that's pcb.pour.create).
+		{
+			Name:        "pcb.region.create",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Create a keep-out / rule region (禁止区域) from a closed polygon of points (mil, y-up) on a copper layer (TOP=1, BOTTOM=2; or MULTI for all). ruleType is a name or list — no-components(2) / no-wires(5) / no-fills(6) / no-pours(7) / no-inner-electrical(8) / follow-rule(9); default [no-components,no-wires,no-pours] = a hard keep-out (antenna/board-edge). Builds the IPCB_Polygon internally — pass raw points, NOT a polygon object. This is NOT net-bound copper (use pcb.pour.create for a ground/power plane).",
+			Inputs:      []string{"points ([[x,y],...] mil)", "layer optional (default 1=TOP)", "ruleType optional (name|number or list; default keep-out)", "name optional", "lineWidth optional", "locked optional"},
+			Outputs:     []string{"primitiveId", "layer", "ruleType", "ruleTypeNames", "regionName"},
+			VerifyWith:  []string{"pcb.region.list", "pcb.drc.check"},
+		},
+		{
+			Name:        "pcb.region.list",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "List keep-out / rule regions (禁止区域) on the active PCB, optionally filtered by layer. Read-only.",
+			Inputs:      []string{"layer optional"},
+			Outputs:     []string{"regions[].primitiveId", "regions[].layer", "regions[].ruleType", "regions[].ruleTypeNames", "regions[].regionName", "regions[].lineWidth", "regions[].locked", "count"},
+		},
+		{
+			Name:         "pcb.region.delete",
+			Domain:       DomainPcb,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Delete keep-out / rule regions by primitiveId (string or string[]). Note pcb.delete (component delete) does NOT remove regions — use this. Recreate with pcb.region.create.",
+			Inputs:       []string{"primitiveIds (string or string[])"},
+			Outputs:      []string{"deleted", "primitiveIds"},
+			VerifyWith:   []string{"pcb.region.list"},
+		},
 		// ─── Board outline (板框) — closed polyline on the BOARD_OUTLINE layer ──
 		// Curves are line-segment approximated (native arcs do not commit on the
 		// current build). Shape-generation recipes (rect/rounded-rect/circle/

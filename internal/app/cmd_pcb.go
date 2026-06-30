@@ -1101,6 +1101,113 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 		pcb.AddCommand(c)
 	}
 
+	// ── region ────────────────────────────────────────────────────────────
+	// pcb.region.* — keep-out / rule regions (禁止区域). NOT net-bound copper
+	// (that's `pcb pour`). The #5 prerequisite: antenna / board-edge keep-out.
+	{
+		region := &cobra.Command{
+			Use:   "region",
+			Short: "Keep-out / rule regions (禁止区域): create / list / delete",
+			Long: `Manage keep-out / rule regions (禁止区域) — a polygon that keeps components,
+wires, and/or copper OUT of an area (antenna clearance, board-edge inset,
+mechanical exclusion). This is NOT net-bound filled copper — use 'pcb pour' for a
+ground/power plane.
+
+ruleType (name or number, repeatable): no-components(2), no-wires(5), no-fills(6),
+no-pours(7), no-inner-electrical(8), follow-rule(9). Default is a hard keep-out
+[no-components, no-wires, no-pours].`,
+		}
+
+		{
+			var pointsJSON, name string
+			var ruleTypes []string
+			var layer int
+			var width float64
+			var locked bool
+			c := &cobra.Command{
+				Use:   "create",
+				Short: "Create a keep-out / rule region from a closed polygon",
+				Args:  cobra.NoArgs,
+				Example: `  easyeda pcb region create --points '[[100,100],[400,100],[400,300],[100,300]]'   # default keep-out
+  easyeda pcb region create --points '[...]' --rule no-wires --rule no-pours --layer 1 --name antenna`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					if pointsJSON == "" {
+						return fmt.Errorf("--points is required")
+					}
+					var points any
+					if err := json.Unmarshal([]byte(pointsJSON), &points); err != nil {
+						return fmt.Errorf("invalid --points json (expected array): %w", err)
+					}
+					payload := map[string]any{"points": points}
+					if cmd.Flags().Changed("layer") {
+						payload["layer"] = layer
+					}
+					if len(ruleTypes) > 0 {
+						payload["ruleType"] = ruleTypes
+					}
+					if name != "" {
+						payload["name"] = name
+					}
+					if cmd.Flags().Changed("width") {
+						payload["lineWidth"] = width
+					}
+					if locked {
+						payload["locked"] = true
+					}
+					return dispatch(cfg, "pcb.region.create", window, payload, stdout, stderr)
+				},
+			}
+			c.Flags().StringVar(&pointsJSON, "points", "", `JSON array of [x,y] points in mil (required)`)
+			c.Flags().StringArrayVar(&ruleTypes, "rule", nil, "rule type (repeatable): no-components|no-wires|no-fills|no-pours|no-inner-electrical|follow-rule (default keep-out)")
+			c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2; inner via 'easyeda pcb layers')")
+			c.Flags().StringVar(&name, "name", "", "region name")
+			c.Flags().Float64Var(&width, "width", 0, "region border width (mil)")
+			c.Flags().BoolVar(&locked, "locked", false, "create the region locked")
+			region.AddCommand(c)
+		}
+		{
+			var layer int
+			c := &cobra.Command{
+				Use:     "list",
+				Short:   "List keep-out / rule regions, optionally by layer",
+				Args:    cobra.NoArgs,
+				Example: `  easyeda pcb region list`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					payload := map[string]any{}
+					if cmd.Flags().Changed("layer") {
+						payload["layer"] = layer
+					}
+					return dispatch(cfg, "pcb.region.list", window, payload, stdout, stderr)
+				},
+			}
+			c.Flags().IntVar(&layer, "layer", 0, "filter by copper layer id")
+			region.AddCommand(c)
+		}
+		{
+			var idsJSON string
+			c := &cobra.Command{
+				Use:     "delete",
+				Short:   "Delete keep-out / rule regions by primitiveId",
+				Args:    cobra.NoArgs,
+				Example: `  easyeda pcb region delete --ids '["id1","id2"]'`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					if idsJSON == "" {
+						return fmt.Errorf("--ids is required")
+					}
+					var ids []any
+					if err := json.Unmarshal([]byte(idsJSON), &ids); err != nil {
+						return fmt.Errorf("invalid --ids json (expected array): %w", err)
+					}
+					return dispatch(cfg, "pcb.region.delete", window,
+						map[string]any{"primitiveIds": ids}, stdout, stderr)
+				},
+			}
+			c.Flags().StringVar(&idsJSON, "ids", "", `JSON array of region primitiveIds to delete (required)`)
+			region.AddCommand(c)
+		}
+		pcb.AddCommand(region)
+	}
+
 	return pcb
 }
 

@@ -3331,6 +3331,150 @@ const pcbPourRebuild: Handler = async (payload) => {
 	return { result: { pours: (pours ?? []).length, rebuilt } };
 };
 
+// ─── PCB region (禁止区域 / 规则区域 keep-out) ────────────────────────
+// pcb_PrimitiveRegion is a polygon carrying one or more RULE types — keep
+// components / wires / copper / etc. OUT of the area (antenna clearance,
+// board-edge inset, mechanical exclusion). It is NOT net-bound filled copper —
+// that's a pour (`pcb pour`). Polygon is built exactly like a pour (createPolygon,
+// explicitly closed). Rule types accept friendly names OR raw enum numbers.
+//
+// EPCB_PrimitiveRegionRuleType: NO_COMPONENTS=2, NO_WIRES=5, NO_FILLS=6,
+// NO_POURS=7, NO_INNER_ELECTRICAL_LAYERS=8, FOLLOW_REGION_RULE=9.
+
+const REGION_RULE_BY_NAME: Record<string, number> = {
+	'no-components': 2, 'keepout-components': 2, components: 2,
+	'no-wires': 5, 'no-routing': 5, 'keepout-routing': 5, wires: 5, routing: 5,
+	'no-fills': 6, fills: 6,
+	'no-pours': 7, 'no-copper': 7, 'keepout-copper': 7, pours: 7, copper: 7,
+	'no-inner': 8, 'no-inner-electrical': 8, inner: 8,
+	'follow-rule': 9, constraint: 9,
+};
+const REGION_RULE_NAME: Record<number, string> = {
+	2: 'no-components', 5: 'no-wires', 6: 'no-fills', 7: 'no-pours',
+	8: 'no-inner-electrical', 9: 'follow-rule',
+};
+// Antenna / board-edge keep-out default: keep components, wires, AND copper out.
+const DEFAULT_REGION_RULES = [2, 5, 7];
+
+function parseRegionRuleTypes(raw: unknown): number[] {
+	if (raw == null) return [...DEFAULT_REGION_RULES];
+	const arr = Array.isArray(raw) ? raw : [raw];
+	const out: number[] = [];
+	for (const r of arr) {
+		if (typeof r === 'number') { out.push(r); continue; }
+		if (typeof r === 'string') {
+			const v = REGION_RULE_BY_NAME[r.trim().toLowerCase()];
+			if (v == null) {
+				throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD,
+					`Unknown region ruleType "${r}". Use a name (${Object.keys(REGION_RULE_BY_NAME).join(', ')}) or an enum number.`);
+			}
+			out.push(v);
+			continue;
+		}
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'ruleType entries must be names or numbers.');
+	}
+	return out.length ? out : [...DEFAULT_REGION_RULES];
+}
+
+// closedPolygonFromPoints turns a payload `points` array (>= 3 [x,y] pairs, mil)
+// into the explicitly-closed IPCB_Polygon that region/pour create() require.
+function closedPolygonFromPoints(raw: unknown) {
+	if (!Array.isArray(raw) || raw.length < 3) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'points must be an array of >= 3 [x,y] pairs (mil).');
+	}
+	const pts: Array<[number, number]> = [];
+	for (const p of raw) {
+		if (!Array.isArray(p) || p.length < 2 || typeof p[0] !== 'number' || typeof p[1] !== 'number') {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each point must be [x, y] numbers.');
+		}
+		pts.push([p[0], p[1]]);
+	}
+	const src: Array<number | string> = [pts[0][0], pts[0][1], 'L'];
+	for (let i = 1; i < pts.length; i++) src.push(pts[i][0], pts[i][1]);
+	src.push(pts[0][0], pts[0][1]);
+	const poly = eda.pcb_MathPolygon.createPolygon(src as unknown as TPCB_PolygonSourceArray);
+	if (!poly) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Failed to build polygon from points (createPolygon returned undefined — points must form a valid closed polygon).');
+	}
+	return poly;
+}
+
+const pcbRegionCreate: Handler = async (payload) => {
+	const poly = closedPolygonFromPoints(payload.points);
+	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfRegion;
+	const ruleTypes = parseRegionRuleTypes(payload.ruleType ?? payload.ruleTypes);
+	const regionName = optionalString(payload, 'name');
+	const lineWidth = optionalNumber(payload, 'lineWidth');
+	const lock = payload.locked === true;
+
+	let region;
+	try {
+		region = await eda.pcb_PrimitiveRegion.create(
+			layer, poly,
+			ruleTypes as unknown as Array<EPCB_PrimitiveRegionRuleType>,
+			regionName, lineWidth, lock,
+		);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create PCB region (禁止区域).');
+	}
+	if (!region) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Region creation returned no primitive (check layer/points/ruleType).');
+	}
+	return {
+		result: {
+			primitiveId: region.getState_PrimitiveId(),
+			layer: Number(layer),
+			ruleType: ruleTypes,
+			ruleTypeNames: ruleTypes.map(v => REGION_RULE_NAME[v] ?? String(v)),
+			regionName: regionName ?? null,
+		},
+	};
+};
+
+const pcbRegionList: Handler = async (payload) => {
+	const layer = optionalNumber(payload, 'layer');
+	let regions;
+	try {
+		regions = await eda.pcb_PrimitiveRegion.getAll(
+			layer == null ? undefined : (layer as unknown as TPCB_LayersOfRegion),
+		);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list PCB regions.');
+	}
+	const list = (regions ?? []).map(r => {
+		const rules = (r.getState_RuleType() ?? []) as unknown as number[];
+		return {
+			primitiveId: r.getState_PrimitiveId(),
+			layer: r.getState_Layer(),
+			ruleType: rules,
+			ruleTypeNames: rules.map(v => REGION_RULE_NAME[v] ?? String(v)),
+			regionName: r.getState_RegionName() ?? null,
+			lineWidth: r.getState_LineWidth(),
+			locked: r.getState_PrimitiveLock(),
+		};
+	});
+	return { result: { regions: list, count: list.length } };
+};
+
+const pcbRegionDelete: Handler = async (payload) => {
+	const raw = payload.primitiveIds;
+	let ids: Array<string>;
+	if (typeof raw === 'string') ids = [raw];
+	else if (Array.isArray(raw) && raw.every(id => typeof id === 'string')) ids = raw as Array<string>;
+	else throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "primitiveIds" (string or string[]).');
+
+	let deleted;
+	try {
+		deleted = await eda.pcb_PrimitiveRegion.delete(ids);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete PCB regions.');
+	}
+	return { result: { deleted, primitiveIds: ids } };
+};
+
 // ─── PCB routing: list + rip-up ──────────────────────────────────────
 // Reliable rip-up is hand-rolled (getAll → filter → delete) on the @public/@beta
 // primitive APIs — the same pattern the official kirouting extension uses. It
@@ -3800,6 +3944,9 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.pour.list': pcbPourList,
 	'pcb.pour.delete': pcbPourDelete,
 	'pcb.pour.rebuild': pcbPourRebuild,
+	'pcb.region.create': pcbRegionCreate,
+	'pcb.region.list': pcbRegionList,
+	'pcb.region.delete': pcbRegionDelete,
 	'pcb.save': pcbSave,
 	'pcb.export.dsn': pcbExportDsn,
 	'pcb.import_autoroute': pcbImportAutoroute,

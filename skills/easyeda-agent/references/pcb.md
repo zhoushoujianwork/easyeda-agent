@@ -106,6 +106,28 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
 - `pcb.pour.rebuild` — re-pour all (or by net) after moving components/routing so the
   copper reflows around new obstacles.
 
+### Keep-out / rule regions (禁止区域)
+
+A region (`eda.pcb_PrimitiveRegion`) is a polygon carrying **rule types** that keep
+things OUT of an area — antenna clearance, board-edge inset, mechanical exclusion.
+It is **NOT net-bound copper** (that's a pour) — `create` takes no net. EasyEDA's own
+DRC + copper pour respect it (a pour avoids a `no-pours` region). Same raw-points
+convention as pour (connector builds the polygon).
+
+- `pcb region create` (`pcb.region.create`) — region from a closed `--points` polygon
+  on a `--layer`. `--rule` (repeatable, name or enum number): `no-components(2)` /
+  `no-wires(5)` / `no-fills(6)` / `no-pours(7)` / `no-inner-electrical(8)` /
+  `follow-rule(9)`. **Default** (no `--rule`) is a hard keep-out
+  `[no-components, no-wires, no-pours]` — the antenna / board-edge case. `--locked`
+  pins it. Verify with `pcb region list` + `pcb drc`.
+- `pcb region list` / `pcb region delete` — inspect / remove (note `pcb delete`
+  removes components, NOT regions — use `region delete`).
+
+> **ESP32-S3-WROOM-1 ships with NO antenna keep-out** — you must create it (test-case
+> P1). **`getDsnFile` drops regions** (DSN `(structure)` keeps boundary + rules only),
+> so handing keep-out to external Freerouting needs a separate DSN-injection step
+> (follow-up task) — the heuristic `route-short` + keep-out-respecting `pour` don't.
+
 > **Routing boundary (load-bearing — see `docs/ecosystem-survey.md` §7):** EasyEDA's
 > interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,
 > length-tuning/serpentine, fanout, remove-loops) has **NO `eda.*` API** — the agent
@@ -136,10 +158,14 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
 
 v1 (`route-short` / `pour`) is mechanically correct but coarse. Planned quality upgrades:
 
-- **填充区域 / 轮廓对象 (net-bound filled region, 异形大块铜)** — distinct from auto-`pour`: a
-  directly-drawn **填充区域** primitive (`eda.pcb_PrimitiveRegion`, 类型=填充区域) on a layer, bound
-  to a net (e.g. a 3V3 power-plane patch, RF ground, thermal copper), arbitrary/odd polygon. Plan:
-  `pcb region create` action (also covers keep-out — same primitive, different rule type). (task #11)
+- **填充区域 / 轮廓对象 (net-bound filled region, 异形大块铜)** — distinct from auto-`pour` AND from
+  keep-out `pcb region` (which has NO net param). A net-bound **填充区域** (e.g. a 3V3 power-plane
+  patch, RF ground, thermal copper) needs a different path — likely `pcb pour` on an odd polygon, or
+  `eda.pcb_Net.convertToRegion`. Plan: a `pcb fill` action once the net-binding API is pinned down. (task #11)
+- **DSN keep-out injection (Freerouting maze tier)** — `getDsnFile` drops `pcb_PrimitiveRegion`
+  keep-out, so an exported DSN has `keepout = 0` → Freerouting would route under the antenna.
+  Plan: after `pcb export-dsn`, read regions and inject `(keepout (polygon …))` into the DSN
+  `(structure)` section (needs a real DSN in hand to calibrate unit/coordinate transform). (follow-up)
 
 ### Board outline (板框)
 
