@@ -31,7 +31,8 @@ type rtPad struct {
 	layer int
 }
 
-// rtSeg is one straight copper segment to create (pcb.line.create).
+// rtSeg is one straight copper segment to create (pcb.line.create). Width is the
+// per-net-class track width (mil); the connector default applies when it is 0.
 type rtSeg struct {
 	Net   string  `json:"net"`
 	X1    float64 `json:"x1"`
@@ -39,6 +40,7 @@ type rtSeg struct {
 	X2    float64 `json:"x2"`
 	Y2    float64 `json:"y2"`
 	Layer int     `json:"layer"`
+	Width float64 `json:"width"`
 }
 
 // rtNetDiag explains why a net (or one hop of it) was not routed.
@@ -48,12 +50,35 @@ type rtNetDiag struct {
 }
 
 type rtOptions struct {
-	maxLen  float64 // longest single hop (Manhattan, mil) still considered "short"
-	width   float64 // track width (mil); 0 → let the connector default apply
-	skipGnd bool    // skip GND nets (normally a copper pour, not routed)
+	maxLen      float64 // longest single hop (Manhattan, mil) still considered "short"
+	width       float64 // global override (mil); >0 forces ALL segments to this width
+	signalWidth float64 // class width for signal nets (used when width==0)
+	powerWidth  float64 // class width for power/ground nets (used when width==0)
+	skipGnd     bool    // skip GND nets (normally a copper pour, not routed)
+	corner      string  // corner style: "90" (L), "45" (chamfer), "round" (chord fillet)
+	roundRadius float64 // max fillet radius for corner=="round" (mil)
 }
 
-func defaultRtOptions() rtOptions { return rtOptions{maxLen: 1000, width: 0, skipGnd: true} }
+func defaultRtOptions() rtOptions {
+	return rtOptions{
+		maxLen: 1000, width: 0, signalWidth: 10, powerWidth: 20,
+		skipGnd: true, corner: "90", roundRadius: 20,
+	}
+}
+
+// widthFor picks a track width by net class: an explicit --width overrides
+// everything; otherwise power/ground nets (isGlobalNet) get the fatter powerWidth
+// and ordinary signals get signalWidth. Returns 0 only if every width is 0
+// (connector default).
+func (o rtOptions) widthFor(net string) float64 {
+	if o.width > 0 {
+		return o.width
+	}
+	if isGlobalNet(net) {
+		return o.powerWidth
+	}
+	return o.signalWidth
+}
 
 // planShortRoutes is the pure planner: given placed components (with pads) and
 // which nets are already routed, return the track segments to create plus
@@ -91,6 +116,7 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			diags = append(diags, rtNetDiag{net, "single pad — nothing to route"})
 			continue
 		}
+		w := opt.widthFor(net)
 		for _, e := range mstEdges(pads) {
 			a, b := pads[e.u], pads[e.v]
 			hop := fmt.Sprintf("%s.%s↔%s.%s", a.comp, a.pin, b.comp, b.pin)
@@ -102,28 +128,103 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 				diags = append(diags, rtNetDiag{net, fmt.Sprintf("%s too long (%.0f > %.0f mil) — maze tier", hop, mlen, opt.maxLen)})
 				continue
 			}
-			segs = append(segs, lShape(net, a, b)...)
+			segs = append(segs, routeHop(net, a, b, w, opt)...)
 		}
 	}
 	return segs, diags
 }
 
-// lShape returns the 1–2 Manhattan segments connecting a→b: a straight run when
-// aligned, else horizontal-first with a corner at (b.x, a.y). Zero-length pieces
-// are dropped.
-func lShape(net string, a, b rtPad) []rtSeg {
+// routeHop connects a→b in the requested corner style, all on a.layer at width w.
+// "90" = right-angle L (default), "45" = chamfered corner, "round" = a chord-
+// approximated quarter-circle fillet (native arcs do not commit on this build, so
+// the curve is emitted as short straight segments). Aligned pads always collapse
+// to a single straight run regardless of style.
+func routeHop(net string, a, b rtPad, w float64, opt rtOptions) []rtSeg {
 	if a.x == b.x || a.y == b.y {
-		return []rtSeg{{Net: net, X1: a.x, Y1: a.y, X2: b.x, Y2: b.y, Layer: a.layer}}
+		return appendSeg(nil, net, a.x, a.y, b.x, b.y, a.layer, w)
 	}
-	cx, cy := b.x, a.y // corner: go horizontal first, then vertical
-	var out []rtSeg
-	if a.x != cx || a.y != cy {
-		out = append(out, rtSeg{Net: net, X1: a.x, Y1: a.y, X2: cx, Y2: cy, Layer: a.layer})
+	switch opt.corner {
+	case "45":
+		return lShape45(net, a, b, w)
+	case "round":
+		return lShapeRound(net, a, b, w, opt.roundRadius)
+	default:
+		return lShape90(net, a, b, w)
 	}
-	if cx != b.x || cy != b.y {
-		out = append(out, rtSeg{Net: net, X1: cx, Y1: cy, X2: b.x, Y2: b.y, Layer: a.layer})
+}
+
+// appendSeg adds a→b to out, dropping zero-length pieces.
+func appendSeg(out []rtSeg, net string, x1, y1, x2, y2 float64, layer int, w float64) []rtSeg {
+	if x1 == x2 && y1 == y2 {
+		return out
 	}
-	return out
+	return append(out, rtSeg{Net: net, X1: x1, Y1: y1, X2: x2, Y2: y2, Layer: layer, Width: w})
+}
+
+func sign(v float64) float64 {
+	if v < 0 {
+		return -1
+	}
+	return 1
+}
+
+// lShape90 is the classic Manhattan L: horizontal-first with a 90° corner at
+// (b.x, a.y).
+func lShape90(net string, a, b rtPad, w float64) []rtSeg {
+	cx, cy := b.x, a.y
+	out := appendSeg(nil, net, a.x, a.y, cx, cy, a.layer, w)
+	return appendSeg(out, net, cx, cy, b.x, b.y, a.layer, w)
+}
+
+// lShape45 cuts the corner with a 45° diagonal: a horizontal run, a diagonal that
+// covers min(|dx|,|dy|) on each axis, then a vertical run. The straight runs
+// collapse to zero (and drop) when |dx|==|dy| → a single clean diagonal.
+func lShape45(net string, a, b rtPad, w float64) []rtSeg {
+	dx, dy := b.x-a.x, b.y-a.y
+	d := math.Min(math.Abs(dx), math.Abs(dy))
+	sx, sy := sign(dx), sign(dy)
+	p1x, p1y := b.x-sx*d, a.y // end of the horizontal run
+	p2x, p2y := b.x, a.y+sy*d // end of the 45° diagonal
+	out := appendSeg(nil, net, a.x, a.y, p1x, p1y, a.layer, w)
+	out = appendSeg(out, net, p1x, p1y, p2x, p2y, a.layer, w)
+	return appendSeg(out, net, p2x, p2y, b.x, b.y, a.layer, w)
+}
+
+// lShapeRound rounds the 90° corner with a quarter-circle fillet of radius
+// min(|dx|, |dy|, maxR), approximated by roundChords straight chords (native arcs
+// do not commit on this build). Straight runs lead in/out of the fillet.
+const roundChords = 6
+
+func lShapeRound(net string, a, b rtPad, w, maxR float64) []rtSeg {
+	dx, dy := b.x-a.x, b.y-a.y
+	cx, cy := b.x, a.y // the sharp corner we are rounding
+	r := math.Min(math.Abs(dx), math.Abs(dy))
+	if maxR > 0 && maxR < r {
+		r = maxR
+	}
+	sx, sy := sign(dx), sign(dy)
+	t1x, t1y := cx-sx*r, cy    // tangent on the horizontal leg
+	t2x, t2y := cx, cy+sy*r    // tangent on the vertical leg
+	ox, oy := cx-sx*r, cy+sy*r // arc center (equidistant r from both tangents)
+
+	out := appendSeg(nil, net, a.x, a.y, t1x, t1y, a.layer, w) // straight in
+	ang1 := math.Atan2(t1y-oy, t1x-ox)
+	ang2 := math.Atan2(t2y-oy, t2x-ox)
+	da := ang2 - ang1
+	for da > math.Pi {
+		da -= 2 * math.Pi
+	}
+	for da < -math.Pi {
+		da += 2 * math.Pi
+	}
+	px, py := t1x, t1y
+	for i := 1; i <= roundChords; i++ {
+		ang := ang1 + da*float64(i)/float64(roundChords)
+		nx, ny := ox+r*math.Cos(ang), oy+r*math.Sin(ang)
+		out = appendSeg(out, net, px, py, nx, ny, a.layer, w)
+		px, py = nx, ny
+	}
+	return appendSeg(out, net, px, py, b.x, b.y, a.layer, w) // straight out
 }
 
 type rtEdge struct{ u, v int }

@@ -84,3 +84,99 @@ func TestPlanShortRoutes_SkipAlreadyRouted(t *testing.T) {
 		}
 	}
 }
+
+// Track width follows net class: power/ground nets get the fatter powerWidth,
+// signals get signalWidth, and an explicit --width overrides both.
+func TestPlanShortRoutes_WidthByClass(t *testing.T) {
+	segs, _ := planShortRoutes(routeBoard(), map[string]bool{}, defaultRtOptions())
+	for _, s := range segs {
+		want := 10.0 // signal default
+		if s.Net == "3V3" {
+			want = 20.0 // power default
+		}
+		if s.Width != want {
+			t.Errorf("net %s width %.0f, want %.0f", s.Net, s.Width, want)
+		}
+	}
+
+	opt := defaultRtOptions()
+	opt.width = 8 // global override wins for every class
+	forced, _ := planShortRoutes(routeBoard(), map[string]bool{}, opt)
+	for _, s := range forced {
+		if s.Width != 8 {
+			t.Errorf("--width override: net %s width %.0f, want 8", s.Net, s.Width)
+		}
+	}
+}
+
+// A clean diagonal hop, one straight net across two parts, for corner-style tests.
+func twoPadNet(net string, ax, ay, bx, by float64) []apComp {
+	return []apComp{
+		mkComp("a", "A", ax, ay, 50, 50, []apPad{p("1", net, ax, ay)}),
+		mkComp("b", "B", bx, by, 50, 50, []apPad{p("1", net, bx, by)}),
+	}
+}
+
+func TestRouteHop_CornerStyles(t *testing.T) {
+	board := twoPadNet("SIG", 0, 0, 100, 60) // dx=100, dy=60 → a real corner
+
+	// 90°: two axis-aligned segments, no diagonal.
+	opt := defaultRtOptions()
+	opt.corner = "90"
+	segs, _ := planShortRoutes(board, map[string]bool{}, opt)
+	if len(segs) != 2 {
+		t.Fatalf("90° want 2 segs, got %d: %+v", len(segs), segs)
+	}
+	for _, s := range segs {
+		if s.X1 != s.X2 && s.Y1 != s.Y2 {
+			t.Errorf("90° segment is diagonal: %+v", s)
+		}
+	}
+
+	// 45°: a chamfer — exactly one segment whose run is a true 45° (|dx|==|dy|).
+	opt.corner = "45"
+	segs45, _ := planShortRoutes(board, map[string]bool{}, opt)
+	diag := 0
+	for _, s := range segs45 {
+		if dx, dy := absf(s.X2-s.X1), absf(s.Y2-s.Y1); dx != 0 && dy != 0 {
+			diag++
+			if dx != dy {
+				t.Errorf("45° diagonal not at 45° (dx=%.0f dy=%.0f)", dx, dy)
+			}
+		}
+	}
+	if diag != 1 {
+		t.Errorf("45° want exactly 1 diagonal segment, got %d", diag)
+	}
+
+	// round: a chord-approximated fillet → more segments than the bare L.
+	opt.corner = "round"
+	segsR, _ := planShortRoutes(board, map[string]bool{}, opt)
+	if len(segsR) <= 2 {
+		t.Errorf("round want >2 chord segments, got %d", len(segsR))
+	}
+
+	// Endpoints are preserved for every style (route still connects a→b).
+	for _, segs := range [][]rtSeg{segs, segs45, segsR} {
+		if !connectsEnds(segs, 0, 0, 100, 60) {
+			t.Errorf("route does not span (0,0)→(100,60): %+v", segs)
+		}
+	}
+}
+
+func absf(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// connectsEnds checks the segment list starts at (ax,ay) and ends at (bx,by),
+// i.e. the corner styling kept the pad endpoints intact.
+func connectsEnds(segs []rtSeg, ax, ay, bx, by float64) bool {
+	if len(segs) == 0 {
+		return false
+	}
+	first, last := segs[0], segs[len(segs)-1]
+	return first.X1 == ax && first.Y1 == ay && last.X2 == bx && last.Y2 == by
+}

@@ -993,8 +993,9 @@ This is a SEED, not a final layout — verify with 'pcb layout-lint' + 'pcb drc'
 	// ── route-short ───────────────────────────────────────────────────────
 	// Short-trace self-routing (daemon-side; see pcb_shortroute.go).
 	{
-		var maxLen, width float64
+		var maxLen, width, signalWidth, powerWidth, roundRadius float64
 		var dryRun, routeGnd bool
+		var corner string
 		c := &cobra.Command{
 			Use:   "route-short",
 			Short: "Self-route the short, clear hops: per-net MST, L-shaped tracks on the pads' layer",
@@ -1007,8 +1008,15 @@ cross-layer hops (need a via), and over-long hops (left for the maze tier).
 No obstacle avoidance in v1 — run AFTER 'pcb auto-place' (hops are then short and
 clear) and verify with 'pcb drc'.
 
-  easyeda pcb route-short --project ceshi --dry-run   # print the plan, draw nothing
-  easyeda pcb route-short --project ceshi             # draw the tracks`,
+Track width is by net class: power/ground nets (VCC/VDD/3V3/GND…) get --width-power
+(default 20 mil), signals get --width-signal (default 10 mil). A single --width
+overrides both. Corners default to 90° L; --corner 45 chamfers them, --corner round
+emits a chord-approximated fillet (native arcs do not commit on this build).
+
+  easyeda pcb route-short --project ceshi --dry-run            # print the plan, draw nothing
+  easyeda pcb route-short --project ceshi                      # draw with class widths + 90° corners
+  easyeda pcb route-short --project ceshi --corner 45          # chamfered corners
+  easyeda pcb route-short --project ceshi --width-power 25     # fatter power tracks`,
 			Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				// 1. Read pads (net + coords + layer) and which nets already have copper.
@@ -1027,11 +1035,26 @@ clear) and verify with 'pcb drc'.
 				}
 
 				// 2. Plan (pure, daemon-side).
+				switch corner {
+				case "90", "45", "round":
+				default:
+					return fmt.Errorf("--corner must be 90, 45, or round (got %q)", corner)
+				}
 				opt := defaultRtOptions()
 				if maxLen > 0 {
 					opt.maxLen = maxLen
 				}
 				opt.width = width
+				if signalWidth > 0 {
+					opt.signalWidth = signalWidth
+				}
+				if powerWidth > 0 {
+					opt.powerWidth = powerWidth
+				}
+				if roundRadius > 0 {
+					opt.roundRadius = roundRadius
+				}
+				opt.corner = corner
 				opt.skipGnd = !routeGnd
 				segs, diags := planShortRoutes(comps, routed, opt)
 
@@ -1041,8 +1064,8 @@ clear) and verify with 'pcb drc'.
 				if !dryRun {
 					for _, s := range segs {
 						payload := map[string]any{"startX": s.X1, "startY": s.Y1, "endX": s.X2, "endY": s.Y2, "net": s.Net, "layer": s.Layer}
-						if width > 0 {
-							payload["lineWidth"] = width
+						if s.Width > 0 {
+							payload["lineWidth"] = s.Width
 						}
 						if _, err := requestAction(cfg, "pcb.line.create", window, payload); err != nil {
 							failures = append(failures, map[string]any{"net": s.Net, "error": err.Error()})
@@ -1068,7 +1091,11 @@ clear) and verify with 'pcb drc'.
 			},
 		}
 		c.Flags().Float64Var(&maxLen, "max-len", 0, "longest hop to route (Manhattan mil, default 1000)")
-		c.Flags().Float64Var(&width, "width", 0, "track width (mil; 0 = connector default)")
+		c.Flags().Float64Var(&width, "width", 0, "force ALL tracks to this width (mil); overrides --width-signal/--width-power")
+		c.Flags().Float64Var(&signalWidth, "width-signal", 0, "signal-net track width (mil, default 10)")
+		c.Flags().Float64Var(&powerWidth, "width-power", 0, "power/ground-net track width (mil, default 20)")
+		c.Flags().StringVar(&corner, "corner", "90", "corner style: 90 (L), 45 (chamfer), round (chord fillet)")
+		c.Flags().Float64Var(&roundRadius, "round-radius", 0, "max fillet radius for --corner round (mil, default 20)")
 		c.Flags().BoolVar(&routeGnd, "route-gnd", false, "also route GND (default skip — GND is poured)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the routing plan without drawing anything")
 		pcb.AddCommand(c)

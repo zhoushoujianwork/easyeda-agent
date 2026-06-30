@@ -134,18 +134,12 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
 - `pcb.components.move` — translate a group by relative `dx` / `dy`.
 - `pcb.components.arrange` — coarse auto-layout **seed** (priority P6): `mode=cluster` groups by shared local nets then grid-packs each cluster into a tidy non-overlapping block; `mode=grid` packs a flat grid. Skips locked parts.
 - `easyeda pcb auto-place` — **module-aware** heuristic placement (daemon-side). Main chips (≥ `--main-pins`, default 8, distinct pins) are anchors that stay put; every satellite (cap/R/LED) is pulled to the chip edge nearest the pad it connects to, then packed along that edge with no overlap: decoupling caps land by their power pin (3V3/VCC), signal R's by their signal pin, an LED chains beside its series resistor. `--dry-run` prints the plan without moving. A SEED (v1 translates only, no rotation) — refine by hand + verify with `pcb drc`. Prefer this over `arrange` when there is a clear main chip; use `arrange` for chip-less or flat-grid cases.
-- `easyeda pcb route-short` — **short-trace self-router** (daemon-side, the heuristic tier — NOT `pcb autoroute`/Freerouting). Per net: MST over pads, then L-shaped tracks for each hop ≤ `--max-len` (Manhattan) on the pads' shared layer. Skips GND (poured; `--route-gnd` to include), already-routed nets, cross-layer hops (need a via), over-long hops (maze tier). No obstacle avoidance in v1 — **run after `auto-place`** so hops are short/clear, then `pcb drc`. `--dry-run` previews. Long/congested/any-distance routing → `pcb autoroute` (external Freerouting).
+- `easyeda pcb route-short` — **short-trace self-router** (daemon-side, the heuristic tier — NOT `pcb autoroute`/Freerouting). Per net: MST over pads, then a track per hop ≤ `--max-len` (Manhattan) on the pads' shared layer. Skips GND (poured; `--route-gnd` to include), already-routed nets, cross-layer hops (need a via), over-long hops (maze tier). **Track width is by net class**: power/GND nets get `--width-power` (default 20 mil), signals get `--width-signal` (default 10 mil); a single `--width` forces both. **Corner style** via `--corner`: `90` (Manhattan L, default), `45` (chamfer — avoids acid traps/reflections), `round` (chord-approximated fillet, `--round-radius`; native arcs don't commit on this build so it's segmented). No obstacle avoidance in v1 — **run after `auto-place`** so hops are short/clear, then `pcb drc`. `--dry-run` previews. Long/congested/any-distance routing → `pcb autoroute` (external Freerouting).
 
 #### 待支持 — 布线/覆铜质量 (roadmap, not yet implemented)
 
 v1 (`route-short` / `pour`) is mechanically correct but coarse. Planned quality upgrades:
 
-- **线宽按网类 (track width by net class)** — `route-short` v1 uses one width. Should set width
-  per net type: power/GND wide, signal narrow, per the conventions' rule values (`pcb.drc.rules`
-  feeds real widths). Likely a `--width-power`/`--width-signal` or a net-class map. (task #16)
-- **拐角风格 45°/圆角 (corner style)** — v1 routes 90° Manhattan L-corners. PCB practice prefers
-  **45° chamfer** (or arc/rounded) to avoid acid traps / reflections (EasyEDA toolbar 线条45°/圆角).
-  Plan: emit a 45° miter (or arc) at each L-corner instead of a hard 90°. (task #16)
 - **填充区域 / 轮廓对象 (net-bound filled region, 异形大块铜)** — distinct from auto-`pour`: a
   directly-drawn **填充区域** primitive (`eda.pcb_PrimitiveRegion`, 类型=填充区域) on a layer, bound
   to a net (e.g. a 3V3 power-plane patch, RF ground, thermal copper), arbitrary/odd polygon. Plan:
