@@ -1832,6 +1832,92 @@ const schematicExportNetlist: Handler = async (payload) => {
 	return { result: { artifactId: artifact.id, netlistType: netlistType ?? null }, artifacts: [artifact] };
 };
 
+// schematic.read — ONE call that returns a coherent semantic snapshot of the
+// circuit, so the agent doesn't stitch components.list + netlist + check itself.
+// Components (with each pin's net, from the JSON-authoritative netlist — reuses
+// the #1 collectNetlistPinNets logic), nets (net → connected pins + degree +
+// global flag), floating pins, and the geometric design check (schematicCheck;
+// pass includeCheck:false to skip it for a faster read).
+const schematicRead: Handler = async (payload) => {
+	const allPages = optionalBoolean(payload, 'allPages') === true;
+	const includeCheck = optionalBoolean(payload, 'includeCheck') !== false; // default true
+
+	let comps;
+	try {
+		comps = await eda.sch_PrimitiveComponent.getAll(undefined, allPages);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read schematic components.');
+	}
+
+	// JSON-authoritative pin→net per designator (same source as schematic.check).
+	const pinNets = await collectNetlistPinNets();
+
+	const netToPins = new Map<string, Array<string>>();
+	const floating: Array<string> = [];
+	const components: Array<Record<string, unknown>> = [];
+
+	for (const c of comps ?? []) {
+		const designator = String(c.getState_Designator?.() ?? '');
+		const pinNetMap = pinNets.get(designator) ?? new Map<string, string>();
+		const pins: Array<Record<string, unknown>> = [];
+		try {
+			const pinPrims = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(c.getState_PrimitiveId());
+			for (const p of pinPrims ?? []) {
+				const number = String(p.getState_PinNumber?.() ?? '');
+				const net = pinNetMap.get(number) ?? '';
+				if (net) {
+					const key = `${designator}.${number}`;
+					const list = netToPins.get(net) ?? [];
+					list.push(key);
+					netToPins.set(net, list);
+				}
+				else if (designator && number) {
+					floating.push(`${designator}.${number}`);
+				}
+				pins.push({ number, name: p.getState_PinName?.() ?? '', net: net || null });
+			}
+		}
+		catch { /* pins best-effort */ }
+		components.push({
+			designator,
+			componentType: c.getState_ComponentType?.() ?? '',
+			name: c.getState_Name?.() ?? '',
+			footprint: c.getState_Footprint?.() ?? '',
+			supplierId: c.getState_SupplierId?.() ?? '', // LCSC C-number when present
+			x: c.getState_X?.(),
+			y: c.getState_Y?.(),
+			pins,
+		});
+	}
+
+	const nets = [...netToPins.entries()]
+		.map(([net, pins]) => ({ net, pins, degree: pins.length, isGlobal: isGlobalNetName(net) }))
+		.sort((a, b) => a.net.localeCompare(b.net));
+
+	let check: unknown = null;
+	if (includeCheck) {
+		try {
+			check = (await schematicCheck(payload)).result;
+		}
+		catch (err) {
+			check = { error: err instanceof Error ? err.message : String(err) };
+		}
+	}
+
+	return {
+		result: {
+			components,
+			componentCount: components.length,
+			nets,
+			netCount: nets.length,
+			floatingPins: floating,
+			floatingPinCount: floating.length,
+			check,
+		},
+	};
+};
+
 const schematicExportBom: Handler = async (payload) => {
 	const fileName = optionalString(payload, 'fileName');
 	const fileType = (optionalString(payload, 'fileType') as 'xlsx' | 'csv' | undefined) ?? 'xlsx';
@@ -4115,6 +4201,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.snapshot': schematicSnapshot,
 	'schematic.drc.check': schematicDrcCheck,
 	'schematic.check': schematicCheck,
+	'schematic.read': schematicRead,
 	'schematic.save': schematicSave,
 	'schematic.export.netlist': schematicExportNetlist,
 	'schematic.export.bom': schematicExportBom,

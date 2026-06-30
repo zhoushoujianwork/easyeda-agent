@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.29] - 2026-06-30
+### Added
+- **One-call circuit snapshot** (task #7): `schematic.read` returns a coherent
+  semantic model in a single round-trip — components (each pin tagged with its
+  JSON-authoritative net from `getNetlistFile`), nets (net → connected pins +
+  degree + power/ground flag), floating pins, and the geometric design check
+  (`includeCheck:false` to skip). Replaces the agent stitching `components.list` +
+  `netlist` + `check`. CLI: `easyeda sch read` (`--all-pages`, `--no-check`).
+
 ## [0.5.28] - 2026-06-30
 ### Fixed
 - **Auto-reconnect no longer needs a window "nudge".** The heartbeat/reconnect loop

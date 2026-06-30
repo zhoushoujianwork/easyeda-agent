@@ -783,6 +783,42 @@ exits non-zero when there are any findings, to use it as a gate.`,
 		sch.AddCommand(c)
 	}
 
+	// ── read ──────────────────────────────────────────────────────────────
+	// schematic.read — one-call semantic snapshot (components + pin nets + nets +
+	// check), so the agent reads the whole circuit at once.
+	{
+		var allPages, noCheck bool
+		c := &cobra.Command{
+			Use:   "read",
+			Short: "One-call semantic snapshot of the circuit (components + nets + check)",
+			Long: `Read the whole circuit in ONE call instead of stitching components.list +
+netlist + check together. Returns components (each pin tagged with its
+JSON-authoritative net), nets (net → connected designator.pin keys, degree,
+power/ground flag), floating pins, and the geometric design check.
+
+Pin→net comes from the official manufacture netlist (same source as 'sch check'),
+so it's authoritative, not geometry-guessed. Use --no-check to skip the design
+check for a faster read.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda sch read
+  easyeda sch read --all-pages
+  easyeda sch read --no-check`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if allPages {
+					payload["allPages"] = true
+				}
+				if noCheck {
+					payload["includeCheck"] = false
+				}
+				return dispatch(cfg, "schematic.read", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&allPages, "all-pages", false, "read components across all schematic pages")
+		c.Flags().BoolVar(&noCheck, "no-check", false, "skip the geometric design check for a faster read")
+		sch.AddCommand(c)
+	}
+
 	// ── save ──────────────────────────────────────────────────────────────
 	// schematic.save
 	sch.AddCommand(&cobra.Command{

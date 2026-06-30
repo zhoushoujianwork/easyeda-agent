@@ -264,6 +264,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.snapshot` — 截图。**产物保存在 CLI 运行目录下的隐藏目录 `<cwd>/.easyeda/artifacts/`,文件名带本地时间戳**(`<YYYYMMDD-HHMMSS>-<kind>-<短id>.png`,便于排序/查找);响应里的 `artifacts[].path` 是绝对路径。netlist/BOM 等其他产物同此规则。
 - `schematic.drc.check` — 用 `easyeda sch drc` 跑 EasyEDA SDK 的 `sch_Drc.check`。**注意:当前 EasyEDA build 可能只返回布尔/聚合结果,不会暴露 UI DRC 面板里的逐条 warning**(例如网络标识与导线名不一致、悬空脚明细)。所以它只能作为 SDK DRC 门,不能单独宣称“官方 DRC 干净”。
 - `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(补 SDK DRC 暴露不全):**net-marker-mismatch**(网络标识/端口/标签名与所连导线 net 名不一致)、**multi-net-wire**(同一导线多个网络名)、**floating-pin**(引脚悬空)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
+- `schematic.read` — **一次拿到整张电路的语义快照**(`easyeda sch read`),省得分别跑 `components.list`+`netlist`+`check` 再自己拼。返回:`components[]`(designator/type/name 值/footprint/supplierId=LCSC/坐标 + 每脚 `{number,name,net}`)、`nets[]`(net→所连 `designator.pin` 列表 + `degree` + `isGlobal` 电源地标志)、`floatingPins[]`(未连脚)、`check`(同 `sch check` 的几何检查)。**脚→net 取自官方网表(getNetlistFile),权威非几何猜测**,与 `sch check` 同源。`--all-pages`;`--no-check` 跳过设计检查更快。读电路状态/做决策前优先用它。
 - `schematic.save`
 - `schematic.export.netlist`
 - `schematic.export.bom`
