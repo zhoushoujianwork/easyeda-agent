@@ -735,6 +735,177 @@ plane. fill = solid (default) | grid | grid45.`,
 		pcb.AddCommand(c)
 	}
 
+	// ── pour-fit ──────────────────────────────────────────────────────────
+	// Auto-size a copper pour to the board: read the outline, inset it by a
+	// margin so copper never touches the edge (the Board-Outline-to-Copper
+	// clearance), then pour. Pure daemon orchestration over outline.get + pour.*.
+	{
+		var net, fill string
+		var layer int
+		var inset float64
+		var replace, dryRun bool
+		c := &cobra.Command{
+			Use:   "pour-fit",
+			Short: "Auto-size a GND/power pour to the board outline, inset from the edge",
+			Long: `Pour a net-bound plane sized to the board, inset from the edge by --inset (mil)
+so copper keeps clearance to the board outline (fixes Board-Outline-to-Copper).
+Reads the board outline (pcb.outline.get) and insets its bbox — v1 pours a
+RECTANGLE within the bbox (an odd-shaped outline still gets a rectangular plane;
+draw a custom polygon with 'pcb pour' for those). By default (--replace) it first
+clears existing pours on the same net so you don't stack them.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb pour-fit --project ceshi --net GND --layer 1
+  easyeda pcb pour-fit --net GND --layer 1 --inset 25 --dry-run`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				// 1. Board outline bbox.
+				ores, err := requestAction(cfg, "pcb.outline.get", window, nil)
+				if err != nil {
+					return err
+				}
+				bb, ok := ores.Result["bbox"].(map[string]any)
+				if !ok || bb == nil {
+					return fmt.Errorf("no board outline found — set one first with `pcb outline-set`")
+				}
+				minX, maxX := asFloat(bb["minX"]), asFloat(bb["maxX"])
+				minY, maxY := asFloat(bb["minY"]), asFloat(bb["maxY"])
+				if maxX-minX <= 2*inset || maxY-minY <= 2*inset {
+					return fmt.Errorf("inset %.0f too large for board %0.f×%0.f mil", inset, maxX-minX, maxY-minY)
+				}
+				x0, y0, x1, y1 := minX+inset, minY+inset, maxX-inset, maxY-inset
+				points := [][]float64{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}
+
+				// 2. Optionally clear existing pours on this net (avoid stacking).
+				cleared := 0
+				if replace && !dryRun {
+					if lr, err := requestAction(cfg, "pcb.pour.list", window, nil); err == nil {
+						var ids []any
+						pours, _ := lr.Result["pours"].([]any)
+						for _, pi := range pours {
+							if pm, ok := pi.(map[string]any); ok && asString(pm["net"]) == net {
+								if id := asString(pm["primitiveId"]); id != "" {
+									ids = append(ids, id)
+								}
+							}
+						}
+						if len(ids) > 0 {
+							if _, err := requestAction(cfg, "pcb.pour.delete", window, map[string]any{"primitiveIds": ids}); err == nil {
+								cleared = len(ids)
+							}
+						}
+					}
+				}
+
+				// 3. Pour (unless dry-run).
+				payload := map[string]any{"points": points, "net": net, "layer": layer}
+				if fill != "" {
+					payload["fill"] = fill
+				}
+				if dryRun {
+					out := map[string]any{"dryRun": true, "net": net, "layer": layer, "inset": inset, "points": points, "wouldClear": cleared}
+					enc := json.NewEncoder(stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(out)
+				}
+				res, err := requestAction(cfg, "pcb.pour.create", window, payload)
+				if err != nil {
+					return err
+				}
+				out := map[string]any{"ok": true, "net": net, "layer": layer, "inset": inset, "cleared": cleared, "points": points, "result": res.Result}
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(out)
+			},
+		}
+		c.Flags().StringVar(&net, "net", "GND", "net to bind the pour to")
+		c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2)")
+		c.Flags().Float64Var(&inset, "inset", 20, "inset from the board outline (mil)")
+		c.Flags().StringVar(&fill, "fill", "", "fill style: solid (default) | grid | grid45")
+		c.Flags().BoolVar(&replace, "replace", true, "clear existing pours on this net first (avoid stacking)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the computed pour polygon without drawing")
+		pcb.AddCommand(c)
+	}
+
+	// ── via-stitch ──────────────────────────────────────────────────────────
+	// Place a pitch-spaced grid of net vias inside a rectangle — thermal vias
+	// under a power-IC pad, or GND stitching that ties the top & bottom planes.
+	// Pure daemon orchestration over pcb.via.create.
+	{
+		var net, rectCSV string
+		var pitch, hole, diameter, margin float64
+		var dryRun bool
+		c := &cobra.Command{
+			Use:   "via-stitch",
+			Short: "Place a grid of net vias in a rectangle (thermal vias / GND stitching)",
+			Long: `Fill a rectangle with a pitch-spaced grid of vias on a net — thermal vias under a
+power-IC center pad (connect it down to the GND plane), or GND stitching that ties
+top & bottom pours together. --rect is "x0,y0,x1,y1" (mil, y-up); vias are inset by
+--margin from the rect edges. Run 'pcb pour-rebuild' afterwards so the planes reflow
+onto the new vias.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb via-stitch --net GND --rect "2300,-1750,2500,-1550" --pitch 40
+  easyeda pcb via-stitch --net GND --rect "0,-2600,3100,-400" --pitch 200 --dry-run`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				var x0, y0, x1, y1 float64
+				if n, err := fmt.Sscanf(rectCSV, "%g,%g,%g,%g", &x0, &y0, &x1, &y1); err != nil || n != 4 {
+					return fmt.Errorf("--rect must be \"x0,y0,x1,y1\" (mil), got %q", rectCSV)
+				}
+				if x1 < x0 {
+					x0, x1 = x1, x0
+				}
+				if y1 < y0 {
+					y0, y1 = y1, y0
+				}
+				if pitch <= 0 {
+					return fmt.Errorf("--pitch must be > 0")
+				}
+				// Grid points, inset by margin, centered in the rect.
+				var pts [][2]float64
+				lx, hx := x0+margin, x1-margin
+				ly, hy := y0+margin, y1-margin
+				for y := ly; y <= hy+1e-6; y += pitch {
+					for x := lx; x <= hx+1e-6; x += pitch {
+						pts = append(pts, [2]float64{x, y})
+					}
+				}
+				if len(pts) == 0 {
+					return fmt.Errorf("rect too small for --margin %.0f / --pitch %.0f (no via fits)", margin, pitch)
+				}
+				if dryRun {
+					enc := json.NewEncoder(stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(map[string]any{"dryRun": true, "net": net, "count": len(pts), "pitch": pitch, "points": pts})
+				}
+				placed, failed := 0, 0
+				for _, p := range pts {
+					payload := map[string]any{"x": p[0], "y": p[1], "net": net}
+					if hole > 0 {
+						payload["holeDiameter"] = hole
+					}
+					if diameter > 0 {
+						payload["diameter"] = diameter
+					}
+					if _, err := requestAction(cfg, "pcb.via.create", window, payload); err != nil {
+						failed++
+						continue
+					}
+					placed++
+				}
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(map[string]any{"ok": true, "net": net, "placed": placed, "failed": failed, "pitch": pitch})
+			},
+		}
+		c.Flags().StringVar(&net, "net", "GND", "net to bind the vias to")
+		c.Flags().StringVar(&rectCSV, "rect", "", `rectangle "x0,y0,x1,y1" in mil (required)`)
+		c.Flags().Float64Var(&pitch, "pitch", 40, "via center spacing (mil)")
+		c.Flags().Float64Var(&margin, "margin", 0, "inset vias from the rect edges (mil)")
+		c.Flags().Float64Var(&hole, "hole", 0, "via hole diameter (mil; 0 = connector default 12)")
+		c.Flags().Float64Var(&diameter, "diameter", 0, "via outer diameter (mil; 0 = connector default 24)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the via grid without placing")
+		_ = c.MarkFlagRequired("rect")
+		pcb.AddCommand(c)
+	}
+
 	// ── Freerouting round-trip: export-dsn / import-autoroute / snapshot ──────
 	// The file-based autoroute workflow (the paradigm EasyEDA's own routing
 	// extensions use): `pcb export-dsn` → run Freerouting on the DSN → `pcb

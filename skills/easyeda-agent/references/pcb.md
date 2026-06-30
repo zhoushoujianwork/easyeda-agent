@@ -105,6 +105,15 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
 - `pcb.pour.list` / `pcb.pour.delete` — inspect / remove pours.
 - `pcb.pour.rebuild` — re-pour all (or by net) after moving components/routing so the
   copper reflows around new obstacles.
+- `pcb pour-fit` (daemon-side) — **auto-size a pour to the board**: reads the outline
+  and insets its bbox by `--inset` (mil, default 20) so copper keeps edge clearance
+  (fixes Board-Outline-to-Copper), then pours `--net`/`--layer`. `--replace` (default)
+  clears the net's existing pours first so they don't stack. v1 pours a RECTANGLE within
+  the bbox; for an odd outline draw a custom polygon with `pcb pour`. `--dry-run` previews.
+- `pcb via-stitch` (daemon-side) — fill a `--rect "x0,y0,x1,y1"` with a `--pitch`-spaced
+  grid of `--net` vias: **thermal vias** under a power-IC center pad (tie it to the GND
+  plane) or **GND stitching** between top & bottom pours. Run `pcb pour-rebuild` after so
+  the planes reflow onto the new vias. `--margin` insets from the rect edges. `--dry-run`.
 
 ### Keep-out / rule regions (禁止区域)
 
