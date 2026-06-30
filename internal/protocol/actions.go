@@ -787,6 +787,42 @@ func AllActions() []ActionSpec {
 			Outputs:      []string{"deleted", "primitiveIds"},
 			VerifyWith:   []string{"pcb.region.list"},
 		},
+		// ─── PCB fill (填充区域 / net-bound solid copper) ──────────────────
+		// pcb_PrimitiveFill: a net-bound STATIC filled polygon (3V3/RF-ground
+		// patch, thermal copper, odd plane). DISTINCT from keep-out region (no
+		// net) AND from pour (覆铜, which reflows). Does NOT reflow around obstacles.
+		{
+			Name:        "pcb.fill.create",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Create a net-bound filled region (填充区域 / 异形大块铜) from a closed polygon of points (mil, y-up) on a layer (TOP=1, BOTTOM=2), bound to a net. fillMode = solid (default) | mesh | inner. Builds the IPCB_Polygon internally — pass raw points. This is STATIC copper (does NOT reflow) — distinct from pcb.pour.create (覆铜, reflows around obstacles) and pcb.region.create (keep-out, no net). Use for a power-plane patch / RF ground / thermal copper of an arbitrary shape.",
+			Inputs:      []string{"points ([[x,y],...] mil)", "net optional", "layer optional (default 1=TOP)", "fillMode optional (solid|mesh|inner)", "lineWidth optional", "locked optional"},
+			Outputs:     []string{"primitiveId", "net", "layer", "fillMode"},
+			VerifyWith:  []string{"pcb.fill.list", "pcb.drc.check"},
+		},
+		{
+			Name:        "pcb.fill.list",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "List net-bound filled regions (填充区域) on the active PCB, optionally filtered by layer and/or net. Read-only.",
+			Inputs:      []string{"layer optional", "net optional"},
+			Outputs:     []string{"fills[].primitiveId", "fills[].net", "fills[].layer", "fills[].fillMode", "fills[].lineWidth", "fills[].locked", "count"},
+		},
+		{
+			Name:         "pcb.fill.delete",
+			Domain:       DomainPcb,
+			Phase:        2,
+			Mutates:      true,
+			NeedsWindow:  true,
+			NeedsConfirm: true,
+			Description:  "Delete net-bound filled regions (填充区域) by primitiveId (string or string[]). Recreate with pcb.fill.create.",
+			Inputs:       []string{"primitiveIds (string or string[])"},
+			Outputs:      []string{"deleted", "primitiveIds"},
+			VerifyWith:   []string{"pcb.fill.list"},
+		},
 		// ─── Board outline (板框) — closed polyline on the BOARD_OUTLINE layer ──
 		// Curves are line-segment approximated (native arcs do not commit on the
 		// current build). Shape-generation recipes (rect/rounded-rect/circle/

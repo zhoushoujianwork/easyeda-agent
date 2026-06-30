@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.27] - 2026-06-30
+### Added
+- **Net-bound filled region** (task #17): `pcb.fill.create` / `pcb.fill.list` /
+  `pcb.fill.delete` (`eda.pcb_PrimitiveFill.*`) — a STATIC filled polygon bound to a
+  net (3V3/RF-ground patch, thermal copper, odd-shaped plane). `fillMode = solid
+  (default) | mesh | inner`. Distinct from `pcb.pour.create` (覆铜, reflows around
+  obstacles) and `pcb.region.create` (keep-out, no net). CLI: `easyeda pcb fill
+  create / list / delete`.
+
 ## [0.5.26] - 2026-06-30
 ### Added
 - **DSN keep-out injection** (task #17): `pcb.export.dsn` now splices keep-out

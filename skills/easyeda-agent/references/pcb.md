@@ -129,6 +129,18 @@ convention as pour (connector builds the polygon).
 > so external Freerouting no longer routes under the antenna. Transform is a verified
 > pure translation (1:1 mil, no flip).
 
+### Net-bound filled region (填充区域 / 异形大块铜)
+
+`eda.pcb_PrimitiveFill` — a **STATIC filled polygon bound to a net** (a 3V3/RF-ground
+patch, thermal copper, an odd-shaped plane). Three net-copper primitives, don't confuse:
+**fill** (static, no reflow), **pour** (`覆铜`, reflows around obstacles), **region**
+(keep-out, no net). Same raw-points convention.
+
+- `pcb fill create` (`pcb.fill.create`) — fill from a closed `--points` polygon on a
+  `--layer`, bound to `--net`. `--fill-mode solid` (default) `| mesh | inner`. `--locked`.
+  Verify with `pcb fill list` + `pcb drc`.
+- `pcb fill list` / `pcb fill delete` — inspect / remove (filter list by `--layer`/`--net`).
+
 > **Routing boundary (load-bearing — see `docs/ecosystem-survey.md` §7):** EasyEDA's
 > interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,
 > length-tuning/serpentine, fanout, remove-loops) has **NO `eda.*` API** — the agent
@@ -159,10 +171,8 @@ convention as pour (connector builds the polygon).
 
 v1 (`route-short` / `pour`) is mechanically correct but coarse. Planned quality upgrades:
 
-- **填充区域 / 轮廓对象 (net-bound filled region, 异形大块铜)** — distinct from auto-`pour` AND from
-  keep-out `pcb region` (which has NO net param). A net-bound **填充区域** (e.g. a 3V3 power-plane
-  patch, RF ground, thermal copper) needs a different path — likely `pcb pour` on an odd polygon, or
-  `eda.pcb_Net.convertToRegion`. Plan: a `pcb fill` action once the net-binding API is pinned down. (task #11)
+- ✅ **填充区域 / 轮廓对象 (net-bound filled region, 异形大块铜)** (task #17, done) — `pcb fill create`
+  (`eda.pcb_PrimitiveFill`, net-bound static copper). See the "Net-bound filled region" section above.
 - ✅ **DSN keep-out injection** (task #17, done) — `pcb export-dsn` re-injects `pcb_PrimitiveRegion`
   keep-out as `(keepout (polygon …))` into the DSN `(structure)` (getDsnFile drops them). Default on;
   `--raw` skips. End-to-end Freerouting *honor* check is part of the #5 maze-tier toolchain.

@@ -3594,6 +3594,96 @@ const pcbRegionDelete: Handler = async (payload) => {
 	return { result: { deleted, primitiveIds: ids } };
 };
 
+// ─── PCB fill (填充区域 / net-bound solid copper, 异形大块铜) ──────────
+// pcb_PrimitiveFill is a net-bound filled polygon (3V3/RF-ground patch, thermal
+// copper, odd-shaped plane) — DISTINCT from a keep-out region (no net) AND from a
+// pour (覆铜, which reflows around obstacles). A fill is a STATIC solid polygon on
+// its net+layer. fillMode: solid(0) | mesh(1) | inner(2 = inner-electrical-layer).
+// Same raw-points convention as pour/region.
+
+const FILL_MODE_BY_NAME: Record<string, number> = { solid: 0, mesh: 1, grid: 1, inner: 2, 'inner-electrical': 2 };
+const FILL_MODE_NAME: Record<number, string> = { 0: 'solid', 1: 'mesh', 2: 'inner-electrical' };
+
+function parseFillMode(raw: unknown): number {
+	if (raw == null) return 0;
+	if (typeof raw === 'number') return raw;
+	if (typeof raw === 'string') {
+		const v = FILL_MODE_BY_NAME[raw.trim().toLowerCase()];
+		if (v == null) throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `Unknown fillMode "${raw}". Use solid | mesh | inner.`);
+		return v;
+	}
+	throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'fillMode must be a name or number.');
+}
+
+const pcbFillCreate: Handler = async (payload) => {
+	const poly = closedPolygonFromPoints(payload.points);
+	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfFill;
+	const net = optionalString(payload, 'net');
+	const fillMode = parseFillMode(payload.fillMode) as unknown as EPCB_PrimitiveFillMode;
+	const lineWidth = optionalNumber(payload, 'lineWidth');
+	const lock = payload.locked === true;
+
+	let fill;
+	try {
+		fill = await eda.pcb_PrimitiveFill.create(layer, poly, net, fillMode, lineWidth, lock);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create PCB fill (填充区域).');
+	}
+	if (!fill) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Fill creation returned no primitive (check layer/points/net).');
+	}
+	return {
+		result: {
+			primitiveId: fill.getState_PrimitiveId(),
+			net: fill.getState_Net() ?? null,
+			layer: Number(fill.getState_Layer()),
+			fillMode: FILL_MODE_NAME[Number(fill.getState_FillMode() ?? 0)] ?? String(fill.getState_FillMode()),
+		},
+	};
+};
+
+const pcbFillList: Handler = async (payload) => {
+	const layer = optionalNumber(payload, 'layer');
+	const net = optionalString(payload, 'net');
+	let fills;
+	try {
+		fills = await eda.pcb_PrimitiveFill.getAll(
+			layer == null ? undefined : (layer as unknown as TPCB_LayersOfFill),
+			net,
+		);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list PCB fills.');
+	}
+	const list = (fills ?? []).map(f => ({
+		primitiveId: f.getState_PrimitiveId(),
+		net: f.getState_Net() ?? null,
+		layer: Number(f.getState_Layer()),
+		fillMode: FILL_MODE_NAME[Number(f.getState_FillMode() ?? 0)] ?? String(f.getState_FillMode()),
+		lineWidth: f.getState_LineWidth(),
+		locked: f.getState_PrimitiveLock(),
+	}));
+	return { result: { fills: list, count: list.length } };
+};
+
+const pcbFillDelete: Handler = async (payload) => {
+	const raw = payload.primitiveIds;
+	let ids: Array<string>;
+	if (typeof raw === 'string') ids = [raw];
+	else if (Array.isArray(raw) && raw.every(id => typeof id === 'string')) ids = raw as Array<string>;
+	else throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "primitiveIds" (string or string[]).');
+
+	let deleted;
+	try {
+		deleted = await eda.pcb_PrimitiveFill.delete(ids);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete PCB fills.');
+	}
+	return { result: { deleted, primitiveIds: ids } };
+};
+
 // ─── PCB routing: list + rip-up ──────────────────────────────────────
 // Reliable rip-up is hand-rolled (getAll → filter → delete) on the @public/@beta
 // primitive APIs — the same pattern the official kirouting extension uses. It
@@ -4066,6 +4156,9 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.region.create': pcbRegionCreate,
 	'pcb.region.list': pcbRegionList,
 	'pcb.region.delete': pcbRegionDelete,
+	'pcb.fill.create': pcbFillCreate,
+	'pcb.fill.list': pcbFillList,
+	'pcb.fill.delete': pcbFillDelete,
 	'pcb.save': pcbSave,
 	'pcb.export.dsn': pcbExportDsn,
 	'pcb.import_autoroute': pcbImportAutoroute,

@@ -1220,6 +1220,112 @@ no-pours(7), no-inner-electrical(8), follow-rule(9). Default is a hard keep-out
 		pcb.AddCommand(region)
 	}
 
+	// ── fill ──────────────────────────────────────────────────────────────
+	// pcb.fill.* — net-bound filled region (填充区域 / 异形大块铜). STATIC copper
+	// (no reflow), distinct from `pcb pour` (覆铜, reflows) and `pcb region` (keep-out).
+	{
+		fill := &cobra.Command{
+			Use:   "fill",
+			Short: "Net-bound filled region (填充区域 / 异形大块铜): create / list / delete",
+			Long: `Manage net-bound filled regions (填充区域) — a STATIC filled polygon bound to a
+net (a 3V3/RF-ground patch, thermal copper, odd-shaped plane). Unlike 'pcb pour'
+(覆铜) it does NOT reflow around obstacles; unlike 'pcb region' (keep-out) it
+carries a net. fillMode: solid (default) | mesh | inner.`,
+		}
+		{
+			var pointsJSON, net, fillMode string
+			var layer int
+			var width float64
+			var locked bool
+			c := &cobra.Command{
+				Use:   "create",
+				Short: "Create a net-bound filled region from a closed polygon",
+				Args:  cobra.NoArgs,
+				Example: `  easyeda pcb fill create --points '[[100,100],[400,100],[400,300],[100,300]]' --net 3V3 --layer 1
+  easyeda pcb fill create --points '[...]' --net GND --fill-mode mesh`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					if pointsJSON == "" {
+						return fmt.Errorf("--points is required")
+					}
+					var points any
+					if err := json.Unmarshal([]byte(pointsJSON), &points); err != nil {
+						return fmt.Errorf("invalid --points json (expected array): %w", err)
+					}
+					payload := map[string]any{"points": points}
+					if net != "" {
+						payload["net"] = net
+					}
+					if cmd.Flags().Changed("layer") {
+						payload["layer"] = layer
+					}
+					if fillMode != "" {
+						payload["fillMode"] = fillMode
+					}
+					if cmd.Flags().Changed("width") {
+						payload["lineWidth"] = width
+					}
+					if locked {
+						payload["locked"] = true
+					}
+					return dispatch(cfg, "pcb.fill.create", window, payload, stdout, stderr)
+				},
+			}
+			c.Flags().StringVar(&pointsJSON, "points", "", `JSON array of [x,y] points in mil (required)`)
+			c.Flags().StringVar(&net, "net", "", "net to bind the fill to (e.g. 3V3, GND)")
+			c.Flags().IntVar(&layer, "layer", 1, "layer id (TOP=1, BOTTOM=2; inner via 'easyeda pcb layers')")
+			c.Flags().StringVar(&fillMode, "fill-mode", "", "fill mode: solid (default) | mesh | inner")
+			c.Flags().Float64Var(&width, "width", 0, "fill border width (mil)")
+			c.Flags().BoolVar(&locked, "locked", false, "create the fill locked")
+			fill.AddCommand(c)
+		}
+		{
+			var layer int
+			var net string
+			c := &cobra.Command{
+				Use:     "list",
+				Short:   "List net-bound filled regions, optionally by layer/net",
+				Args:    cobra.NoArgs,
+				Example: `  easyeda pcb fill list --net 3V3`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					payload := map[string]any{}
+					if cmd.Flags().Changed("layer") {
+						payload["layer"] = layer
+					}
+					if net != "" {
+						payload["net"] = net
+					}
+					return dispatch(cfg, "pcb.fill.list", window, payload, stdout, stderr)
+				},
+			}
+			c.Flags().IntVar(&layer, "layer", 0, "filter by layer id")
+			c.Flags().StringVar(&net, "net", "", "filter by net name")
+			fill.AddCommand(c)
+		}
+		{
+			var idsJSON string
+			c := &cobra.Command{
+				Use:     "delete",
+				Short:   "Delete net-bound filled regions by primitiveId",
+				Args:    cobra.NoArgs,
+				Example: `  easyeda pcb fill delete --ids '["id1","id2"]'`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					if idsJSON == "" {
+						return fmt.Errorf("--ids is required")
+					}
+					var ids []any
+					if err := json.Unmarshal([]byte(idsJSON), &ids); err != nil {
+						return fmt.Errorf("invalid --ids json (expected array): %w", err)
+					}
+					return dispatch(cfg, "pcb.fill.delete", window,
+						map[string]any{"primitiveIds": ids}, stdout, stderr)
+				},
+			}
+			c.Flags().StringVar(&idsJSON, "ids", "", `JSON array of fill primitiveIds to delete (required)`)
+			fill.AddCommand(c)
+		}
+		pcb.AddCommand(fill)
+	}
+
 	return pcb
 }
 
