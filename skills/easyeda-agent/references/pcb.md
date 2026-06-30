@@ -132,6 +132,13 @@ convention as pour (connector builds the polygon).
 - `pcb region list` / `pcb region delete` — inspect / remove (note `pcb delete`
   removes components, NOT regions — use `region delete`).
 
+> **Read-back limit (verified #18):** `--name` on a region is fire-and-forget —
+> `getState_RegionName` never reads it back, so `region list` shows `null` and the
+> injected DSN keepout is named `region_keepout_N`. Likewise `pcb fill`'s `fillMode`
+> always reads back `solid`. Geometry / layer / net / **ruleType** persist fine —
+> just don't gate logic on reading a region's name or a fill's mode. Platform SDK
+> quirk (same family as the netflag rotation echo trap), not fixable from here.
+
 > **ESP32-S3-WROOM-1 ships with NO antenna keep-out** — you must create it (test-case
 > P1). **`getDsnFile` drops regions**, but `pcb export-dsn` now **re-injects** them as
 > Specctra `(keepout (polygon …))` by default (reports `keepouts=N`; `--raw` to skip),
