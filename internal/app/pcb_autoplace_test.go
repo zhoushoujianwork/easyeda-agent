@@ -141,3 +141,60 @@ func TestPlanAutoPlace_NoMainChip(t *testing.T) {
 		t.Errorf("expected a diag per satellite, got %d", len(diags))
 	}
 }
+
+// orientSatellite picks the rotation that points a 2-pin part's connecting pad at
+// the chip: the 3V3 pad sits at +x natively, so a left-edge part keeps rot 0
+// (pad already faces the chip on its right), a right-edge part flips to 180, and a
+// top/bottom part turns 90° so the pad axis goes vertical.
+func TestOrientSatellite(t *testing.T) {
+	// cap centered at origin, rot 0: pad "2"(3V3) at +x, pad "1"(GND) at -x.
+	cap := mkComp("c", "C1", 0, 0, 40, 20, []apPad{p("2", "3V3", 15, 0), p("1", "GND", -15, 0)})
+
+	cases := []struct {
+		edge    apEdge
+		wantRot float64
+		wantEffW, wantEffH float64
+	}{
+		{edgeLeft, 0, 40, 20},    // faces +x → pad already there
+		{edgeRight, 180, 40, 20}, // faces -x → flip
+		{edgeTop, 270, 20, 40},   // faces -y → pad axis vertical, swapped bbox
+		{edgeBottom, 90, 20, 40}, // faces +y
+	}
+	for _, c := range cases {
+		rot, effW, effH, oriented := orientSatellite(cap, c.edge, "3V3", true)
+		if !oriented {
+			t.Errorf("%s: expected oriented=true", c.edge)
+		}
+		if rot != c.wantRot {
+			t.Errorf("%s: rot=%.0f want %.0f", c.edge, rot, c.wantRot)
+		}
+		if effW != c.wantEffW || effH != c.wantEffH {
+			t.Errorf("%s: eff=%.0fx%.0f want %.0fx%.0f", c.edge, effW, effH, c.wantEffW, c.wantEffH)
+		}
+		// The connecting pad must end up pointing at the chip.
+		ndx, ndy := rotateVec(15, 0, rot) // 3V3 pad native offset, rotated
+		fx, fy := edgeFacing(c.edge)
+		if ndx*fx+ndy*fy <= 0 {
+			t.Errorf("%s: connecting pad does not face the chip (%.0f,%.0f vs facing %.0f,%.0f)", c.edge, ndx, ndy, fx, fy)
+		}
+	}
+
+	// --no-rotate / non-2-pin parts are left as-is.
+	if rot, _, _, oriented := orientSatellite(cap, edgeLeft, "3V3", false); oriented || rot != cap.rotation {
+		t.Errorf("rotate=false should not re-orient (oriented=%v rot=%.0f)", oriented, rot)
+	}
+}
+
+// A 2-pin satellite on the board gets a rotation patch (SetRot) and still no overlap.
+func TestPlanAutoPlace_RotatesSatellite(t *testing.T) {
+	moves, _ := planAutoPlace(ceshiBoard(), defaultApOptions())
+	anyRot := false
+	for _, m := range moves {
+		if m.SetRot {
+			anyRot = true
+		}
+	}
+	if !anyRot {
+		t.Error("expected at least one re-oriented (SetRot) satellite on the ceshi board")
+	}
+}

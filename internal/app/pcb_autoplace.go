@@ -38,6 +38,7 @@ type apComp struct {
 	id         string
 	designator string
 	x, y       float64 // component anchor (what modify sets)
+	rotation   float64 // current rotation (deg, y-up CCW) — needed to re-orient
 	locked     bool
 	hasBBox    bool
 	minX, minY float64
@@ -146,14 +147,16 @@ func (e apEdge) vertical() bool { return e == edgeLeft || e == edgeRight }
 
 // apMove is one planned placement: where a satellite should go and why.
 type apMove struct {
-	ID          string  `json:"id"`
-	Designator  string  `json:"designator"`
-	NewX        float64 `json:"newX"`
-	NewY        float64 `json:"newY"`
-	Main        string  `json:"main"`
-	Edge        string  `json:"edge"`
-	TargetNet   string  `json:"targetNet"`
-	Via         string  `json:"via,omitempty"` // "local" | "power" | "chain:<designator>"
+	ID         string  `json:"id"`
+	Designator string  `json:"designator"`
+	NewX       float64 `json:"newX"`
+	NewY       float64 `json:"newY"`
+	NewRot     float64 `json:"newRot"`           // target rotation (deg); == current when SetRot is false
+	SetRot     bool    `json:"setRot"`           // whether to apply NewRot (only re-oriented 2-pin satellites)
+	Main       string  `json:"main"`
+	Edge       string  `json:"edge"`
+	TargetNet  string  `json:"targetNet"`
+	Via        string  `json:"via,omitempty"` // "local" | "power" | "chain:<designator>"
 }
 
 // apDiag records a satellite the planner could not place (and why), so the CLI
@@ -167,9 +170,10 @@ type apOptions struct {
 	mainPins int     // distinct-pin threshold to count as a "main chip" anchor
 	gap      float64 // clearance from chip bbox edge to the nearest satellite edge
 	pitch    float64 // spacing between two satellites packed on the same edge
+	rotate   bool    // re-orient 2-pin satellites so their connecting pad faces the chip
 }
 
-func defaultApOptions() apOptions { return apOptions{mainPins: 8, gap: 40, pitch: 30} }
+func defaultApOptions() apOptions { return apOptions{mainPins: 8, gap: 40, pitch: 30, rotate: true} }
 
 // assignment is the planner's per-satellite decision before packing: which chip,
 // which edge, and where along that edge it wants to sit (the connecting pad's
@@ -207,34 +211,33 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		return nil, diags
 	}
 
-	// Per-main net→pad index: first pad seen on each net (chips repeat GND pads).
-	mainPadByNet := make([]map[string]apPad, len(mains))
+	// Per-main net→pads index: ALL pads on each net (a chip repeats GND/VCC many
+	// times), so a satellite can hug the NEAREST same-net pad, not a fixed first one.
+	mainPadsByNet := make([]map[string][]apPad, len(mains))
 	for mi, m := range mains {
-		mainPadByNet[mi] = map[string]apPad{}
+		mainPadsByNet[mi] = map[string][]apPad{}
 		for _, p := range comps[m].pads {
 			n := strings.TrimSpace(p.net)
 			if n == "" {
 				continue
 			}
-			if _, ok := mainPadByNet[mi][n]; !ok {
-				mainPadByNet[mi][n] = p
-			}
+			mainPadsByNet[mi][n] = append(mainPadsByNet[mi][n], p)
 		}
 	}
 
 	assigned := make(map[int]*assignment) // sat index → decision
 
 	// Pass 1 — direct: a satellite sharing a LOCAL (signal) net with a main pad
-	// hugs that pad. Prefer the nearest main when several expose the same net.
+	// hugs that pad. Prefer the nearest (main, same-net pad) when several match.
 	for _, s := range sats {
+		scx, scy := comps[s].bboxCenter()
 		best := -1
 		var bestPad apPad
 		var bestNet string
 		bestDist := math.MaxFloat64
 		for _, ln := range comps[s].localNets() {
 			for mi := range mains {
-				if pad, ok := mainPadByNet[mi][ln]; ok {
-					scx, scy := comps[s].bboxCenter()
+				if pad, ok := nearestPad(mainPadsByNet[mi][ln], scx, scy); ok {
 					d := math.Hypot(pad.x-scx, pad.y-scy)
 					if d < bestDist {
 						bestDist, best, bestPad, bestNet = d, mi, pad, ln
@@ -290,14 +293,14 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		if len(pnets) == 0 {
 			continue
 		}
+		scx, scy := comps[s].bboxCenter()
 		best := -1
 		var bestPad apPad
 		var bestNet string
 		bestDist := math.MaxFloat64
 		for _, pn := range pnets {
 			for mi := range mains {
-				if pad, ok := mainPadByNet[mi][pn]; ok {
-					scx, scy := comps[s].bboxCenter()
+				if pad, ok := nearestPad(mainPadsByNet[mi][pn], scx, scy); ok {
 					d := math.Hypot(pad.x-scx, pad.y-scy)
 					if d < bestDist {
 						bestDist, best, bestPad, bestNet = d, mi, pad, pn
@@ -360,18 +363,21 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		cursor := math.Inf(-1)
 		for _, a := range group {
 			sat := comps[a.sat]
+			// Re-orient (2-pin parts) so the connecting pad faces the chip; pack with
+			// the EFFECTIVE (post-rotation) bbox so rotated parts still don't overlap.
+			targetRot, effW, effH, oriented := orientSatellite(sat, k.edge, a.targetNet, opt.rotate)
 			var alongExtent, perpCenter float64
 			if k.edge.vertical() {
-				alongExtent = sat.height()
-				half := sat.width() / 2
+				alongExtent = effH
+				half := effW / 2
 				if k.edge == edgeLeft {
 					perpCenter = chip.minX - opt.gap - half
 				} else {
 					perpCenter = chip.maxX + opt.gap + half
 				}
 			} else {
-				alongExtent = sat.width()
-				half := sat.height() / 2
+				alongExtent = effW
+				half := effH / 2
 				if k.edge == edgeTop {
 					perpCenter = chip.maxY + opt.gap + half
 				} else {
@@ -391,12 +397,17 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 			} else {
 				cx, cy = center, perpCenter
 			}
+			// Place the bbox center at (cx,cy). The anchor→center offset is fixed on
+			// the part, so it rotates with it (Δ = targetRot − current).
 			bcx, bcy := sat.bboxCenter()
+			odx, ody := rotateVec(bcx-sat.x, bcy-sat.y, targetRot-sat.rotation)
 			moves = append(moves, apMove{
 				ID:         sat.id,
 				Designator: sat.designator,
-				NewX:       round2(cx - bcx + sat.x),
-				NewY:       round2(cy - bcy + sat.y),
+				NewX:       round2(cx - odx),
+				NewY:       round2(cy - ody),
+				NewRot:     targetRot,
+				SetRot:     oriented,
 				Main:       chip.designator,
 				Edge:       k.edge.String(),
 				TargetNet:  a.targetNet,
@@ -432,4 +443,98 @@ func edgeFor(chip apComp, pad apPad) (apEdge, float64) {
 
 func compHasLocalNet(c apComp, net string) bool {
 	return slices.Contains(c.localNets(), net)
+}
+
+// nearestPad returns the pad in pads closest to (px,py).
+func nearestPad(pads []apPad, px, py float64) (apPad, bool) {
+	best := -1
+	bestD := math.MaxFloat64
+	for i, p := range pads {
+		if d := math.Hypot(p.x-px, p.y-py); d < bestD {
+			bestD, best = d, i
+		}
+	}
+	if best < 0 {
+		return apPad{}, false
+	}
+	return pads[best], true
+}
+
+// rotateVec rotates (x,y) by deg (y-up CCW).
+func rotateVec(x, y, deg float64) (float64, float64) {
+	r := deg * math.Pi / 180
+	cs, sn := math.Cos(r), math.Sin(r)
+	return x*cs - y*sn, x*sn + y*cs
+}
+
+// satPadOnNet returns a 2-pin satellite's pad on the given net.
+func satPadOnNet(c apComp, net string) (apPad, bool) {
+	for _, p := range c.pads {
+		if strings.TrimSpace(p.net) == net {
+			return p, true
+		}
+	}
+	return apPad{}, false
+}
+
+// edgeFacing is the unit direction from a satellite on `edge` toward the chip it
+// hugs (left edge → satellite sits left of chip → faces +x).
+func edgeFacing(e apEdge) (float64, float64) {
+	switch e {
+	case edgeLeft:
+		return 1, 0
+	case edgeRight:
+		return -1, 0
+	case edgeTop:
+		return 0, -1
+	default: // bottom
+		return 0, 1
+	}
+}
+
+// orientSatellite decides the target rotation for a 2-pin satellite so its
+// connecting pad faces the chip, and returns the effective (post-rotation) bbox
+// width/height. For parts we don't re-orient it returns the current rotation and
+// bbox unchanged. The candidate rotations keep the pad axis perpendicular to the
+// edge (horizontal for L/R, vertical for T/B); we pick the one (of the 2) whose
+// connecting pad points most toward the chip.
+func orientSatellite(sat apComp, e apEdge, targetNet string, rotate bool) (targetRot, effW, effH float64, oriented bool) {
+	curW, curH := sat.width(), sat.height()
+	if !rotate || sat.distinctPins() != 2 {
+		return sat.rotation, curW, curH, false
+	}
+	pad, ok := satPadOnNet(sat, targetNet)
+	if !ok {
+		return sat.rotation, curW, curH, false
+	}
+	// Native dims (footprint at rotation 0): current bbox is swapped when the part
+	// currently sits at an odd 90°.
+	natW, natH := curW, curH
+	if oddQuarter(sat.rotation) {
+		natW, natH = curH, curW
+	}
+	// Pad offset from the anchor, in the native (rotation-0) frame.
+	ndx, ndy := rotateVec(pad.x-sat.x, pad.y-sat.y, -sat.rotation)
+	fx, fy := edgeFacing(e)
+	candidates := []float64{0, 180} // vertical edge → pad axis horizontal
+	if !e.vertical() {
+		candidates = []float64{90, 270} // horizontal edge → pad axis vertical
+	}
+	bestRot, bestScore := candidates[0], math.Inf(-1)
+	for _, r := range candidates {
+		rx, ry := rotateVec(ndx, ndy, r)
+		if score := rx*fx + ry*fy; score > bestScore {
+			bestScore, bestRot = score, r
+		}
+	}
+	// Effective bbox after applying bestRot to the native footprint.
+	if oddQuarter(bestRot) {
+		return bestRot, natH, natW, true
+	}
+	return bestRot, natW, natH, true
+}
+
+func oddQuarter(deg float64) bool {
+	q := int(math.Round(deg/90)) % 2
+	return q == 1 || q == -1
 }

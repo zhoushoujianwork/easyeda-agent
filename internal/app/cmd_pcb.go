@@ -1093,6 +1093,7 @@ exported DSN contains keepout entries before trusting the result.`,
 	// ── auto-place ────────────────────────────────────────────────────────
 	// Module-aware heuristic placement (daemon-side; see pcb_autoplace.go).
 	{
+		var noRotate bool
 		var mainPins int
 		var gap, pitch float64
 		var dryRun bool
@@ -1134,15 +1135,23 @@ This is a SEED, not a final layout — verify with 'pcb layout-lint' + 'pcb drc'
 				if pitch > 0 {
 					opt.pitch = pitch
 				}
+				if noRotate {
+					opt.rotate = false
+				}
 				moves, diags := planAutoPlace(comps, opt)
 
-				// 3. Apply (unless --dry-run), one modify per satellite.
+				// 3. Apply (unless --dry-run), one modify per satellite. Re-oriented
+				// 2-pin parts also get a rotation patch.
 				applied := 0
 				var failures []map[string]any
 				if !dryRun {
 					for _, m := range moves {
+						patch := map[string]any{"x": m.NewX, "y": m.NewY}
+						if m.SetRot {
+							patch["rotation"] = m.NewRot
+						}
 						if _, err := requestAction(cfg, "pcb.component.modify", window,
-							map[string]any{"primitiveId": m.ID, "patch": map[string]any{"x": m.NewX, "y": m.NewY}}); err != nil {
+							map[string]any{"primitiveId": m.ID, "patch": patch}); err != nil {
 							failures = append(failures, map[string]any{"designator": m.Designator, "error": err.Error()})
 							continue
 						}
@@ -1169,6 +1178,7 @@ This is a SEED, not a final layout — verify with 'pcb layout-lint' + 'pcb drc'
 		c.Flags().IntVar(&mainPins, "main-pins", 0, "distinct-pin threshold to treat a component as a main chip (default 8)")
 		c.Flags().Float64Var(&gap, "gap", 0, "clearance from chip edge to satellite (mil, default 40)")
 		c.Flags().Float64Var(&pitch, "pitch", 0, "spacing between satellites packed on the same edge (mil, default 30)")
+		c.Flags().BoolVar(&noRotate, "no-rotate", false, "do not re-orient satellites (v1 translate-only behavior)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the placement plan without moving anything")
 		pcb.AddCommand(c)
 	}
@@ -1537,6 +1547,7 @@ func parseApComps(result map[string]any) []apComp {
 			designator: asString(cm["designator"]),
 			x:          asFloat(cm["x"]),
 			y:          asFloat(cm["y"]),
+			rotation:   asFloat(cm["rotation"]),
 			locked:     asBool(cm["locked"]),
 		}
 		if bb, ok := cm["bbox"].(map[string]any); ok {
