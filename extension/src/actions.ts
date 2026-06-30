@@ -1883,6 +1883,7 @@ const schematicRead: Handler = async (payload) => {
 			designator,
 			componentType: c.getState_ComponentType?.() ?? '',
 			name: c.getState_Name?.() ?? '',
+			uniqueId: c.getState_UniqueId?.() ?? '', // sch↔PCB link key (for pcb.add_component)
 			footprint: c.getState_Footprint?.() ?? '',
 			supplierId: c.getState_SupplierId?.() ?? '', // LCSC C-number when present
 			x: c.getState_X?.(),
@@ -2706,6 +2707,86 @@ const pcbImportChanges: Handler = async (payload) => {
 			reason: imported
 				? null
 				: 'importChanges returned false — the PCB may be floating (no linked schematic) or schematicUuid is invalid.',
+		},
+	};
+};
+
+// pcb.add_component — place a footprint on the PCB and CONNECT it, bypassing the
+// broken eda.pcb_Document.importChanges (which no-ops for API-added parts even
+// when they're in the netlist with a designator + footprint — see #20). Steps:
+//   1. create the footprint on the PCB (pcb_PrimitiveComponent.create)
+//   2. link it to its schematic twin: same uniqueId + designator (modify)
+//   3. assign each pad's net from the caller-supplied `nets` map (padNumber→net)
+//      via pcb_PrimitivePad.modify — this is what actually wires the part, since
+//      net→pad assignment is otherwise part of the broken import flow
+//   4. recompute ratlines so the new connections render
+// The caller supplies `nets` (it already has the pin→net from `sch read`) because
+// the netlist (getNetlistFile) is only readable while the SCHEMATIC is active,
+// and this handler runs with the PCB active.
+const pcbAddComponent: Handler = async (payload) => {
+	const dev = payload.device as { libraryUuid?: string; uuid?: string } | undefined;
+	const libraryUuid = optionalString(payload, 'libraryUuid') ?? dev?.libraryUuid;
+	const uuid = optionalString(payload, 'uuid') ?? dev?.uuid;
+	if (!libraryUuid || !uuid) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'device is required: pass libraryUuid + uuid (a device {libraryUuid, uuid}).');
+	}
+	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfComponent;
+	const x = requireNumber(payload, 'x');
+	const y = requireNumber(payload, 'y');
+	const rotation = optionalNumber(payload, 'rotation');
+	const designator = optionalString(payload, 'designator');
+	const uniqueId = optionalString(payload, 'uniqueId');
+	const nets = (payload.nets && typeof payload.nets === 'object') ? payload.nets as Record<string, string> : {};
+
+	// 1. Create the footprint on the PCB.
+	let comp;
+	try {
+		comp = await eda.pcb_PrimitiveComponent.create({ libraryUuid, uuid }, layer, x, y, rotation, false);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to place the component footprint on the PCB.');
+	}
+	if (!comp) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'PCB component create returned no primitive (check device uuid / layer).');
+	}
+	const id = comp.getState_PrimitiveId();
+
+	// 2. Link to the schematic twin (uniqueId is the sch↔PCB key; designator pairs them).
+	const prop: Record<string, unknown> = {};
+	if (designator) prop.designator = designator;
+	if (uniqueId) prop.uniqueId = uniqueId;
+	if (Object.keys(prop).length) {
+		try { await eda.pcb_PrimitiveComponent.modify(id, prop); }
+		catch { /* link is best-effort — connectivity comes from the pad nets below */ }
+	}
+
+	// 3. Assign each pad's net from the supplied map.
+	let assignedNets = 0;
+	const unmatched: Array<string> = [];
+	let pads: Array<PcbPad> = [];
+	try { pads = (await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(id)) ?? []; }
+	catch { pads = []; }
+	for (const p of pads) {
+		const num = String(p.getState_PadNumber?.() ?? '');
+		const net = num ? nets[num] : undefined;
+		if (net) {
+			try { await eda.pcb_PrimitivePad.modify(p.getState_PrimitiveId(), { net }); assignedNets++; }
+			catch { unmatched.push(num); }
+		}
+	}
+
+	// 4. Recompute ratlines so the connections show.
+	try { await eda.pcb_Document.startCalculatingRatline(); }
+	catch { /* best-effort */ }
+
+	return {
+		result: {
+			primitiveId: id,
+			designator: comp.getState_Designator?.() ?? designator ?? null,
+			uniqueId: comp.getState_UniqueId?.() ?? uniqueId ?? null,
+			padCount: (pads ?? []).length,
+			assignedNets,
+			unmatchedPads: unmatched,
 		},
 	};
 };
@@ -4221,6 +4302,7 @@ const HANDLERS: Record<string, Handler> = {
 	'board.copy': boardCopy,
 	'board.delete': boardDelete,
 	'pcb.import_changes': pcbImportChanges,
+	'pcb.add_component': pcbAddComponent,
 	'pcb.component.modify': pcbComponentModify,
 	'pcb.component.delete': pcbComponentDelete,
 	'pcb.align': pcbAlign,

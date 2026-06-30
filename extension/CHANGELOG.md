@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.30] - 2026-06-30
+### Added
+- **`pcb.add_component`** (task #20) — add ONE part to an EXISTING PCB and wire it,
+  the working alternative to `pcb.import_changes` (which is a no-op for API-added
+  parts). Places the footprint (`pcb_PrimitiveComponent.create`), links it to its
+  schematic twin (uniqueId + designator), assigns each pad's net from a caller-
+  supplied `nets` map (`pcb_PrimitivePad.modify` — the step that actually wires it,
+  since net→pad assignment is otherwise part of the broken import flow), and
+  recomputes ratlines. CLI: `easyeda pcb add-component`. `schematic.read` now also
+  returns each component's `uniqueId` (the sch↔PCB link key to pass in).
+### Investigated
+- `eda.pcb_Document.importChanges` does NOT sync API-added components to an existing
+  PCB (returns true, count unchanged) — root-caused to incremental-add being a
+  platform no-op; superseded by `pcb.add_component`.
+
 ## [0.5.29] - 2026-06-30
 ### Added
 - **One-call circuit snapshot** (task #7): `schematic.read` returns a coherent

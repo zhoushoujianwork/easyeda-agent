@@ -178,6 +178,72 @@ schematic and PCB first, then recomputes ratlines.`,
 		pcb.AddCommand(c)
 	}
 
+	// ── add-component ─────────────────────────────────────────────────────
+	// pcb.add_component — the WORKING way to add ONE part to an existing PCB
+	// (import-changes no-ops for API-added parts, #20): place footprint + link +
+	// assign pad nets + ratline.
+	{
+		var libraryUUID, deviceUUID, designator, uniqueID, netsJSON string
+		var x, y, rotation float64
+		var layer int
+		c := &cobra.Command{
+			Use:   "add-component",
+			Short: "Place + connect ONE footprint on the PCB (the working alternative to import-changes)",
+			Long: `Add a single part to an EXISTING PCB and wire it — the working path, since
+'import-changes' is a no-op for parts added to the schematic via the API (#20).
+
+It places the footprint (--library + --uuid, a device), links it to its schematic
+twin (--designator + --unique-id), assigns each pad's net from --nets
+(a JSON padNumber→net map), and recomputes ratlines.
+
+Get --nets and --unique-id from 'sch read' (the netlist is only readable while the
+schematic is active, so you pass them). Workflow:
+  1. place + wire the part in the schematic (sch place / connect)
+  2. easyeda sch read   → note the part's pin nets + uniqueId
+  3. easyeda pcb add-component --library … --uuid … --x … --y … \
+       --designator U2 --unique-id gge9 --nets '{"5":"3V3","3":"GND"}'`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb add-component --library <lib> --uuid <dev> --x 3500 --y -1900 \
+      --designator U2 --unique-id gge9 --nets '{"5":"3V3","3":"GND"}'`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if libraryUUID == "" || deviceUUID == "" {
+					return fmt.Errorf("--library and --uuid are required (a device {libraryUuid, uuid})")
+				}
+				payload := map[string]any{"libraryUuid": libraryUUID, "uuid": deviceUUID, "x": x, "y": y}
+				if cmd.Flags().Changed("layer") {
+					payload["layer"] = layer
+				}
+				if cmd.Flags().Changed("rotation") {
+					payload["rotation"] = rotation
+				}
+				if designator != "" {
+					payload["designator"] = designator
+				}
+				if uniqueID != "" {
+					payload["uniqueId"] = uniqueID
+				}
+				if netsJSON != "" {
+					var nets map[string]any
+					if err := json.Unmarshal([]byte(netsJSON), &nets); err != nil {
+						return fmt.Errorf("invalid --nets json (expected object padNumber→net): %w", err)
+					}
+					payload["nets"] = nets
+				}
+				return dispatch(cfg, "pcb.add_component", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&libraryUUID, "library", "", "device libraryUuid (required)")
+		c.Flags().StringVar(&deviceUUID, "uuid", "", "device uuid (required)")
+		c.Flags().Float64Var(&x, "x", 0, "x (mil)")
+		c.Flags().Float64Var(&y, "y", 0, "y (mil)")
+		c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2)")
+		c.Flags().Float64Var(&rotation, "rotation", 0, "rotation (deg)")
+		c.Flags().StringVar(&designator, "designator", "", "designator to set (match the schematic twin, e.g. U2)")
+		c.Flags().StringVar(&uniqueID, "unique-id", "", "schematic twin's uniqueId (sch↔PCB link key; from 'sch read')")
+		c.Flags().StringVar(&netsJSON, "nets", "", `JSON map padNumber→net, e.g. '{"5":"3V3","3":"GND"}' (from 'sch read')`)
+		pcb.AddCommand(c)
+	}
+
 	// ── modify ────────────────────────────────────────────────────────────
 	// pcb.component.modify
 	{
