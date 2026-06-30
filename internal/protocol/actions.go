@@ -507,7 +507,7 @@ func AllActions() []ActionSpec {
 			Mutates:      true,
 			NeedsWindow:  true,
 			NeedsConfirm: true,
-			Description:  "Sync the schematic netlist/components into the active PCB (从原理图导入变更) — the primary way components arrive on the board. Ensures a Board links the schematic and PCB first, then recomputes ratlines.",
+			Description:  "Sync the schematic netlist/components into the active PCB (从原理图导入变更) — how components first arrive on the board. Ensures a Board links the schematic and PCB first, then recomputes ratlines. ⚠️ LIMITATION (verified #20): eda.pcb_Document.importChanges does NOT add components placed via the API (schematic.component.place) to an EXISTING PCB — even though the new part is in the canvas AND the manufacture netlist with a designator + footprint, importChanges returns true but the PCB count is unchanged (default or explicit schematicUuid; no annotate/refresh/updatePcb API exists to force it). It works for the initial board population; incrementally adding a part via the API then importing is a platform no-op — add new parts through the EasyEDA UI's 'Update PCB', or place the whole circuit before the first import.",
 			Inputs:       []string{"schematicUuid optional", "ensureBoard optional (default true)", "recomputeRatline optional (default true)"},
 			Outputs:      []string{"imported", "createdBoard", "board", "reason"},
 			VerifyWith:   []string{"pcb.components.list", "pcb.nets.list"},

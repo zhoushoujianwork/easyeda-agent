@@ -169,7 +169,8 @@ patch, thermal copper, an odd-shaped plane). Three net-copper primitives, don't 
 
 ### Schematic → PCB sync + component CRUD
 
-- `pcb.import_changes` — **sync components/netlist from the schematic** (从原理图导入变更). The primary way parts arrive on the board: ensures a Board links SCH+PCB, then `importChanges`, then recomputes ratlines. **Mutates the board; confirm first.** Returns `imported:false` (with a reason) for a floating/unlinked PCB.
+- `pcb.import_changes` — **sync components/netlist from the schematic** (从原理图导入变更). How parts first arrive on the board: ensures a Board links SCH+PCB, then `importChanges`, then recomputes ratlines. **Mutates the board; confirm first.** Returns `imported:false` (with a reason) for a floating/unlinked PCB.
+  > **⚠️ Limitation (verified #20):** `importChanges` does **NOT** add a component placed via the API (`schematic.component.place`) to an **existing** PCB — even with the new part in the canvas AND the manufacture netlist (designator + footprint), it returns `imported:true` but the PCB count is unchanged (default or explicit `--schematic`; no annotate/refresh/update-PCB API exists). It populates the board the first time, but **incrementally adding a part via the API then importing is a platform no-op**. Add new parts through EasyEDA's UI 「Update PCB / 更新PCB」, or place the whole circuit before the first import.
 - `pcb.component.modify` — move (x/y), rotate, flip layer (top/bottom), lock, designator/BOM flags.
 - `pcb.component.delete` — delete component primitives. **Confirm first** (no undo).
 
