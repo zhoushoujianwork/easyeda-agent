@@ -1889,6 +1889,39 @@ Validated on ceshi: DRC 31 → 3, No-Connection → 0. Run AFTER auto-place + ou
 		pcb.AddCommand(c)
 	}
 
+	// ── outline-round (圆角板框) ────────────────────────────────────────────
+	// Replace the board outline with a rounded rectangle (#29). Curves are chord-
+	// approximated (pcb.outline.set takes a polygon). Core in pcb_outline_round.go.
+	{
+		var rectSpec string
+		var radius, margin float64
+		var segments int
+		var dryRun bool
+		c := &cobra.Command{
+			Use:   "outline-round",
+			Short: "Set a rounded-rectangle board outline (圆角板框)",
+			Long: `Replace the board outline with a rounded rectangle. The rect defaults to the
+CURRENT outline's bbox (or pass --rect x0,y0,x1,y1); --margin expands it outward.
+--radius is the corner radius (default ≈12% of the shorter side, clamped to half).
+Corners are chord-approximated (--segments per corner, default 6) since
+pcb.outline.set takes a polygon. The board-outline layer renders → verify with
+'pcb snapshot'. Run BEFORE pour/route (changing the outline after copper can strand it).`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb outline-round --radius 80
+  easyeda pcb outline-round --rect 0,0,2000,1500 --radius 100 --segments 8
+  easyeda pcb outline-round --margin 100 --radius 60 --dry-run`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runOutlineRound(cfg, window, rectSpec, radius, margin, segments, dryRun, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&rectSpec, "rect", "", "axis-aligned rect 'x0,y0,x1,y1' (mil); default = current outline bbox")
+		c.Flags().Float64Var(&radius, "radius", 0, "corner radius (mil); default ≈12% of the shorter side")
+		c.Flags().Float64Var(&margin, "margin", 0, "expand the rect outward by this many mil before rounding")
+		c.Flags().IntVar(&segments, "segments", 6, "chord segments per 90° corner (higher = smoother)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the generated polygon without setting the outline")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
 }
 
