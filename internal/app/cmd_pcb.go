@@ -1851,6 +1851,44 @@ current stackup with 'pcb layers' (copperLayerCount + each layer's type).`,
 		pcb.AddCommand(stackup)
 	}
 
+	// ── power-planes (4层电源平面启发式) ────────────────────────────────────
+	// The proper fix for the 2-layer pour conflict: dedicated inner planes + via
+	// stitching. Ensures 4 layers, assigns GND + power nets to inner layers,
+	// via-stitches every power pad down to its plane, pours each plane. Validated on
+	// ceshi: DRC No-Connection → 0. Core in pcb_powerplanes.go.
+	{
+		var gndLayer, powerLayer int
+		var dryRun bool
+		c := &cobra.Command{
+			Use:   "power-planes",
+			Short: "4-layer power distribution: GND + power inner planes + via-stitch (fixes 2-layer pour conflict)",
+			Long: `Distribute power/ground on dedicated INNER PLANES — the clean 4-layer fix for the
+2-layer pour conflict (two power nets can't both connect on one shared layer, which
+stranded 5 of ceshi's 3V3 pads). This:
+
+  1. ensures the board has >=4 copper layers,
+  2. assigns GND to an inner layer and power nets (VCC/3V3/… via isGlobalNet) to another,
+  3. via-stitches every power/ground pad DOWN to its plane (the connection point the
+     inner pour needs — without it the inner pour is all isolated islands),
+  4. pours each net on its inner layer, then rebuilds.
+
+Validated on ceshi: DRC 31 → 3, No-Connection → 0. Run AFTER auto-place + outline-fit
++ route-short (signals). Two power nets sharing one plane layer re-create the conflict
+(warned) — give each its own inner layer on a 6+ layer board. --dry-run prints the plan.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb power-planes
+  easyeda pcb power-planes --gnd-layer 15 --power-layer 16
+  easyeda pcb power-planes --dry-run`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runPowerPlanes(cfg, window, gndLayer, powerLayer, dryRun, stdout, stderr)
+			},
+		}
+		c.Flags().IntVar(&gndLayer, "gnd-layer", 15, "inner layer id for the GND plane (15=Inner1)")
+		c.Flags().IntVar(&powerLayer, "power-layer", 16, "inner layer id for the power plane (16=Inner2)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan (nets→layers, pad counts) without mutating")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
 }
 
