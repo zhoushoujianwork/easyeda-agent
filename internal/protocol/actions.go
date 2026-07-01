@@ -427,9 +427,9 @@ func AllActions() []ActionSpec {
 			Phase:       2,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Reposition every component's DESIGNATOR silkscreen to a clean, consistent spot — centered above (side=top, default) or below (side=bottom) the footprint bbox, `offset` mil away. The designator is a component-bound ATTRIBUTE (not a free string, so pcb_PrimitiveString is empty and the component has no per-designator position setter); reached via pcb_PrimitiveAttribute.getAllPrimitiveId(componentId) + .modify(id,{x,y}). Optional `refs` ([designators]) limits to specific parts. Returns aligned/skipped counts + details.",
-			Inputs:      []string{"offset optional (mil, default 40)", "side optional (top|bottom, default top)", "refs optional ([designators])"},
-			Outputs:     []string{"aligned", "skipped", "details", "skippedDetails"},
+			Description: "Reposition every component's DESIGNATOR silkscreen with COLLISION AVOIDANCE — for each designator it searches candidate slots around the footprint (preferred `side` first, then the other directions, at increasing distance) and takes the first where the label bbox hits NO other component body and NO already-placed label; dense-cluster labels get pushed into open space so they don't pile up (the plain 'above the bbox' version overlapped when parts were packed tight). The designator is a component-bound ATTRIBUTE (not a free string — pcb_PrimitiveString is empty, and the component has no per-designator position setter); reached via pcb_PrimitiveAttribute.getAllPrimitiveId(componentId) + .modify(id,{x,y}). `side` (top|bottom|left|right) biases the search; `offset` is the base gap; `refs` limits to specific parts. Returns aligned/skipped + unresolvedCollisions (labels that still overlap — the layout is too dense; loosen placement or shrink the font).",
+			Inputs:      []string{"offset optional (mil gap, default 12)", "side optional (top|bottom|left|right, default top)", "refs optional ([designators])"},
+			Outputs:     []string{"aligned", "skipped", "unresolvedCollisions", "details", "skippedDetails"},
 			VerifyWith:  []string{"pcb.snapshot"},
 		},
 		{

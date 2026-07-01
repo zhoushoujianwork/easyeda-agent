@@ -2487,8 +2487,18 @@ const pcbStackupSet: Handler = async (payload) => {
 // pcb_PrimitiveAttribute.getAllPrimitiveId(componentId) + .modify(id,{x,y}); no
 // per-designator-position setter exists on the component itself. Verified live: R2's
 // designator moved exactly to the requested (x,y).
+type silkRect = { minX: number; minY: number; maxX: number; maxY: number };
+type silkItem = {
+	cid: string; desig: string; cb: silkRect; attrId: string;
+	w: number; h: number; offx: number; offy: number;
+};
+
+function silkOverlap(a: silkRect, b: silkRect, m: number): boolean {
+	return a.minX < b.maxX + m && a.maxX > b.minX - m && a.minY < b.maxY + m && a.maxY > b.minY - m;
+}
+
 const pcbSilkAlign: Handler = async (payload) => {
-	const offset = optionalNumber(payload, 'offset') ?? 40;
+	const offset = optionalNumber(payload, 'offset') ?? 12;
 	const side = (optionalString(payload, 'side') ?? 'top').toLowerCase();
 	const refs = Array.isArray(payload.refs) ? (payload.refs as unknown[]).map(String) : null;
 
@@ -2500,65 +2510,120 @@ const pcbSilkAlign: Handler = async (payload) => {
 		throw edaError(err, 'Failed to list components for silk-align.');
 	}
 
-	const aligned: Array<Record<string, unknown>> = [];
+	// 1. Gather each component's body bbox, its designator attribute, and the
+	//    designator's rendered size + anchor→center offset (so we can place its CENTER).
+	const items: silkItem[] = [];
 	const skipped: Array<Record<string, unknown>> = [];
 	for (const c of comps ?? []) {
 		const desig = c.getState_Designator?.() ?? '';
-		if (refs && !refs.includes(desig)) {
+		if (!desig || (refs && !refs.includes(desig))) {
 			continue;
 		}
 		const cid = c.getState_PrimitiveId();
-
-		// Footprint bbox → center x + top/bottom edge for the target.
-		// (SDK return type is loose here; treat as an optional {minX,minY,maxX,maxY}.)
-		let bbox: { minX?: number; minY?: number; maxX?: number; maxY?: number } | undefined;
+		let cb: silkRect | undefined;
 		try {
-			bbox = await eda.pcb_Primitive.getPrimitivesBBox([cid]);
+			cb = await eda.pcb_Primitive.getPrimitivesBBox([cid]) as silkRect;
 		}
-		catch { /* fall back to the component anchor below */ }
-
-		// Find the Designator attribute among the component's attributes.
-		let desigAttrId: string | null = null;
+		catch { /* skip below */ }
+		if (!cb) {
+			skipped.push({ designator: desig, reason: 'no component bbox' });
+			continue;
+		}
+		let attrId: string | null = null;
 		try {
-			const attrIds = await eda.pcb_PrimitiveAttribute.getAllPrimitiveId(cid);
-			for (const id of attrIds ?? []) {
+			const ids = await eda.pcb_PrimitiveAttribute.getAllPrimitiveId(cid);
+			for (const id of ids ?? []) {
 				const a = await eda.pcb_PrimitiveAttribute.get(id);
-				if (!a) {
-					continue;
-				}
-				const key = String(a.getState_Key?.() ?? '').toLowerCase();
-				if (key.includes('desig') || a.getState_Value?.() === desig) {
-					desigAttrId = id;
+				if (a && (String(a.getState_Key?.() ?? '').toLowerCase().includes('desig') || a.getState_Value?.() === desig)) {
+					attrId = id;
 					break;
 				}
 			}
 		}
-		catch { /* handled as skip below */ }
-		if (!desigAttrId) {
+		catch { /* skip below */ }
+		if (!attrId) {
 			skipped.push({ designator: desig, reason: 'no designator attribute found' });
 			continue;
 		}
-
-		let x = c.getState_X();
-		let y = c.getState_Y();
-		if (bbox && bbox.maxX != null && bbox.minX != null) {
-			x = (bbox.minX + bbox.maxX) / 2;
-			y = side === 'bottom' ? (bbox.minY ?? y) - offset : (bbox.maxY ?? y) + offset;
+		const a = await eda.pcb_PrimitiveAttribute.get(attrId);
+		if (!a) {
+			skipped.push({ designator: desig, reason: 'designator attribute not readable' });
+			continue;
 		}
-		else {
-			y = side === 'bottom' ? y - offset : y + offset;
-		}
-
+		const ax = a.getState_X() ?? 0, ay = a.getState_Y() ?? 0;
+		let db: silkRect | undefined;
 		try {
-			const r = await eda.pcb_PrimitiveAttribute.modify(desigAttrId, { x, y });
-			aligned.push({ designator: desig, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, ok: !!r });
+			db = await eda.pcb_Primitive.getPrimitivesBBox([attrId]) as silkRect;
+		}
+		catch { /* estimate below */ }
+		const w = db ? db.maxX - db.minX : 40;
+		const h = db ? db.maxY - db.minY : 25;
+		const bcx = db ? (db.minX + db.maxX) / 2 : ax;
+		const bcy = db ? (db.minY + db.maxY) / 2 : ay;
+		items.push({ cid, desig, cb, attrId, w, h, offx: bcx - ax, offy: bcy - ay });
+	}
+
+	// 2. Greedy collision-aware placement. Search candidate label slots around each
+	//    component (preferred `side` first, then the other 7 directions), at INCREASING
+	//    distance, and take the first slot whose label bbox hits no other component body
+	//    and no already-placed label. Dense-cluster labels get pushed into open space.
+	const compBoxes = items.map(it => it.cb);
+	items.sort((p, q) => (q.cb.maxX - q.cb.minX) * (q.cb.maxY - q.cb.minY) - (p.cb.maxX - p.cb.minX) * (p.cb.maxY - p.cb.minY));
+
+	// Direction priority by side: [preferred, opposite, sides, diagonals]. y-up: +y = up.
+	const N = [0, 1], S = [0, -1], E = [1, 0], W = [-1, 0];
+	const diag = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
+	const dirs = (side === 'bottom' ? [S, N, E, W] : side === 'left' ? [W, E, N, S] : side === 'right' ? [E, W, N, S] : [N, S, E, W]).concat(diag);
+	const STEP = 22, MARGIN = 4;
+
+	const placed: silkRect[] = [];
+	const aligned: Array<Record<string, unknown>> = [];
+	for (const it of items) {
+		const cx = (it.cb.minX + it.cb.maxX) / 2, cy = (it.cb.minY + it.cb.maxY) / 2;
+		const hw = (it.cb.maxX - it.cb.minX) / 2, hh = (it.cb.maxY - it.cb.minY) / 2;
+		let best: { lx: number; ly: number; lb: silkRect } | null = null;
+		let bestScore = Infinity;
+		for (let ring = 0; ring < 9 && !(best && bestScore === 0); ring++) {
+			const d = offset + ring * STEP;
+			for (const [dx, dy] of dirs) {
+				const lx = cx + dx * (hw + d + it.w / 2);
+				const ly = cy + dy * (hh + d + it.h / 2);
+				const lb: silkRect = { minX: lx - it.w / 2, minY: ly - it.h / 2, maxX: lx + it.w / 2, maxY: ly + it.h / 2 };
+				let hit = 0;
+				for (const cb of compBoxes) {
+					if (cb !== it.cb && silkOverlap(lb, cb, MARGIN)) hit++;
+				}
+				for (const pl of placed) {
+					if (silkOverlap(lb, pl, MARGIN)) hit += 2;
+				}
+				if (hit === 0) {
+					best = { lx, ly, lb };
+					bestScore = 0;
+					break;
+				}
+				const score = hit * 1000 + d;
+				if (score < bestScore) {
+					bestScore = score;
+					best = { lx, ly, lb };
+				}
+			}
+		}
+		if (!best) {
+			skipped.push({ designator: it.desig, reason: 'no candidate slot' });
+			continue;
+		}
+		placed.push(best.lb);
+		try {
+			const r = await eda.pcb_PrimitiveAttribute.modify(it.attrId, { x: best.lx - it.offx, y: best.ly - it.offy });
+			aligned.push({ designator: it.desig, x: Math.round(best.lx * 100) / 100, y: Math.round(best.ly * 100) / 100, clear: bestScore === 0, ok: !!r });
 		}
 		catch (err) {
-			skipped.push({ designator: desig, reason: `modify failed: ${String(err)}` });
+			skipped.push({ designator: it.desig, reason: `modify failed: ${String(err)}` });
 		}
 	}
 
-	return { result: { aligned: aligned.length, skipped: skipped.length, side, offset, details: aligned, skippedDetails: skipped } };
+	const collisions = aligned.filter(a => a.clear === false).length;
+	return { result: { aligned: aligned.length, skipped: skipped.length, unresolvedCollisions: collisions, side, offset, details: aligned, skippedDetails: skipped } };
 };
 
 /**
