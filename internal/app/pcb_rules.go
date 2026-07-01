@@ -14,7 +14,8 @@ const mmToMil = 39.37007874
 // pcbRules is the normalized rule set (all values in mil) the planners consume.
 type pcbRules struct {
 	clearanceMil     float64 // track↔pad safe spacing (the binding routing clearance)
-	trackWidthMil    float64 // default routing track width
+	trackWidthMil    float64 // default routing track width — used for SIGNAL nets
+	powerWidthMil    float64 // design width for POWER/GND nets (wider, for current)
 	trackWidthMinMil float64 // minimum legal track width (clamp floor)
 	viaDrillMil      float64 // via hole diameter
 	viaDiameterMil   float64 // via outer diameter
@@ -25,11 +26,14 @@ type pcbRules struct {
 // defaultPcbRules is the JLCPCB fabrication baseline — a sane seed when the live
 // rule is missing or a path can't be read. Values track the canonical reference
 // skills/easyeda-agent/references/fab-rules-jlcpcb.json ("recommended" column) and
-// converge with ceshi's live rule (clear 6 / width 10 / min 5 / via 0.3–0.6mm /
-// copper-to-edge 8mil), so read-live and fallback agree.
+// converge with ceshi's live rule (clear 6 / signal 10 / power 20 / min 5 /
+// via 0.3–0.6mm / copper-to-edge 8mil). NOTE: power is DELIBERATELY wider than
+// signal (current capacity) — the board's DRC rule only gives a uniform default +
+// a minimum; the signal/power split is a design convention from the fab reference,
+// not a manufacturing rule.
 func defaultPcbRules() pcbRules {
 	return pcbRules{
-		clearanceMil: 6, trackWidthMil: 10, trackWidthMinMil: 5,
+		clearanceMil: 6, trackWidthMil: 10, powerWidthMil: 20, trackWidthMinMil: 5,
 		viaDrillMil: 12, viaDiameterMil: 24, copperToEdgeMil: 8, source: "fallback",
 	}
 }
@@ -198,6 +202,12 @@ func parsePcbRules(result map[string]any) pcbRules {
 				}
 			}
 		}
+	}
+
+	// Power width is a design convention (fab reference), not in the board rule;
+	// keep the recommended value but never let it fall below the signal default.
+	if r.trackWidthMil > r.powerWidthMil {
+		r.powerWidthMil = r.trackWidthMil
 	}
 
 	if got {

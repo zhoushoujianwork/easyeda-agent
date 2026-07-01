@@ -1412,13 +1412,13 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 					return fmt.Errorf("--corner must be 90, 45, or round (got %q)", corner)
 				}
 				opt := defaultRtOptions()
-				// Rule-aware widths: conform to the board's live DRC track-width spec
-				// instead of the hardcoded 10/20mil, unless the user overrides. The
-				// board rule is uniform (no per-class width), so signal and power both
-				// default to the spec width, clamped to the legal minimum. (#22)
+				// Rule-aware widths: SIGNAL uses the board's live track-width default,
+				// POWER stays wider (current capacity — the fab reference's recommended
+				// power width, ≥ signal), both clamped ≥ the legal minimum. Overrides
+				// via --width-signal/--width-power. (#22, power/signal split #corrected)
 				rules := fetchPcbRules(cfg, window)
 				opt.signalWidth = rules.clampWidth(rules.trackWidthMil)
-				opt.powerWidth = rules.clampWidth(rules.trackWidthMil)
+				opt.powerWidth = rules.clampWidth(rules.powerWidthMil)
 				if maxLen > 0 {
 					opt.maxLen = maxLen
 				}

@@ -60,7 +60,10 @@ func TestParsePcbRules_Live(t *testing.T) {
 		t.Errorf("source=%q, want live", r.source)
 	}
 	if !near(r.trackWidthMil, 10) {
-		t.Errorf("trackWidth=%.2f, want ~10mil", r.trackWidthMil)
+		t.Errorf("trackWidth(signal)=%.2f, want ~10mil", r.trackWidthMil)
+	}
+	if !near(r.powerWidthMil, 20) {
+		t.Errorf("powerWidth=%.2f, want ~20mil (wider than signal)", r.powerWidthMil)
 	}
 	if !near(r.trackWidthMinMil, 5) {
 		t.Errorf("trackWidthMin=%.2f, want ~5mil", r.trackWidthMinMil)
