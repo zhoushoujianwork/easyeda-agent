@@ -1,0 +1,62 @@
+{
+  "$comment": "Canonical JLCPCB fabrication design-rule reference — the single source for the daemon's DRC-rule fallback baseline (internal/app/pcb_rules.go defaultPcbRules) and for design-flow DFM checks. JLCPCB (嘉立创) is the fab behind EasyEDA Pro / 嘉立创EDA, so a live board's `pcb.drc.rules` (getCurrentRuleConfiguration) SHOULD converge with the 'recommended' values here. ALWAYS prefer the live rule when connected; use this only as the seed when the live rule is missing or too loose.",
+  "source": "JLCPCB published PCB capabilities — https://jlcpcb.com/capabilities/pcb-capabilities (+ jlcpcb.com/blog design guides)",
+  "capturedDate": "2026-07-01",
+  "units": "each value carries mil and mm; process assumed 1oz outer copper, standard (non-surcharge) tier unless noted",
+  "convergenceCheck": {
+    "ceshiLiveRule": { "clearanceMil": 6, "trackWidthDefaultMil": 10, "trackWidthMinMil": 5, "viaDrillMm": 0.3, "viaDiameterMm": 0.6 },
+    "verdict": "ceshi's live pcb.drc.rules matches this reference's 'recommended' column (clear 6 / width 10 / min 5 / via 0.3-0.6) — the JLCEDA default DRC config reflects JLCPCB capabilities, so read-live and this-fallback agree."
+  },
+
+  "manufacturingMin": {
+    "$comment": "ABSOLUTE floor for the standard tier — going below costs more or is rejected. Use these as CLAMP floors (never emit a track/via/gap below the applicable min).",
+    "traceWidthMil": { "layer_1_2_1oz": 5, "multilayer_1oz": 3.5, "note": "3.5mil only in BGA/multilayer; 4mil possible at surcharge" },
+    "traceSpacingMil": { "layer_1_2_1oz": 5, "multilayer_1oz": 3.5 },
+    "viaDrillMil": { "layer_2plus": 6, "layer_1": 12, "mm": { "layer_2plus": 0.15, "layer_1": 0.3 } },
+    "viaPadMil": { "value": 10, "mm": 0.25, "note": "0.2mm/8mil pad at surcharge" },
+    "annularRingMil": { "value": 5, "mm": 0.13, "recommended": 8 },
+    "drilledHoleMil": { "layer_2plus": 6, "layer_1": 12, "mm": { "layer_2plus": 0.15, "layer_1": 0.3 } },
+    "copperToEdgeMil": { "routed": 8, "vcut": 16, "mm": { "routed": 0.2, "vcut": 0.4 }, "note": "board-outline-to-copper clearance = the pour pull-back / inset floor" },
+    "silkLineWidthMil": { "value": 6, "mm": 0.15 },
+    "silkTextHeightMil": { "value": 40, "mm": 1.0, "note": "smaller silk becomes illegible" },
+    "silkTextWidthHeightRatio": "1:6",
+    "padToSilkMil": { "value": 6, "mm": 0.15 },
+    "solderMaskDamMil": { "colored_1oz": 4, "black_white": 5, "twoOz": 8, "mm": { "colored_1oz": 0.1, "black_white": 0.13, "twoOz": 0.2 } }
+  },
+
+  "recommended": {
+    "$comment": "Reliable defaults for AUTO-GENERATED designs — what defaultPcbRules() should seed when the live rule is unavailable. Chosen well above the manufacturing floor for yield.",
+    "clearanceMil": 6,
+    "trackWidthSignalMil": 10,
+    "trackWidthPowerMil": 20,
+    "trackWidthMinMil": 5,
+    "annularRingMil": 6,
+    "pourToEdgeMil": 8,
+    "$viaNote": "via size depends on layer count — see byLayerCount"
+  },
+
+  "byLayerCount": {
+    "$comment": "Recommended via sizes + tightest trace/space by stackup (JLCPCB blog guidance).",
+    "2": { "viaDrillMil": 16, "viaPadMil": 31, "viaDrillMm": 0.4, "viaPadMm": 0.8, "minTraceSpaceMil": 5, "note": "0.3/0.6mm via also common and cheaper" },
+    "4": { "viaDrillMil": 12, "viaPadMil": 24, "viaDrillMm": 0.3, "viaPadMm": 0.6, "minTraceSpaceMil": 3.5, "note": "4L is same base price as 2L at JLCPCB in many promos; inner planes de-densify the surface" },
+    "6": { "viaDrillMil": 12, "viaPadMil": 24, "viaDrillMm": 0.3, "viaPadMm": 0.6, "minTraceSpaceMil": 3.5, "note": "6+ layer: resin-plugged/via-in-pad available" }
+  },
+
+  "byCopperWeight": {
+    "$comment": "Heavier copper needs wider min trace/space (etch factor).",
+    "1oz": { "minTraceWidthMil": 5, "minTraceSpaceMil": 5 },
+    "2oz": { "minTraceWidthMil": 6.5, "minTraceSpaceMil": 6.5, "multilayerMil": 6 },
+    "2.5oz": { "minTraceWidthMil": 8 },
+    "3.5oz": { "minTraceWidthMil": 10 },
+    "4.5oz": { "minTraceWidthMil": 12 }
+  },
+
+  "impedanceNote": "Controlled impedance (Z0) is NOT derivable from platform data (stackup Er / dielectric height / copper weight are not readable via eda.*). JLCPCB publishes stackup tables + an impedance calculator; a controlled-Z design must supply stackup + target Z0, then compute trace width externally (Wheeler/IPC-2141) — see task #27. This reference intentionally omits Z0 widths.",
+
+  "sources": [
+    "https://jlcpcb.com/capabilities/pcb-capabilities",
+    "https://jlcpcb.com/blog/pcb-design-rules-best-practices",
+    "https://jlcpcb.com/blog/pcb-via-design-best-practices",
+    "https://www.schemalyzer.com/en/blog/manufacturing/jlcpcb/jlcpcb-design-rules"
+  ]
+}
