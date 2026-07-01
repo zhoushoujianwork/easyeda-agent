@@ -194,3 +194,12 @@ See:
 - [Skill design](docs/skill-design.md)
 - [Historical Phase 1 schematic scope](docs/phase-1-schematic.md)
 - [Historical Phase 2 PCB feasibility](docs/phase-2-pcb.md)
+
+## Acknowledgments
+
+Huge thanks to **嘉立创EDA / EasyEDA Pro (JLCPCB)** for opening up the extension
+plugin channel and the official `eda.*` API. This entire automation layer is built
+**on top of that open plugin platform** — it simply would not exist without it.
+`easyeda-agent` stays a thin, well-behaved community citizen of the official plugin
+system, and every capability here ultimately dispatches to JLC's own `eda.*` calls.
+感谢嘉立创开放的 EDA 插件通道,让我们能做出这样一个好用的自动化插件。 🙏
