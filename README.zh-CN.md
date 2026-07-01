@@ -108,17 +108,17 @@ skillhub install easyeda-agent --registry https://skillhub.cn
 
 ## 暂不支持 / 平台墙
 
-诚实说明边界——有的是路线图,有的是 `eda.*` API 的硬墙(连接器怎么写都够不到):
+诚实说明边界。2026-07-01 对官方市场的扫描([docs/marketplace-coverage.md](docs/marketplace-coverage.md))校正了这些——真正的墙只在**交互式 UX** API,大多数「结果」(走线/过孔/泪滴/网长)其实够得到,进了吸收清单而非被堵死:
 
-- **迷宫档自动布线**(密集/任意距离/推挤)—— daemon 只做*短、清晰*的启发式布线。完整布线走外部 **Freerouting**(DSN 往返的构件已就绪);turnkey 集成**暂缓**(需 Java 运行时;等官方 EasyEDA 自动布线器过 `@alpha`)。
-- **泪滴(teardrop)** —— **平台墙**:`eda.*` 无任何创建/应用泪滴的 API(泪滴只作为制造导出的对象类型出现)。请在 UI 里手动应用。
-- **受控阻抗 / 高速** —— **平台墙**:叠层 Er / 介质厚度 / 铜厚 `eda.*` 读不到,算不了阻抗线宽;差分对 / 等长约束对象也不暴露。
-- **交互式布线菜单**(单线/多线/差分*布线*、等长绕蛇、扇出、去环)—— **无 `eda.*` API**,UI 专属。
+- **迷宫档自动布线**(密集/任意距离/推挤)—— daemon 只做*短、清晰*的启发式布线。完整布线走外部 **Freerouting**(DSN 往返构件已就绪);turnkey 集成**暂缓**(需 Java;等官方自动布线器过 `@alpha`)。
+- **交互式布线 UX** —— 交互*菜单*(推挤拖拽布线、实时等长绕蛇、去环)**无 `eda.*` API**。但它们的*输出*——差分对几何、扇出打孔、等长绕线——可用 `pcb_PrimitiveLine/Via.create` 写出,所以**可作为我们的启发式实现**(吸收清单,非墙);只有拖拽 UX 是 UI 专属。
+- **受控阻抗 Z0** —— 真的墙:叠层 Er / 介质厚 / 铜厚 `eda.*` 读不到,算不了 Z0 线宽。**但网长能读**(`pcb_Net.getNetLength`),所以等长/skew/时序余量报告可做(吸收清单)——这块之前被我误标成墙。
+- **泪滴(teardrop)** —— 无*typed* create API;但文档源注入路径(如 `eext-balance-copper` 做 net-less 填充那样)可能可行,未验证。暂时 UI 里手动应用。
 - **无编程 undo** —— `eda.*` 没有 undo/redo;回滚靠自建(数据快照 + 反向操作)。
 - **增量 `import_changes`** —— 对 API 新增器件是 no-op(平台限制);首次同步前放完整电路,或用 `pcb add-component`。
-- **丝印密度极限** —— `silk-align` 在有空白处避让标签;比标签本身还密的布局无法完全消重(会报 `unresolvedCollisions`)——请放松布局。
+- **丝印密度极限** —— `silk-align` 在有空白处避让标签;比标签更密的布局无法完全消重(报 `unresolvedCollisions`)——请放松布局。
 
-完整动作清单与状态见 [docs/FEATURES.md](docs/FEATURES.md);`eda.*` API 覆盖地图见 [docs/ecosystem-survey.md](docs/ecosystem-survey.md)。
+市场覆盖矩阵 + 优先吸收清单见 [docs/marketplace-coverage.md](docs/marketplace-coverage.md);动作清单见 [docs/FEATURES.md](docs/FEATURES.md);`eda.*` API 覆盖地图见 [docs/ecosystem-survey.md](docs/ecosystem-survey.md)。
 
 ## 仓库结构
 

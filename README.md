@@ -170,17 +170,17 @@ What the agent can drive today, via typed CLI subcommands (`easyeda <domain> <ve
 
 ## Not Yet Supported / Platform Walls
 
-Honest limits — some are our roadmap, some are hard `eda.*` API walls (no amount of connector work reaches them):
+Honest limits. A 2026-07-01 survey of the official marketplace ([`docs/marketplace-coverage.md`](docs/marketplace-coverage.md)) sharpened these — the real walls are only the *interactive UX* APIs; most "results" (tracks, vias, teardrops, net length) turn out to be reachable, and are on the absorb-list rather than blocked:
 
 - **Maze-tier autorouting** (dense / any-distance / push-shove) — the daemon does *short, clear* heuristic routing only. Full routing is external **Freerouting** (the DSN round-trip building blocks exist); a turnkey integration is **deferred** (needs a Java runtime; waiting on the official EasyEDA autorouter maturing past `@alpha`).
-- **Teardrops (泪滴)** — **platform wall**: `eda.*` exposes no create/apply-teardrop API (teardrops appear only as a manufacture-export object type). Apply by hand in the UI.
-- **Controlled impedance / high-speed** — **platform wall**: stackup Er / dielectric height / copper weight aren't readable via `eda.*`, so trace-width-for-Z0 can't be computed; diff-pair / length-match constraint objects aren't exposed either.
-- **Interactive routing menu** (single/multi/diff-pair *routing*, length-tuning/serpentine, fanout, remove-loops) — **no `eda.*` API**; UI-only.
+- **Interactive routing UX** — the interactive *menu* (push-shove drag-routing, live length-tuning, remove-loops) has **no `eda.*` API**. But the *outputs* — diff-pair geometry, fanout-with-vias, serpentine length-match — are writable via `pcb_PrimitiveLine/Via.create`, so they're **feasible as our own heuristics** (absorb-list, not walled); only the drag UX is UI-only.
+- **Controlled impedance Z0** — genuinely walled: stackup Er / dielectric height / copper weight aren't readable via `eda.*`, so trace-width-for-Z0 can't be computed. **But net length IS readable** (`pcb_Net.getNetLength`), so length-match / skew / timing-margin reports are doable (absorb-list) — that part was mis-flagged as a wall.
+- **Teardrops (泪滴)** — no *typed* create API; a raw document-source-injection path (as `eext-balance-copper` uses for net-less fills) is plausible but unverified. For now, apply by hand in the UI.
 - **No programmatic undo** — `eda.*` has no undo/redo; rollback is our own (data checkpoint + inverse ops).
 - **Incremental `import_changes`** — a no-op for API-added parts (platform limit); place the whole circuit before the first import, or use `pcb add-component`.
 - **Silkscreen density** — `silk-align` avoids label collisions where there's open space; a layout packed tighter than the labels can't be fully de-conflicted (it reports `unresolvedCollisions`) — loosen the placement.
 
-See [`docs/FEATURES.md`](docs/FEATURES.md) for the full action inventory + status, and [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md) for the `eda.*` API coverage map.
+See [`docs/marketplace-coverage.md`](docs/marketplace-coverage.md) for the full marketplace coverage matrix + prioritized absorb-list, [`docs/FEATURES.md`](docs/FEATURES.md) for the action inventory, and [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md) for the `eda.*` API coverage map.
 
 ## Design Position
 
