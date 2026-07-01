@@ -54,7 +54,7 @@ type rtOptions struct {
 	width       float64 // global override (mil); >0 forces ALL segments to this width
 	signalWidth float64 // class width for signal nets (used when width==0)
 	powerWidth  float64 // class width for power/ground nets (used when width==0)
-	skipGnd     bool    // skip GND nets (normally a copper pour, not routed)
+	skipPower   bool    // skip power+ground nets (isGlobalNet) — they belong in a pour, not thin tracks
 	corner      string  // corner style: "90" (L), "45" (chamfer), "round" (chord fillet)
 	roundRadius float64 // max fillet radius for corner=="round" (mil)
 	avoid       bool    // obstacle-aware L-orientation selection (#23)
@@ -64,7 +64,7 @@ type rtOptions struct {
 func defaultRtOptions() rtOptions {
 	return rtOptions{
 		maxLen: 1000, width: 0, signalWidth: 10, powerWidth: 20,
-		skipGnd: true, corner: "90", roundRadius: 20,
+		skipPower: true, corner: "90", roundRadius: 20,
 		avoid: true, clearance: 6,
 	}
 }
@@ -114,8 +114,8 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 		case alreadyRouted[net]:
 			diags = append(diags, rtNetDiag{net, "already routed"})
 			continue
-		case opt.skipGnd && isGndNet(net):
-			diags = append(diags, rtNetDiag{net, "skipped (GND — leave for pour)"})
+		case opt.skipPower && isGlobalNet(net):
+			diags = append(diags, rtNetDiag{net, "skipped (power/ground — pour it, don't route)"})
 			continue
 		case len(pads) < 2:
 			diags = append(diags, rtNetDiag{net, "single pad — nothing to route"})
@@ -296,8 +296,4 @@ func mstEdges(pads []rtPad) []rtEdge {
 		}
 	}
 	return edges
-}
-
-func isGndNet(net string) bool {
-	return strings.Contains(strings.ToLower(net), "gnd")
 }

@@ -1365,7 +1365,7 @@ This is a SEED, not a final layout — verify with 'pcb drc'.
 	// Short-trace self-routing (daemon-side; see pcb_shortroute.go).
 	{
 		var maxLen, width, signalWidth, powerWidth, roundRadius float64
-		var dryRun, routeGnd, noAvoid bool
+		var dryRun, routePower, noAvoid bool
 		var corner string
 		c := &cobra.Command{
 			Use:   "route-short",
@@ -1374,8 +1374,9 @@ This is a SEED, not a final layout — verify with 'pcb drc'.
 @alpha autoRouting() API, NOT an external Freerouting; that is 'pcb autoroute').
 Per net it builds a minimum spanning tree over the pads and routes each hop that
 is short enough (<= --max-len, Manhattan) as an L-shaped track on the pads'
-shared layer. Skips: GND (poured, unless --route-gnd), already-routed nets,
-cross-layer hops (need a via), and over-long hops (left for the maze tier).
+shared layer. Skips: power+ground nets (VCC/3V3/GND/… — POURED, not routed as thin
+tracks; --route-power to force), already-routed nets, cross-layer hops (need a via),
+and over-long hops (left for the maze tier).
 Obstacle-aware (v2): each hop picks the L orientation (horizontal- vs vertical-
 first) that crosses the fewest already-placed other-net tracks + other-net pads,
 which removes most of the naive tangle; --no-avoid restores the v1 horizontal-
@@ -1436,7 +1437,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 					opt.roundRadius = roundRadius
 				}
 				opt.corner = corner
-				opt.skipGnd = !routeGnd
+				opt.skipPower = !routePower
 				opt.avoid = !noAvoid
 				opt.clearance = rules.clearanceMil
 				segs, diags := planShortRoutes(comps, routed, opt)
@@ -1482,7 +1483,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 		c.Flags().StringVar(&corner, "corner", "90", "corner style: 90 (L), 45 (chamfer), round (chord fillet)")
 		c.Flags().Float64Var(&roundRadius, "round-radius", 0, "max fillet radius for --corner round (mil, default 20)")
 		c.Flags().BoolVar(&noAvoid, "no-avoid", false, "disable obstacle-aware L-orientation (v1 naive horizontal-first)")
-		c.Flags().BoolVar(&routeGnd, "route-gnd", false, "also route GND (default skip — GND is poured)")
+		c.Flags().BoolVar(&routePower, "route-power", false, "also route power/ground nets as tracks (default skip — pour them instead; VCC/3V3/GND/… routed as thin tracks through pad fields is the #1 DRC source)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the routing plan without drawing anything")
 		pcb.AddCommand(c)
 	}
