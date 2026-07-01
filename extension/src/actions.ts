@@ -2414,6 +2414,73 @@ const pcbLayersList: Handler = async () => {
 	return { result: { layers, currentLayer, copperLayerCount, count: layers.length } };
 };
 
+// pcb.stackup.set — configure the board stackup: set the copper layer count
+// (2/4/6/…, eda.pcb_Layer.setTheNumberOfCopperLayers) and/or set inner layers'
+// type (SIGNAL vs PLANE/内电层, via modifyLayer). PLANE inner layers are the clean
+// way to distribute GND + power on 4+ layer boards (each net gets a dedicated
+// plane instead of fighting over one layer — see the ceshi 2-layer pour conflict).
+const STACKUP_LAYER_TYPE: Record<string, string> = {
+	signal: 'SIGNAL',
+	plane: 'PLANE', 'internal-electrical': 'PLANE', 'internal': 'PLANE',
+	power: 'PLANE', ground: 'PLANE', gnd: 'PLANE',
+};
+
+const pcbStackupSet: Handler = async (payload) => {
+	const count = optionalNumber(payload, 'count');
+	let setCount: boolean | null = null;
+	if (count != null) {
+		const allowed = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32];
+		if (!allowed.includes(count)) {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `count must be an even number 2..32, got ${count}`);
+		}
+		try {
+			setCount = await eda.pcb_Layer.setTheNumberOfCopperLayers(count as 2 | 4 | 6 | 8 | 10 | 12 | 14 | 16);
+		}
+		catch (err) {
+			throw edaError(err, `Failed to set copper layer count to ${count}.`);
+		}
+	}
+
+	// Optional per-inner-layer type/name changes. Each entry: {id|layer, type?, name?}.
+	const modified: Array<Record<string, unknown>> = [];
+	const layers = payload.layers;
+	if (Array.isArray(layers)) {
+		for (const spec of layers) {
+			if (!spec || typeof spec !== 'object') {
+				continue;
+			}
+			const s = spec as Record<string, unknown>;
+			const id = (s.id ?? s.layer) as number;
+			if (typeof id !== 'number') {
+				throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each layers[] entry needs a numeric id/layer');
+			}
+			const prop: { type?: string; name?: string } = {};
+			if (typeof s.type === 'string') {
+				const mapped = STACKUP_LAYER_TYPE[s.type.trim().toLowerCase()];
+				if (!mapped) {
+					throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `layer type must be signal|plane, got "${String(s.type)}"`);
+				}
+				prop.type = mapped;
+			}
+			if (typeof s.name === 'string') {
+				prop.name = s.name;
+			}
+			let ok: boolean;
+			try {
+				ok = await eda.pcb_Layer.modifyLayer(id as unknown as TPCB_LayersInTheSelectable, prop as { type?: TPCB_LayerTypesOfInnerLayer; name?: string });
+			}
+			catch (err) {
+				throw edaError(err, `Failed to modify layer ${id} (only inner layers accept a type change).`);
+			}
+			modified.push({ layer: id, ok, ...prop });
+		}
+	}
+
+	const allLayers = await eda.pcb_Layer.getAllLayers();
+	const copperLayerCount = await eda.pcb_Layer.getTheNumberOfCopperLayers();
+	return { result: { copperLayerCount, setCount, modified, layers: allLayers } };
+};
+
 /**
  * List all nets on the active PCB. `IPCB_NetInfo` ({ net, color, length }) is a
  * plain data object and serializes directly.
@@ -4292,6 +4359,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.documents.list': pcbDocumentsList,
 	'pcb.components.list': pcbComponentsList,
 	'pcb.layers.list': pcbLayersList,
+	'pcb.stackup.set': pcbStackupSet,
 	'pcb.nets.list': pcbNetsList,
 	'pcb.report': pcbReport,
 	'pcb.board.info': pcbBoardInfo,

@@ -411,6 +411,17 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"layers", "currentLayer", "copperLayerCount", "count"},
 		},
 		{
+			Name:        "pcb.stackup.set",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Configure the board stackup: set the copper layer count (`count` = 2|4|6|…|32, eda.pcb_Layer.setTheNumberOfCopperLayers) and/or set inner layers' type via `layers` ([{id, type: signal|plane, name?}] → modifyLayer; only INNER layers accept a type change). A PLANE (内电层) inner layer is the clean way to distribute GND + power on 4+ layer boards — each net gets a dedicated plane instead of two power nets fighting over one layer (the ceshi 2-layer pour-conflict that stranded 5 pads). Returns the new copperLayerCount + all layers. NOTE: changing layer count restructures the stackup — set it BEFORE routing/pouring inner layers.",
+			Inputs:      []string{"count optional (2|4|6|…)", "layers optional ([{id, type: signal|plane, name?}])"},
+			Outputs:     []string{"copperLayerCount", "setCount", "modified", "layers"},
+			VerifyWith:  []string{"pcb.layers.list"},
+		},
+		{
 			Name:        "pcb.nets.list",
 			Domain:      DomainPcb,
 			Phase:       2,

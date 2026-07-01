@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- **`pcb.stackup.set`** (task #26) — configure the board stackup: set the copper
+  layer count (2/4/6/…/32 via `setTheNumberOfCopperLayers`) and/or set inner layers'
+  type SIGNAL↔PLANE (内电层, via `modifyLayer`). A PLANE inner layer gives GND/power
+  a dedicated plane on 4+ layer boards — the clean fix for the 2-layer pour conflict
+  where two power nets can't both connect on one shared layer. Read via
+  `pcb.layers.list`. CLI: `pcb stackup set --layers 4 --plane 15 --plane 16`.
+
 ### Fixed
 - **Connector auto-reconnect wedge (需要重开窗口才恢复)** — after a daemon restart
   (dev hot-reload) or a long window-backgrounding, `isConnecting` could leak `true`

@@ -1785,6 +1785,72 @@ live track-to-pad clearance. Exits non-zero on any overlap/off-board (gate-able)
 		pcb.AddCommand(c)
 	}
 
+	// ── stackup (层叠:层数 + 内层类型) ──────────────────────────────────────
+	// pcb.stackup.set — set copper layer count + inner-layer types (signal/plane).
+	// The foundation for multi-layer designs: a PLANE inner layer gives GND/power a
+	// dedicated plane, which is the clean fix for the 2-layer pour-conflict (two
+	// power nets can't both connect on one shared layer). Read via `pcb layers`.
+	{
+		stackup := &cobra.Command{
+			Use:   "stackup",
+			Short: "Board stackup: copper layer count + inner-layer types (signal/plane)",
+			Long: `Configure the board stackup — the count of copper layers and the type of each
+inner layer. A PLANE (内电层) inner layer is a solid negative plane, the clean way
+to distribute GND + power on 4+ layer boards: each gets a dedicated plane instead
+of two power nets fighting over one layer (the 2-layer pour conflict). Read the
+current stackup with 'pcb layers' (copperLayerCount + each layer's type).`,
+		}
+		{
+			c := &cobra.Command{
+				Use:     "show",
+				Short:   "Show the current stackup (copper layer count + layers)",
+				Args:    cobra.NoArgs,
+				Example: `  easyeda pcb stackup show`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					return dispatch(cfg, "pcb.layers.list", window, nil, stdout, stderr)
+				},
+			}
+			stackup.AddCommand(c)
+		}
+		{
+			var layers int
+			var planes, signals []int
+			c := &cobra.Command{
+				Use:   "set",
+				Short: "Set copper layer count and/or inner-layer types",
+				Args:  cobra.NoArgs,
+				Example: `  easyeda pcb stackup set --layers 4
+  easyeda pcb stackup set --layers 4 --plane 15 --plane 16   # Inner1+Inner2 = planes (GND / power)
+  easyeda pcb stackup set --signal 15                        # Inner1 back to a signal layer`,
+				RunE: func(cmd *cobra.Command, args []string) error {
+					payload := map[string]any{}
+					if cmd.Flags().Changed("layers") {
+						payload["count"] = layers
+					}
+					var specs []map[string]any
+					for _, id := range planes {
+						specs = append(specs, map[string]any{"id": id, "type": "plane"})
+					}
+					for _, id := range signals {
+						specs = append(specs, map[string]any{"id": id, "type": "signal"})
+					}
+					if len(specs) > 0 {
+						payload["layers"] = specs
+					}
+					if len(payload) == 0 {
+						return fmt.Errorf("nothing to set — use --layers and/or --plane/--signal (ids from `easyeda pcb layers`)")
+					}
+					return dispatch(cfg, "pcb.stackup.set", window, payload, stdout, stderr)
+				},
+			}
+			c.Flags().IntVar(&layers, "layers", 0, "copper layer count (2|4|6|…|32)")
+			c.Flags().IntSliceVar(&planes, "plane", nil, "inner layer id to set as PLANE/内电层 (repeatable; ids from 'pcb layers', e.g. 15=Inner1)")
+			c.Flags().IntSliceVar(&signals, "signal", nil, "inner layer id to set as SIGNAL (repeatable)")
+			stackup.AddCommand(c)
+		}
+		pcb.AddCommand(stackup)
+	}
+
 	return pcb
 }
 
