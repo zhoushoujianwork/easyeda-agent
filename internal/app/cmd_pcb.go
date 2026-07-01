@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -891,6 +892,87 @@ clears existing pours on the same net so you don't stack them.`,
 		pcb.AddCommand(c)
 	}
 
+	// ── outline-fit ─────────────────────────────────────────────────────────
+	// Tighten the board outline to the placed-component cloud. Fixes the common
+	// "outline far bigger than the parts" (low utilization) — run AFTER auto-place,
+	// BEFORE pour. Pure daemon orchestration over components.list(bbox)+outline-set.
+	{
+		var margin float64
+		var dryRun bool
+		c := &cobra.Command{
+			Use:   "outline-fit",
+			Short: "Resize the board outline to hug the placed parts + a margin (fix low utilization)",
+			Long: `Compute the union bbox of all placed components, add --margin on every side, and
+replace the board outline with that rectangle. Run AFTER 'pcb auto-place' and
+BEFORE pour/route so copper stays inside a tight frame. Reports the utilization
+before/after. ⚠️ Changing the outline after routing/pouring can strand copper —
+fit early. --dry-run previews the computed frame.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb outline-fit --project ceshi --margin 100
+  easyeda pcb outline-fit --dry-run`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				res, err := requestAction(cfg, "pcb.components.list", window, map[string]any{"includeBBox": true})
+				if err != nil {
+					return err
+				}
+				comps := parseApComps(res.Result)
+				minX, minY := math.Inf(1), math.Inf(1)
+				maxX, maxY := math.Inf(-1), math.Inf(-1)
+				n := 0
+				for _, c := range comps {
+					if !c.hasBBox {
+						continue
+					}
+					minX, minY = math.Min(minX, c.minX), math.Min(minY, c.minY)
+					maxX, maxY = math.Max(maxX, c.maxX), math.Max(maxY, c.maxY)
+					n++
+				}
+				if n == 0 {
+					return fmt.Errorf("no components with a bbox on the PCB (run `pcb import-changes` + `pcb auto-place` first)")
+				}
+				x0, y0, x1, y1 := minX-margin, minY-margin, maxX+margin, maxY+margin
+				points := [][]float64{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}
+				partArea := (maxX - minX) * (maxY - minY)
+				newArea := (x1 - x0) * (y1 - y0)
+
+				// Utilization vs the CURRENT outline (advisory).
+				var oldUtil float64
+				if og, err := requestAction(cfg, "pcb.outline.get", window, nil); err == nil {
+					if bb, ok := og.Result["bbox"].(map[string]any); ok {
+						ow := asFloat(bb["maxX"]) - asFloat(bb["minX"])
+						oh := asFloat(bb["maxY"]) - asFloat(bb["minY"])
+						if ow > 0 && oh > 0 {
+							oldUtil = partArea / (ow * oh)
+						}
+					}
+				}
+				summary := map[string]any{
+					"parts":          n,
+					"partExtent":     map[string]float64{"w": round2(maxX - minX), "h": round2(maxY - minY)},
+					"newOutline":     map[string]float64{"w": round2(x1 - x0), "h": round2(y1 - y0)},
+					"utilBefore":     round2(oldUtil * 100),
+					"utilAfterParts": round2(partArea / newArea * 100),
+					"margin":         margin,
+				}
+				if dryRun {
+					enc := json.NewEncoder(stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(map[string]any{"dryRun": true, "summary": summary, "points": points})
+				}
+				sr, err := requestAction(cfg, "pcb.outline.set", window, map[string]any{"points": points})
+				if err != nil {
+					return err
+				}
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(map[string]any{"ok": true, "summary": summary, "result": sr.Result})
+			},
+		}
+		c.Flags().Float64Var(&margin, "margin", 100, "margin from the part cloud to the board edge (mil)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the computed outline without changing it")
+		pcb.AddCommand(c)
+	}
+
 	// ── via-stitch ──────────────────────────────────────────────────────────
 	// Place a pitch-spaced grid of net vias inside a rectangle — thermal vias
 	// under a power-IC pad, or GND stitching that ties the top & bottom planes.
@@ -1195,6 +1277,13 @@ This is a SEED, not a final layout — verify with 'pcb drc'.
 
 				// 2. Plan (pure, daemon-side).
 				opt := defaultApOptions()
+				// Clearance-aware spacing: derive gap/pitch from the board's live DRC
+				// rule (room for a legal track + clearances between parts) instead of
+				// the hardcoded 40/30, so packing never creates sub-clearance corridors
+				// and packs as tight as the rule allows. (#22)
+				apRules := fetchPcbRules(cfg, window)
+				opt.gap = math.Max(12, apRules.clearanceMil*2+apRules.trackWidthMil+6)
+				opt.pitch = math.Max(8, apRules.clearanceMil+apRules.trackWidthMil)
 				if mainPins > 0 {
 					opt.mainPins = mainPins
 				}
@@ -1307,6 +1396,13 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 					return fmt.Errorf("--corner must be 90, 45, or round (got %q)", corner)
 				}
 				opt := defaultRtOptions()
+				// Rule-aware widths: conform to the board's live DRC track-width spec
+				// instead of the hardcoded 10/20mil, unless the user overrides. The
+				// board rule is uniform (no per-class width), so signal and power both
+				// default to the spec width, clamped to the legal minimum. (#22)
+				rules := fetchPcbRules(cfg, window)
+				opt.signalWidth = rules.clampWidth(rules.trackWidthMil)
+				opt.powerWidth = rules.clampWidth(rules.trackWidthMil)
 				if maxLen > 0 {
 					opt.maxLen = maxLen
 				}
@@ -1347,6 +1443,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 					"dryRun":   dryRun,
 					"segments": len(segs),
 					"drawn":    drawn,
+					"rules":    map[string]any{"source": rules.source, "clearanceMil": rules.clearanceMil, "trackWidthMil": rules.trackWidthMil, "signalWidth": opt.signalWidth, "powerWidth": opt.powerWidth},
 					"routes":   segs,
 					"skipped":  diags,
 					"failures": failures,

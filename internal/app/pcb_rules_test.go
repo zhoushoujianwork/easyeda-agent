@@ -1,0 +1,86 @@
+package app
+
+import (
+	"math"
+	"testing"
+)
+
+// The rule structure mirrors a real live ceshi dump (2026-07-01): mm values under
+// deeply-nested, space-laden keys. parsePcbRules must convert them to mil.
+func ceshiRuleResult() map[string]any {
+	return map[string]any{
+		"rules": map[string]any{
+			"config": map[string]any{
+				"Physics": map[string]any{
+					"Track": map[string]any{
+						"copperThickness1oz": map[string]any{
+							"form": map[string]any{
+								"data": map[string]any{
+									"1": map[string]any{"defaultValue": 0.254, "minValue": 0.127, "maxValue": 2.54},
+								},
+							},
+						},
+					},
+					"Via Size": map[string]any{
+						"viaSize": map[string]any{
+							"form": map[string]any{
+								"viaInnerdiameterDefault": 0.30499812,
+								"viaOuterdiameterDefault": 0.61000132,
+							},
+						},
+					},
+				},
+				"Spacing": map[string]any{
+					"Safe Spacing": map[string]any{
+						"copperThickness1oz": map[string]any{
+							"tables": map[string]any{
+								"1": map[string]any{
+									"content": []any{
+										[]any{0.10199878},
+										[]any{0.15200122, 0.15200122},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func near(a, b float64) bool { return math.Abs(a-b) < 0.05 }
+
+func TestParsePcbRules_Live(t *testing.T) {
+	r := parsePcbRules(ceshiRuleResult())
+	if r.source != "live" {
+		t.Errorf("source=%q, want live", r.source)
+	}
+	if !near(r.trackWidthMil, 10) {
+		t.Errorf("trackWidth=%.2f, want ~10mil", r.trackWidthMil)
+	}
+	if !near(r.trackWidthMinMil, 5) {
+		t.Errorf("trackWidthMin=%.2f, want ~5mil", r.trackWidthMinMil)
+	}
+	if !near(r.clearanceMil, 4) {
+		t.Errorf("clearance=%.2f, want ~4mil (track-track)", r.clearanceMil)
+	}
+	if !near(r.viaDrillMil, 12) {
+		t.Errorf("viaDrill=%.2f, want ~12mil", r.viaDrillMil)
+	}
+	if !near(r.viaDiameterMil, 24) {
+		t.Errorf("viaDiameter=%.2f, want ~24mil", r.viaDiameterMil)
+	}
+}
+
+// A missing/garbage result falls back to the JLCPCB baseline, not zeros.
+func TestParsePcbRules_Fallback(t *testing.T) {
+	r := parsePcbRules(map[string]any{"nope": true})
+	if r.source != "fallback" {
+		t.Errorf("source=%q, want fallback", r.source)
+	}
+	d := defaultPcbRules()
+	if r.clearanceMil != d.clearanceMil || r.trackWidthMil != d.trackWidthMil {
+		t.Errorf("fallback mismatch: %+v vs %+v", r, d)
+	}
+}
