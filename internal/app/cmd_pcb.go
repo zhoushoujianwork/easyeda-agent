@@ -1695,6 +1695,48 @@ carries a net. fillMode: solid (default) | mesh | inner.`,
 		pcb.AddCommand(fill)
 	}
 
+	// ── slot (挖槽 / board cutout) ──────────────────────────────────────────
+	// A slot is a pcb_PrimitiveFill on the MULTI layer (12): per the eda API types
+	// (index.d.ts — "填充所属层为 EPCB_LayerId.MULTI 时代表挖槽区域"), a MULTI-layer
+	// fill IS a board cutout, and the manufacturing output emits it as a BoardCutout
+	// object. Same area shorthand as region/fill. Antenna isolation / mechanical
+	// opening. List / delete via `pcb fill list --layer 12` / `pcb fill delete`.
+	{
+		var pointsJSON, rectSpec, ref string
+		var margin float64
+		var locked bool
+		c := &cobra.Command{
+			Use:   "slot",
+			Short: "Board cutout / slot (挖槽) — a MULTI-layer fill that mills a hole",
+			Long: `Create a board cutout / slot (挖槽) — physically removes board material (e.g.
+under an antenna for isolation, or a mechanical opening). Implemented as a
+pcb_PrimitiveFill on the MULTI layer (12), which the EasyEDA manufacturing output
+treats as a BoardCutout. Specify the area three ways (pick one): --points, --rect
+x0,y0,x1,y1, or --ref <designator> (+ --margin to expand). Inspect / remove with
+'pcb fill list --layer 12' / 'pcb fill delete'.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb slot --rect 2450,-1550,2700,-1400
+  easyeda pcb slot --ref ANT1 --margin 20     # cut a slot under the antenna`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				points, err := areaPointsFrom(cfg, window, pointsJSON, rectSpec, ref, margin)
+				if err != nil {
+					return err
+				}
+				payload := map[string]any{"points": points, "layer": 12}
+				if locked {
+					payload["locked"] = true
+				}
+				return dispatch(cfg, "pcb.fill.create", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&pointsJSON, "points", "", `JSON array of [x,y] points in mil (or use --rect / --ref)`)
+		c.Flags().StringVar(&rectSpec, "rect", "", "axis-aligned rect 'x0,y0,x1,y1' (mil)")
+		c.Flags().StringVar(&ref, "ref", "", "designator of a placed component — slot over its bbox (e.g. an antenna)")
+		c.Flags().Float64Var(&margin, "margin", 0, "expand the --rect/--ref box outward by this many mil")
+		c.Flags().BoolVar(&locked, "locked", false, "create the slot locked")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
 }
 

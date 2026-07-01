@@ -157,10 +157,20 @@ patch, thermal copper, an odd-shaped plane). Three net-copper primitives, don't 
 **fill** (static, no reflow), **pour** (`覆铜`, reflows around obstacles), **region**
 (keep-out, no net). Same raw-points convention.
 
-- `pcb fill create` (`pcb.fill.create`) — fill from a closed `--points` polygon on a
-  `--layer`, bound to `--net`. `--fill-mode solid` (default) `| mesh | inner`. `--locked`.
-  Verify with `pcb fill list` + `pcb drc`.
+- `pcb fill create` (`pcb.fill.create`) — area via `--points` | `--rect x0,y0,x1,y1` |
+  `--ref <designator>` (+ `--margin`), on a `--layer`, bound to `--net`.
+  `--fill-mode solid` (default) `| mesh | inner`. `--locked`. Verify with `pcb fill list`.
 - `pcb fill list` / `pcb fill delete` — inspect / remove (filter list by `--layer`/`--net`).
+
+**Board cutout / slot (挖槽) — `pcb slot`.** A fill on the **MULTI layer (12)** IS a
+board cutout (per the eda API: *"填充所属层为 MULTI 时代表挖槽区域"*; manufacturing
+emits it as a `BoardCutout`). `pcb slot --rect … | --ref ANT1 --margin 20` mills a
+hole — antenna isolation / mechanical opening. No net. It's a `pcb_PrimitiveFill` on
+layer 12, so list/delete via `pcb fill list --layer 12` / `pcb fill delete`.
+> **Snapshot can't confirm it visually** — `pcb snapshot` (`getCurrentRenderedAreaImage`)
+> does NOT auto-redraw after API edits and does not render filled copper/cutouts, so a
+> fresh snapshot shows a **stale frame**. Verify slots/fills/pours by **data** (`pcb fill
+> list`, DRC, manufacture export), not screenshot — the snapshot is for component layout only.
 
 > **Routing boundary (load-bearing — see `docs/ecosystem-survey.md` §7):** EasyEDA's
 > interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,
