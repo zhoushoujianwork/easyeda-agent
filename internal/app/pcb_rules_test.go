@@ -33,11 +33,14 @@ func ceshiRuleResult() map[string]any {
 				"Spacing": map[string]any{
 					"Safe Spacing": map[string]any{
 						"copperThickness1oz": map[string]any{
+							"row": []any{"Track", "SMD Pad", "Copper/Plane Zone", "Board Outline"},
 							"tables": map[string]any{
 								"1": map[string]any{
 									"content": []any{
-										[]any{0.10199878},
-										[]any{0.15200122, 0.15200122},
+										[]any{0.10199878},                     // Track↔Track (4mil)
+										[]any{0.15200122, 0.15200122},         // SMD Pad↔Track (6mil), ↔Pad
+										[]any{0.254, 0.254, 0.254},            // Copper/Plane Zone
+										[]any{0.29972, 0.29972, 0.254, 0.29972}, // Board Outline ↔ … ↔ CopperZone=0.254 (10mil)
 									},
 								},
 							},
@@ -70,6 +73,9 @@ func TestParsePcbRules_Live(t *testing.T) {
 	}
 	if !near(r.viaDiameterMil, 24) {
 		t.Errorf("viaDiameter=%.2f, want ~24mil", r.viaDiameterMil)
+	}
+	if !near(r.copperToEdgeMil, 10) {
+		t.Errorf("copperToEdge=%.2f, want ~10mil (BoardOutline↔Copper/Plane Zone)", r.copperToEdgeMil)
 	}
 }
 

@@ -13,21 +13,24 @@ const mmToMil = 39.37007874
 
 // pcbRules is the normalized rule set (all values in mil) the planners consume.
 type pcbRules struct {
-	clearanceMil     float64 // track-to-track safe spacing
+	clearanceMil     float64 // track↔pad safe spacing (the binding routing clearance)
 	trackWidthMil    float64 // default routing track width
 	trackWidthMinMil float64 // minimum legal track width (clamp floor)
 	viaDrillMil      float64 // via hole diameter
 	viaDiameterMil   float64 // via outer diameter
-	source           string  // "live" | "fallback" | "live(partial)"
+	copperToEdgeMil  float64 // copper/plane-zone → board-outline clearance (pour inset floor)
+	source           string  // "live" | "fallback"
 }
 
-// defaultPcbRules is the JLCPCB 2-layer baseline — a sane seed when the live rule
-// is missing or a path can't be read. Chosen to converge with ceshi's live rule
-// (clear 6mil / width 10mil) so read and fallback agree.
+// defaultPcbRules is the JLCPCB fabrication baseline — a sane seed when the live
+// rule is missing or a path can't be read. Values track the canonical reference
+// skills/easyeda-agent/references/fab-rules-jlcpcb.json ("recommended" column) and
+// converge with ceshi's live rule (clear 6 / width 10 / min 5 / via 0.3–0.6mm /
+// copper-to-edge 8mil), so read-live and fallback agree.
 func defaultPcbRules() pcbRules {
 	return pcbRules{
 		clearanceMil: 6, trackWidthMil: 10, trackWidthMinMil: 5,
-		viaDrillMil: 12, viaDiameterMil: 24, source: "fallback",
+		viaDrillMil: 12, viaDiameterMil: 24, copperToEdgeMil: 8, source: "fallback",
 	}
 }
 
@@ -59,6 +62,30 @@ func mnav(v any, keys ...string) any {
 		v = m[k]
 	}
 	return v
+}
+
+// asStrSlice coerces a []any of strings to []string (non-strings → "").
+func asStrSlice(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, len(arr))
+	for i, e := range arr {
+		if s, ok := e.(string); ok {
+			out[i] = s
+		}
+	}
+	return out
+}
+
+func indexOf(ss []string, target string) int {
+	for i, s := range ss {
+		if s == target {
+			return i
+		}
+	}
+	return -1
 }
 
 func asFloatOK(v any) (float64, bool) {
@@ -153,6 +180,23 @@ func parsePcbRules(result map[string]any) pcbRules {
 		if clr > 0 {
 			r.clearanceMil = round2(clr * mmToMil)
 			got = true
+		}
+	}
+
+	// Copper-to-edge — Board Outline ↔ Copper/Plane Zone from the same Safe Spacing
+	// matrix, located by the row/col labels (robust to matrix size). This is the
+	// pour pull-back / inset floor (ceshi live = 10mil; JLCPCB fab min = 8mil).
+	ss := mnav(cfg, "Spacing", "Safe Spacing", "copperThickness1oz")
+	labels := asStrSlice(mnav(ss, "row"))
+	if content, ok := mnav(ss, "tables", "1", "content").([]any); ok {
+		bo := indexOf(labels, "Board Outline")
+		cz := indexOf(labels, "Copper/Plane Zone")
+		if bo >= 0 && bo < len(content) {
+			if row, ok := content[bo].([]any); ok && cz >= 0 && cz < len(row) {
+				if v, ok := asFloatOK(row[cz]); ok && v > 0 {
+					r.copperToEdgeMil = round2(v * mmToMil)
+				}
+			}
 		}
 	}
 

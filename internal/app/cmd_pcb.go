@@ -824,6 +824,12 @@ clears existing pours on the same net so you don't stack them.`,
 			Example: `  easyeda pcb pour-fit --project ceshi --net GND --layer 1
   easyeda pcb pour-fit --net GND --layer 1 --inset 25 --dry-run`,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				// Inset defaults to the board's copper-to-edge rule (JLCPCB fab floor
+				// ~8mil; ceshi live ~10mil) instead of a fixed 20 — the real
+				// Board-Outline-to-Copper clearance. --inset still overrides. (#32)
+				if !cmd.Flags().Changed("inset") {
+					inset = fetchPcbRules(cfg, window).copperToEdgeMil
+				}
 				// 1. Board outline bbox.
 				ores, err := requestAction(cfg, "pcb.outline.get", window, nil)
 				if err != nil {
@@ -885,7 +891,7 @@ clears existing pours on the same net so you don't stack them.`,
 		}
 		c.Flags().StringVar(&net, "net", "GND", "net to bind the pour to")
 		c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2)")
-		c.Flags().Float64Var(&inset, "inset", 20, "inset from the board outline (mil)")
+		c.Flags().Float64Var(&inset, "inset", 20, "inset from the board outline (mil; default = board's copper-to-edge rule ~8–10)")
 		c.Flags().StringVar(&fill, "fill", "", "fill style: solid (default) | grid | grid45")
 		c.Flags().BoolVar(&replace, "replace", true, "clear existing pours on this net first (avoid stacking)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the computed pour polygon without drawing")
@@ -1023,14 +1029,24 @@ onto the new vias.`,
 					enc.SetIndent("", "  ")
 					return enc.Encode(map[string]any{"dryRun": true, "net": net, "count": len(pts), "pitch": pitch, "points": pts})
 				}
+				// Via sizes default to the board's live rule (JLCPCB fab: 2L 0.4/0.8mm,
+				// 4L 0.3/0.6mm); --hole/--diameter override. (#32)
+				vsRules := fetchPcbRules(cfg, window)
+				vHole, vDia := hole, diameter
+				if vHole == 0 {
+					vHole = vsRules.viaDrillMil
+				}
+				if vDia == 0 {
+					vDia = vsRules.viaDiameterMil
+				}
 				placed, failed := 0, 0
 				for _, p := range pts {
 					payload := map[string]any{"x": p[0], "y": p[1], "net": net}
-					if hole > 0 {
-						payload["holeDiameter"] = hole
+					if vHole > 0 {
+						payload["holeDiameter"] = vHole
 					}
-					if diameter > 0 {
-						payload["diameter"] = diameter
+					if vDia > 0 {
+						payload["diameter"] = vDia
 					}
 					if _, err := requestAction(cfg, "pcb.via.create", window, payload); err != nil {
 						failed++
