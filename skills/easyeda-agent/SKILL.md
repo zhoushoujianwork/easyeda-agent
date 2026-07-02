@@ -27,7 +27,13 @@ EasyEDA tooling.
 6. Persist good checkpoints with explicit `easyeda sch save` / PCB save workflows;
    debounced autosave is only a safety net.
 7. Judge correctness from data (`list`, `check`, `drc`, `layout-lint`), not screenshots.
-   Screenshots can be stale after API edits.
+   Screenshots can be stale after API edits. **Exception — recording/demo mode:** when
+   the user explicitly says they are recording, making a demo/tutorial, or wants
+   screenshots, images become a *deliverable*, not just a judge. Add a visual-artifact
+   gate on top of the data gates: capture a native `sch/pcb snapshot` at each stage,
+   compare adjacent-frame `sha256` to catch stale frames (redraw + retry if identical),
+   and never substitute a data-rendered recap image for a live screenshot without
+   flagging it. See `references/design-flow.md` → "录制 / 演示模式".
 
 ## What To Read
 
@@ -62,4 +68,6 @@ Scripts live in `scripts/` and are intended to be run directly when useful:
 
 Summarize changed primitives, commands run, DRC/check/lint status, saved checkpoints,
 and artifact paths. If a gate cannot pass, stop at the failing data, explain the next
-repair step, and do not claim the design is complete.
+repair step, and do not claim the design is complete. In recording/demo mode, also list
+each stage image and label it as a **native EasyEDA screenshot** or a **data-rendered
+diagram**, and explicitly report any frame that was stale or substituted.
