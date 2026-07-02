@@ -6,6 +6,50 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-02
+
+The market-ready PCB pass since v0.6.0 — a reconstructed **PCB DFM audit** (`pcb check`),
+a full **silkscreen suite**, the verified **4-layer inner-plane** recipe, and a reconnect
+UX fix. (Consolidates the dev-loop releases 0.6.1–0.6.7 below.)
+
+### Added
+- **`pcb check` — reconstructed DFM audit** (the PCB sibling of `sch check`; catches the
+  design-for-manufacture problems the native `pcb drc` clearance check does NOT flag).
+  Copper rules compute purely Go-side from placed copper and never mutate:
+  **dangling-end** (a track end anchored to nothing → floating copper), **acute-angle**
+  (same-net segments bending <90° → acid trap), **non-orthogonal** (a track off the
+  0/45/90° grid → free-angle routing), **track-over-pad** (a track crossing a pad it
+  doesn't terminate on: cross-net = ERROR short), **overlapping-via** / **single-layer-via**,
+  **width-mismatch**, **duplicate-segment**, and **3W parallel-coupling**; plus
+  **silkscreen-flipped** (a designator on the wrong silk layer / mirrored / non-upright)
+  and per-layer **antenna-keepout** (an antenna module lacking a no-copper keep-out on
+  every copper layer). `--strict` exits non-zero on any WARN/ERROR (gate-able).
+- **Silkscreen suite** — `pcb silk-add` (a FREE silkscreen string: board credit / LED
+  `+`/`−` polarity marks; configurable layer/font/stroke/rotation, JLCPCB-legible
+  defaults), `pcb silk-set` (batch-adjust existing silk + an **align-to-reference**
+  shortcut: center a board credit, align a label to a component/board/fill edge), and the
+  read handlers `pcb.silk.list` (text layer/mirror/reverse/rotation) + `pcb.region.list`
+  bbox that feed the DFM checks.
+
+### Changed
+- **`pcb silk-align` → position-aware (v2)** — ranks each designator's 4 sides by local
+  free space + board position + a crowd-axis bonus, and avoids **other parts' pads**,
+  bodies, keep-out regions, the board outline (now resolves rounded/polyline outlines),
+  and other labels; keeps assembly clearance around each footprint (`--spacing`); a
+  boxed-in part is reported (`unresolved`), never shoved onto a pad.
+- **`pcb power-planes` flips the GND inner layer to 内电层/PLANE** after pouring (verified
+  pour-while-SIGNAL → flip-type → rebuild recipe, DRC clean), matching the common customer
+  stackup GND=内电层 / VCC=信号层. Drove the ESP32 regression board DRC 31→0, No-Connection→0.
+
+### Fixed
+- **Reconnect toast dedup** — one toast per daemon outage instead of one on every 3s retry
+  (they were stacking and covering UI options during an outage).
+
+### Docs
+- README split into a Chinese homepage (`README.md`) + English (`README.en.md`); new demo
+  recording storyboard `docs/demo-storyboard-esp32-mini.md`; FEATURES action count 85→88;
+  official-marketplace coverage survey (`docs/marketplace-coverage.md`).
+
 ## [0.6.7] - 2026-07-02
 ### Fixed
 - **silk-align: labels no longer crowd their OWN pads** — the body used for the offset
