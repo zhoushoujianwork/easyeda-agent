@@ -729,9 +729,11 @@ type pcbAntComp struct {
 }
 
 type pcbKeepRegion struct {
-	BBox     *layoutBBox
-	NoCopper bool
-	Name     string
+	BBox              *layoutBBox
+	Layer             int  // the region's copper layer (TOP=1 / BOTTOM=2 / inner id)
+	NoOuterCopper     bool // excludes wires/fills/pours on its own layer (rules 5/6/7)
+	NoInnerElectrical bool // excludes inner planes on ALL inner layers (rule 8)
+	Name              string
 }
 
 // isAntennaDevice reports whether a device name / designator indicates an
@@ -747,27 +749,50 @@ func isAntennaDevice(device, designator string) bool {
 	return strings.HasPrefix(u, "ANT")
 }
 
-func findAntennaKeepout(ants []pcbAntComp, regions []pcbKeepRegion) []pcbCheckFinding {
+// findAntennaKeepout requires a no-copper keep-out over the antenna footprint on
+// EVERY copper layer — not just "a region exists". A top-only keep-out still lets
+// the bottom pour / inner planes fill under the antenna and detune it. copperLayers
+// gates the inner-plane requirement (a 2-layer board has none).
+func findAntennaKeepout(ants []pcbAntComp, regions []pcbKeepRegion, copperLayers int) []pcbCheckFinding {
 	var out []pcbCheckFinding
 	for _, a := range ants {
 		if a.BBox == nil {
 			continue
 		}
-		covered := false
+		topOK, botOK, innerOK := false, false, false
 		for _, r := range regions {
-			if r.NoCopper && r.BBox != nil && boxesOverlap(*a.BBox, *r.BBox) {
-				covered = true
-				break
+			if r.BBox == nil || !boxesOverlap(*a.BBox, *r.BBox) {
+				continue
+			}
+			if r.NoOuterCopper && r.Layer == pcbSideTop {
+				topOK = true
+			}
+			if r.NoOuterCopper && r.Layer == pcbSideBottom {
+				botOK = true
+			}
+			if r.NoInnerElectrical {
+				innerOK = true
 			}
 		}
-		if !covered {
+		var missing []string
+		if !topOK {
+			missing = append(missing, "top (L1)")
+		}
+		if !botOK {
+			missing = append(missing, "bottom (L2)")
+		}
+		if copperLayers > 2 && !innerOK {
+			missing = append(missing, "inner plane")
+		}
+		if len(missing) > 0 {
 			dev := a.Device
 			if dev == "" {
 				dev = "antenna part"
 			}
 			out = append(out, pcbCheckFinding{
 				Type: "antenna-keepout", Level: "WARN", Designator: a.Designator,
-				Message: fmt.Sprintf("antenna component %s (%s) has no no-copper keep-out region over its footprint — RF area needs copper clearance (禁铺铜)", a.Designator, dev),
+				Message: fmt.Sprintf("antenna component %s (%s) lacks a no-copper keep-out on: %s — copper there detunes the antenna (每层都要禁铺铜)",
+					a.Designator, dev, strings.Join(missing, ", ")),
 			})
 		}
 	}
@@ -919,10 +944,10 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 
 	// Antenna keep-out is a LIVE-only rule (needs component bboxes + regions, which
 	// the pure core doesn't take). Degrade gracefully if either fetch fails.
-	if ants, regions, aerr := fetchAntennaContext(cfg, window, silk); aerr != nil {
+	if ants, regions, copperLayers, aerr := fetchAntennaContext(cfg, window, silk); aerr != nil {
 		fmt.Fprintf(stderr, "warning: antenna keep-out check skipped (%v)\n", aerr)
 	} else {
-		for _, f := range findAntennaKeepout(ants, regions) {
+		for _, f := range findAntennaKeepout(ants, regions, copperLayers) {
 			rep.Findings = append(rep.Findings, f)
 			rep.Summary.AntennaKeepout++
 			rep.Summary.Warnings++
@@ -1060,7 +1085,14 @@ func fetchPcbSilk(cfg *appConfig, window string) ([]pcbSilkText, error) {
 // fetchAntennaContext resolves antenna-bearing components (by device name from the
 // silk Device attribute, or an ANT* designator) with their bboxes, plus every
 // keep-out region with its bbox + whether it excludes copper.
-func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]pcbAntComp, []pcbKeepRegion, error) {
+func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]pcbAntComp, []pcbKeepRegion, int, error) {
+	// copper layer count (gates the inner-plane keep-out requirement).
+	copperLayers := 2
+	if lres, err := requestAction(cfg, "pcb.layers.list", window, nil); err == nil {
+		if n, ok := asFloatOK(mnav(lres.Result, "copperLayerCount")); ok && n > 0 {
+			copperLayers = int(n)
+		}
+	}
 	// device name per component id, from the silk Device attribute.
 	devByComp := map[string]string{}
 	for _, s := range silk {
@@ -1071,7 +1103,7 @@ func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]p
 
 	cres, err := requestAction(cfg, "pcb.components.list", window, map[string]any{"includeBBox": true})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, copperLayers, err
 	}
 	var ants []pcbAntComp
 	for _, rc := range mnavSlice(cres.Result, "components") {
@@ -1098,7 +1130,7 @@ func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]p
 
 	rres, err := requestAction(cfg, "pcb.region.list", window, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, copperLayers, err
 	}
 	var regions []pcbKeepRegion
 	for _, rr := range mnavSlice(rres.Result, "regions") {
@@ -1110,11 +1142,17 @@ func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]p
 		if name, ok := rm["regionName"].(string); ok {
 			kr.Name = name
 		}
-		// no-copper if any rule excludes copper: no-wires(5) / no-fills(6) / no-pours(7) / no-inner-electrical(8).
+		if lf, ok := asFloatOK(rm["layer"]); ok {
+			kr.Layer = int(lf)
+		}
+		// no-wires(5)/no-fills(6)/no-pours(7) exclude copper on the region's own layer;
+		// no-inner-electrical(8) excludes copper on ALL inner plane layers.
 		for _, rt := range toFloatSlice(rm["ruleType"]) {
 			switch int(rt) {
-			case 5, 6, 7, 8:
-				kr.NoCopper = true
+			case 5, 6, 7:
+				kr.NoOuterCopper = true
+			case 8:
+				kr.NoInnerElectrical = true
 			}
 		}
 		if bb, ok := rm["bbox"].(map[string]any); ok {
@@ -1126,7 +1164,7 @@ func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]p
 		}
 		regions = append(regions, kr)
 	}
-	return ants, regions, nil
+	return ants, regions, copperLayers, nil
 }
 
 // mnavSlice is mnav + a []any assertion (nil on miss).
