@@ -9,8 +9,8 @@ planned. Ground truth for the action catalog is `make actions`
 > [`ecosystem-survey.md`](ecosystem-survey.md) 系统对比了官方开源扩展用到的 API、我们的盲区,
 > 以及一份带优先级的可吸收功能清单(A1–A9),是下一阶段 roadmap 的主要输入。
 
-**85 typed actions** total — 42 `pcb`, 28 `schematic`, 6 `board`, 4 `view`,
-2 `document`, and one each in `system`, `project`, `debug`.
+**88 typed actions** total — 45 `pcb`, 26 `schematic`, 6 `document`, 6 `board`,
+2 `artifact`, and one each in `system`, `project`, `debug`.
 All but `system.health` are dispatched to the connector; `system.health` is
 answered by the daemon itself (daemon/connector liveness, no window required).
 (Run `make actions` for the authoritative list — this prose count can lag.)
@@ -25,6 +25,22 @@ answered by the daemon itself (daemon/connector liveness, no window required).
 > and a connector **auto-reconnect wedge fix** (v0.5.31+). Confirmed platform walls:
 > teardrops, controlled-impedance, and the interactive routing menu have no `eda.*`
 > API. See the README "Capabilities" / "Not Yet Supported" sections.
+
+> **2026-07-02 — silkscreen suite + inner-plane fix (v0.6.1→0.6.6).** New/upgraded,
+> real-machine verified: **`pcb silk-add`** (free silkscreen string — board credit /
+> LED polarity marks — with layer/font/stroke/rotation config, JLCPCB-legible defaults);
+> **`pcb silk-set`** (batch-adjust existing silk + an **align-to-reference** shortcut:
+> center a board credit, align a label to a component/board/fill edge); **`pcb silk-align`
+> v2** — now **position-aware** (ranks each designator's 4 sides by free space + board
+> position + a crowd-axis bonus, and — the core fix — avoids **other parts' pads**, bodies,
+> keep-out regions, the outline, and other labels; boxed-in parts are reported, never
+> shoved onto a pad); **`pcb power-planes`** now **flips the GND inner layer to 内电层/PLANE**
+> after pouring (verified pour-while-SIGNAL → flip → rebuild recipe → DRC clean), matching
+> the common customer stackup GND=内电层 / VCC=信号层; and **`pcb check`** gained the
+> per-layer **antenna-keepout** rule + a **silkscreen-flipped** upgrade (catches non-upright
+> designators). Plus a connector **reconnect-toast dedup** (once per outage, not every retry).
+> A recording storyboard for the full flow lives in
+> [`demo-storyboard-esp32-mini.md`](demo-storyboard-esp32-mini.md).
 
 ---
 

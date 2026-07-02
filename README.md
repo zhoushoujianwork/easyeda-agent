@@ -5,56 +5,49 @@
 <h1 align="center">easyeda-agent</h1>
 
 <p align="center">
-  AI-native automation layer for EasyEDA.
+  面向 EasyEDA(嘉立创EDA专业版)的 AI 原生自动化层
 </p>
 
 <p align="center">
   <a href="https://github.com/zhoushoujianwork/easyeda-agent"><b>GitHub</b></a> ·
-  <b>Plugin marketplace</b> <em>(coming soon)</em> ·
-  <a href="README.zh-CN.md">中文</a>
+  <b>插件市场</b> <em>(即将上架)</em> ·
+  <a href="README.en.md">English</a>
 </p>
 
 ![easyeda-agent workflow](docs/assets/easyeda-agent-workflow.svg)
 
-`easyeda-agent` turns the official EasyEDA extension API into a typed, observable, Skill-friendly system. The EasyEDA plugin stays thin: it connects to the local agent and executes approved actions. The Go CLI/daemon owns protocol, state, artifacts, validation, and user-facing workflows.
+`easyeda-agent` 把官方 EasyEDA 扩展 API 变成一套**有类型、可观测、Skill 友好**的系统。EasyEDA 插件保持极薄——它连到本地 agent、只执行被批准的动作;Go CLI/daemon 掌管协议、状态、产物、校验和面向用户的工作流。
 
-## Why This Exists
+## 为什么做这个
 
-The upstream `run-api-gateway` proves the important entry point: code can run inside EasyEDA with access to the official `eda` object. Its rough edge is that it exposes raw JavaScript execution as the main workflow. That is powerful, but brittle for agents.
+上游 `run-api-gateway` 证明了关键入口:代码能跑在 EasyEDA 内、访问官方 `eda` 对象。但它把「裸 JavaScript 执行」当作主工作流——强大,但对 AI agent 太脆弱。
 
-The connector is real and working: it port-scans `49620-49629`, validates a handshake, self-heals its connection, and dispatches a typed action catalog to the official `eda.*` API. Raw JS survives only as the confirmation-gated `debug.exec_js` escape hatch. See [docs/FEATURES.md](docs/FEATURES.md) for the full feature/roadmap inventory.
+本项目的连接器是真实可用的:端口扫描 `49620-49629`、校验握手、**自愈重连**、把一套**有类型的动作目录**分发到官方 `eda.*` API。裸 JS 仅作为需二次确认的 `debug.exec_js` 逃生口保留。
 
-This project moves the system into a better shape:
+- **Skill** 描述专家工作流和护栏;
+- **Go CLI/daemon** 暴露稳定的 typed actions;
+- **EasyEDA 连接器插件** 只做到官方 `eda.*` 的桥接;
+- 产物、截图、DRC 结果、审计日志都是一等输出。
 
-- Skill describes expert workflow and guardrails.
-- Go CLI/daemon exposes stable typed actions.
-- EasyEDA connector plugin only bridges to official `eda.*` APIs.
-- Artifacts, screenshots, DRC results, and audit logs are first-class outputs.
+## 工作原理
 
-## How It Works
+- Skill 或人跑一条 `easyeda` 命令;
+- Go CLI 校验输入、把 typed action 提交给本地 daemon;
+- daemon 跟踪已连接的 EasyEDA 窗口、经 WebSocket 路由每个动作、记录审计日志/产物/校验结果;
+- 连接器扩展跑在 EasyEDA 内、调用官方 `eda.*` API;
+- 结构化结果回流到 CLI 和 Skill,下一步基于**真实编辑器状态**来规划。
 
-`easyeda-agent` keeps the automation surface narrow and observable:
+动作目录已覆盖原理图、PCB、文档导航、板级绑定、产物导出、诊断。完整清单与路线图见 [docs/FEATURES.md](docs/FEATURES.md)。
 
-- A Skill or human runs an `easyeda` command.
-- The Go CLI validates inputs and submits a typed action to the local daemon.
-- The daemon tracks connected EasyEDA windows, routes each action over WebSocket, and records audit logs, artifacts, and validation results.
-- The connector extension runs inside EasyEDA and calls the official `eda.*` API.
-- Structured results flow back to the CLI and Skill, so the next step can be planned from real editor state.
+## 安装
 
-The action catalog now spans schematic, PCB, document navigation, board binding, artifacts, and diagnostics. The current inventory and roadmap live in [docs/FEATURES.md](docs/FEATURES.md).
-
-## Install Skills
-
-Install the `easyeda` CLI/daemon first, then import the EasyEDA connector URL printed
-by the installer:
+先装 `easyeda` CLI/daemon,再按安装器打印的地址导入 EasyEDA 连接器:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zhoushoujianwork/easyeda-agent/main/install.sh | sh
 ```
 
-The published skill slug is `easyeda-agent` (suffix intentional: it distinguishes this
-community automation layer from official EasyEDA tooling). To install only the skill
-from a registry:
+Skill slug 为 `easyeda-agent`(后缀有意为之,区分于官方 EasyEDA 工具)。只从 registry 装 skill:
 
 ```bash
 # ClawHub
@@ -64,152 +57,101 @@ clawhub install easyeda-agent
 skillhub install easyeda-agent --registry https://skillhub.cn
 ```
 
-The old split skills (`easyeda-schematic`, `easyeda-pcb`, `easyeda-design-flow`,
-`easyeda-conventions`) have been merged and removed from the repository.
+> EasyEDA 需开启「**允许外部交互**」,连接器的 WebSocket 才能连到本地 daemon。
 
-## Demo Example
+## 效果演示
 
-A board driven end-to-end through the typed-action + Skill workflow — placed
-**entirely from real LCSC / 立创 library parts** (search → place by uuid → wire →
-flag → DRC), not hand-drawn symbols. Layout follows the
-[auto-layout SOP](skills/easyeda-agent/references/auto-layout-sop.md) distilled
-from a 嘉立创 reference design: **flags only on power/ground rails; signals are real
-local orthogonal wires; decoupling hugs each IC's VCC pad; multi-page by function.**
-
-This is also the project's fixed end-to-end regression case — see
-[docs/test-case-esp32-blink.md](docs/test-case-esp32-blink.md).
-
-### ESP32-S3-WROOM-1 minimal system board
-
-The board below was produced by the agent driving the full PCB flow — **auto-place →
-outline-fit → rule-aware route → 4-layer power planes → collision-aware silk** — then
-verified on the real EasyEDA canvas (DRC 31 → 3 violations, No-Connection → 0):
+下面这块板由 agent 驱动完整 PCB 流程产出——**自动布局 → 板框贴合 → 规则感知布线 → 4 层电源平面 → 丝印碰撞避让**——并在真实 EasyEDA 画布上验证(DRC 31 → 3、No-Connection 归零):
 
 <p align="center">
-  <img src="docs/assets/demo-esp32-board.png" width="560" alt="ESP32-S3 board the agent produced: 4-layer power planes, rounded outline, aligned designators" />
+  <img src="docs/assets/demo-esp32-board.png" width="560" alt="ESP32-S3 成品板:4层电源平面 + 圆角板框 + 位号对齐" />
 </p>
 
-A few individual steps, each a real before/after on the same board:
+几个单步的真机前后对比(同一块板):
 
-| `pcb outline-fit` — tighten board to parts (17% → 71% utilization) | `pcb silk-align` — collision-aware designators |
+| `pcb outline-fit` 板框贴合(利用率 17% → 71%) | `pcb silk-align` 丝印碰撞避让 |
 |---|---|
-| <img src="docs/assets/demo-outline-before.png" width="330" alt="before: oversized board outline"/> → <img src="docs/assets/demo-outline-after.png" width="330" alt="after: outline tightened to parts"/> | <img src="docs/assets/demo-silk-before.png" width="330" alt="before: scattered overlapping designators"/> → produces the aligned designators in the board above |
+| <img src="docs/assets/demo-outline-before.png" width="330" alt="前:板框过大"/> → <img src="docs/assets/demo-outline-after.png" width="330" alt="后:板框贴合器件"/> | <img src="docs/assets/demo-silk-before.png" width="330" alt="前:位号散乱重叠"/> → 对齐后见上方成品板 |
 
-> A short screen-capture GIF of the end-to-end run will be added here. The images
-> above are real `pcb snapshot` captures from the fixed regression board, not mockups.
+> 端到端跑通的录屏 GIF 随后补充(分镜脚本见 [docs/demo-storyboard-esp32-mini.md](docs/demo-storyboard-esp32-mini.md):原理图 → 导入 PCB → 4 层叠层 → 布局 → GND 内电层/VCC 信号 plane → 天线禁区+检查 → 丝印/LED 极性 → 挖槽);上面都是回归板的真机 `pcb snapshot`,非 mockup。这也是项目的固定端到端回归用例,见 [docs/test-case-esp32-blink.md](docs/test-case-esp32-blink.md)。
 
-## Repository Layout
+## 能力清单(已支持)
+
+均以 typed CLI 子命令暴露(`easyeda <domain> <verb>`),每项都在固定的 ESP32-S3 回归板上真机验证过。
+
+**原理图**
+- 从立创/LCSC 库按 uuid 放**真实器件**再布线;电源/地**网络标志**用 `connect_pin`(自动补偿旋转存储的坑)。
+- **DRC**(`sch drc`)+ 重建的逐项**设计检查**(`sch check`——悬空引脚、导线交叉、导线压引脚)+ 几何 **layout-lint**(重叠/间距)。
+- 模块感知**自动布局**(放置→校验→调整)、一次调用 **`sch read`**(器件+网络+悬空引脚+检查)、**BOM**/**网表**导出(BOM 自动补 LCSC C 号)。
+
+**PCB — 布局**
+- **`pcb auto-place`** — 模块感知启发式:卫星器件贴到它所连芯片引脚那侧,2 脚器件自动转向,多芯片铺开;**间距规则感知**(由 live DRC clearance 推导)。
+- **`pcb outline-fit`**(板框贴合器件)/ **`pcb outline-round`**(圆角矩形板框)。
+- **`pcb layout-lint`** — 布局质量 + **可布性评分**(飞线 MST + 跨网交叉),布线前预测。
+- **`pcb silk-align`** — 位号**位置感知**避让重排(v2):按局部空隙 + 板上位置 + 拥挤轴给每个位号的 4 个方向打分,**避开别人的焊盘/器件体/禁区/板框/其它标签**;挤死的报告出来而非压到焊盘上。
+- **`pcb silk-add`** / **`pcb silk-set`** — 加**自由丝印字串**(板注 / LED 极性 `+`/`−` 标记,可配层/字号/线宽/旋转,JLCPCB 可读默认)+ 批量调整已有丝印,含 **`--align --ref` 对齐参考**(板注居中到板框、标签对齐器件边)。
+- **`pcb add-component`** — 往已有 PCB 加单个器件并连接其焊盘网络(绕过失效的增量 `import_changes`)。
+
+**PCB — 布线与铜**
+- **`pcb route-short`** — 启发式短线布线:每网 MST、**规则感知线宽**(信号 vs 电源)、**障碍感知** L 朝向、**默认跳电源/地网**(它们该铺铜)。
+- **`pcb pour`**(规则感知铜到板边内缩)/ **`pcb pour-fit`** / **`pcb via-stitch`** / **`pcb rip-up`**。
+- **`pcb power-planes`** — 4 层电源分配:GND + 电源各占**专用内平面** + 每焊盘过孔缝合,铺铜后把 **GND 内层翻成 内电层/PLANE**(信号层铺铜→翻类型→重灌的验证配方,DRC 干净),匹配常见客户叠层 **GND=内电层 / VCC=信号层**(把回归板 DRC 31→0、No-Connection 归零)。
+- **`pcb region`**(禁铺铜/天线净空)/ **`pcb fill`** / **`pcb slot`**(挖槽 / MULTI 层板挖空)。
+
+**PCB — 叠层、规则、制造**
+- **`pcb stackup`** — 设铜层数(2/4/6…/32)+ 内层类型(信号↔平面/内电层)。
+- **全链路规则感知** — daemon 读板子 **live DRC 规则**(`pcb drc-rules`)并遵循;缺失时回退到权威 **JLCPCB fab 规则参考**(真实分板型导出)。**`pcb drc`** 跑检查。
+- **`pcb export-dsn`**(Specctra DSN,给外部 Freerouting,带禁布区注入)/ **`pcb import-autoroute`** / **`pcb snapshot`**。
+
+**基础设施**
+- Typed action 协议(`--help` 自描述、`easyeda actions` 目录)+ `debug.exec_js` 原型逃生口。
+- 连接器**自愈重连看门狗**(daemon 重启/窗口后台都能自动回来)+ daemon **防抖自动保存**。
+
+## 暂不支持 / 平台墙
+
+诚实说明边界。2026-07-01 对官方市场的扫描([docs/marketplace-coverage.md](docs/marketplace-coverage.md))校正了这些——真正的墙只在**交互式 UX** API,大多数「结果」(走线/过孔/泪滴/网长)其实够得到,进了吸收清单而非被堵死:
+
+- **迷宫档自动布线**(密集/任意距离/推挤)—— daemon 只做*短、清晰*的启发式布线。完整布线走外部 **Freerouting**(DSN 往返构件已就绪);turnkey 集成**暂缓**(需 Java;等官方自动布线器过 `@alpha`)。
+- **交互式布线 UX** —— 交互*菜单*(推挤拖拽布线、实时等长绕蛇、去环)**无 `eda.*` API**。但它们的*输出*——差分对几何、扇出打孔、等长绕线——可用 `pcb_PrimitiveLine/Via.create` 写出,所以**可作为我们的启发式实现**(吸收清单,非墙);只有拖拽 UX 是 UI 专属。
+- **受控阻抗 Z0** —— 真的墙:叠层 Er / 介质厚 / 铜厚 `eda.*` 读不到,算不了 Z0 线宽。**但网长能读**(`pcb_Net.getNetLength`),所以等长/skew/时序余量报告可做(吸收清单)——这块之前被我误标成墙。
+- **泪滴(teardrop)** —— 无*typed* create API;但文档源注入路径(如 `eext-balance-copper` 做 net-less 填充那样)可能可行,未验证。暂时 UI 里手动应用。
+- **无编程 undo** —— `eda.*` 没有 undo/redo;回滚靠自建(数据快照 + 反向操作)。
+- **增量 `import_changes`** —— 对 API 新增器件是 no-op(平台限制);首次同步前放完整电路,或用 `pcb add-component`。
+- **丝印密度极限** —— `silk-align` 在有空白处避让标签;比标签更密的布局无法完全消重(报 `unresolvedCollisions`)——请放松布局。
+
+市场覆盖矩阵 + 优先吸收清单见 [docs/marketplace-coverage.md](docs/marketplace-coverage.md);动作清单见 [docs/FEATURES.md](docs/FEATURES.md);`eda.*` API 覆盖地图见 [docs/ecosystem-survey.md](docs/ecosystem-survey.md)。
+
+## 仓库结构
 
 ```text
-cmd/easyeda/                 CLI entrypoint used by humans and Skills
-internal/app/                CLI command implementation
-internal/daemon/             Local daemon: /health, /eda (connector WS), /action
-internal/protocol/           Typed action protocol shared with connector (actions.go)
-internal/version/            Build/version metadata
-extension/                   EasyEDA connector (.eext) source + build (TypeScript → esbuild)
-skills/easyeda-agent/        Merged public Skill: workflow, references, scripts, canonical data
-docs/                        Architecture, protocol, features/roadmap, conventions, decisions
+cmd/easyeda/                 CLI 入口(人和 Skill 都用)
+internal/app/                CLI 命令实现
+internal/daemon/             本地 daemon:/health、/eda(连接器 WS)、/action
+internal/protocol/           与连接器共享的 typed action 协议(actions.go)
+extension/                   EasyEDA 连接器(.eext)源码 + 构建(TypeScript → esbuild)
+skills/easyeda-agent/        合并后的公开 Skill:工作流、参考、脚本、规范数据
+docs/                        架构、协议、功能/路线图、规范、决策
 ```
 
-## Current Commands
+## 设计定位
 
-```bash
-go run ./cmd/easyeda version
-go run ./cmd/easyeda actions
-go run ./cmd/easyeda daemon start
-go run ./cmd/easyeda daemon health
-go run ./cmd/easyeda doc ls --project <name>
-go run ./cmd/easyeda sch drc --project <name>
-go run ./cmd/easyeda pcb drc --project <name>
-go run ./cmd/easyeda board list --project <name>
-go run ./cmd/easyeda call system.health
-```
+裸 JavaScript 执行对调试仍有用,但不作为主要的 AI 界面。默认界面应该是**有类型的动作**:明确输入、可预测输出、产物处理、校验钩子。
 
-`daemon start` starts the local server. It binds the first free port in `127.0.0.1:49620-49629` and serves three endpoints, then runs until interrupted (Ctrl-C / SIGTERM):
+延伸阅读:[功能清单与路线图](docs/FEATURES.md) · [架构](docs/architecture.md) · [协议](docs/protocol.md) · [Skill 设计](docs/skill-design.md)
 
-- `GET /health` — service identity, version, and connected windows
-- `GET /eda` — WebSocket the EasyEDA connector registers on (daemon sends a `handshake` on connect)
-- `POST /action` — a typed action envelope to forward to a connected window
+## 致谢
 
-`daemon health` scans the same port range for an `easyeda-agent` daemon. With the daemon running it reports `status: found` and lists connected windows; otherwise a clean `not_found` result is expected.
+特别感谢 **嘉立创EDA(EasyEDA 专业版 / 嘉立创)** 开放的**扩展插件通道**和官方 `eda.*`
+API。整个自动化层都建立在这个开放的插件平台之上——没有它,就没有这个项目。
+`easyeda-agent` 始终做官方插件体系里一个薄而规矩的「公民」,这里的每一项能力最终都
+落到嘉立创自己的 `eda.*` 调用上。感谢嘉立创让我们能做出这样一个好用的插件。 🙏
 
-`call <action>` finds the running daemon and posts a typed action to it. `system.health` is answered by the daemon itself (no connector required); window-scoped actions need a connected EasyEDA window and return `NO_CONNECTOR` until the connector extension is running.
+### 引用项目与前置工作(鸣谢)
 
-Both sides of the action protocol are in place and working. The Go daemon owns the protocol, state, artifacts, and validation; the EasyEDA connector under `extension/` is a buildable `.eext` that dispatches typed actions to live `eda.*` calls (type-checked against `@jlceda/pro-api-types`). See [extension/README.md](extension/README.md).
+站在这些开源项目的肩膀上——感谢:
 
-## Capabilities
-
-What the agent can drive today, via typed CLI subcommands (`easyeda <domain> <verb>`). Each is a typed action → connector → live `eda.*` call, verified on the fixed ESP32-S3 regression board.
-
-**Schematic**
-- Place real library/LCSC parts by uuid, then wire them (`sch` place/wire); power/ground **net-flags** via `connect_pin` (auto-compensates the rotation-store quirk).
-- **DRC** (`sch drc`) + reconstructed per-item **design check** (`sch check` — floating pins, wire-crossing, wire-over-pin) + geometric **layout-lint** (overlap/spacing).
-- Module-aware **auto-layout** (place → verify → adjust), one-call **`sch read`** (components + nets + floating pins + check), **BOM**/**netlist** export (BOM LCSC-enriched).
-
-**PCB — placement**
-- **`pcb auto-place`** — module-aware heuristic: satellites hug the chip pin they connect to, 2-pin parts re-oriented, multi-chip spread; **spacing is rule-aware** (derived from the live DRC clearance).
-- **`pcb outline-fit`** (tighten board to parts) / **`pcb outline-round`** (rounded-rect board outline).
-- **`pcb layout-lint`** — placement quality + **routability score** (ratsnest MST + cross-net crossings) *before* routing; gate-able.
-- **`pcb silk-align`** — reposition designators with **collision avoidance** (no overlapping labels).
-- **`pcb add-component`** — add one part to an existing PCB and net its pads (the working path around the broken incremental `import_changes`).
-
-**PCB — routing & copper**
-- **`pcb route-short`** — heuristic short-trace router: per-net MST, **rule-aware widths** (signal vs power), **obstacle-aware** L-orientation, **skips power/ground nets** (they belong in a pour).
-- **`pcb pour`** (rule-aware copper-to-edge inset) / **`pcb pour-fit`** / **`pcb via-stitch`** / **`pcb rip-up`**.
-- **`pcb power-planes`** — 4-layer power distribution: GND + power on **dedicated inner planes** + via-stitch each pad (drove the regression board's No-Connection to 0).
-- **`pcb region`** (keep-out, incl. antenna no-copper) / **`pcb fill`** / **`pcb slot`** (挖槽 / board cutout on the MULTI layer).
-
-**PCB — stackup, rules, fabrication**
-- **`pcb stackup`** — set copper layer count (2/4/6…/32) + inner-layer type (signal↔plane/内电层).
-- **Rule-aware everything** — the daemon reads the board's **live DRC rules** (`pcb drc-rules`) and conforms; falls back to a canonical **JLCPCB fab-rule reference** (real per-board-type exports). **`pcb drc`** runs the check.
-- **`pcb export-dsn`** (Specctra DSN for external Freerouting, with keep-out injection) / **`pcb import-autoroute`** / **`pcb snapshot`**.
-
-**Infrastructure**
-- Typed action protocol (self-describing `--help`, `easyeda actions` catalog) with a `debug.exec_js` escape hatch for prototyping.
-- Connector **auto-reconnect watchdog** (survives daemon restarts / window backgrounding) + daemon **debounced autosave**.
-
-## Not Yet Supported / Platform Walls
-
-Honest limits. A 2026-07-01 survey of the official marketplace ([`docs/marketplace-coverage.md`](docs/marketplace-coverage.md)) sharpened these — the real walls are only the *interactive UX* APIs; most "results" (tracks, vias, teardrops, net length) turn out to be reachable, and are on the absorb-list rather than blocked:
-
-- **Maze-tier autorouting** (dense / any-distance / push-shove) — the daemon does *short, clear* heuristic routing only. Full routing is external **Freerouting** (the DSN round-trip building blocks exist); a turnkey integration is **deferred** (needs a Java runtime; waiting on the official EasyEDA autorouter maturing past `@alpha`).
-- **Interactive routing UX** — the interactive *menu* (push-shove drag-routing, live length-tuning, remove-loops) has **no `eda.*` API**. But the *outputs* — diff-pair geometry, fanout-with-vias, serpentine length-match — are writable via `pcb_PrimitiveLine/Via.create`, so they're **feasible as our own heuristics** (absorb-list, not walled); only the drag UX is UI-only.
-- **Controlled impedance Z0** — genuinely walled: stackup Er / dielectric height / copper weight aren't readable via `eda.*`, so trace-width-for-Z0 can't be computed. **But net length IS readable** (`pcb_Net.getNetLength`), so length-match / skew / timing-margin reports are doable (absorb-list) — that part was mis-flagged as a wall.
-- **Teardrops (泪滴)** — no *typed* create API; a raw document-source-injection path (as `eext-balance-copper` uses for net-less fills) is plausible but unverified. For now, apply by hand in the UI.
-- **No programmatic undo** — `eda.*` has no undo/redo; rollback is our own (data checkpoint + inverse ops).
-- **Incremental `import_changes`** — a no-op for API-added parts (platform limit); place the whole circuit before the first import, or use `pcb add-component`.
-- **Silkscreen density** — `silk-align` avoids label collisions where there's open space; a layout packed tighter than the labels can't be fully de-conflicted (it reports `unresolvedCollisions`) — loosen the placement.
-
-See [`docs/marketplace-coverage.md`](docs/marketplace-coverage.md) for the full marketplace coverage matrix + prioritized absorb-list, [`docs/FEATURES.md`](docs/FEATURES.md) for the action inventory, and [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md) for the `eda.*` API coverage map.
-
-## Design Position
-
-Raw JavaScript execution remains useful for debugging, but not as the primary AI surface. The default surface should be typed actions with explicit inputs, predictable outputs, artifact handling, and verification hooks.
-
-See:
-
-- [Feature inventory and roadmap](docs/FEATURES.md)
-- [Architecture](docs/architecture.md)
-- [Protocol](docs/protocol.md)
-- [Skill design](docs/skill-design.md)
-- [Historical Phase 1 schematic scope](docs/phase-1-schematic.md)
-- [Historical Phase 2 PCB feasibility](docs/phase-2-pcb.md)
-
-## Acknowledgments
-
-Huge thanks to **嘉立创EDA / EasyEDA Pro (JLCPCB)** for opening up the extension
-plugin channel and the official `eda.*` API. This entire automation layer is built
-**on top of that open plugin platform** — it simply would not exist without it.
-`easyeda-agent` stays a thin, well-behaved community citizen of the official plugin
-system, and every capability here ultimately dispatches to JLC's own `eda.*` calls.
-感谢嘉立创开放的 EDA 插件通道,让我们能做出这样一个好用的自动化插件。 🙏
-
-### Referenced projects & prior art
-
-Built on / inspired by these open projects — thank you:
-
-- [**@jlceda/pro-api-types**](https://www.npmjs.com/package/@jlceda/pro-api-types) — official EasyEDA Pro `eda.*` API type definitions (the connector is type-checked against it).
-- [**Freerouting**](https://github.com/freerouting/freerouting) — the external maze-tier autorouter our `pcb export-dsn` / `import-autoroute` round-trip targets.
-- [**spf13/cobra**](https://github.com/spf13/cobra) (CLI framework) · [**coder/websocket**](https://github.com/coder/websocket) (daemon ↔ connector) · [**esbuild**](https://github.com/evanw/esbuild) (connector bundling).
-- **Official EasyEDA extensions** ([github.com/easyeda](https://github.com/easyeda)) — we study their `eda.*` API usage + algorithms (not their UI) as prior art; the absorb-list lives in [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md). Notably [`eext-run-api-gateway`](https://github.com/easyeda/eext-run-api-gateway) proved the in-editor code channel, and [`eext-export-design-report`](https://github.com/easyeda/eext-export-design-report) informed our design-report reads.
-- Candidate not yet absorbed: [**polyclip-ts**](https://github.com/luizbarboza/polyclip-ts) (polygon boolean) — for a future silkscreen-fill-with-obstacle-avoidance (`docs/ecosystem-survey.md` A10).
+- [**@jlceda/pro-api-types**](https://www.npmjs.com/package/@jlceda/pro-api-types) —— 官方 EasyEDA Pro `eda.*` API 类型定义(连接器对它做类型校验)。
+- [**Freerouting**](https://github.com/freerouting/freerouting) —— 外部迷宫档自动布线器,我们的 `pcb export-dsn` / `import-autoroute` 往返对接它。
+- [**spf13/cobra**](https://github.com/spf13/cobra)(CLI 框架)· [**coder/websocket**](https://github.com/coder/websocket)(daemon ↔ 连接器)· [**esbuild**](https://github.com/evanw/esbuild)(连接器打包)。
+- **官方 EasyEDA 扩展**([github.com/easyeda](https://github.com/easyeda))—— 我们研究它们的 `eda.*` API 用法与算法(不抄 UI)作为前置工作;吸收清单见 [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md)。其中 [`eext-run-api-gateway`](https://github.com/easyeda/eext-run-api-gateway) 证明了编辑器内代码通道,[`eext-export-design-report`](https://github.com/easyeda/eext-export-design-report) 启发了设计报告读取。
+- 尚未吸收的候选:[**polyclip-ts**](https://github.com/luizbarboza/polyclip-ts)(多边形布尔)—— 用于未来的丝印填充避让(见 `docs/ecosystem-survey.md` A10)。
