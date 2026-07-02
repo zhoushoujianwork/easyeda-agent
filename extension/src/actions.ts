@@ -4022,18 +4022,25 @@ const pcbRegionList: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to list PCB regions.');
 	}
-	const list = (regions ?? []).map(r => {
+	const list: Array<Record<string, unknown>> = [];
+	for (const r of (regions ?? [])) {
 		const rules = (r.getState_RuleType() ?? []) as unknown as number[];
-		return {
+		let bbox;
+		try {
+			bbox = await eda.pcb_Primitive.getPrimitivesBBox([r.getState_PrimitiveId()]);
+		}
+		catch { /* bbox optional — used by the antenna keep-out check */ }
+		list.push({
 			primitiveId: r.getState_PrimitiveId(),
 			layer: r.getState_Layer(),
 			ruleType: rules,
 			ruleTypeNames: rules.map(v => REGION_RULE_NAME[v] ?? String(v)),
 			regionName: r.getState_RegionName() ?? null,
+			bbox,
 			lineWidth: r.getState_LineWidth(),
 			locked: r.getState_PrimitiveLock(),
-		};
-	});
+		});
+	}
 	return { result: { regions: list, count: list.length } };
 };
 

@@ -6,6 +6,14 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-07-02
+### Changed
+- **`pcb.region.list`** now emits each region's **`bbox`** (`getPrimitivesBBox`), so
+  the daemon's new `pcb check` **antenna-keepout** rule can test whether a no-copper
+  keep-out region actually overlaps an antenna module's footprint. Rule types are
+  already reported, so the check reads no-copper = any of no-wires/no-fills/no-pours/
+  no-inner-electrical.
+
 ## [0.6.2] - 2026-07-02
 ### Changed
 - **`pcb.silk.list`** now also emits each text's **`reverse`** (`getState_Reverse` —

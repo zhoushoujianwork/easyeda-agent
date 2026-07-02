@@ -24,6 +24,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strings"
 )
 
 // Geometry thresholds, all in mil (PCB primitives are native mil — pcb.line.create
@@ -132,6 +133,7 @@ type pcbCheckSummary struct {
 	WidthMismatches   int `json:"widthMismatches"`
 	DuplicateSegments int `json:"duplicateSegments"`
 	ParallelCoupling  int `json:"parallelCoupling"`
+	AntennaKeepout    int `json:"antennaKeepout"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
@@ -713,6 +715,65 @@ func findSilkscreenFlipped(silk []pcbSilkText) []pcbCheckFinding {
 	return out
 }
 
+// ── R10: antenna keep-out ───────────────────────────────────────────────────
+// A component that carries an RF antenna (an ESP WROOM/WROVER module, or a part
+// named/designated as an antenna) needs a NO-COPPER keep-out under/around its
+// antenna — copper (pour/plane/track) there detunes the antenna. We flag an
+// antenna component whose footprint is NOT overlapped by any no-copper keep-out
+// region (pcb_PrimitiveRegion carrying no-pours/no-fills/no-wires/no-inner-plane).
+
+type pcbAntComp struct {
+	Designator string
+	Device     string
+	BBox       *layoutBBox
+}
+
+type pcbKeepRegion struct {
+	BBox     *layoutBBox
+	NoCopper bool
+	Name     string
+}
+
+// isAntennaDevice reports whether a device name / designator indicates an
+// antenna-bearing part (integrated-antenna modules + discrete antennas).
+func isAntennaDevice(device, designator string) bool {
+	d := strings.ToUpper(device)
+	for _, kw := range []string{"WROOM", "WROVER", "ANTENNA", "ESP32-C3-MINI", "ESP8266"} {
+		if strings.Contains(d, kw) {
+			return true
+		}
+	}
+	u := strings.ToUpper(designator)
+	return strings.HasPrefix(u, "ANT")
+}
+
+func findAntennaKeepout(ants []pcbAntComp, regions []pcbKeepRegion) []pcbCheckFinding {
+	var out []pcbCheckFinding
+	for _, a := range ants {
+		if a.BBox == nil {
+			continue
+		}
+		covered := false
+		for _, r := range regions {
+			if r.NoCopper && r.BBox != nil && boxesOverlap(*a.BBox, *r.BBox) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			dev := a.Device
+			if dev == "" {
+				dev = "antenna part"
+			}
+			out = append(out, pcbCheckFinding{
+				Type: "antenna-keepout", Level: "WARN", Designator: a.Designator,
+				Message: fmt.Sprintf("antenna component %s (%s) has no no-copper keep-out region over its footprint — RF area needs copper clearance (禁铺铜)", a.Designator, dev),
+			})
+		}
+	}
+	return out
+}
+
 // normDeg normalizes an angle to [0,360), rounded to a whole degree (kills float
 // noise like 449.99 → 90).
 func normDeg(d float64) float64 {
@@ -856,6 +917,20 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 
 	rep := analyzePcbCheckFull(pads, tracks, vias, silk, couplingW)
 
+	// Antenna keep-out is a LIVE-only rule (needs component bboxes + regions, which
+	// the pure core doesn't take). Degrade gracefully if either fetch fails.
+	if ants, regions, aerr := fetchAntennaContext(cfg, window, silk); aerr != nil {
+		fmt.Fprintf(stderr, "warning: antenna keep-out check skipped (%v)\n", aerr)
+	} else {
+		for _, f := range findAntennaKeepout(ants, regions) {
+			rep.Findings = append(rep.Findings, f)
+			rep.Summary.AntennaKeepout++
+			rep.Summary.Warnings++
+			rep.Summary.Total++
+		}
+		rep.Passed = rep.Summary.Total == 0
+	}
+
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
@@ -982,6 +1057,99 @@ func fetchPcbSilk(cfg *appConfig, window string) ([]pcbSilkText, error) {
 	return silk, nil
 }
 
+// fetchAntennaContext resolves antenna-bearing components (by device name from the
+// silk Device attribute, or an ANT* designator) with their bboxes, plus every
+// keep-out region with its bbox + whether it excludes copper.
+func fetchAntennaContext(cfg *appConfig, window string, silk []pcbSilkText) ([]pcbAntComp, []pcbKeepRegion, error) {
+	// device name per component id, from the silk Device attribute.
+	devByComp := map[string]string{}
+	for _, s := range silk {
+		if s.Kind == "attribute" && s.Key == "Device" && s.CompID != "" {
+			devByComp[s.CompID] = s.Text
+		}
+	}
+
+	cres, err := requestAction(cfg, "pcb.components.list", window, map[string]any{"includeBBox": true})
+	if err != nil {
+		return nil, nil, err
+	}
+	var ants []pcbAntComp
+	for _, rc := range mnavSlice(cres.Result, "components") {
+		cm, ok := rc.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := cm["primitiveId"].(string)
+		desig, _ := cm["designator"].(string)
+		device := devByComp[id]
+		if !isAntennaDevice(device, desig) {
+			continue
+		}
+		ac := pcbAntComp{Designator: desig, Device: device}
+		if bb, ok := cm["bbox"].(map[string]any); ok {
+			minX, _ := asFloatOK(bb["minX"])
+			minY, _ := asFloatOK(bb["minY"])
+			maxX, _ := asFloatOK(bb["maxX"])
+			maxY, _ := asFloatOK(bb["maxY"])
+			ac.BBox = &layoutBBox{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY}
+		}
+		ants = append(ants, ac)
+	}
+
+	rres, err := requestAction(cfg, "pcb.region.list", window, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var regions []pcbKeepRegion
+	for _, rr := range mnavSlice(rres.Result, "regions") {
+		rm, ok := rr.(map[string]any)
+		if !ok {
+			continue
+		}
+		kr := pcbKeepRegion{}
+		if name, ok := rm["regionName"].(string); ok {
+			kr.Name = name
+		}
+		// no-copper if any rule excludes copper: no-wires(5) / no-fills(6) / no-pours(7) / no-inner-electrical(8).
+		for _, rt := range toFloatSlice(rm["ruleType"]) {
+			switch int(rt) {
+			case 5, 6, 7, 8:
+				kr.NoCopper = true
+			}
+		}
+		if bb, ok := rm["bbox"].(map[string]any); ok {
+			minX, _ := asFloatOK(bb["minX"])
+			minY, _ := asFloatOK(bb["minY"])
+			maxX, _ := asFloatOK(bb["maxX"])
+			maxY, _ := asFloatOK(bb["maxY"])
+			kr.BBox = &layoutBBox{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY}
+		}
+		regions = append(regions, kr)
+	}
+	return ants, regions, nil
+}
+
+// mnavSlice is mnav + a []any assertion (nil on miss).
+func mnavSlice(result map[string]any, key string) []any {
+	s, _ := mnav(result, key).([]any)
+	return s
+}
+
+// toFloatSlice coerces a JSON array of numbers to []float64.
+func toFloatSlice(v any) []float64 {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]float64, 0, len(arr))
+	for _, x := range arr {
+		if f, ok := asFloatOK(x); ok {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 	s := rep.Summary
 	fmt.Fprintf(w, "PCB check (DFM): %d track(s), %d via(s), %d pad(s) — %d issue(s)\n",
@@ -990,9 +1158,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d\n",
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d\n",
 		s.Errors, s.Warnings-s.Errors,
-		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling)
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {

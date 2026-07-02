@@ -387,6 +387,26 @@ func TestPcbCheck_SilkReversed(t *testing.T) {
 	}
 }
 
+// Antenna keep-out: an antenna module with no overlapping no-copper region is
+// flagged; a covering no-copper region clears it; a non-copper region does not.
+func TestPcbCheck_AntennaKeepout(t *testing.T) {
+	ants := []pcbAntComp{{Designator: "U1", Device: "ESP32-S3-WROOM-1", BBox: &layoutBBox{MinX: 0, MinY: 0, MaxX: 100, MaxY: 200}}}
+	if got := len(findAntennaKeepout(ants, nil)); got != 1 {
+		t.Fatalf("no keep-out = %d, want 1", got)
+	}
+	covering := []pcbKeepRegion{{BBox: &layoutBBox{MinX: 0, MinY: 150, MaxX: 100, MaxY: 260}, NoCopper: true}}
+	if got := len(findAntennaKeepout(ants, covering)); got != 0 {
+		t.Fatalf("covered by no-copper region = %d, want 0", got)
+	}
+	nonCopper := []pcbKeepRegion{{BBox: &layoutBBox{MinX: 0, MinY: 150, MaxX: 100, MaxY: 260}, NoCopper: false}}
+	if got := len(findAntennaKeepout(ants, nonCopper)); got != 1 {
+		t.Fatalf("non-copper region present = %d, want 1 (needs no-copper)", got)
+	}
+	if !isAntennaDevice("ESP32-S3-WROOM-1", "U1") || !isAntennaDevice("", "ANT1") || isAntennaDevice("0402WGF", "R2") {
+		t.Fatal("isAntennaDevice classification wrong")
+	}
+}
+
 // FIX #8: diverging (wedge) traces that nearly touch at one end must be flagged —
 // the closest approach over the overlap is the coupling risk, not the midpoint.
 func TestPcbCheck_Fix8_CouplingDivergingWedge(t *testing.T) {
