@@ -32,6 +32,7 @@ const (
 	pcbCoincEps    = 2.0  // endpoint↔endpoint / ↔via / ↔pad-center coincidence
 	pcbOnSegEps    = 1.5  // point-lies-on-track-body (T-junction / collinear test)
 	pcbAcuteDeg    = 90.0 // interior trace angle below this = acid-trap acute corner
+	pcbAcuteMinDeg = 5.0  // …but at/below this it's collinear overlap, not a corner (dup-segment covers it)
 	pcbViaDupEps   = 2.0  // two vias closer than this = redundant/stacked
 	pcbWidthTolMil = 1.0  // absolute width tolerance for 2-pin neck-down symmetry
 	pcbWidthTolRel = 0.25 // relative width tolerance (25%)
@@ -224,7 +225,7 @@ func findDanglingEnds(tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP) []pcbCh
 	for i, t := range tracks {
 		for _, ep := range [][2]float64{{t.X1, t.Y1}, {t.X2, t.Y2}} {
 			px, py := ep[0], ep[1]
-			if anchored(px, py, i, tracks, vias, pads) {
+			if anchored(px, py, i, t.Layer, tracks, vias, pads) {
 				continue
 			}
 			k := [2]int64{int64(math.Round(px * 100)), int64(math.Round(py * 100))}
@@ -242,7 +243,12 @@ func findDanglingEnds(tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP) []pcbCh
 	return out
 }
 
-func anchored(px, py float64, self int, tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP) bool {
+// anchored reports whether a track endpoint at (px,py) on copper layer `layer`
+// is electrically continued: a pad or via there (vias span layers, pads may be
+// through-hole — both anchor regardless of layer), or ANOTHER track passing
+// through it ON THE SAME LAYER. A different-layer track crossing the XY is NOT a
+// connection without a via, so it must not anchor the stub.
+func anchored(px, py float64, self, layer int, tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP) bool {
 	for _, p := range pads {
 		if math.Hypot(p.X-px, p.Y-py) <= pcbCoincEps {
 			return true
@@ -254,7 +260,7 @@ func anchored(px, py float64, self int, tracks []pcbTrack, vias []pcbViaP, pads 
 		}
 	}
 	for j, o := range tracks {
-		if j == self {
+		if j == self || o.Layer != layer {
 			continue
 		}
 		if segPtDist(px, py, o.X1, o.Y1, o.X2, o.Y2) <= pcbCoincEps {
@@ -266,8 +272,15 @@ func anchored(px, py float64, self int, tracks []pcbTrack, vias []pcbViaP, pads 
 
 // ── R2: acute-angle (acid-trap) corner ──────────────────────────────────────
 // Where two same-net, same-layer segments meet at a shared vertex, the interior
-// angle between them below 90° forms a sharp spike where etchant collects. 90°
-// and 45° (135° interior) corners are fine; only < 90° is flagged.
+// angle between them in (pcbAcuteMinDeg, 90°) forms a sharp spike where etchant
+// collects. 90° and 45° (135° interior) corners are fine; ≤5° is collinear overlap
+// (duplicate-segment), not a corner.
+//
+// Known scope limits (deliberate — low value / false-positive risk, tracked by the
+// DFM audit wf_9afc4dbe-b08): only EXACT shared vertices are compared, so a branch
+// teeing off mid-trunk (T-junction) and two endpoints coincident within pcbCoincEps
+// but not exactly are not evaluated. Routed copper meets at exact vertices, so this
+// covers the real cases.
 func findAcuteAngles(tracks []pcbTrack) []pcbCheckFinding {
 	type inc struct {
 		dx, dy float64
@@ -323,7 +336,9 @@ func findAcuteAngles(tracks []pcbTrack) []pcbCheckFinding {
 				}
 			}
 		}
-		if minAng < pcbAcuteDeg-0.5 { // 0.5° tolerance so a clean 90° never trips
+		// (pcbAcuteMinDeg, 90°): a real acid-trap corner. ≤5° is collinear/overlapping
+		// copper (no corner) — duplicate-segment covers that; 0.5° tol so a clean 90° never trips.
+		if minAng > pcbAcuteMinDeg && minAng < pcbAcuteDeg-0.5 {
 			out = append(out, pcbCheckFinding{
 				Type: "acute-angle", Level: "WARN", Net: v.net, Layer: v.layer,
 				Primitives: ids, AngleDeg: round2(minAng),
@@ -435,6 +450,9 @@ func findViaIssues(tracks []pcbTrack, vias []pcbViaP) []pcbCheckFinding {
 		}
 		layers := map[int]bool{}
 		for _, t := range tracks {
+			if t.Net != v.Net { // a foreign net's track merely crossing the XY isn't served by this via
+				continue
+			}
 			if segPtDist(v.X, v.Y, t.X1, t.Y1, t.X2, t.Y2) <= pcbCoincEps {
 				layers[t.Layer] = true
 			}
@@ -470,8 +488,8 @@ func findWidthMismatch(tracks []pcbTrack, pads []pcbPadP) []pcbCheckFinding {
 		if len(ps) != 2 {
 			continue
 		}
-		w0, ok0 := maxTrackWidthAt(ps[0].X, ps[0].Y, tracks)
-		w1, ok1 := maxTrackWidthAt(ps[1].X, ps[1].Y, tracks)
+		w0, ok0 := maxTrackWidthAt(ps[0].X, ps[0].Y, ps[0].Net, tracks)
+		w1, ok1 := maxTrackWidthAt(ps[1].X, ps[1].Y, ps[1].Net, tracks)
 		if !ok0 || !ok1 {
 			continue
 		}
@@ -488,10 +506,17 @@ func findWidthMismatch(tracks []pcbTrack, pads []pcbPadP) []pcbCheckFinding {
 	return out
 }
 
-func maxTrackWidthAt(px, py float64, tracks []pcbTrack) (float64, bool) {
+// maxTrackWidthAt is the widest track of net `net` whose endpoint lands on the pad
+// at (px,py). Restricting to the pad's OWN net keeps an unrelated track that merely
+// crosses the pad's XY (e.g. on another layer) from inflating the width — a track
+// entering a pad necessarily carries that pad's net.
+func maxTrackWidthAt(px, py float64, net string, tracks []pcbTrack) (float64, bool) {
 	best := 0.0
 	found := false
 	for _, t := range tracks {
+		if t.Net != net {
+			continue
+		}
 		if math.Hypot(t.X1-px, t.Y1-py) <= pcbCoincEps || math.Hypot(t.X2-px, t.Y2-py) <= pcbCoincEps {
 			if t.Width > best {
 				best = t.Width
@@ -512,6 +537,12 @@ func findDuplicateSegments(tracks []pcbTrack) []pcbCheckFinding {
 			a, b := tracks[i], tracks[j]
 			if a.Net != b.Net || a.Layer != b.Layer {
 				continue
+			}
+			// collinearOverlap tests b's endpoints against a's line, so it's asymmetric:
+			// a short segment sitting on a long slightly-angled one is only detected with
+			// the LONGER segment as the reference. Order it so the result is stable.
+			if segLen(b) > segLen(a) {
+				a, b = b, a
 			}
 			if ov, ok := collinearOverlap(a, b); ok && ov > pcbDupOverlap {
 				out = append(out, pcbCheckFinding{
@@ -687,15 +718,24 @@ func parallelGap(a, b pcbTrack) (gap, overlap float64, ok bool) {
 	if overlap <= 0 {
 		return 0, 0, false // parallel but don't run alongside each other
 	}
-	// perpendicular gap: distance from b's midpoint (of the overlap region) to a's
-	// infinite line — a good proxy for the constant separation of parallel lines.
-	mt := (lo + hi) / 2
-	// midpoint on a's line at param mt:
-	amx, amy := a.X1+ux*mt, a.Y1+uy*mt
-	// closest point of b's segment to that midpoint gives the true separation.
-	gap = segPtDist(amx, amy, b.X1, b.Y1, b.X2, b.Y2)
+	// gap = the MINIMUM separation over the overlap, not the midpoint. Within the 15°
+	// parallel window traces can DIVERGE (a wedge): nearly touching at one end, far at
+	// the other. The midpoint would miss that — the tight end is the real coupling risk.
+	// Sample a's line across the overlap and take the closest approach to b's segment.
+	const samples = 16
+	gap = math.Inf(1)
+	for k := 0; k <= samples; k++ {
+		t := lo + (hi-lo)*float64(k)/float64(samples)
+		amx, amy := a.X1+ux*t, a.Y1+uy*t
+		if d := segPtDist(amx, amy, b.X1, b.Y1, b.X2, b.Y2); d < gap {
+			gap = d
+		}
+	}
 	return gap, overlap, true
 }
+
+// segLen is a segment's length.
+func segLen(t pcbTrack) float64 { return math.Hypot(t.X2-t.X1, t.Y2-t.Y1) }
 
 // ── geometry helpers ────────────────────────────────────────────────────────
 
@@ -772,9 +812,13 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 	if err != nil {
 		return fmt.Errorf("fetch PCB vias: %w", err)
 	}
+	// Silkscreen is OPTIONAL: the silk rule needs the pcb.silk.list connector handler.
+	// On an older connector (before it was added) this errors "Unknown action" — degrade
+	// gracefully (run the copper rules, skip silk) instead of failing the whole audit.
 	silk, err := fetchPcbSilk(cfg, window)
 	if err != nil {
-		return fmt.Errorf("fetch PCB silkscreen: %w", err)
+		fmt.Fprintf(stderr, "warning: silkscreen-flipped check skipped (%v) — update the connector to enable it\n", err)
+		silk = nil
 	}
 
 	rep := analyzePcbCheckFull(pads, tracks, vias, silk, couplingW)

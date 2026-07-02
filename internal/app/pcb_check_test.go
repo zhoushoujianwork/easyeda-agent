@@ -276,3 +276,99 @@ func TestPcbCheck_CleanBoard(t *testing.T) {
 		t.Fatalf("expected clean board, got %d findings: %+v", rep.Summary.Total, rep.Findings)
 	}
 }
+
+// ── audit-fix regressions (adversarial workflow wf_9afc4dbe-b08) ────────────
+
+// FIX #1: a layer-1 track end whose XY is only crossed by a DIFFERENT-layer track
+// (no via) is a real dangling stub — cross-layer copper is not a connection.
+func TestPcbCheck_Fix1_DanglingCrossLayer(t *testing.T) {
+	pads := []pcbPadP{
+		{Designator: "P1", Number: "1", Net: "N1", Layer: 1, X: 0, Y: 0},
+		{Designator: "P2", Number: "1", Net: "N1", Layer: 2, X: 100, Y: -50},
+		{Designator: "P3", Number: "1", Net: "N1", Layer: 2, X: 100, Y: 50},
+	}
+	tracks := []pcbTrack{
+		{ID: "A", Net: "N1", Layer: 1, X1: 0, Y1: 0, X2: 100, Y2: 0, Width: 10},
+		{ID: "B", Net: "N1", Layer: 2, X1: 100, Y1: -50, X2: 100, Y2: 50, Width: 10},
+	}
+	if got := countType(analyzePcbCheck(pads, tracks, nil, 0), "dangling-end"); got != 1 {
+		t.Fatalf("cross-layer stub dangling-end = %d, want 1", got)
+	}
+	vias := []pcbViaP{{ID: "v", Net: "N1", X: 100, Y: 0, Hole: 12, Dia: 24}}
+	if got := countType(analyzePcbCheck(pads, tracks, vias, 0), "dangling-end"); got != 0 {
+		t.Fatalf("with via, dangling-end = %d, want 0", got)
+	}
+}
+
+// FIX #4: two collinear same-direction segments (0° "bend") are overlap, not an
+// acid-trap acute corner — duplicate-segment covers them, acute must NOT fire.
+func TestPcbCheck_Fix4_NoZeroDegreeAcute(t *testing.T) {
+	tracks := []pcbTrack{
+		{ID: "t1", Net: "N", Layer: 1, X1: 0, Y1: 0, X2: 100, Y2: 0, Width: 10},
+		{ID: "t2", Net: "N", Layer: 1, X1: 0, Y1: 0, X2: 50, Y2: 0, Width: 10},
+	}
+	rep := analyzePcbCheck(nil, tracks, nil, 0)
+	if got := countType(rep, "acute-angle"); got != 0 {
+		t.Fatalf("0° collinear acute-angle = %d, want 0 (findings: %+v)", got, rep.Findings)
+	}
+	if got := countType(rep, "duplicate-segment"); got != 1 {
+		t.Fatalf("0° collinear duplicate-segment = %d, want 1", got)
+	}
+}
+
+// FIX #5: single-layer-via must count only the via's OWN net; a foreign net's
+// track crossing the via XY on another layer doesn't give it a layer transition.
+func TestPcbCheck_Fix5_SingleLayerViaNetAware(t *testing.T) {
+	vias := []pcbViaP{{ID: "v1", Net: "SIG1", X: 0, Y: 0, Hole: 12, Dia: 24}}
+	tracks := []pcbTrack{
+		{ID: "t1", Net: "SIG1", Layer: 1, X1: 0, Y1: 0, X2: 100, Y2: 0, Width: 10},
+		{ID: "t2", Net: "SIG2", Layer: 2, X1: 0, Y1: 0, X2: 0, Y2: 100, Width: 10},
+	}
+	if got := countType(analyzePcbCheck(nil, tracks, vias, 0), "single-layer-via"); got != 1 {
+		t.Fatalf("foreign-net-masked single-layer-via = %d, want 1", got)
+	}
+}
+
+// FIX #6: width-mismatch must ignore an unrelated track that merely crosses the
+// pad XY on another layer/net — only the pad's own-net entering tracks count.
+func TestPcbCheck_Fix6_WidthMismatchNetAware(t *testing.T) {
+	pads := []pcbPadP{
+		{Designator: "R1", Number: "1", Net: "SIG_A", Layer: 1, X: 0, Y: 0},
+		{Designator: "R1", Number: "2", Net: "SIG_B", Layer: 1, X: 100, Y: 0},
+		{Designator: "PX", Number: "1", Net: "SIG_A", Layer: 1, X: -50, Y: 0},
+		{Designator: "PY", Number: "1", Net: "SIG_B", Layer: 1, X: 150, Y: 0},
+	}
+	tracks := []pcbTrack{
+		{ID: "a", Net: "SIG_A", Layer: 1, X1: 0, Y1: 0, X2: -50, Y2: 0, Width: 10},
+		{ID: "b", Net: "SIG_B", Layer: 1, X1: 100, Y1: 0, X2: 150, Y2: 0, Width: 10},
+		{ID: "c", Net: "OTHER", Layer: 2, X1: 100, Y1: 0, X2: 100, Y2: 80, Width: 30},
+	}
+	if got := countType(analyzePcbCheck(pads, tracks, nil, 0), "width-mismatch"); got != 0 {
+		t.Fatalf("cross-layer-inflated width-mismatch = %d, want 0", got)
+	}
+}
+
+// FIX #7: duplicate detection must be order-independent — a short segment sitting
+// on a long slightly-angled one is a duplicate regardless of slice order.
+func TestPcbCheck_Fix7_DuplicateOrderIndependent(t *testing.T) {
+	S := pcbTrack{ID: "S", Net: "N1", Layer: 1, X1: 0, Y1: 0, X2: 40, Y2: 0, Width: 10}
+	L := pcbTrack{ID: "L", Net: "N1", Layer: 1, X1: 0, Y1: 0, X2: 400, Y2: 4, Width: 10}
+	if got := countType(analyzePcbCheck(nil, []pcbTrack{S, L}, nil, 0), "duplicate-segment"); got != 1 {
+		t.Fatalf("[S,L] duplicate-segment = %d, want 1", got)
+	}
+	if got := countType(analyzePcbCheck(nil, []pcbTrack{L, S}, nil, 0), "duplicate-segment"); got != 1 {
+		t.Fatalf("[L,S] duplicate-segment = %d, want 1", got)
+	}
+}
+
+// FIX #8: diverging (wedge) traces that nearly touch at one end must be flagged —
+// the closest approach over the overlap is the coupling risk, not the midpoint.
+func TestPcbCheck_Fix8_CouplingDivergingWedge(t *testing.T) {
+	tracks := []pcbTrack{
+		{ID: "a", Net: "SIG1", Layer: 1, X1: 0, Y1: 0, X2: 300, Y2: 0, Width: 10},
+		{ID: "b", Net: "SIG2", Layer: 1, X1: 0, Y1: 2, X2: 291.09, Y2: 74.58, Width: 10},
+	}
+	if got := countType(analyzePcbCheck(nil, tracks, nil, 0), "parallel-coupling"); got != 1 {
+		t.Fatalf("diverging-wedge parallel-coupling = %d, want 1", got)
+	}
+}
