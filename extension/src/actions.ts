@@ -3098,16 +3098,7 @@ const pcbBoardInfo: Handler = async () => {
 	return {
 		result: {
 			linked: !!board,
-			board: board
-				? {
-					name: board.name,
-					schematicUuid: board.schematic.uuid,
-					schematicName: board.schematic.name,
-					pcbUuid: board.pcb.uuid,
-					pcbName: board.pcb.name,
-					parentProjectUuid: board.parentProjectUuid,
-				}
-				: null,
+			board: board ? serializeBoard(board) : null,
 			pcb: pcb ? { uuid: pcb.uuid, name: pcb.name } : null,
 		},
 	};
@@ -3118,14 +3109,20 @@ const pcbBoardInfo: Handler = async () => {
 
 type BoardItem = NonNullable<Awaited<ReturnType<typeof eda.dmt_Board.getCurrentBoardInfo>>>;
 
-/** Serialize a Board to the {name, schematic, pcb, parentProjectUuid} shape. */
+/**
+ * Serialize a Board to the {name, schematic, pcb, parentProjectUuid} shape.
+ * A Board can legitimately hold only a PCB or only a schematic (e.g. after
+ * `new-board` moves a schematic out, or a standalone PCB board) — so read
+ * schematic/pcb defensively. Reading `board.schematic.uuid` unconditionally
+ * crashed `board list` with "Cannot read properties of undefined (reading 'uuid')".
+ */
 function serializeBoard(board: BoardItem): Record<string, unknown> {
 	return {
 		name: board.name,
-		schematicUuid: board.schematic.uuid,
-		schematicName: board.schematic.name,
-		pcbUuid: board.pcb.uuid,
-		pcbName: board.pcb.name,
+		schematicUuid: board.schematic?.uuid ?? null,
+		schematicName: board.schematic?.name ?? null,
+		pcbUuid: board.pcb?.uuid ?? null,
+		pcbName: board.pcb?.name ?? null,
 		parentProjectUuid: board.parentProjectUuid,
 	};
 }
@@ -3229,9 +3226,17 @@ const boardDelete: Handler = async (payload) => {
  *   1. createBoard(schematicUuid) → mints a board *shell* bound to that schematic.
  *   2. createPcb(boardName)       → adds the PCB INTO that now-existing board.
  * On step-2 failure we roll back the empty shell so no PCB-less board is left behind.
+ *
+ * GUARDRAIL: a schematic can belong to only ONE Board in EasyEDA Pro. Calling
+ * createBoard(schematicUuid) on an ALREADY-BOUND schematic silently MOVES it into
+ * the new board, leaving the old board with just its PCB (bit us: `pcb new-board`
+ * stole the schematic → the original board showed "PCB only, 原理图没了"). So we
+ * refuse when the schematic is already bound, unless force=true is passed to move
+ * it deliberately.
  */
 const pcbNewBoard: Handler = async (payload) => {
 	let schematicUuid = optionalString(payload, 'schematicUuid') ?? optionalString(payload, 'schematic');
+	const force = optionalBoolean(payload, 'force') === true;
 	if (!schematicUuid) {
 		// default to the current board's schematic, else the first board in the project.
 		try { schematicUuid = (await eda.dmt_Board.getCurrentBoardInfo())?.schematic?.uuid; }
@@ -3243,6 +3248,26 @@ const pcbNewBoard: Handler = async (payload) => {
 	}
 	if (!schematicUuid) {
 		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'No schematic to bind — pass "schematicUuid" (no current board to infer one from).');
+	}
+
+	// Refuse to steal a schematic that is already bound to a Board (see GUARDRAIL above).
+	if (!force) {
+		let boundBoardName: string | undefined;
+		try {
+			const boards = (await eda.dmt_Board.getAllBoardsInfo()) ?? [];
+			boundBoardName = boards.find((b) => b?.schematic?.uuid === schematicUuid)?.name;
+		}
+		catch { /* best-effort — if we can't read boards, fall through to create */ }
+		if (boundBoardName) {
+			throw new ActionError(
+				ErrorCodes.INVALID_STATE,
+				`Schematic ${schematicUuid} is already bound to board "${boundBoardName}". `
+				+ `Creating a new board would MOVE it out of "${boundBoardName}" (a schematic can belong to only one board), `
+				+ `leaving "${boundBoardName}" with just its PCB. `
+				+ `To lay out a fresh PCB for this schematic, work inside "${boundBoardName}"; `
+				+ `pass force=true only if you really want to move the schematic into a new board.`,
+			);
+		}
 	}
 
 	let boardName: string | undefined;

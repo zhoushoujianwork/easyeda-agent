@@ -77,13 +77,20 @@ cross-fire. The PCB must be the active/foreground document.`,
 	// board.new_pcb — create a NEW board (板) with a fresh PCB page from a schematic.
 	{
 		var schematic, name string
+		var force bool
 		c := &cobra.Command{
 			Use:   "new-board",
-			Short: "Create a NEW board (板) with a fresh empty PCB page, bound to a schematic",
+			Short: "Create a NEW board (板) with a fresh empty PCB page, bound to an UNBOUND schematic",
 			Long: `Create a brand-new board (板) that CONTAINS a fresh, empty PCB page, bound to a
-schematic — the CLI equivalent of the UI's 新建PCB / 原理图转PCB. This is different
-from an existing PCB: you get a clean board to lay out from scratch, still driven by
-the schematic netlist (switch to it, then 'easyeda pcb import-changes').
+schematic — the CLI equivalent of the UI's 新建PCB / 原理图转PCB. You get a clean
+board to lay out from scratch, still driven by the schematic netlist (switch to it,
+then 'easyeda pcb import-changes').
+
+IMPORTANT: a schematic can belong to only ONE board in EasyEDA Pro. If the target
+schematic is ALREADY bound to a board, this command refuses (it would otherwise MOVE
+the schematic into the new board and leave the old board with just its PCB). To lay
+out another PCB for an already-bound schematic, work inside its existing board. Pass
+--force only if you deliberately want to move the schematic into the new board.
 
 Under the hood it runs the required 2-step SDK sequence (createBoard shell →
 createPcb into that board — a one-shot createPcb is a silent no-op), with rollback
@@ -92,7 +99,8 @@ so in a single-design project you can just run 'easyeda pcb new-board'.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb new-board
   easyeda pcb new-board --name ESP32-rev2
-  easyeda pcb new-board --schematic de2bc6678317009f --name Proto`,
+  easyeda pcb new-board --schematic de2bc6678317009f --name Proto
+  easyeda pcb new-board --schematic de2bc6678317009f --force   # move an already-bound schematic`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				payload := map[string]any{}
 				if schematic != "" {
@@ -101,11 +109,15 @@ so in a single-design project you can just run 'easyeda pcb new-board'.`,
 				if name != "" {
 					payload["name"] = name
 				}
+				if force {
+					payload["force"] = true
+				}
 				return dispatch(cfg, "board.new_pcb", window, payload, stdout, stderr)
 			},
 		}
 		c.Flags().StringVar(&schematic, "schematic", "", "schematic UUID to bind (default = current board's schematic)")
 		c.Flags().StringVar(&name, "name", "", "name for the new board (default = auto, e.g. Board1_1)")
+		c.Flags().BoolVar(&force, "force", false, "move the schematic into the new board even if it is already bound to another board")
 		pcb.AddCommand(c)
 	}
 

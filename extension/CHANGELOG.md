@@ -6,6 +6,19 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **`pcb new-board` no longer silently steals the schematic.** A schematic can belong
+  to only ONE Board in EasyEDA Pro, so `createBoard(schematicUuid)` on an already-bound
+  schematic *moves* it into the new board — leaving the old board with just its PCB
+  ("原理图没了"). `board.new_pcb` now detects an already-bound schematic and refuses with
+  a clear error naming the owning board; pass `--force` (`force: true`) to move it
+  deliberately.
+- **`board list` / `pcb board-info` no longer crash on a PCB-only or schematic-only
+  Board.** `serializeBoard` read `board.schematic.uuid` / `board.pcb.uuid`
+  unconditionally, throwing `Cannot read properties of undefined (reading 'uuid')` for
+  any board missing one side (exactly the orphaned boards the old `new-board` produced).
+  It now emits `null` for the missing side.
+
 ## [0.7.0] - 2026-07-02
 
 The market-ready PCB pass since v0.6.0 — a reconstructed **PCB DFM audit** (`pcb check`),

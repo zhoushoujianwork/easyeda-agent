@@ -42,8 +42,9 @@ A **Board groups exactly one schematic + one PCB** — that is how the two are k
 together, and what `import_changes` follows. Boards are identified by **name**, not
 uuid. CLI: `easyeda board …`. Maps to `eda.dmt_Board.*`.
 
-- `board.list` / `board.current` — all boards (name + bound schematic + pcb) / the current one.
+- `board.list` / `board.current` — all boards (name + bound schematic + pcb) / the current one. A board can hold only a PCB or only a schematic — the missing side is reported as `null`.
 - `board.create` — bind a schematic and/or PCB into a new board (`--schematic` / `--pcb`). The fix for a floating/unlinked PCB before `import_changes`.
+- `easyeda pcb new-board` (`board.new_pcb`) — new board + fresh empty PCB page bound to a schematic. **A schematic belongs to only ONE board**, so this refuses if the target schematic is already bound (it would MOVE it out, orphaning the old board's PCB — the "原理图没了" trap). Work inside the existing board instead; pass `--force` only to move it deliberately.
 - `board.rename` — rename a board (`--name` → `--new`).
 - `board.copy` — duplicate a board (its schematic + PCB).
 - `board.delete` — delete a board by name (**confirm** — no undo).

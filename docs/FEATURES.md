@@ -41,7 +41,8 @@ answered by the daemon itself (daemon/connector liveness, no window required).
 > designators). Plus a connector **reconnect-toast dedup** (once per outage, not every retry).
 > Two new actions round out the flow: **`easyeda pcb new-board`** (`board.new_pcb` — create a
 > brand-new board + empty PCB page bound to a schematic, the CLI 新建PCB, then `import-changes`
-> to lay it out) and **`easyeda notify`** (`system.notify` — an in-window toast so the flow can
+> to lay it out; it now refuses to steal an already-bound schematic — `--force` to move it) and
+> **`easyeda notify`** (`system.notify` — an in-window toast so the flow can
 > announce each stage live); plus **`pcb auto-place --assembly-gap`** (hand-solder clearance floor)
 > and antenna-keepout recognizing a single MULTI-layer keep-out as covering every layer.
 > A recording storyboard for the full flow lives in

@@ -85,7 +85,7 @@ P0 新板/切板 → P1 导器件 → P2 摆放(留装配位) → P3 板框 → 
 
 **每过一个阶段发一条通知**(用户能实时跟进):`easyeda notify --message "完成 P7 布线,下一步 铺铜" --type success`。
 
-- **P0 新板**:要全新 PCB 页用 `easyeda pcb new-board`(建 Board 壳→灌 PCB 两步,单 `createPcb` 是 no-op)。
+- **P0 新板**:要全新 PCB 页用 `easyeda pcb new-board`(建 Board 壳→灌 PCB 两步,单 `createPcb` 是 no-op)。⚠️ 一个原理图只能属于一个 Board:若原理图**已绑板**,`new-board` 会**拒绝**(否则会把原理图搬进新板,旧板只剩 PCB=「原理图没了」)。既有板里直接布局即可;确要搬才加 `--force`。
 - **P1 导器件**:`pcb import-changes` 会**弹 UI「应用修改」**(平台限制,无 headless apply)——要全自动改用 `pcb add-component` 逐件放。导完 notify。
 - **P2 摆放**:`pcb auto-place`,默认 `--assembly-gap 40`(留烙铁焊接位;纯布线间距 ~28mil 太挤焊不了)。RF/天线件周边别塞小件。
 - **P3 板框**:`pcb outline-round --rect … --margin 120`(圆角,贴器件包络)。
