@@ -52,6 +52,18 @@ by the installer:
 curl -fsSL https://raw.githubusercontent.com/zhoushoujianwork/easyeda-agent/main/install.sh | sh
 ```
 
+The one-line script installs/updates the `easyeda` CLI/daemon, auto-detects
+installed clients and installs/updates the `easyeda-agent` skill into each —
+Codex (`~/.codex/skills/easyeda-agent`) and Claude Code
+(`~/.claude/skills/easyeda-agent`) — and prints the connector `.eext` import URL.
+Control skill install with env vars:
+
+```bash
+EASYEDA_INSTALL_SKILLS=codex,claude curl -fsSL .../install.sh | sh  # force targets
+EASYEDA_INSTALL_SKILLS=none          curl -fsSL .../install.sh | sh  # skip skills
+EASYEDA_SKILL_PRESERVE=1             curl -fsSL .../install.sh | sh  # keep local edits
+```
+
 The published skill slug is `easyeda-agent` (suffix intentional: it distinguishes this
 community automation layer from official EasyEDA tooling). To install only the skill
 from a registry:

@@ -147,5 +147,5 @@ endif
 		$(DIST)/skills.tar.gz \
 		$(DIST)/install.sh \
 		--title "easyeda-agent $(VERSION)" \
-		--notes "One-line install: \`curl -fsSL https://raw.githubusercontent.com/zhoushoujianwork/easyeda-agent/main/install.sh | sh\`"
+		--notes "$$(printf 'One-line install/update:\n\`\`\`\ncurl -fsSL https://raw.githubusercontent.com/zhoushoujianwork/easyeda-agent/main/install.sh | sh\n\`\`\`\n\nInstalls/updates:\n- easyeda CLI/daemon\n- easyeda-agent skill for Codex (~/.codex/skills) and/or Claude Code (~/.claude/skills) when detected\n- prints EasyEDA connector .eext import URL\n\nSkill targets: set \`EASYEDA_INSTALL_SKILLS=codex,claude\` to force targets, \`none\` to skip, or \`EASYEDA_SKILL_PRESERVE=1\` to keep local edits.')"
 	@echo "✅ Released: https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/$(VERSION)"

@@ -4,7 +4,11 @@
 set -euo pipefail
 
 REPO="zhoushoujianwork/easyeda-agent"
-SKILLS_DIR="${HOME}/.claude/skills"
+SKILL_NAME="easyeda-agent"
+# EASYEDA_INSTALL_SKILLS: ""|auto (detect), "none" (skip), or CSV of codex,claude
+INSTALL_SKILLS="${EASYEDA_INSTALL_SKILLS:-}"
+# EASYEDA_SKILL_PRESERVE=1 keeps existing files instead of clean-replacing
+SKILL_PRESERVE="${EASYEDA_SKILL_PRESERVE:-0}"
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 info()  { printf '\033[34m[easyeda-agent]\033[0m %s\n' "$*"; }
@@ -51,15 +55,96 @@ curl -fsSL "${BASE_URL}/${BINARY_NAME}" -o "${INSTALL_DIR}/easyeda"
 chmod +x "${INSTALL_DIR}/easyeda"
 ok "CLI installed → ${INSTALL_DIR}/easyeda"
 
-# ── install skills ────────────────────────────────────────────────────────────
-info "Installing skills to ${SKILLS_DIR}..."
-mkdir -p "$SKILLS_DIR"
+# ── install skills (Codex + Claude Code) ──────────────────────────────────────
+# Resolve which clients to install for.
+# codex → ~/.codex/skills/easyeda-agent, claude → ~/.claude/skills/easyeda-agent
+detect_targets() {
+  # Explicit "none" → skip entirely.
+  case "$INSTALL_SKILLS" in
+    none|NONE|None) return 0 ;;
+  esac
+
+  if [ -n "$INSTALL_SKILLS" ] && [ "$INSTALL_SKILLS" != "auto" ]; then
+    # Explicit CSV list (e.g. "codex,claude").
+    printf '%s\n' "$INSTALL_SKILLS" | tr ',' '\n' | while IFS= read -r t; do
+      t=$(printf '%s' "$t" | tr -d '[:space:]')
+      [ -n "$t" ] && printf '%s\n' "$t"
+    done
+    return 0
+  fi
+
+  # auto-detect
+  found=0
+  if [ -d "${HOME}/.codex" ] || command -v codex >/dev/null 2>&1; then
+    printf 'codex\n'; found=1
+  fi
+  if [ -d "${HOME}/.claude" ] || command -v claude >/dev/null 2>&1; then
+    printf 'claude\n'; found=1
+  fi
+  # Neither detected → create both by default so the skill is ready when a
+  # client shows up. EASYEDA_INSTALL_SKILLS=none opts out.
+  if [ "$found" = 0 ]; then
+    warn "No Codex/Claude Code client detected; creating both skill dirs by default." >&2
+    printf 'codex\n'
+    printf 'claude\n'
+  fi
+}
+
+# Map a client name to its skills base dir.
+client_base_dir() {
+  case "$1" in
+    codex)  printf '%s/.codex/skills\n' "$HOME" ;;
+    claude) printf '%s/.claude/skills\n' "$HOME" ;;
+    *)      return 1 ;;
+  esac
+}
+
+# install_skill_to <client> <src_skill_dir>
+# Cleanly replaces <base>/easyeda-agent from the release, backing up local edits.
+install_skill_to() {
+  _client="$1"; _src="$2"
+  _base=$(client_base_dir "$_client") || { warn "Unknown skill target: ${_client} (skipped)"; return 0; }
+  mkdir -p "$_base"
+  _dest="${_base}/${SKILL_NAME}"
+
+  if [ ! -d "$_dest" ]; then
+    cp -r "$_src" "$_dest"
+    ok "${_client} skill installed → ${_dest}"
+    return 0
+  fi
+
+  if [ "$SKILL_PRESERVE" = "1" ]; then
+    cp -rn "$_src"/. "$_dest"/ 2>/dev/null || cp -r "$_src"/. "$_dest"/
+    ok "${_client} skill updated (preserve mode, existing files kept) → ${_dest}"
+    return 0
+  fi
+
+  # Detect local modifications vs the release; back up before replacing.
+  if diff -r "$_src" "$_dest" >/dev/null 2>&1; then
+    ok "${_client} skill already up to date → ${_dest}"
+    return 0
+  fi
+  _bak="${_dest}.bak.$(date +%Y%m%d%H%M%S)"
+  mv "$_dest" "$_bak"
+  cp -r "$_src" "$_dest"
+  ok "${_client} skill updated → ${_dest} (old backed up → ${_bak})"
+}
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-curl -fsSL "${BASE_URL}/skills.tar.gz" | tar -xzf - -C "$TMP"
-# Copy each skill dir; preserve existing files with -n to avoid clobbering user edits
-cp -r "$TMP"/. "$SKILLS_DIR/"
-ok "Skills installed → ${SKILLS_DIR}"
+
+TARGETS=$(detect_targets)
+if [ -z "$TARGETS" ]; then
+  info "Skill install skipped (EASYEDA_INSTALL_SKILLS=none)"
+else
+  info "Downloading skills.tar.gz..."
+  curl -fsSL "${BASE_URL}/skills.tar.gz" | tar -xzf - -C "$TMP"
+  SRC_SKILL="${TMP}/${SKILL_NAME}"
+  [ -d "$SRC_SKILL" ] || fatal "skills.tar.gz did not contain ${SKILL_NAME}/"
+  printf '%s\n' "$TARGETS" | while IFS= read -r client; do
+    [ -n "$client" ] && install_skill_to "$client" "$SRC_SKILL"
+  done
+fi
 
 # ── PATH check ────────────────────────────────────────────────────────────────
 if ! echo ":${PATH}:" | grep -q ":${INSTALL_DIR}:"; then
@@ -79,6 +164,7 @@ printf '  2. Install the EasyEDA connector extension:\n'
 printf '       Download: %s/easyeda-agent-connector.eext\n' "$BASE_URL"
 printf '       In EasyEDA Pro: 扩展管理 → 导入扩展 → select the .eext file\n\n'
 printf '  3. In EasyEDA Pro: 设置 → 允许外部交互 (Allow external interaction)\n\n'
-printf '  4. In Claude Code, use the merged skill:\n'
-printf '       /easyeda-agent       (schematic + PCB workflow)\n\n'
+printf '  4. Use the skill in your AI client:\n'
+printf '       /easyeda-agent       (schematic + PCB workflow)\n'
+printf '       Installed for detected clients: Codex (~/.codex/skills) and/or Claude Code (~/.claude/skills)\n\n'
 printf 'Full docs: https://github.com/%s\n' "$REPO"
