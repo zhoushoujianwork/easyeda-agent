@@ -124,7 +124,7 @@ Pro; the title block (明细表) is the editable "图纸" surface. CLI: `easyeda
 | `schematic.page.delete` | Delete a page (confirmation-gated, no undo). Mutates. |
 | `schematic.rename` | Rename a schematic document (whole sheet; may also rename a linked reuse-module symbol + PCB). Mutates. |
 
-### Board / 组合 — schematic↔PCB binding (6 actions, `board` domain)
+### Board / 组合 — schematic↔PCB binding (7 actions, `board` domain)
 
 A **Board groups one schematic + one PCB** (识别符是 name, not uuid) — the structural
 unit that keeps the two together and that `import_changes` follows. Project tree:
@@ -138,6 +138,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `board.rename` | Rename a board by its current name. Mutates. |
 | `board.copy` | Duplicate a board (schematic + PCB). Mutates. |
 | `board.delete` | Delete a board by name (confirmation-gated, no undo). Mutates. |
+| `board.rebind` | Repair a stale/orphaned board binding after a PCB rebuild: delete the board (by `--name`, else current) and re-create it bound to `--schematic` (+ `--pcb`), rolling back on failure. Clears the false DRC Netlist Error left when the binding points at a deleted schematic UUID. `--force` moves a schematic already bound elsewhere. Mutates. |
 
 ### Draw / edit (9 actions, all mutate)
 

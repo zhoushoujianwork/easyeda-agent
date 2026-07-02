@@ -143,5 +143,46 @@ func newBoardCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		board.AddCommand(c)
 	}
 
+	// ── rebind ─────────────────────────────────────────────────────────────
+	// board.rebind — repair a stale/orphaned Board binding after a PCB rebuild.
+	{
+		var name, schUuid, pcbUuid string
+		var force bool
+		c := &cobra.Command{
+			Use:   "rebind",
+			Short: "Rebind a Board to the intended schematic + PCB (repair a stale binding)",
+			Long: "Repair a Board whose schematic/PCB binding went stale — e.g. after a\n" +
+				"rebuild-from-empty PCB left the Board pointing at a deleted schematic UUID,\n" +
+				"which crashed `board list` and produced a false DRC Netlist Error.\n\n" +
+				"Deletes the old Board (by --name, else the current Board) and re-creates it\n" +
+				"bound to --schematic (+ --pcb), rolling back on failure. A schematic can\n" +
+				"belong to only one Board, so pass --force to move one already bound elsewhere.",
+			Args: cobra.NoArgs,
+			Example: `  easyeda board rebind --schematic <schUuid> --pcb <pcbUuid>
+  easyeda board rebind --name "Board1" --schematic <schUuid> --pcb <pcbUuid>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if schUuid == "" {
+					return fmt.Errorf("--schematic is required")
+				}
+				payload := map[string]any{"schematicUuid": schUuid}
+				if pcbUuid != "" {
+					payload["pcbUuid"] = pcbUuid
+				}
+				if name != "" {
+					payload["name"] = name
+				}
+				if force {
+					payload["force"] = true
+				}
+				return dispatch(cfg, "board.rebind", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&name, "name", "", "board name to rebind (default: current board)")
+		c.Flags().StringVar(&schUuid, "schematic", "", "schematic UUID to bind (required)")
+		c.Flags().StringVar(&pcbUuid, "pcb", "", "PCB UUID to bind")
+		c.Flags().BoolVar(&force, "force", false, "move the schematic even if already bound to another board")
+		board.AddCommand(c)
+	}
+
 	return board
 }

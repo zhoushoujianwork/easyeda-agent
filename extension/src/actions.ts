@@ -3215,6 +3215,105 @@ const boardDelete: Handler = async (payload) => {
 };
 
 /**
+ * Rebind a Board to the intended schematic + PCB — the deterministic repair for
+ * a stale/orphaned binding (the #33 case: a rebuild-from-empty PCB left the Board
+ * pointing at a deleted schematic UUID, so `board list` crashed and DRC reported a
+ * false Netlist Error).
+ *
+ * A schematic can belong to only ONE Board in EasyEDA Pro, so we can't just
+ * createBoard on top of the old one — the SDK would MOVE the schematic and leave a
+ * stale shell (same trap `pcb new-board` documents). We therefore delete the old
+ * Board (by name) FIRST, then createBoard(schematic, pcb) fresh. The old binding's
+ * schematic/pcb UUIDs are captured beforehand so a failed re-create rolls back to
+ * the original Board instead of leaving the project board-less.
+ *
+ * GUARDRAIL: if the target schematic is bound to a DIFFERENT board, refuse unless
+ * force=true (rebinding would silently steal it).
+ */
+const boardRebind: Handler = async (payload) => {
+	const schematicUuid = requireString(payload, 'schematicUuid');
+	const pcbUuid = optionalString(payload, 'pcbUuid');
+	const name = optionalString(payload, 'name');
+	const force = optionalBoolean(payload, 'force') === true;
+
+	let boards: Array<BoardItem>;
+	try {
+		boards = (await eda.dmt_Board.getAllBoardsInfo()) ?? [];
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list Boards for rebind.');
+	}
+
+	// Locate the board to rebind: by name if given, else the current board.
+	let target: BoardItem | undefined;
+	if (name) {
+		target = boards.find(b => b?.name === name);
+	}
+	else {
+		try { target = (await eda.dmt_Board.getCurrentBoardInfo()) ?? undefined; }
+		catch { /* none */ }
+	}
+
+	// Refuse to steal a schematic already bound to a DIFFERENT board (unless force).
+	if (!force) {
+		const holder = boards.find(b => b?.schematic?.uuid === schematicUuid && b?.name !== target?.name);
+		if (holder) {
+			throw new ActionError(
+				ErrorCodes.INVALID_STATE,
+				`Schematic ${schematicUuid} is already bound to board "${holder.name}". `
+				+ `Rebinding here would MOVE it out of "${holder.name}" (a schematic can belong to only one board). `
+				+ `Pass force=true only if you really want to move it.`,
+			);
+		}
+	}
+
+	// Capture the old binding for rollback, then delete the stale board (best-effort:
+	// a missing target just means we create fresh).
+	const oldName = target?.name;
+	const oldSchematicUuid = target?.schematic?.uuid;
+	const oldPcbUuid = target?.pcb?.uuid;
+	if (oldName) {
+		try { await eda.dmt_Board.deleteBoard(oldName); }
+		catch (err) { throw edaError(err, `Failed to delete the stale Board "${oldName}" before rebinding.`); }
+	}
+
+	// Create the fresh binding.
+	let newName: string | undefined;
+	try { newName = await eda.dmt_Board.createBoard(schematicUuid, pcbUuid); }
+	catch (err) {
+		// Roll back to the original binding so we don't leave the project board-less.
+		if (oldSchematicUuid || oldPcbUuid) {
+			try { await eda.dmt_Board.createBoard(oldSchematicUuid, oldPcbUuid); } catch { /* best-effort */ }
+		}
+		throw edaError(err, 'Failed to create the rebound Board (rolled back to the previous binding).');
+	}
+	if (!newName) {
+		if (oldSchematicUuid || oldPcbUuid) {
+			try { await eda.dmt_Board.createBoard(oldSchematicUuid, oldPcbUuid); } catch { /* best-effort */ }
+		}
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'createBoard returned nothing (check the schematic/PCB UUIDs); rolled back to the previous binding.');
+	}
+
+	// Restore the desired board name (createBoard mints an auto name).
+	const wantName = name ?? oldName;
+	if (wantName && wantName !== newName) {
+		try { await eda.dmt_Board.modifyBoardName(newName, wantName); newName = wantName; }
+		catch { /* keep the auto name */ }
+	}
+
+	return {
+		result: {
+			boardName: newName,
+			schematicUuid,
+			pcbUuid: pcbUuid ?? null,
+			replaced: oldName
+				? { name: oldName, schematicUuid: oldSchematicUuid ?? null, pcbUuid: oldPcbUuid ?? null }
+				: null,
+		},
+	};
+};
+
+/**
  * Create a NEW board (板) that CONTAINS a fresh, empty PCB, bound to a schematic —
  * the programmatic equivalent of the UI's 新建 PCB / 原理图转 PCB. `board.create`
  * only mints the schematic↔PCB *linkage*; this makes an actual new PCB page you can
@@ -3374,8 +3473,11 @@ const pcbImportChanges: Handler = async (payload) => {
 		result: {
 			imported,
 			createdBoard,
+			// Read schematic/pcb defensively: a Board can legitimately hold only one
+			// side (e.g. after a rebuild the schematic ref may be a deleted/orphaned
+			// UUID), so `board.schematic.uuid` would crash — mirror serializeBoard.
 			board: board
-				? { name: board.name, schematicUuid: board.schematic.uuid, pcbUuid: board.pcb.uuid }
+				? { name: board.name, schematicUuid: board.schematic?.uuid ?? null, pcbUuid: board.pcb?.uuid ?? null }
 				: null,
 			reason: imported
 				? null
@@ -3452,6 +3554,26 @@ const pcbAddComponent: Handler = async (payload) => {
 	try { await eda.pcb_Document.startCalculatingRatline(); }
 	catch { /* best-effort */ }
 
+	// Rebuild-flow guardrail (#33): if the active PCB's Board binding points at a
+	// schematic UUID that no longer matches any open schematic doc, adding parts
+	// won't clear the resulting DRC Netlist Error until the Board is rebound. Warn
+	// so the agent knows to run `board rebind`. Best-effort, never fails the place.
+	const warnings: Array<string> = [];
+	try {
+		const board = await eda.dmt_Board.getCurrentBoardInfo();
+		const boundSchUuid = board?.schematic?.uuid;
+		if (boundSchUuid) {
+			const schematics = (await eda.dmt_Schematic.getAllSchematicsInfo()) ?? [];
+			if (!schematics.some(s => s.uuid === boundSchUuid)) {
+				warnings.push(
+					`Board "${board?.name}" is bound to schematic ${boundSchUuid}, which is not among the open schematics `
+					+ `— DRC may report a false Netlist Error. Run \`easyeda board rebind --schematic <uuid> --pcb <uuid>\` to repair the binding.`,
+				);
+			}
+		}
+	}
+	catch { /* best-effort — diagnostic only */ }
+
 	return {
 		result: {
 			primitiveId: id,
@@ -3461,6 +3583,7 @@ const pcbAddComponent: Handler = async (payload) => {
 			assignedNets,
 			unmatchedPads: unmatched,
 		},
+		...(warnings.length ? { warnings } : {}),
 	};
 };
 
@@ -4064,7 +4187,31 @@ const pcbDrcCheck: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to run PCB DRC (ensure the PCB document is the active/foreground tab).');
 	}
-	return { result: { passed: violations.length === 0, violations } };
+
+	// A Netlist Error ("PCB and schematic netlist does not match") is usually a
+	// stale Board binding, not a real mismatch (see #33). Surface the bound
+	// schematic/PCB names so the fix (`board rebind`) is obvious. Best-effort:
+	// never let this diagnostic hide the actual DRC result.
+	let binding: Record<string, unknown> | undefined;
+	const hasNetlistError = violations.some((v) => JSON.stringify(v ?? '').toLowerCase().includes('netlist'));
+	if (hasNetlistError) {
+		try {
+			const board = await eda.dmt_Board.getCurrentBoardInfo();
+			if (board) {
+				binding = {
+					boardName: board.name,
+					schematicUuid: board.schematic?.uuid ?? null,
+					schematicName: board.schematic?.name ?? null,
+					pcbUuid: board.pcb?.uuid ?? null,
+					pcbName: board.pcb?.name ?? null,
+					hint: 'Netlist Error is often a stale Board binding — verify the schematic UUID matches the open schematic; if not, run `easyeda board rebind --schematic <uuid> --pcb <uuid>`.',
+				};
+			}
+		}
+		catch { /* best-effort — diagnostic only */ }
+	}
+
+	return { result: { passed: violations.length === 0, violations, ...(binding ? { binding } : {}) } };
 };
 
 /**
@@ -4988,6 +5135,7 @@ const HANDLERS: Record<string, Handler> = {
 	'board.rename': boardRename,
 	'board.copy': boardCopy,
 	'board.delete': boardDelete,
+	'board.rebind': boardRebind,
 	'pcb.import_changes': pcbImportChanges,
 	'pcb.add_component': pcbAddComponent,
 	'pcb.component.modify': pcbComponentModify,
