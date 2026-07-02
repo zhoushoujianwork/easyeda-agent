@@ -31,8 +31,10 @@ type ppNet struct {
 }
 
 // runPowerPlanes orchestrates the 4-layer power-plane build. gndLayer/powerLayer are
-// inner-layer ids (15=Inner1, 16=Inner2 on a 4-layer board).
-func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, dryRun bool, stdout, stderr io.Writer) error {
+// inner-layer ids (15=Inner1, 16=Inner2 on a 4-layer board). gndAsPlane flips the GND
+// inner layer to 内电层/PLANE after pouring (the verified pour-while-SIGNAL → flip →
+// rebuild recipe; DRC stays clean — see the pcb-inner-plane-fill memory).
+func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, gndAsPlane, dryRun bool, stdout, stderr io.Writer) error {
 	// 1. Pads → group power/ground pads by net.
 	res, err := requestAction(cfg, "pcb.components.list", window, map[string]any{"includePads": true})
 	if err != nil {
@@ -84,7 +86,7 @@ func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, dry
 	if dryRun {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{"dryRun": true, "plan": plan, "warnings": warnings, "pourRect": rect})
+		return enc.Encode(map[string]any{"dryRun": true, "plan": plan, "warnings": warnings, "pourRect": rect, "gndAsPlane": gndAsPlane, "gndLayer": gndLayer})
 	}
 
 	// 3. Ensure ≥4 copper layers.
@@ -111,7 +113,23 @@ func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, dry
 		}
 	}
 
-	// 5. Rebuild all pours so they reflow around the vias/obstacles.
+	// 4b. Flip the GND inner layer to 内电层/PLANE. The verified recipe is pour-while-
+	//     SIGNAL (done above) → flip type → rebuild; the net-bound fill survives and
+	//     DRC stays clean. The power layer stays SIGNAL so its net pour behaves as an
+	//     ordinary positive plane (matches the customer stackup: GND=内电层, VCC=信号层).
+	planeFlipped := false
+	if gndAsPlane {
+		if _, err := requestAction(cfg, "pcb.stackup.set", window, map[string]any{
+			"layers": []map[string]any{{"id": gndLayer, "type": "plane"}},
+		}); err != nil {
+			fmt.Fprintf(stderr, "power-planes: could not set layer %d to 内电层/PLANE: %v\n", gndLayer, err)
+		} else {
+			planeFlipped = true
+		}
+	}
+
+	// 5. Rebuild all pours so they reflow around the vias/obstacles (and settle the
+	//    GND layer as a proper inner plane after the type flip).
 	if _, err := requestAction(cfg, "pcb.pour.rebuild", window, nil); err != nil {
 		fmt.Fprintf(stderr, "power-planes: pour rebuild failed: %v\n", err)
 	}
@@ -120,6 +138,7 @@ func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, dry
 	enc.SetIndent("", "  ")
 	return enc.Encode(map[string]any{
 		"ok": true, "gndLayer": gndLayer, "powerLayer": powerLayer,
+		"gndAsPlane": gndAsPlane, "gndPlaneFlipped": planeFlipped,
 		"planes": plan, "warnings": warnings,
 	})
 }

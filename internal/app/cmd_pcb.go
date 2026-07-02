@@ -1902,10 +1902,10 @@ current stackup with 'pcb layers' (copperLayerCount + each layer's type).`,
 	// ceshi: DRC No-Connection → 0. Core in pcb_powerplanes.go.
 	{
 		var gndLayer, powerLayer int
-		var dryRun bool
+		var dryRun, gndPlane bool
 		c := &cobra.Command{
 			Use:   "power-planes",
-			Short: "4-layer power distribution: GND + power inner planes + via-stitch (fixes 2-layer pour conflict)",
+			Short: "4-layer power distribution: GND 内电层 + power inner plane + via-stitch (fixes 2-layer pour conflict)",
 			Long: `Distribute power/ground on dedicated INNER PLANES — the clean 4-layer fix for the
 2-layer pour conflict (two power nets can't both connect on one shared layer, which
 stranded 5 of ceshi's 3V3 pads). This:
@@ -1914,21 +1914,30 @@ stranded 5 of ceshi's 3V3 pads). This:
   2. assigns GND to an inner layer and power nets (VCC/3V3/… via isGlobalNet) to another,
   3. via-stitches every power/ground pad DOWN to its plane (the connection point the
      inner pour needs — without it the inner pour is all isolated islands),
-  4. pours each net on its inner layer, then rebuilds.
+  4. pours each net on its inner layer,
+  5. flips the GND inner layer to 内电层/PLANE (--gnd-plane, default on), then rebuilds.
 
-Validated on ceshi: DRC 31 → 3, No-Connection → 0. Run AFTER auto-place + outline-fit
+Step 5 uses the verified pour-while-SIGNAL → flip-type → rebuild recipe: the net-bound
+GND fill survives the flip and DRC stays clean (0 Plane-Zone/via clashes). The power
+layer stays 信号层 so its net pour is an ordinary positive plane — matching the common
+customer stackup (GND=内电层, VCC/3V3=信号层). Pass --gnd-plane=false to keep GND as a
+plain signal-layer pour.
+
+Validated on ceshi: DRC 31 → 0, No-Connection → 0. Run AFTER auto-place + outline-fit
 + route-short (signals). Two power nets sharing one plane layer re-create the conflict
 (warned) — give each its own inner layer on a 6+ layer board. --dry-run prints the plan.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb power-planes
   easyeda pcb power-planes --gnd-layer 15 --power-layer 16
+  easyeda pcb power-planes --gnd-plane=false   # keep GND as a signal-layer pour
   easyeda pcb power-planes --dry-run`,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return runPowerPlanes(cfg, window, gndLayer, powerLayer, dryRun, stdout, stderr)
+				return runPowerPlanes(cfg, window, gndLayer, powerLayer, gndPlane, dryRun, stdout, stderr)
 			},
 		}
 		c.Flags().IntVar(&gndLayer, "gnd-layer", 15, "inner layer id for the GND plane (15=Inner1)")
 		c.Flags().IntVar(&powerLayer, "power-layer", 16, "inner layer id for the power plane (16=Inner2)")
+		c.Flags().BoolVar(&gndPlane, "gnd-plane", true, "flip the GND inner layer to 内电层/PLANE after pouring (customer-stackup correct)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the plan (nets→layers, pad counts) without mutating")
 		pcb.AddCommand(c)
 	}
@@ -2053,26 +2062,32 @@ restyle later with 'pcb silk-set'.`,
 		pcb.AddCommand(c)
 	}
 
-	// pcb.silk.set — batch reconfigure existing silk (position / rotation / size / text).
+	// pcb.silk.set — batch reconfigure existing silk (position / rotation / size / text
+	// / align-to-reference).
 	{
 		var ids string
 		var x, y, rotation, fontSize, lineWidth float64
-		var text string
+		var text, align, ref string
 		c := &cobra.Command{
 			Use:   "silk-set",
-			Short: "Batch-adjust existing silk: position / rotation / font-size / line-width / text",
+			Short: "Batch-adjust existing silk: position / rotation / size / text, or align to a reference",
 			Long: `Reconfigure existing silkscreen primitive(s) in ONE batch — component designators
 (位号) and free strings alike. --ids is a JSON array of primitiveIds (from 'pcb
 check --json' or a silk list); set any of --x/--y/--rotation/--font-size/--line-width
-/--text and ONLY those keys change. This is the batch position/orientation/size fixer
-for badly-placed or non-upright silk.
+/--text and ONLY those keys change.
+
+ALIGN shortcut (--align + --ref): position each silk relative to a reference bbox —
+--ref a component designator, "board"/"outline", or "fill" (default board). --align:
+center|mid (both axes), centerx|centery, or left|right|top|bottom (edge-align). Each
+silk is computed from ITS OWN bbox so the center/edge lands exactly on the reference.
 
 NOTE: rotation via the reliable .modify persists, but a 'pcb snapshot' taken before a
 document reload shows the OLD orientation (stale render) — judge success by 'pcb check'
 / silk list, not a screenshot.`,
 			Args: cobra.NoArgs,
-			Example: `  easyeda pcb silk-set --ids '["ae4510d0d289463ae18"]' --rotation 0
-  easyeda pcb silk-set --ids '["id1","id2"]' --x 2000 --y -2400
+			Example: `  easyeda pcb silk-set --ids '["id1"]' --rotation 0
+  easyeda pcb silk-set --ids '["credit"]' --ref board --align centerx   # center the board credit
+  easyeda pcb silk-set --ids '["lbl"]' --ref U1 --align top             # align label to U1's top
   easyeda pcb silk-set --ids '["id1"]' --font-size 45 --line-width 6`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if ids == "" {
@@ -2102,6 +2117,12 @@ document reload shows the OLD orientation (stale render) — judge success by 'p
 				if cmd.Flags().Changed("text") {
 					payload["text"] = text
 				}
+				if align != "" {
+					payload["align"] = align
+					if ref != "" {
+						payload["ref"] = ref
+					}
+				}
 				return dispatch(cfg, "pcb.silk.set", window, payload, stdout, stderr)
 			},
 		}
@@ -2112,6 +2133,8 @@ document reload shows the OLD orientation (stale render) — judge success by 'p
 		c.Flags().Float64Var(&fontSize, "font-size", 0, "new font height (mil)")
 		c.Flags().Float64Var(&lineWidth, "line-width", 0, "new stroke width (mil)")
 		c.Flags().StringVar(&text, "text", "", "new text (designators: the value)")
+		c.Flags().StringVar(&align, "align", "", "align to --ref: center|mid|centerx|centery|left|right|top|bottom")
+		c.Flags().StringVar(&ref, "ref", "", "align reference: a designator, \"board\"/\"outline\", or \"fill\" (default board)")
 		pcb.AddCommand(c)
 	}
 
