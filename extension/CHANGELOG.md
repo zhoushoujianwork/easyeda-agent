@@ -6,6 +6,22 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-07-02
+### Changed
+- **`pcb.silk.align` is now POSITION-AWARE** (designed via a 3-lens workflow). It ranks
+  each designator's 4 sides by local free space + board position (edge parts pulled
+  inward, never off-board) + a crowd-axis bonus (dense stacks pushed perpendicular),
+  and — the core fix — avoids **other parts' PADS** (a label over exposed copper is
+  fab-clipped; this is why C1's designator no longer lands on C2's pad), bodies,
+  keep-out regions, the board outline, and other labels. Most-constrained-first order;
+  bottom parts → bottom silk + mirror; a boxed-in part is left + reported (unresolved)
+  rather than moved onto a pad. New outputs: warned / unresolved.
+### Added
+- **`pcb.silk.set` gains an ALIGN shortcut** — `align` (center|mid|centerx|centery|
+  left|right|top|bottom) + `ref` (a component designator, "board"/"outline", or "fill")
+  positions each silk relative to that reference bbox (e.g. center the board credit,
+  align a label to a component edge), computed from the silk's own bbox.
+
 ## [0.6.5] - 2026-07-02
 ### Fixed
 - **Reconnect toast spam / UI obscuring.** During a daemon outage the connector
