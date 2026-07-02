@@ -433,6 +433,14 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.snapshot"},
 		},
 		{
+			Name:        "pcb.silk.list",
+			Domain:      DomainPcb,
+			Phase:       2,
+			NeedsWindow: true,
+			Description: "List every SILKSCREEN TEXT primitive on the active PCB — component designator/value ATTRIBUTES (pcb_PrimitiveAttribute) plus free STRINGS (pcb_PrimitiveString) — each with its silk layer (3=TOP_SILKSCREEN, 4=BOTTOM_SILKSCREEN), mirror flag, text, position, and (for attributes) the parent component's id + side (TOP/BOTTOM). Feeds the `pcb check` silkscreen-orientation rule: top silk must read un-mirrored, bottom silk must be mirrored, and a designator's silk side must match its component's side — a mismatch is a flipped/back-side silkscreen (放反). Read-only.",
+			Outputs:     []string{"texts[].primitiveId", "texts[].kind", "texts[].text", "texts[].layer", "texts[].mirror", "texts[].componentId", "texts[].componentLayer", "texts[].x", "texts[].y", "count"},
+		},
+		{
 			Name:        "pcb.nets.list",
 			Domain:      DomainPcb,
 			Phase:       2,

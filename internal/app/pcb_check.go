@@ -5,11 +5,13 @@ package app
 // The PCB sibling of `sch check`. EasyEDA's native `pcb drc` catches
 // rule-clearance violations (track-to-pad, width, hole); it does NOT flag the
 // manufacturability / reliability hazards that the official DFM tools look for:
-// acid-trap acute angles, dangling copper stubs, pointless single-layer vias,
-// stacked/redundant vias, asymmetric neck-down on 2-pin parts, or duplicated
-// overlapping copper. This recomputes all of that purely from the placed
-// primitives (tracks + vias + pads) — no new connector handler, mirrors the
-// Go-side geometry approach of `pcb layout-lint`.
+// acid-trap acute angles, dangling copper stubs, free-angle traces, track-over-pad
+// shorts, flipped/back-side silkscreen, pointless single-layer vias, stacked/
+// redundant vias, asymmetric neck-down on 2-pin parts, or duplicated overlapping
+// copper. Copper rules recompute purely from the placed primitives (tracks + vias
+// + pads); the silkscreen-orientation rule reads text layer+mirror via the
+// `pcb.silk.list` connector handler. Mirrors the Go-side geometry approach of
+// `pcb layout-lint`.
 //
 // Pure core (analyzePcbCheck) is unit-tested; the live fetch/render is
 // runPcbCheck below. Reuses isGlobalNet (pcb_autoplace.go) and round2
@@ -38,6 +40,9 @@ const (
 	pcbCouplingW       = 3.0  // default 3W factor: center-to-center spacing < this×maxWidth = coupling risk
 	pcbParallelDeg     = 15.0 // two segments within this of parallel/anti-parallel are "parallel"
 	pcbCouplingMinOvlp = 20.0 // parallel overlap must exceed this (mil) to count (ignore incidental)
+
+	pcbOrthoTolDeg = 1.0 // a track this far off the nearest 0/45/90/135° = free-angle routing
+	pcbOverPadEps  = 2.0 // pad center within this of a track body (but not its endpoint) = track-over-pad
 )
 
 // pcbTrack is one copper line segment (pcb.line.list).
@@ -68,6 +73,29 @@ type pcbPadP struct {
 	X, Y       float64
 }
 
+// pcbSilkText is one silkscreen text primitive (pcb.silk.list) — a component
+// designator/value attribute or a free string. Layer is the silk layer
+// (silkTopLayer / silkBottomLayer); CompLayer is the parent component's side
+// (pcbSideTop / pcbSideBottom, 0 = none/unknown) for attributes.
+type pcbSilkText struct {
+	ID        string
+	Kind      string // "attribute" | "string"
+	Text      string
+	Layer     int
+	Mirror    bool
+	CompID    string
+	CompLayer int
+	X, Y      float64
+}
+
+// Silk / component side layer ids (EPCB_LayerId).
+const (
+	pcbSideTop      = 1
+	pcbSideBottom   = 2
+	silkTopLayer    = 3
+	silkBottomLayer = 4
+)
+
 // pcbXY is a coordinate on a finding.
 type pcbXY struct {
 	X float64 `json:"x"`
@@ -92,11 +120,15 @@ type pcbCheckFinding struct {
 type pcbCheckSummary struct {
 	DanglingEnds      int `json:"danglingEnds"`
 	AcuteAngles       int `json:"acuteAngles"`
+	NonOrthogonal     int `json:"nonOrthogonal"`
+	TrackOverPad      int `json:"trackOverPad"`
+	SilkscreenFlipped int `json:"silkscreenFlipped"`
 	OverlappingVias   int `json:"overlappingVias"`
 	SingleLayerVias   int `json:"singleLayerVias"`
 	WidthMismatches   int `json:"widthMismatches"`
 	DuplicateSegments int `json:"duplicateSegments"`
 	ParallelCoupling  int `json:"parallelCoupling"`
+	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
 }
@@ -110,9 +142,16 @@ type pcbCheckReport struct {
 	Findings   []pcbCheckFinding `json:"findings"`
 }
 
-// analyzePcbCheck is the pure DFM core over placed primitives. couplingW is the
-// 3W-rule center-spacing factor (≤0 → default pcbCouplingW).
+// analyzePcbCheck is the copper-only DFM core (no silkscreen). Thin wrapper over
+// analyzePcbCheckFull; kept for the many unit tests that don't exercise silk.
 func analyzePcbCheck(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, couplingW float64) pcbCheckReport {
+	return analyzePcbCheckFull(pads, tracks, vias, nil, couplingW)
+}
+
+// analyzePcbCheckFull is the pure DFM core over placed primitives. couplingW is the
+// 3W-rule center-spacing factor (≤0 → default pcbCouplingW). silk feeds the
+// silkscreen-orientation rule (flipped/back-side labels).
+func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, silk []pcbSilkText, couplingW float64) pcbCheckReport {
 	rep := pcbCheckReport{TrackCount: len(tracks), ViaCount: len(vias), PadCount: len(pads)}
 	if couplingW <= 0 {
 		couplingW = pcbCouplingW
@@ -130,10 +169,13 @@ func analyzePcbCheck(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, coupling
 
 	rep.Findings = append(rep.Findings, findDanglingEnds(tracks, vias, pads)...)
 	rep.Findings = append(rep.Findings, findAcuteAngles(tracks)...)
+	rep.Findings = append(rep.Findings, findNonOrthogonal(tracks)...)
+	rep.Findings = append(rep.Findings, findTrackOverPad(tracks, pads)...)
 	rep.Findings = append(rep.Findings, findViaIssues(tracks, vias)...)
 	rep.Findings = append(rep.Findings, findWidthMismatch(tracks, pads)...)
 	rep.Findings = append(rep.Findings, findDuplicateSegments(tracks)...)
 	rep.Findings = append(rep.Findings, findParallelCoupling(tracks, couplingW)...)
+	rep.Findings = append(rep.Findings, findSilkscreenFlipped(silk)...)
 
 	for _, f := range rep.Findings {
 		switch f.Type {
@@ -141,6 +183,10 @@ func analyzePcbCheck(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, coupling
 			rep.Summary.DanglingEnds++
 		case "acute-angle":
 			rep.Summary.AcuteAngles++
+		case "non-orthogonal":
+			rep.Summary.NonOrthogonal++
+		case "track-over-pad":
+			rep.Summary.TrackOverPad++
 		case "overlapping-via":
 			rep.Summary.OverlappingVias++
 		case "single-layer-via":
@@ -151,8 +197,14 @@ func analyzePcbCheck(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, coupling
 			rep.Summary.DuplicateSegments++
 		case "parallel-coupling":
 			rep.Summary.ParallelCoupling++
+		case "silkscreen-flipped":
+			rep.Summary.SilkscreenFlipped++
 		}
-		if f.Level == "WARN" || f.Level == "ERROR" {
+		switch f.Level {
+		case "ERROR":
+			rep.Summary.Errors++
+			rep.Summary.Warnings++
+		case "WARN":
 			rep.Summary.Warnings++
 		}
 	}
@@ -222,10 +274,10 @@ func findAcuteAngles(tracks []pcbTrack) []pcbCheckFinding {
 		id     string
 	}
 	type vtx struct {
-		net    string
-		layer  int
-		x, y   float64
-		segs   []inc
+		net   string
+		layer int
+		x, y  float64
+		segs  []inc
 	}
 	// bucket incident segment directions by net|layer|point (0.01 mil grid). The
 	// key is only an identity handle — metadata lives on the vtx so we never parse
@@ -283,7 +335,78 @@ func findAcuteAngles(tracks []pcbTrack) []pcbCheckFinding {
 	return out
 }
 
-// ── R3: via issues — stacked/redundant + pointless single-layer ─────────────
+// ── R3: non-orthogonal (free-angle) trace ───────────────────────────────────
+// Good routing runs on the 45° grid — segments at 0/45/90/135°. A track at an
+// arbitrary angle (e.g. a lazy pad-to-pad diagonal) is a free-angle route: harder
+// to inspect, and often a sign the router/hand-route skipped a proper corner. We
+// flag any single segment whose heading is >1° off the nearest multiple of 45°.
+func findNonOrthogonal(tracks []pcbTrack) []pcbCheckFinding {
+	var out []pcbCheckFinding
+	for _, t := range tracks {
+		ang := math.Atan2(t.Y2-t.Y1, t.X2-t.X1) * 180 / math.Pi
+		if ang < 0 {
+			ang += 180 // heading is mod 180 (a segment has no direction)
+		}
+		r := math.Mod(ang, 45) // distance to nearest 45° multiple
+		off := math.Min(r, 45-r)
+		if off > pcbOrthoTolDeg {
+			out = append(out, pcbCheckFinding{
+				Type: "non-orthogonal", Level: "WARN", Net: t.Net, Layer: t.Layer,
+				Primitives: []string{t.ID}, AngleDeg: round2(ang),
+				At:      &pcbXY{round2((t.X1 + t.X2) / 2), round2((t.Y1 + t.Y2) / 2)},
+				Message: fmt.Sprintf("trace runs at %.1f° — not on the 0/45/90° grid (free-angle routing)", ang),
+			})
+		}
+	}
+	return out
+}
+
+// ── R4: track-over-pad (crossing a pad it doesn't terminate on) ──────────────
+// A track whose body passes directly over a pad center that is NOT one of its own
+// endpoints. On the SAME copper layer this is either a hard short (the pad is on a
+// different net) or sloppy routing (same net — the track should have terminated on
+// the pad, not run through it). Different-layer pads are ignored (a top track over
+// a bottom SMD pad is fine); through-hole cross-layer shorts are a known blind spot
+// (pad layer is reported as a single side here).
+func findTrackOverPad(tracks []pcbTrack, pads []pcbPadP) []pcbCheckFinding {
+	var out []pcbCheckFinding
+	for _, t := range tracks {
+		for _, p := range pads {
+			if p.Layer != t.Layer {
+				continue
+			}
+			// pad is an endpoint of this track → legitimate termination, skip.
+			if math.Hypot(p.X-t.X1, p.Y-t.Y1) <= pcbCoincEps || math.Hypot(p.X-t.X2, p.Y-t.Y2) <= pcbCoincEps {
+				continue
+			}
+			if segPtDist(p.X, p.Y, t.X1, t.Y1, t.X2, t.Y2) > pcbOverPadEps {
+				continue
+			}
+			padRef := p.Designator
+			if p.Number != "" {
+				padRef += "." + p.Number
+			}
+			if p.Net != t.Net {
+				out = append(out, pcbCheckFinding{
+					Type: "track-over-pad", Level: "ERROR", Net: t.Net, Layer: t.Layer,
+					Designator: p.Designator, Primitives: []string{t.ID},
+					At:      &pcbXY{round2(p.X), round2(p.Y)},
+					Message: fmt.Sprintf("track (net %s) crosses over pad %s (net %s) on the same layer — short circuit", t.Net, padRef, p.Net),
+				})
+			} else {
+				out = append(out, pcbCheckFinding{
+					Type: "track-over-pad", Level: "WARN", Net: t.Net, Layer: t.Layer,
+					Designator: p.Designator, Primitives: []string{t.ID},
+					At:      &pcbXY{round2(p.X), round2(p.Y)},
+					Message: fmt.Sprintf("track passes through same-net pad %s instead of terminating on it", padRef),
+				})
+			}
+		}
+	}
+	return out
+}
+
+// ── R5: via issues — stacked/redundant + pointless single-layer ─────────────
 func findViaIssues(tracks []pcbTrack, vias []pcbViaP) []pcbCheckFinding {
 	var out []pcbCheckFinding
 
@@ -327,7 +450,7 @@ func findViaIssues(tracks []pcbTrack, vias []pcbViaP) []pcbCheckFinding {
 	return out
 }
 
-// ── R4: 2-pin neck-down asymmetry ───────────────────────────────────────────
+// ── R6: 2-pin neck-down asymmetry ───────────────────────────────────────────
 // A discrete 2-pad part (R/C/L/diode) whose two pads have noticeably different
 // entering track widths — asymmetric neck-down, usually an oversight.
 func findWidthMismatch(tracks []pcbTrack, pads []pcbPadP) []pcbCheckFinding {
@@ -379,7 +502,7 @@ func maxTrackWidthAt(px, py float64, tracks []pcbTrack) (float64, bool) {
 	return best, found
 }
 
-// ── R5: duplicated / overlapping copper ─────────────────────────────────────
+// ── R7: duplicated / overlapping copper ─────────────────────────────────────
 // Two same-net, same-layer collinear segments whose overlap exceeds a tolerance
 // — redundant double copper (a router artifact), mergeable.
 func findDuplicateSegments(tracks []pcbTrack) []pcbCheckFinding {
@@ -430,7 +553,7 @@ func collinearOverlap(a, b pcbTrack) (float64, bool) {
 	return hi - lo, true
 }
 
-// ── R6: 3W parallel-coupling ────────────────────────────────────────────────
+// ── R8: 3W parallel-coupling ────────────────────────────────────────────────
 // Two DIFFERENT-net, same-layer segments running near-parallel with a
 // center-to-center gap below couplingW×maxWidth, over a meaningful overlap, are
 // a crosstalk / manufacturing-spacing risk (the classic 3W rule). Same-net pairs
@@ -464,6 +587,73 @@ func findParallelCoupling(tracks []pcbTrack, couplingW float64) []pcbCheckFindin
 						gap, ovlp, need, couplingW),
 				})
 			}
+		}
+	}
+	return out
+}
+
+// ── R9: silkscreen orientation (flipped / back-side text) ───────────────────
+// A silkscreen text is "放反" (placed reversed) when it can't be read from the side
+// it belongs to. Two independent failure modes, both ERROR (a mirrored designator
+// is a real, ship-stopping artwork defect):
+//
+//  1. side mismatch — a component's designator sits on the OPPOSITE silk layer from
+//     its footprint (component on TOP but its designator on BOTTOM_SILKSCREEN, or
+//     vice-versa). The label ends up on the wrong side of the board.
+//  2. mirror mismatch — the text's mirror flag doesn't match its silk layer. Top
+//     silk must read un-mirrored; bottom silk must be mirrored (so it reads
+//     correctly when the board is viewed from the bottom). Either way wrong = the
+//     text renders backwards.
+//
+// Free strings (no parent component) only get the mirror check.
+func findSilkscreenFlipped(silk []pcbSilkText) []pcbCheckFinding {
+	sideName := func(l int) string {
+		switch l {
+		case pcbSideTop, silkTopLayer:
+			return "top"
+		case pcbSideBottom, silkBottomLayer:
+			return "bottom"
+		}
+		return "?"
+	}
+	var out []pcbCheckFinding
+	for _, s := range silk {
+		if s.Layer != silkTopLayer && s.Layer != silkBottomLayer {
+			continue // not a silkscreen text
+		}
+		label := s.Text
+		if label == "" {
+			label = s.ID
+		}
+		// 1. designator on the wrong silk side vs its component.
+		if s.Kind == "attribute" && (s.CompLayer == pcbSideTop || s.CompLayer == pcbSideBottom) {
+			wantSilk := silkTopLayer
+			if s.CompLayer == pcbSideBottom {
+				wantSilk = silkBottomLayer
+			}
+			if s.Layer != wantSilk {
+				out = append(out, pcbCheckFinding{
+					Type: "silkscreen-flipped", Level: "ERROR", Layer: s.Layer, Designator: label,
+					Primitives: []string{s.ID}, At: &pcbXY{round2(s.X), round2(s.Y)},
+					Message: fmt.Sprintf("designator '%s' is on the %s silkscreen but its component sits on the %s side — silkscreen flipped to the wrong side",
+						label, sideName(s.Layer), sideName(s.CompLayer)),
+				})
+				continue
+			}
+		}
+		// 2. mirror flag doesn't match the silk layer → text reads backwards.
+		wantMirror := s.Layer == silkBottomLayer // bottom silk must be mirrored; top must not
+		if s.Mirror != wantMirror {
+			state := "mirrored"
+			if !s.Mirror {
+				state = "un-mirrored"
+			}
+			out = append(out, pcbCheckFinding{
+				Type: "silkscreen-flipped", Level: "ERROR", Layer: s.Layer, Designator: label,
+				Primitives: []string{s.ID}, At: &pcbXY{round2(s.X), round2(s.Y)},
+				Message: fmt.Sprintf("silkscreen text '%s' on the %s silk is %s — it reads backwards (放反)",
+					label, sideName(s.Layer), state),
+			})
 		}
 	}
 	return out
@@ -582,8 +772,12 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 	if err != nil {
 		return fmt.Errorf("fetch PCB vias: %w", err)
 	}
+	silk, err := fetchPcbSilk(cfg, window)
+	if err != nil {
+		return fmt.Errorf("fetch PCB silkscreen: %w", err)
+	}
 
-	rep := analyzePcbCheck(pads, tracks, vias, couplingW)
+	rep := analyzePcbCheckFull(pads, tracks, vias, silk, couplingW)
 
 	if asJSON {
 		enc := json.NewEncoder(stdout)
@@ -679,6 +873,35 @@ func fetchPcbVias(cfg *appConfig, window string) ([]pcbViaP, error) {
 	return vias, nil
 }
 
+func fetchPcbSilk(cfg *appConfig, window string) ([]pcbSilkText, error) {
+	res, err := requestAction(cfg, "pcb.silk.list", window, nil)
+	if err != nil {
+		return nil, err
+	}
+	rawTexts, _ := mnav(res.Result, "texts").([]any)
+	var silk []pcbSilkText
+	for _, rt := range rawTexts {
+		tm, ok := rt.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := tm["primitiveId"].(string)
+		kind, _ := tm["kind"].(string)
+		text, _ := tm["text"].(string)
+		layer, _ := asFloatOK(tm["layer"])
+		mirror, _ := tm["mirror"].(bool)
+		compID, _ := tm["componentId"].(string)
+		compLayer, _ := asFloatOK(tm["componentLayer"])
+		x, _ := asFloatOK(tm["x"])
+		y, _ := asFloatOK(tm["y"])
+		silk = append(silk, pcbSilkText{
+			ID: id, Kind: kind, Text: text, Layer: int(layer), Mirror: mirror,
+			CompID: compID, CompLayer: int(compLayer), X: x, Y: y,
+		})
+	}
+	return silk, nil
+}
+
 func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 	s := rep.Summary
 	fmt.Fprintf(w, "PCB check (DFM): %d track(s), %d via(s), %d pad(s) — %d issue(s)\n",
@@ -687,8 +910,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  dangling=%d acute=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d\n",
-		s.DanglingEnds, s.AcuteAngles, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling)
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d\n",
+		s.Errors, s.Warnings-s.Errors,
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {

@@ -183,6 +183,84 @@ func TestPcbCheck_CouplingSpacedOK(t *testing.T) {
 	}
 }
 
+// A single free-angle diagonal trace (63°) is non-orthogonal; a 45° trace is not.
+func TestPcbCheck_NonOrthogonal(t *testing.T) {
+	pads := []pcbPadP{
+		{Designator: "A", Number: "1", Net: "N1", Layer: 1, X: 0, Y: 0},
+		{Designator: "B", Number: "1", Net: "N1", Layer: 1, X: 50, Y: 98},
+	}
+	diag := []pcbTrack{{ID: "t1", Net: "N1", Layer: 1, X1: 0, Y1: 0, X2: 50, Y2: 98, Width: 10}}
+	if got := countType(analyzePcbCheck(pads, diag, nil, 0), "non-orthogonal"); got != 1 {
+		t.Fatalf("non-orthogonal(63°) = %d, want 1", got)
+	}
+	ok45 := []pcbTrack{{ID: "t1", Net: "N1", Layer: 1, X1: 0, Y1: 0, X2: 100, Y2: 100, Width: 10}}
+	if got := countType(analyzePcbCheck(nil, ok45, nil, 0), "non-orthogonal"); got != 0 {
+		t.Fatalf("non-orthogonal(45°) = %d, want 0 (45° is on-grid)", got)
+	}
+}
+
+// A track whose body runs over a foreign-net pad center (not an endpoint) on the
+// same layer is a short (ERROR); over a same-net pad it's a WARN. A pad on the
+// other layer is ignored.
+func TestPcbCheck_TrackOverPad(t *testing.T) {
+	// t1 spans x[0..200] on layer 1; pad M at (100,0) net OTHER sits mid-body.
+	pads := []pcbPadP{
+		{Designator: "U1", Number: "1", Net: "N1", Layer: 1, X: 0, Y: 0},
+		{Designator: "U1", Number: "2", Net: "N1", Layer: 1, X: 200, Y: 0},
+		{Designator: "M1", Number: "1", Net: "OTHER", Layer: 1, X: 100, Y: 0},
+	}
+	tracks := []pcbTrack{{ID: "t1", Net: "N1", Layer: 1, X1: 0, Y1: 0, X2: 200, Y2: 0, Width: 10}}
+	rep := analyzePcbCheck(pads, tracks, nil, 0)
+	if got := countType(rep, "track-over-pad"); got != 1 {
+		t.Fatalf("track-over-pad = %d, want 1 (findings: %+v)", got, rep.Findings)
+	}
+	if rep.Summary.Errors != 1 {
+		t.Fatalf("errors = %d, want 1 (cross-net short)", rep.Summary.Errors)
+	}
+	// Same-net mid-body pad → WARN, not ERROR.
+	pads[2].Net = "N1"
+	rep = analyzePcbCheck(pads, tracks, nil, 0)
+	if got := countType(rep, "track-over-pad"); got != 1 || rep.Summary.Errors != 0 {
+		t.Fatalf("same-net over-pad: type=%d errors=%d, want 1/0", got, rep.Summary.Errors)
+	}
+	// Foreign pad on the OTHER layer → ignored.
+	pads[2].Net, pads[2].Layer = "OTHER", 2
+	if got := countType(analyzePcbCheck(pads, tracks, nil, 0), "track-over-pad"); got != 0 {
+		t.Fatalf("other-layer over-pad = %d, want 0", got)
+	}
+}
+
+// Silkscreen orientation: a top-side designator on the bottom silk (side
+// mismatch), a top-silk label that is mirrored (reads backwards), and a correct
+// bottom-side part (bottom silk + mirrored) that must NOT trip.
+func TestPcbCheck_SilkscreenFlipped(t *testing.T) {
+	// R1 on TOP but its designator got flipped onto the bottom silk → side mismatch.
+	sideMismatch := []pcbSilkText{
+		{ID: "a1", Kind: "attribute", Text: "R1", Layer: 4, Mirror: true, CompID: "c1", CompLayer: 1},
+	}
+	if got := countType(analyzePcbCheckFull(nil, nil, nil, sideMismatch, 0), "silkscreen-flipped"); got != 1 {
+		t.Fatalf("side-mismatch = %d, want 1", got)
+	}
+	// Free label on TOP silk but mirrored → reads backwards.
+	backwards := []pcbSilkText{
+		{ID: "s1", Kind: "string", Text: "REV A", Layer: 3, Mirror: true},
+	}
+	if got := countType(analyzePcbCheckFull(nil, nil, nil, backwards, 0), "silkscreen-flipped"); got != 1 {
+		t.Fatalf("mirrored-top = %d, want 1", got)
+	}
+	// Correct states: top part / top silk / un-mirrored, AND a bottom part / bottom
+	// silk / mirrored. Neither is flipped.
+	ok := []pcbSilkText{
+		{ID: "a1", Kind: "attribute", Text: "U1", Layer: 3, Mirror: false, CompID: "c1", CompLayer: 1},
+		{ID: "a2", Kind: "attribute", Text: "U2", Layer: 4, Mirror: true, CompID: "c2", CompLayer: 2},
+		{ID: "s1", Kind: "string", Text: "LOGO", Layer: 3, Mirror: false},
+	}
+	rep := analyzePcbCheckFull(nil, nil, nil, ok, 0)
+	if got := countType(rep, "silkscreen-flipped"); got != 0 {
+		t.Fatalf("correct silk = %d, want 0 (findings: %+v)", got, rep.Findings)
+	}
+}
+
 // A well-formed 2-pin routed net: every end anchored, 90° corner, equal widths.
 func TestPcbCheck_CleanBoard(t *testing.T) {
 	pads := []pcbPadP{

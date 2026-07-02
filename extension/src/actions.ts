@@ -2626,6 +2626,83 @@ const pcbSilkAlign: Handler = async (payload) => {
 	return { result: { aligned: aligned.length, skipped: skipped.length, unresolvedCollisions: collisions, side, offset, details: aligned, skippedDetails: skipped } };
 };
 
+// pcb.silk.list — enumerate every SILKSCREEN TEXT primitive with its layer +
+// mirror flag, so the Go-side `pcb check` can flag flipped/back-side silkscreen
+// (放反). Two sources: component-bound designator/value ATTRIBUTES
+// (pcb_PrimitiveAttribute) and free STRINGS (pcb_PrimitiveString). Silk layers
+// only: TOP_SILKSCREEN=3 / BOTTOM_SILKSCREEN=4. For attributes we also resolve the
+// parent component's side (TOP=1 / BOTTOM=2) so the check can verify a designator
+// sits on the same side as its footprint.
+const PCB_TOP_SILK = 3, PCB_BOTTOM_SILK = 4;
+const pcbSilkList: Handler = async () => {
+	const isSilk = (l: number) => l === PCB_TOP_SILK || l === PCB_BOTTOM_SILK;
+
+	// component primitiveId → side layer (TOP=1 / BOTTOM=2), for attribute parents.
+	const compLayer = new Map<string, number>();
+	try {
+		for (const c of (await eda.pcb_PrimitiveComponent.getAll()) ?? []) {
+			compLayer.set(c.getState_PrimitiveId(), Number(c.getState_Layer()));
+		}
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to list components for silk-list.');
+	}
+
+	const texts: Array<Record<string, unknown>> = [];
+
+	// 1. designator / value attributes (component-bound silk text)
+	try {
+		for (const a of (await eda.pcb_PrimitiveAttribute.getAll()) ?? []) {
+			const layer = Number(a.getState_Layer());
+			if (!isSilk(layer)) {
+				continue;
+			}
+			const pid = a.getState_ParentPrimitiveId?.() ?? '';
+			texts.push({
+				primitiveId: a.getState_PrimitiveId(),
+				kind: 'attribute',
+				text: a.getState_Value?.() ?? '',
+				key: a.getState_Key?.() ?? '',
+				layer,
+				mirror: !!a.getState_Mirror?.(),
+				componentId: pid,
+				componentLayer: compLayer.get(pid) ?? 0,
+				x: a.getState_X() ?? 0,
+				y: a.getState_Y() ?? 0,
+			});
+		}
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to enumerate silkscreen attributes.');
+	}
+
+	// 2. free silk strings (board labels, logos, notes)
+	try {
+		for (const s of (await eda.pcb_PrimitiveString.getAll()) ?? []) {
+			const layer = Number(s.getState_Layer());
+			if (!isSilk(layer)) {
+				continue;
+			}
+			texts.push({
+				primitiveId: s.getState_PrimitiveId(),
+				kind: 'string',
+				text: s.getState_Text?.() ?? '',
+				layer,
+				mirror: !!s.getState_Mirror?.(),
+				componentId: '',
+				componentLayer: 0,
+				x: s.getState_X() ?? 0,
+				y: s.getState_Y() ?? 0,
+			});
+		}
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to enumerate silkscreen strings.');
+	}
+
+	return { result: { texts, count: texts.length } };
+};
+
 /**
  * List all nets on the active PCB. `IPCB_NetInfo` ({ net, color, length }) is a
  * plain data object and serializes directly.
@@ -4506,6 +4583,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.layers.list': pcbLayersList,
 	'pcb.stackup.set': pcbStackupSet,
 	'pcb.silk.align': pcbSilkAlign,
+	'pcb.silk.list': pcbSilkList,
 	'pcb.nets.list': pcbNetsList,
 	'pcb.report': pcbReport,
 	'pcb.board.info': pcbBoardInfo,
