@@ -17,7 +17,7 @@
 | Extension | 做什么 | 覆盖 | 备注 |
 |---|---|---|---|
 | **dfm-check** | | | |
-| PCB自动化工具 (PCB Automatic Tool) | 模块化自动布局+短线布线+fanout+局部铺铜+~10 条 DFM 审查 | 🟡partial | 布局/短线/铺铜三腿=我们的 `auto-place`/`route-short`/`pour`;它本就是我们 survey §8.5 的可行性证据。缺:~6 条 DFM 检查 + fanout-with-vias |
+| PCB自动化工具 (PCB Automatic Tool) | 模块化自动布局+短线布线+fanout+局部铺铜+~10 条 DFM 审查 | 🟡partial | 布局/短线/铺铜三腿=我们的 `auto-place`/`route-short`/`pour`;它本就是我们 survey §8.5 的可行性证据。**DFM 检查已补**(`pcb check`:锐角/悬空线头/叠孔/单层过孔/两脚线宽/冗余共线段,task #33,真机验证)。仅缺 fanout-with-vias |
 | **analysis-report** | | | |
 | eext-export-design-report | 只读 PCB 统计报表 (net 长度/net-class/差分/等长/pad 坐标) CSV | 🟡partial | `pcb report` 已做 4/6 (还多算 skew/spread);缺 pad-pair groups + 逐 pad 坐标 dump。mm/CSV 只是格式 |
 | eext-netlist-explorer | netlist 表格+统计仪表盘+拓扑图+BOM (交互 UI) | ✅full | 数据源 `getNetlistFile()` 与我们 `sch read`/`check`/`netlist` 完全同源;剩下全是 web 可视化,不吸 |
@@ -51,7 +51,7 @@
 ### High
 | # | 来源 | 吸什么 | eda.* API | 难度 |
 |---|---|---|---|---|
-| 1 | PCB自动化工具 | **DFM 审查补全** (~6 条纯读几何检查):90°/锐角走线、冗余/重叠过孔、悬空单层过孔、两脚器件线宽一致、3W 时钟间距、电源网铜层覆盖、阻焊窗、冗余线段、pad 圆角角度。直接扩我们薄的 dfm-check 面,mirror `sch check` 哲学 | `pcb_Primitive{Line,Via,Pad,Component,Attribute}.getAll` (全只读) | 中 (读几何易) |
+| 1 | PCB自动化工具 | ✅ **DFM 审查补全 (task #33, DONE)** — `pcb check` 已实现:锐角走线、叠孔、悬空单层过孔、两脚线宽一致、悬空线头、冗余共线段(纯 Go 读 line/via/pad,mirror `sch check`,真机 ceshi 验证)。**剩余候选**:3W 时钟间距、电源网铜层覆盖、阻焊窗——下一轮可加进 `pcb check` | `pcb_Primitive{Line,Via,Pad,Component}.getAll` (全只读) | 中 (读几何易) |
 | 1b | PCB自动化工具 | **pin/module fanout-with-vias** (密集引脚逃逸到过孔),证明可用启发式路径 | `pcb_PrimitiveLine.create` + `pcb_PrimitiveVia.create` | 中 |
 | 2 | eext-balance-copper | **net-less 均衡铺铜/thieving** (`pcb balance`/`pcb thieving`):障碍收集器+每类型 DRC clearance 引擎+FILL source-injection;**同路径顺带破 teardrop 墙** | `sys_FileManager.getDocumentSource/setDocumentSource` (载重), `pcb_Drc.check` | 中-高 (tiling+注入) |
 

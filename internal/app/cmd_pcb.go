@@ -1785,6 +1785,46 @@ live track-to-pad clearance. Exits non-zero on any overlap/off-board (gate-able)
 		pcb.AddCommand(c)
 	}
 
+	// ── check (DFM 审查:制造性/可靠性几何隐患) ─────────────────────────────
+	// PCB sibling of `sch check`. Native `pcb drc` catches rule-clearance; this
+	// reconstructs the DFM hazards it doesn't — acute (acid-trap) angles, dangling
+	// copper stubs, stacked / pointless single-layer vias, 2-pin neck-down
+	// asymmetry, duplicated overlapping copper — purely from placed primitives
+	// (tracks + vias + pads). Read-only. Core in pcb_check.go.
+	{
+		var strict, asJSON bool
+		c := &cobra.Command{
+			Use:   "check",
+			Short: "DFM audit: acute angles / dangling copper / bad vias / neck-down (reconstructed, read-only)",
+			Long: `Reconstructed DFM (design-for-manufacture) audit — the manufacturability and
+reliability hazards the native 'pcb drc' does NOT flag. Computed purely from the
+placed copper (pcb.line.list + pcb.via.list + pcb.components.list --include-pads),
+so it needs no extra setup and never mutates the board.
+
+Rules:
+  • dangling-end     — a track end anchored to no pad/via/track  → WARN
+  • acute-angle      — two same-net segments bend <90° (acid trap) → WARN
+  • overlapping-via  — two vias stacked on the same spot          → WARN
+  • single-layer-via — a signal via that changes no layer         → WARN
+  • width-mismatch   — a 2-pin part with asymmetric neck-down     → INFO
+  • duplicate-segment— collinear overlapping (redundant) copper   → WARN
+
+Complements 'pcb drc' (rule clearance) and 'pcb layout-lint' (placement/routability).
+Exit code: 0 by default (informational). --strict exits non-zero on any WARN/ERROR
+so it can gate the flow. Arcs are out of scope for v1 (line/via/pad only).`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb check
+  easyeda pcb check --json
+  easyeda pcb check --strict`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runPcbCheck(cfg, window, strict, asJSON, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&strict, "strict", false, "exit non-zero when there are issues (gate mode)")
+		c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
+		pcb.AddCommand(c)
+	}
+
 	// ── stackup (层叠:层数 + 内层类型) ──────────────────────────────────────
 	// pcb.stackup.set — set copper layer count + inner-layer types (signal/plane).
 	// The foundation for multi-layer designs: a PLANE inner layer gives GND/power a
