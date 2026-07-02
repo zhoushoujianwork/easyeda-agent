@@ -6,6 +6,17 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-07-02
+### Changed
+- **`pcb.silk.list`** now also emits each text's **`reverse`** (`getState_Reverse` —
+  left/right reversed reading) and **`rotation`** (`getState_Rotation`, degrees).
+  `getState_Mirror` alone missed real "放反" cases: a designator rotated 180°
+  (upside-down) or 90/270° (sideways) has `mirror=false` but doesn't read upright.
+  The daemon's `pcb check` **silkscreen-flipped** rule now flags a reference
+  designator (`key == "Designator"`) whose orientation isn't upright, and treats
+  `mirror OR reverse` as "reads backwards". (`getState_HorizonMirror` does not exist
+  on text primitives — confirmed via runtime probe.)
+
 ## [0.6.1] - 2026-07-02
 ### Added
 - **`pcb.silk.list`** — read-only enumeration of every SILKSCREEN TEXT primitive:

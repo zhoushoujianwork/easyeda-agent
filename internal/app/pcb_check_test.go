@@ -361,6 +361,32 @@ func TestPcbCheck_Fix7_DuplicateOrderIndependent(t *testing.T) {
 	}
 }
 
+// Silk orientation: a reference designator (位号) not reading upright (0°) — 180°
+// upside-down or 90/270° sideways — is flagged; upright + non-designator ignored.
+func TestPcbCheck_SilkDesignatorOrientation(t *testing.T) {
+	silk := []pcbSilkText{
+		{ID: "s1", Kind: "attribute", Key: "Designator", Text: "C1", Layer: silkTopLayer, Rotation: 180},   // upside-down
+		{ID: "s2", Kind: "attribute", Key: "Designator", Text: "LED1", Layer: silkTopLayer, Rotation: 450}, // →90 sideways
+		{ID: "s3", Kind: "attribute", Key: "Designator", Text: "U1", Layer: silkTopLayer, Rotation: 0},     // upright OK
+		{ID: "s4", Kind: "attribute", Key: "Footprint", Text: "C0402", Layer: silkTopLayer, Rotation: 180}, // not a RefDes → ignore
+	}
+	rep := analyzePcbCheckFull(nil, nil, nil, silk, 0)
+	if got := countType(rep, "silkscreen-flipped"); got != 2 {
+		t.Fatalf("silk orientation = %d, want 2 (C1 180° + LED1 90°; upright + footprint ignored): %+v", got, rep.Findings)
+	}
+}
+
+// A mirrored/reversed top-silk text reads backwards → ERROR.
+func TestPcbCheck_SilkReversed(t *testing.T) {
+	silk := []pcbSilkText{
+		{ID: "s1", Kind: "attribute", Key: "Designator", Text: "R9", Layer: silkTopLayer, Reverse: true},
+	}
+	rep := analyzePcbCheckFull(nil, nil, nil, silk, 0)
+	if got := countType(rep, "silkscreen-flipped"); got != 1 {
+		t.Fatalf("reversed top-silk = %d, want 1 (reads backwards)", got)
+	}
+}
+
 // FIX #8: diverging (wedge) traces that nearly touch at one end must be flagged —
 // the closest approach over the overlap is the coupling risk, not the midpoint.
 func TestPcbCheck_Fix8_CouplingDivergingWedge(t *testing.T) {

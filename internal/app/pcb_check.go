@@ -81,9 +81,12 @@ type pcbPadP struct {
 type pcbSilkText struct {
 	ID        string
 	Kind      string // "attribute" | "string"
+	Key       string // attribute key: "Designator" | "Footprint" | "Device"
 	Text      string
 	Layer     int
 	Mirror    bool
+	Reverse   bool    // reversed reading (left-right flipped) — reads backwards
+	Rotation  float64 // degrees; a designator should read upright (0°)
 	CompID    string
 	CompLayer int
 	X, Y      float64
@@ -672,11 +675,14 @@ func findSilkscreenFlipped(silk []pcbSilkText) []pcbCheckFinding {
 				continue
 			}
 		}
-		// 2. mirror flag doesn't match the silk layer → text reads backwards.
-		wantMirror := s.Layer == silkBottomLayer // bottom silk must be mirrored; top must not
-		if s.Mirror != wantMirror {
-			state := "mirrored"
-			if !s.Mirror {
+		// 2. mirror/reverse doesn't match the silk layer → text reads backwards.
+		//    Top silk must read un-flipped; bottom silk must be flipped (so it reads
+		//    right viewed from the bottom). Either Mirror or Reverse = flipped.
+		flipped := s.Mirror || s.Reverse
+		wantFlipped := s.Layer == silkBottomLayer
+		if flipped != wantFlipped {
+			state := "mirrored/reversed"
+			if !flipped {
 				state = "un-mirrored"
 			}
 			out = append(out, pcbCheckFinding{
@@ -685,9 +691,36 @@ func findSilkscreenFlipped(silk []pcbSilkText) []pcbCheckFinding {
 				Message: fmt.Sprintf("silkscreen text '%s' on the %s silk is %s — it reads backwards (放反)",
 					label, sideName(s.Layer), state),
 			})
+			continue
+		}
+		// 3. designator ORIENTATION: a reference designator (位号) should read UPRIGHT
+		//    (0°). Rotated = upside-down (180°) or sideways (90/270°) — awkward to read
+		//    on the assembled board. WARN (readable, but non-standard); designators only.
+		if s.Kind == "attribute" && s.Key == "Designator" {
+			if rot := normDeg(s.Rotation); rot != 0 {
+				ori := "sideways (侧向)"
+				if rot == 180 {
+					ori = "upside-down (上下颠倒)"
+				}
+				out = append(out, pcbCheckFinding{
+					Type: "silkscreen-flipped", Level: "WARN", Layer: s.Layer, Designator: label,
+					Primitives: []string{s.ID}, At: &pcbXY{round2(s.X), round2(s.Y)},
+					Message: fmt.Sprintf("designator '%s' is rotated %g° (%s) — not upright (放反/朝向不正)", label, rot, ori),
+				})
+			}
 		}
 	}
 	return out
+}
+
+// normDeg normalizes an angle to [0,360), rounded to a whole degree (kills float
+// noise like 449.99 → 90).
+func normDeg(d float64) float64 {
+	r := math.Mod(math.Round(d), 360)
+	if r < 0 {
+		r += 360
+	}
+	return r
 }
 
 // parallelGap reports, for two near-parallel segments, their center-to-center
@@ -931,16 +964,19 @@ func fetchPcbSilk(cfg *appConfig, window string) ([]pcbSilkText, error) {
 		}
 		id, _ := tm["primitiveId"].(string)
 		kind, _ := tm["kind"].(string)
+		key, _ := tm["key"].(string)
 		text, _ := tm["text"].(string)
 		layer, _ := asFloatOK(tm["layer"])
 		mirror, _ := tm["mirror"].(bool)
+		reverse, _ := tm["reverse"].(bool)
+		rotation, _ := asFloatOK(tm["rotation"])
 		compID, _ := tm["componentId"].(string)
 		compLayer, _ := asFloatOK(tm["componentLayer"])
 		x, _ := asFloatOK(tm["x"])
 		y, _ := asFloatOK(tm["y"])
 		silk = append(silk, pcbSilkText{
-			ID: id, Kind: kind, Text: text, Layer: int(layer), Mirror: mirror,
-			CompID: compID, CompLayer: int(compLayer), X: x, Y: y,
+			ID: id, Kind: kind, Key: key, Text: text, Layer: int(layer), Mirror: mirror,
+			Reverse: reverse, Rotation: rotation, CompID: compID, CompLayer: int(compLayer), X: x, Y: y,
 		})
 	}
 	return silk, nil
