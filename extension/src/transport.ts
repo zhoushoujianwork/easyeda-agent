@@ -231,23 +231,20 @@ async function scanAndConnect(): Promise<void> {
 		retryCount++;
 		// Daemon is genuinely gone — let the next successful connect announce again.
 		connectionAnnounced = false;
-		if (retryCount <= MAX_RETRIES) {
+		// Toast ONCE per outage (on the first failed scan), then retry SILENTLY.
+		// Previously every fast retry toasted "(n/MAX)" every RETRY_DELAY_MS — at a
+		// 3s cadence the toasts stacked and obscured the UI ("one starts before the
+		// last ends"). The retry cadence is unchanged (fast recovery); only the
+		// notification is deduped to a single background-retry notice per outage. The
+		// eventual reconnect announces once via connectionAnnounced.
+		if (retryCount === 1) {
 			eda.sys_Message.showToastMessage(
-				`${eda.sys_I18n.text('Daemon not found, retrying...')} (${retryCount}/${MAX_RETRIES})`,
+				eda.sys_I18n.text('Daemon not found — retrying in the background; just start the daemon.'),
 			);
-			scheduleRetry(sessionId, RETRY_DELAY_MS);
 		}
-		else {
-			// Don't strand the user: keep scanning forever on a quiet slow poll so a
-			// daemon started later auto-connects. Announce the switch once, then go
-			// silent (no toast spam every 10s).
-			if (retryCount === MAX_RETRIES + 1) {
-				eda.sys_Message.showToastMessage(
-					eda.sys_I18n.text('Daemon not found — will keep retrying in the background; just start the daemon.'),
-				);
-			}
-			scheduleRetry(sessionId, SLOW_RETRY_DELAY_MS);
-		}
+		// Fast retries first (quick recovery from a daemon restart), then fall back to
+		// a quiet slow poll so a daemon started much later still auto-connects.
+		scheduleRetry(sessionId, retryCount <= MAX_RETRIES ? RETRY_DELAY_MS : SLOW_RETRY_DELAY_MS);
 	}
 	finally {
 		if (isConnectionSessionActive(sessionId)) {

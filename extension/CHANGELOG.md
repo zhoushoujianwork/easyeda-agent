@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-07-02
+### Fixed
+- **Reconnect toast spam / UI obscuring.** During a daemon outage the connector
+  toasted "Daemon not found, retrying (n/5)" on EVERY fast retry (every 3s), so the
+  toasts stacked and covered UI options ("one starts before the last ends"). Now it
+  toasts **once per outage** (on the first failed scan) and retries **silently** in
+  the background; the retry cadence (fast 3s → slow 10s) and reconnect speed are
+  unchanged, and the eventual reconnect still announces once.
+
 ## [0.6.4] - 2026-07-02
 ### Added
 - **`pcb.silk.add`** — create a FREE silkscreen STRING (board marking / credit / note)
