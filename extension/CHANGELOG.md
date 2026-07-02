@@ -6,6 +6,19 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-02
+### Added
+- **`pcb.silk.list`** — read-only enumeration of every SILKSCREEN TEXT primitive:
+  component designator/value ATTRIBUTES (`pcb_PrimitiveAttribute`) plus free STRINGS
+  (`pcb_PrimitiveString`), each with its silk layer (3=TOP_SILKSCREEN /
+  4=BOTTOM_SILKSCREEN), mirror flag, text, position, and (for attributes) the parent
+  component's id + side (TOP/BOTTOM). Feeds the daemon's `pcb check`
+  **silkscreen-flipped** rule — top silk must read un-mirrored, bottom silk must be
+  mirrored, and a designator's silk side must match its component's side; a mismatch
+  is a flipped/back-side silkscreen (丝印放反). The PCB component primitive itself has
+  no `getState_Mirror`, so orientation is read from the text primitives, not the
+  component.
+
 ## [0.6.0] - 2026-07-01
 > PCB automation milestone (tasks #21–#32). Connector-side changes below; the bulk
 > of the release is DAEMON-side (Go CLI) PCB automation, summarized under "Daemon".
