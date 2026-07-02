@@ -173,6 +173,16 @@ layer 12, so list/delete via `pcb fill list --layer 12` / `pcb fill delete`.
 > does NOT auto-redraw after API edits and does not render filled copper/cutouts, so a
 > fresh snapshot shows a **stale frame**. Verify slots/fills/pours by **data** (`pcb fill
 > list`, DRC, manufacture export), not screenshot — the snapshot is for component layout only.
+>
+> **Stale-frame detection (issue #31).** `pcb snapshot` now has parity with `sch snapshot`:
+> the result exposes a frame `sha256`, and `--previous-sha256 <sha>` lets the connector
+> detect a byte-identical (stale) frame, force a redraw (ratline recompute + zoom-to-all)
+> and retry once, reporting `stale:true` if it still cannot refresh. **Reliable recording
+> workflow** for user-facing videos/tutorials where the visual artifact is required:
+> 1. `easyeda view region --left … --right … --top … --bottom …`（或 `easyeda view fit`）框住目标视口。
+> 2. `easyeda pcb snapshot --fit=false --previous-sha256 <上一次的 sha256>`。
+> 3. 若结果 `stale:true`，说明画布未刷新 — 告警/失败，不要用该帧。
+> 4. 用 `pcb list` / `pcb drc` / `pcb check` / `pcb layout-lint` 做**权威**正确性校验（截图只作视觉终检）。
 
 > **Routing boundary (load-bearing — see `docs/ecosystem-survey.md` §7):** EasyEDA's
 > interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,

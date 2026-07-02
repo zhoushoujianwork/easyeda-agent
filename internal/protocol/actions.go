@@ -754,9 +754,9 @@ func AllActions() []ActionSpec {
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
-			Description: "Capture the active PCB canvas as a PNG artifact (eda.dmt_EditorControl.getCurrentRenderedAreaImage; fit-to-all by default, pass fit=false to keep viewport). The PCB counterpart to schematic.snapshot. WARNING: EasyEDA may return a STALE frame after API edits — judge layout/DRC by data (pcb list / pcb drc), screenshot for a human eyeball only.",
-			Inputs:      []string{"fit optional (default true)", "tabId optional"},
-			Outputs:     []string{"artifact id", "file path", "fitted", "sha256", "capturedAt"},
+			Description: "Capture the active PCB canvas as a PNG artifact (eda.dmt_EditorControl.getCurrentRenderedAreaImage; fit-to-all by default, pass fit=false to keep viewport). The PCB counterpart to schematic.snapshot. Returns a frame sha256 — pass it back via previousSha256 on the next snapshot and the connector detects a byte-identical (stale) frame, forces a redraw (ratline recompute + zoom-to-all) + retries once, and reports stale=true if it is still identical. WARNING: EasyEDA may return a STALE frame after API edits — judge layout/DRC by data (pcb list / pcb drc), screenshot for a human eyeball only.",
+			Inputs:      []string{"fit optional (default true)", "tabId optional", "previousSha256 optional (enables stale-frame detection + auto-retry)"},
+			Outputs:     []string{"artifact id", "file path", "fitted", "sha256", "stale", "staleRetry", "capturedAt"},
 		},
 		// ─── PCB routing: list + rip-up (iterate/clear copper routing) ────
 		{

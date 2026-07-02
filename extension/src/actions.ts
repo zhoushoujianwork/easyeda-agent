@@ -3658,31 +3658,64 @@ const pcbImportAutoroute: Handler = async (payload) => {
 const pcbSnapshot: Handler = async (payload) => {
 	const tabId = optionalString(payload, 'tabId');
 	const fit = optionalBoolean(payload, 'fit') !== false;
+	// Optional sha256 of the PREVIOUS snapshot (caller threads it back in). When
+	// present we can DETECT a stale frame ourselves (issue #31) instead of only
+	// emitting advisory text: if the viewport changed but the image bytes are
+	// byte-identical, the capture is stale — we force a redraw + retry once.
+	const previousSha = optionalString(payload, 'previousSha256');
 	let fitted = false;
 	if (fit) {
 		try { await eda.dmt_EditorControl.zoomToAllPrimitives(); fitted = true; }
 		catch { /* best-effort */ }
 	}
+	// Let any pending viewport change (a preceding `view region`/`view zoom`, or
+	// the zoomToAllPrimitives above) commit + repaint before we read the frame.
 	await waitForCanvasSettle();
-	let blob;
-	try {
-		blob = await eda.dmt_EditorControl.getCurrentRenderedAreaImage(tabId);
+
+	const capture = async (): Promise<Blob> => {
+		let b;
+		try {
+			b = await eda.dmt_EditorControl.getCurrentRenderedAreaImage(tabId);
+		}
+		catch (err) {
+			throw edaError(err, 'Failed to capture PCB snapshot.');
+		}
+		if (!b) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'PCB snapshot returned no image.');
+		}
+		return b;
+	};
+
+	let blob = await capture();
+	let sha256 = await blobSha256(blob);
+	// Built-in stale detection: if the caller told us the prior frame's sha and we
+	// got the exact same bytes back, the canvas almost certainly didn't repaint —
+	// force a redraw (ratline recompute + zoom-to-all nudge) and recapture once.
+	let staleRetry = false;
+	if (previousSha && sha256 && sha256 === previousSha) {
+		staleRetry = true;
+		// Stronger redraw nudge than schematic's re-settle: a ratline recompute +
+		// re-fit reliably forces EasyEDA to repaint the PCB canvas.
+		try { await eda.pcb_Document.startCalculatingRatline(); }
+		catch { /* best-effort redraw nudge */ }
+		try { await eda.dmt_EditorControl.zoomToAllPrimitives(); }
+		catch { /* best-effort redraw nudge */ }
+		await waitForCanvasSettle();
+		blob = await capture();
+		sha256 = await blobSha256(blob);
 	}
-	catch (err) {
-		throw edaError(err, 'Failed to capture PCB snapshot.');
-	}
-	if (!blob) {
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'PCB snapshot returned no image.');
-	}
-	const sha256 = await blobSha256(blob);
+	const stale = Boolean(previousSha && sha256 && sha256 === previousSha);
+
 	const artifact = await blobToArtifact(blob, 'pcb_snapshot', 'pcb-snapshot.png', 'image/png');
 	return {
 		result: {
 			artifactId: artifact.id,
 			fitted,
 			sha256,
+			stale,
+			staleRetry,
 			capturedAt: new Date().toISOString(),
-			staleHint: 'EasyEDA may not auto-redraw after API edits; judge state by data (pcb list/drc), screenshot for layout only.',
+			staleHint: 'EasyEDA may not auto-redraw after API edits. Thread this sha256 back as previousSha256 on the next snapshot to auto-detect a stale frame; judge state by data (pcb list/drc), screenshot for layout only.',
 		},
 		artifacts: [artifact],
 	};

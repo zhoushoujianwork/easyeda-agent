@@ -1187,17 +1187,24 @@ external router (Freerouting) would route under the antenna. The result reports
 	}
 	{
 		var fit bool
+		var previousSha string
 		c := &cobra.Command{
 			Use:   "snapshot",
 			Short: "Capture the active PCB canvas as a PNG artifact",
 			Args:  cobra.NoArgs,
 			Example: `  easyeda pcb snapshot
-  easyeda pcb snapshot --fit=false`,
+  easyeda pcb snapshot --fit=false
+  easyeda view region --left 500 --right 1550 --top -1500 --bottom -2260 && easyeda pcb snapshot --fit=false --previous-sha256 <sha>`,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return dispatch(cfg, "pcb.snapshot", window, map[string]any{"fit": fit}, stdout, stderr)
+				payload := map[string]any{"fit": fit}
+				if previousSha != "" {
+					payload["previousSha256"] = previousSha
+				}
+				return dispatch(cfg, "pcb.snapshot", window, payload, stdout, stderr)
 			},
 		}
 		c.Flags().BoolVar(&fit, "fit", true, "zoom-to-fit before capture (nudges a redraw)")
+		c.Flags().StringVar(&previousSha, "previous-sha256", "", "sha256 of the previous snapshot; enables stale-frame detection + auto-retry")
 		pcb.AddCommand(c)
 	}
 	// ── autoroute: one-command Freerouting round-trip ────────────────────────
