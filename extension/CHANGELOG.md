@@ -6,6 +6,18 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-07-02
+### Fixed
+- **silk-align: labels no longer crowd their OWN pads** — the body used for the offset
+  is inflated by an assembly-clearance floor (Cassembly=10 mil) and own-pad overlap now
+  carries a penalty, so a designator keeps solder-iron room around its footprint instead
+  of touching the copper. New **`spacing`** coefficient (default 1.5, `--spacing`) scales
+  the label drift for more/less assembly room; base offset default 12→15; other-pad
+  margin Cpad 8→12.
+- **`--ref board`/`outline` now resolves rounded/closed outlines** — the board outline is
+  often a single `pcb_PrimitivePolyline` on layer 11, which the Line/Arc-only resolver
+  missed (silk-set align + silk-align safeArea both use the new shared `boardOutlineIds`).
+
 ## [0.6.6] - 2026-07-02
 ### Changed
 - **`pcb.silk.align` is now POSITION-AWARE** (designed via a 3-lens workflow). It ranks

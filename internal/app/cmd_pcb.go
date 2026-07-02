@@ -1979,7 +1979,7 @@ pcb.outline.set takes a polygon. The board-outline layer renders → verify with
 	// pcb.silk.align — reposition each designator to a consistent spot above/below
 	// its footprint. Designators are component-bound attributes (pcb_PrimitiveAttribute).
 	{
-		var offset float64
+		var offset, spacing float64
 		var side string
 		var refs []string
 		c := &cobra.Command{
@@ -2008,11 +2008,15 @@ dense — loosen placement). Verify with 'pcb snapshot'.`,
 				if len(refs) > 0 {
 					payload["refs"] = refs
 				}
+				if cmd.Flags().Changed("spacing") {
+					payload["spacing"] = spacing
+				}
 				return dispatch(cfg, "pcb.silk.align", window, payload, stdout, stderr)
 			},
 		}
-		c.Flags().Float64Var(&offset, "offset", 40, "distance from the footprint bbox edge (mil)")
-		c.Flags().StringVar(&side, "side", "top", "which side of the footprint: top | bottom")
+		c.Flags().Float64Var(&offset, "offset", 15, "base distance from the footprint edge (mil); ×spacing")
+		c.Flags().Float64Var(&spacing, "spacing", 1.5, "spacing coefficient — scales the label drift for assembly/solder room (bigger = further out)")
+		c.Flags().StringVar(&side, "side", "", "bias which side of the footprint: top|bottom|left|right (soft hint)")
 		c.Flags().StringArrayVar(&refs, "refs", nil, "limit to these designators (repeatable); default = all")
 		pcb.AddCommand(c)
 	}

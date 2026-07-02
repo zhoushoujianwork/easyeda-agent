@@ -2509,6 +2509,16 @@ function silkGap(a: silkRect, b: silkRect): number {
 	const dy = Math.max(0, Math.max(a.minY - b.maxY, b.minY - a.maxY));
 	return Math.hypot(dx, dy);
 }
+// boardOutlineIds collects every BOARD_OUTLINE-layer(11) primitive id — lines, arcs,
+// AND polylines (a rounded/closed outline is often a single pcb_PrimitivePolyline).
+async function boardOutlineIds(): Promise<string[]> {
+	const ids: string[] = [];
+	for (const l of (await eda.pcb_PrimitiveLine.getAll()) ?? []) if (Number(l.getState_Layer()) === 11) ids.push(l.getState_PrimitiveId());
+	for (const a of (await eda.pcb_PrimitiveArc.getAll()) ?? []) if (Number(a.getState_Layer()) === 11) ids.push(a.getState_PrimitiveId());
+	try { for (const p of (await eda.pcb_PrimitivePolyline.getAll()) ?? []) if (Number(p.getState_Layer()) === 11) ids.push(p.getState_PrimitiveId()); } catch { /* polyline API optional */ }
+	return ids;
+}
+
 // clearance marching from body `cb` along unit dir to the first HARD obstacle in a
 // perpendicular corridor (excludes own body/pads); capped at MAX_SCAN.
 function silkCorridor(cb: silkRect, dx: number, dy: number, obs: silkObs[], self: string, perp: number, MAX_SCAN: number): number {
@@ -2537,11 +2547,16 @@ const pcbSilkAlign: Handler = async (payload) => {
 	// avoiding other parts' PADS (the #1 fix — a label over exposed copper is clipped),
 	// bodies, keep-out regions, the board edge, and other labels. Rotation stays 0
 	// (upright, keeps `pcb check` clean); bottom parts go to bottom silk + mirror.
-	const baseOffset = optionalNumber(payload, 'offset') ?? 12;
 	const side = (optionalString(payload, 'side') ?? '').toLowerCase();
 	const refs = Array.isArray(payload.refs) ? (payload.refs as unknown[]).map(String) : null;
+	// spacing coefficient scales the drift distance so labels sit further from the
+	// footprint (assembly / hand-solder room). Cassembly is the HARD minimum gap the
+	// label keeps from its OWN pads (the body is inflated by it) so a designator never
+	// crowds the copper you solder to; other-pad margin Cpad is larger still.
+	const spacing = optionalNumber(payload, 'spacing') ?? 1.5;
+	const baseOffset = (optionalNumber(payload, 'offset') ?? 15) * spacing;
 
-	const Cpad = 8, Cedge = 15, Cregion = 6, Clabel = 6, Cbody = 6, HALO = 2;
+	const Cpad = 12, Cedge = 15, Cregion = 6, Clabel = 6, Cbody = 6, HALO = 2, Cassembly = 10;
 	const STEP = 22, R_MAX = 6, MAX_SCAN = 200, GAP_CAP = 120;
 
 	let comps;
@@ -2556,9 +2571,7 @@ const pcbSilkAlign: Handler = async (payload) => {
 	// board-outline safeArea (containment box, shrunk by Cedge).
 	let safeArea: silkRect | null = null;
 	{
-		const olIds: string[] = [];
-		for (const l of (await eda.pcb_PrimitiveLine.getAll()) ?? []) if (Number(l.getState_Layer()) === 11) olIds.push(l.getState_PrimitiveId());
-		for (const a of (await eda.pcb_PrimitiveArc.getAll()) ?? []) if (Number(a.getState_Layer()) === 11) olIds.push(a.getState_PrimitiveId());
+		const olIds = await boardOutlineIds();
 		if (olIds.length) {
 			try { const b = (await eda.pcb_Primitive.getPrimitivesBBox(olIds)) as silkRect; if (b) safeArea = silkInflate(b, -Cedge); } catch { /* no outline */ }
 		}
@@ -2694,10 +2707,10 @@ const pcbSilkAlign: Handler = async (payload) => {
 	};
 
 	const scoreSlot = (L: silkRect, it: Item, rank: number): number => {
-		let padH = 0, off = 0, khard = 0, lab = 0, oBody = 0, ksoft = 0, minClr = Infinity;
+		let padH = 0, ownPadH = 0, off = 0, khard = 0, lab = 0, oBody = 0, ksoft = 0, minClr = Infinity;
 		if (safeArea && !silkInside(L, safeArea)) off = 1;
 		for (const o of OBS) {
-			if (o.kind === 'PAD') { if (o.owner !== it.cid && silkOverlap(L, o.rect, 0)) padH++; }
+			if (o.kind === 'PAD') { if (o.owner !== it.cid) { if (silkOverlap(L, o.rect, 0)) padH++; } else if (silkOverlap(L, o.rect, 0)) ownPadH++; }
 			else if (o.kind === 'BODY') { if (o.owner !== it.cid && silkOverlap(L, o.rect, o.m)) oBody++; }
 			else if (o.kind === 'REGION_H') { if (silkOverlap(L, o.rect, o.m)) khard++; }
 			else if (o.kind === 'REGION_S') { if (silkOverlap(L, o.rect, o.m)) ksoft++; }
@@ -2707,14 +2720,17 @@ const pcbSilkAlign: Handler = async (payload) => {
 		}
 		for (const [id, lb] of Object.entries(LAB)) { if (id !== it.attrId && silkOverlap(L, lb, Clabel)) lab++; }
 		const reward = -25 * Math.min(minClr, 30) / 30;
-		return 1e9 * padH + 1e8 * off + 1e6 * khard + 1e4 * lab + 5e3 * oBody + 100 * ksoft + rank * 25 + reward;
+		return 1e9 * padH + 1e8 * off + 1e6 * khard + 4e3 * ownPadH + 1e4 * lab + 5e3 * oBody + 100 * ksoft + rank * 25 + reward;
 	};
 
 	const aligned: Array<Record<string, unknown>> = [];
 	const unresolved: Array<Record<string, unknown>> = [];
 	for (const it of items) {
 		const cc = silkCenter(it.cb);
-		const hw = (it.cb.maxX - it.cb.minX) / 2, hh = (it.cb.maxY - it.cb.minY) / 2;
+		// offset from the body inflated by the assembly-clearance floor, so the label
+		// keeps ≥ Cassembly from its OWN pads (never crowds the copper).
+		const cbP = silkInflate(it.cb, Cassembly);
+		const hw = (cbP.maxX - cbP.minX) / 2, hh = (cbP.maxY - cbP.minY) / 2;
 		const pref = rankSides(it);
 		let best: { lx: number; ly: number; L: silkRect; cost: number } | null = null;
 		for (let ring = 0; ring < R_MAX && !(best && best.cost < 1e4); ring++) {
@@ -2877,9 +2893,7 @@ const pcbSilkAdd: Handler = async (payload) => {
 async function resolveSilkRefBBox(ref: string): Promise<silkRect | null> {
 	const r = ref.trim().toLowerCase();
 	if (r === 'board' || r === 'outline') {
-		const ids: string[] = [];
-		for (const l of (await eda.pcb_PrimitiveLine.getAll()) ?? []) if (Number(l.getState_Layer()) === 11) ids.push(l.getState_PrimitiveId());
-		for (const a of (await eda.pcb_PrimitiveArc.getAll()) ?? []) if (Number(a.getState_Layer()) === 11) ids.push(a.getState_PrimitiveId());
+		const ids = await boardOutlineIds();
 		return ids.length ? (await eda.pcb_Primitive.getPrimitivesBBox(ids) as silkRect) : null;
 	}
 	if (r === 'fill') {
