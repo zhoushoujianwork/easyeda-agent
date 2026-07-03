@@ -6,6 +6,32 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-03
+
+Recording/demo-mode reliability — a one-call **stage capture** that gates on the
+frame, plus **blank-frame detection** — and a **netless-pour** cleanup, on top of
+the accumulated connector fixes.
+
+### Added
+- **`easyeda pcb stage-snapshot --stage "…"`** — one-call recording/demo STAGE
+  capture: native PCB snapshot + a data bundle (components/tracks/vias/pours/nets/drc)
+  + a `stage.json` manifest, **GATED on the frame** — a BLANK / STALE / wrong-document
+  (foreground tab not a PCB) capture exits non-zero, so a `set -e` recording script
+  halts instead of banking a bad frame. Go/CLI only, no re-import.
+- **Blank-frame detection on `pcb/sch snapshot`.** The capture reads the FOREGROUND
+  tab's rendered canvas, which comes back BLANK when the window isn't visibly rendering
+  (minimized / backgrounded). The CLI decodes the PNG and WARNs on a blank frame —
+  distinct from a STALE (byte-identical) one. Verified: no API call (view fit / zoom /
+  ratline / openDocument / tab-switch) repaints a hidden window; the only fix is
+  bringing EasyEDA to the foreground. Go/CLI only.
+- **`easyeda pcb pour-clean --netless [--dry-run]`** — remove copper pours bound to
+  no net (dead copper that `pour-fit --replace` can't clear — it only matches same-net
+  pours). Surfaced by the new `pcb check` **netless-pour** rule. Go/CLI only. (#34)
+- **`easyeda debug exec --timeout <sec>`** — override the 20s round-trip default for
+  slow eda.* calls (e.g. `sch_Netlist.getNetlist()`, which can loop >90s on a schematic
+  with floating pins — prefer `getNetlistFile()`, which `sch read` uses and never hangs).
+  Go/CLI only, no re-import.
+
 ### Fixed
 - **`connect_pin`/`sch autoconnect` now actually FORM the net (grid-snap fix).** The stub
   endpoint (grid-aligned pin + a non-grid offset like 18 → 338) landed off the 10-unit
@@ -16,10 +42,6 @@ follow [SemVer](https://semver.org/).
   the grid so it coincides with the snapped flag pin. Verified: two `--net MERGE` netports
   now read back as one net `MERGE deg 2 [R1.2, R2.1]` (was two `$1N` singletons). Unblocks
   building a netlisted schematic from scratch via the API. (Re-import needed.)
-- **`easyeda debug exec --timeout <sec>`** — override the 20s round-trip default for slow
-  eda.* calls (e.g. `sch_Netlist.getNetlist()`, which can loop >90s on a schematic with
-  floating pins — prefer `getNetlistFile()`, which `sch read` already uses and never hangs).
-  Go/CLI only, no re-import.
 - **`pcb.pour.create` refuses a netless pour.** An empty/absent `net` used to be
   silently coerced to `''`, creating dead copper (a net:"" pour) that `pour-fit
   --replace` can't clear — the #34 confusion. It now errors `net is required`. The CLI
