@@ -2,6 +2,31 @@
 
 Run `easyeda actions` for the authoritative machine-readable list.
 
+## Playbook 回放(`easyeda apply`)— 批量步骤的首选载体
+
+> **多步批量操作(>~5 步)不要再写 shell/python 胶水脚本**——写成 playbook JSON,
+> `easyeda apply` 按步执行,自带变量捕获、门禁、journal 断点续跑。
+> 完整格式与错误处理语义见 `docs/design-apply-playbook.md`(单一真源)。
+
+```bash
+easyeda apply steps.json                    # 顺序执行(meta.project 定目标工程)
+easyeda apply steps.json --dry-run          # 预检 + 打印计划,不执行
+easyeda apply steps.json --project demo2    # CLI flag > 文件(同一份打到另一工程)
+easyeda apply steps.json --var LIB=<uuid>   # 变量复写(参数化)
+easyeda apply steps.json --resume           # 按 journal 跳过已完成步骤(恢复 captured 变量)
+easyeda apply steps.json --from 12 --to 30  # 区间执行
+easyeda apply steps.json --yes              # 放行确认门控(delete/clear/rip-up/import 类)
+```
+
+要点(实现与设计一致,已单测+真机验证):
+- 每步 `action:`(typed action)或 `run:`(Cobra 子命令,如 `pcb auto-place`)二选一;
+  `notify:` 弹 toast。`payload/flags/args` 内 `${VAR}` 替换。
+- `capture: {"U1": "$.primitiveId"}` 把结果存变量给后步用(id 跨会话会变,这是复现的命门)。
+- `assert: {"$.score": ">=95", "$.overlaps": "==0"}` = 门禁,不过即停(`onFail: stop` 默认)。
+- **错误纪律**:失败即终止;只读步骤自动重试 2 次;**变更类步骤超时不自动重试**
+  (mutation 可能已生效——先读回校验再 `--resume`);变更步骤可带 `verify:` 读回块自证。
+- journal 头带 playbook sha,文件改动会拒绝 `--resume`(改用 `--from`)。
+
 ## Navigation
 
 - `system.health` — daemon + connector 可用性，已连接窗口列表
