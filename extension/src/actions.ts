@@ -1392,10 +1392,13 @@ interface CheckFinding {
 // catches a pin sitting ON a pass-through segment.
 const CHECK_EPS = 0.05;
 
-// EasyEDA Pro schematic placement grid (0.1 inch = 10 doc units). A created
-// netflag/netport snaps its anchor+connection-pin to this grid; connect_pin aligns
-// its stub endpoint to it so the two coincide (see the snap in schematicPowerConnectPin).
-const SCH_GRID = 10;
+// EasyEDA Pro snaps a created netflag/netport's CONNECTION PIN to a 5-unit grid
+// (measured live: a flag requested at (337,-383) lands its pin at (335,-385); the
+// anchor keeps the input). connect_pin aligns its stub endpoint to the SAME grid so
+// the two coincide (see the snap in schematicPowerConnectPin). Must be 5, not 10 —
+// many real footprints (e.g. ESP32-S3-WROOM-1) have pins on the odd 5-grid (y=-385),
+// and a 10-snap would move endY off the pin → a diagonal stub that fails to create.
+const SCH_GRID = 5;
 
 // True if (px,py) lies on the segment (x1,y1)-(x2,y2) — endpoints included.
 function pointOnSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {
@@ -2243,14 +2246,16 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 			);
 	}
 
-	// Snap the stub endpoint (and thus the flag) to the 10-unit schematic grid.
-	// EasyEDA grid-snaps a created netflag/netport to the nearest grid point, so an
-	// OFF-grid endpoint (a grid-aligned pin + a non-grid offset like 18 → 338) leaves
-	// the flag's connection pin a grid-step away from the stub end. The stub then
-	// connects the pin to an empty point, the flag floats unconnected, its net NAME
-	// never applies, and same-named flags NEVER merge into one net — every pin becomes
-	// its own auto-named 1-pin net ($1N1, $1N2, …). Aligning both to the grid makes the
-	// stub end and the snapped flag pin coincide, so the flag connects and merges.
+	// Snap the stub endpoint (and thus the flag) to the schematic connection grid
+	// (SCH_GRID=5). EasyEDA snaps a created netflag/netport's connection pin to that
+	// grid, so an OFF-grid endpoint (pin + a non-grid offset like 18 → 338) leaves the
+	// flag's pin a grid-step from the stub end: the stub connects the pin to an empty
+	// point, the flag floats unconnected, its net NAME never applies, and same-named
+	// flags NEVER merge — every pin becomes its own auto-named 1-pin net ($1N1, …).
+	// Snapping to the SAME grid makes the stub end and the snapped flag pin coincide.
+	// Snapping the perpendicular axis too is safe because a pin sits ON the grid (this
+	// is why 5 not 10: ESP32 pins at y=-385 stay put under a 5-snap, but a 10-snap
+	// would jog endY to -380 → a diagonal stub EasyEDA refuses to create).
 	endX = Math.round(endX / SCH_GRID) * SCH_GRID;
 	endY = Math.round(endY / SCH_GRID) * SCH_GRID;
 
