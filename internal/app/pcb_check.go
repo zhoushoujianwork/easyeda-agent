@@ -135,6 +135,7 @@ type pcbCheckSummary struct {
 	DuplicateSegments int `json:"duplicateSegments"`
 	ParallelCoupling  int `json:"parallelCoupling"`
 	AntennaKeepout    int `json:"antennaKeepout"`
+	NetlessPours      int `json:"netlessPours"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
@@ -716,6 +717,57 @@ func findSilkscreenFlipped(silk []pcbSilkText) []pcbCheckFinding {
 	return out
 }
 
+// ── R11: netless copper pour ────────────────────────────────────────────────
+// A copper pour with an empty net is DEAD copper — it connects to nothing yet
+// occupies board area (issue #34: a net:"" layer-1 pour left by `pcb pour`
+// without --net). It's confusing (looks like a real plane), and `pour-fit
+// --replace` can't clear it because that only matches same-net pours. Flag every
+// pour whose net is empty so it can be removed with `pcb pour-clean --netless`.
+
+type pcbPourP struct {
+	ID    string
+	Net   string
+	Layer int
+}
+
+func findNetlessPours(pours []pcbPourP) []pcbCheckFinding {
+	var out []pcbCheckFinding
+	for _, p := range pours {
+		if strings.TrimSpace(p.Net) != "" {
+			continue
+		}
+		f := pcbCheckFinding{
+			Type: "netless-pour", Level: "WARN", Layer: p.Layer,
+			Message: "netless copper pour (dead copper — bound to no net); remove with `pcb pour-clean --netless` or re-pour with a net",
+		}
+		if p.ID != "" {
+			f.Primitives = []string{p.ID}
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+func fetchPcbPours(cfg *appConfig, window string) ([]pcbPourP, error) {
+	res, err := requestAction(cfg, "pcb.pour.list", window, nil)
+	if err != nil {
+		return nil, err
+	}
+	rawPours, _ := mnav(res.Result, "pours").([]any)
+	var pours []pcbPourP
+	for _, rp := range rawPours {
+		pm, ok := rp.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := pm["primitiveId"].(string)
+		net, _ := pm["net"].(string)
+		layer, _ := asFloatOK(pm["layer"])
+		pours = append(pours, pcbPourP{ID: id, Net: net, Layer: int(layer)})
+	}
+	return pours, nil
+}
+
 // ── R10: antenna keep-out ───────────────────────────────────────────────────
 // A component that carries an RF antenna (an ESP WROOM/WROVER module, or a part
 // named/designated as an antenna) needs a NO-COPPER keep-out under/around its
@@ -963,6 +1015,20 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 		rep.Passed = rep.Summary.Total == 0
 	}
 
+	// Netless-pour is a LIVE-only rule (needs the pour list, which the pure copper
+	// core doesn't take). Degrade gracefully if the fetch fails.
+	if pours, perr := fetchPcbPours(cfg, window); perr != nil {
+		fmt.Fprintf(stderr, "warning: netless-pour check skipped (%v)\n", perr)
+	} else {
+		for _, f := range findNetlessPours(pours) {
+			rep.Findings = append(rep.Findings, f)
+			rep.Summary.NetlessPours++
+			rep.Summary.Warnings++
+			rep.Summary.Total++
+		}
+		rep.Passed = rep.Summary.Total == 0
+	}
+
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
@@ -1203,9 +1269,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d\n",
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d\n",
 		s.Errors, s.Warnings-s.Errors,
-		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout)
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {

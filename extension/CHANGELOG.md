@@ -7,6 +7,11 @@ follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **`pcb.pour.create` refuses a netless pour.** An empty/absent `net` used to be
+  silently coerced to `''`, creating dead copper (a net:"" pour) that `pour-fit
+  --replace` can't clear — the #34 confusion. It now errors `net is required`. The CLI
+  (`pcb pour` / `pour-fit`) already fails fast; this is the connector-side backstop for
+  raw `debug.exec_js` / other callers. (Takes effect after re-importing the connector.)
 - **`pcb new-board` no longer silently steals the schematic.** A schematic can belong
   to only ONE Board in EasyEDA Pro, so `createBoard(schematicUuid)` on an already-bound
   schematic *moves* it into the new board — leaving the old board with just its PCB

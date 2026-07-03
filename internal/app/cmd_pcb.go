@@ -756,14 +756,18 @@ plane. fill = solid (default) | grid | grid45.`,
 				if pointsJSON == "" {
 					return fmt.Errorf("--points is required")
 				}
+				// A pour MUST bind to a net. Omitting --net used to create netless
+				// dead copper (net:"") that pour-fit --replace can't clear (it only
+				// matches same-net pours) — the #34 confusion. Fail fast instead.
+				if strings.TrimSpace(net) == "" {
+					return fmt.Errorf("--net is required (a copper pour must bind to a net, e.g. --net GND); " +
+						"a netless pour is dead copper — see `pcb pour-clean --netless` to remove existing ones")
+				}
 				var points any
 				if err := json.Unmarshal([]byte(pointsJSON), &points); err != nil {
 					return fmt.Errorf("invalid --points json (expected array): %w", err)
 				}
-				payload := map[string]any{"points": points}
-				if net != "" {
-					payload["net"] = net
-				}
+				payload := map[string]any{"points": points, "net": net}
 				if cmd.Flags().Changed("layer") {
 					payload["layer"] = layer
 				}
@@ -878,6 +882,9 @@ clears existing pours on the same net so you don't stack them.`,
 				if !cmd.Flags().Changed("inset") {
 					inset = fetchPcbRules(cfg, window).copperToEdgeMil
 				}
+				if strings.TrimSpace(net) == "" {
+					return fmt.Errorf("--net must not be empty (a pour must bind to a net; a netless pour is dead copper)")
+				}
 				// 1. Board outline bbox.
 				ores, err := requestAction(cfg, "pcb.outline.get", window, nil)
 				if err != nil {
@@ -943,6 +950,65 @@ clears existing pours on the same net so you don't stack them.`,
 		c.Flags().StringVar(&fill, "fill", "", "fill style: solid (default) | grid | grid45")
 		c.Flags().BoolVar(&replace, "replace", true, "clear existing pours on this net first (avoid stacking)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the computed pour polygon without drawing")
+		pcb.AddCommand(c)
+	}
+
+	// ── pour-clean ────────────────────────────────────────────────────────────
+	// Remove NETLESS copper pours (net:"" dead copper — issue #34). pour-fit
+	// --replace can't clear these (it only matches same-net pours), so they
+	// silently accumulate and confuse the board. This targets them explicitly.
+	{
+		var netless, dryRun bool
+		c := &cobra.Command{
+			Use:   "pour-clean",
+			Short: "Remove netless copper pours (net:\"\" dead copper — see `pcb check` netless-pour)",
+			Long: `Delete copper pours that are bound to NO net (net:"") — dead copper that
+occupies board area but connects nothing (issue #34). These arise from a
+'pcb pour' without --net; 'pour-fit --replace' can't clear them because it only
+matches same-net pours. --dry-run lists what would be deleted without deleting.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb pour-clean --netless
+  easyeda pcb pour-clean --netless --dry-run`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if !netless {
+					return fmt.Errorf("pass --netless to select which pours to clean (only netless is supported today)")
+				}
+				lr, err := requestAction(cfg, "pcb.pour.list", window, nil)
+				if err != nil {
+					return err
+				}
+				pours, _ := lr.Result["pours"].([]any)
+				var ids []any
+				var victims []map[string]any
+				for _, pi := range pours {
+					pm, ok := pi.(map[string]any)
+					if !ok {
+						continue
+					}
+					if strings.TrimSpace(asString(pm["net"])) != "" {
+						continue
+					}
+					if id := asString(pm["primitiveId"]); id != "" {
+						ids = append(ids, id)
+						victims = append(victims, map[string]any{"primitiveId": id, "layer": pm["layer"]})
+					}
+				}
+				out := map[string]any{"netless": len(victims), "pours": victims}
+				if dryRun {
+					out["dryRun"] = true
+				} else if len(ids) > 0 {
+					if _, err := requestAction(cfg, "pcb.pour.delete", window, map[string]any{"primitiveIds": ids}); err != nil {
+						return err
+					}
+					out["deleted"] = len(ids)
+				}
+				enc := json.NewEncoder(stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(out)
+			},
+		}
+		c.Flags().BoolVar(&netless, "netless", false, "remove pours bound to no net (net:\"\")")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "list what would be deleted without deleting")
 		pcb.AddCommand(c)
 	}
 
@@ -1874,6 +1940,7 @@ Rules:
   • width-mismatch    — a 2-pin part with asymmetric neck-down     → INFO
   • duplicate-segment — collinear overlapping (redundant) copper   → WARN
   • parallel-coupling — different-net traces closer than N×W (3W rule) → WARN
+  • netless-pour      — copper pour bound to no net (dead copper)      → WARN
 
 Complements 'pcb drc' (rule clearance) and 'pcb layout-lint' (placement/routability).
 Exit code: 0 by default (informational). --strict exits non-zero on any WARN/ERROR

@@ -4367,7 +4367,13 @@ const pcbPourCreate: Handler = async (payload) => {
 		}
 		pts.push([p[0], p[1]]);
 	}
-	const net = optionalString(payload, 'net') ?? '';
+	// A copper pour MUST bind to a net. Silently defaulting to '' created netless
+	// dead copper (issue #34: a net:"" layer-1 pour that pour-fit --replace can't
+	// clear because it only matches same-net pours). Reject it at the source.
+	const net = (optionalString(payload, 'net') ?? '').trim();
+	if (net === '') {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'net is required — a copper pour must bind to a net (e.g. GND). A netless pour is dead copper.');
+	}
 	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfCopper;
 	// Enum VALUES are the strings 'solid'/'90grid'/'45grid'; pass the string (the
 	// EPCB_PrimitivePourFillMethod enum is not a runtime global).
