@@ -25,3 +25,4 @@ __pycache__/
 videos/
 # Per-project artifacts (screenshots/exports) written by the CLI cwd
 .easyeda/
+*.journal.jsonl
