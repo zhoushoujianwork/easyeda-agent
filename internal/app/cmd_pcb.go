@@ -1200,13 +1200,20 @@ external router (Freerouting) would route under the antenna. The result reports
 				if previousSha != "" {
 					payload["previousSha256"] = previousSha
 				}
-				return dispatch(cfg, "pcb.snapshot", window, payload, stdout, stderr)
+				res, err := dispatchCapture(cfg, "pcb.snapshot", window, payload, stdout)
+				if err != nil {
+					return err
+				}
+				warnIfBlankSnapshot(res, stderr)
+				return nil
 			},
 		}
 		c.Flags().BoolVar(&fit, "fit", true, "zoom-to-fit before capture (nudges a redraw)")
 		c.Flags().StringVar(&previousSha, "previous-sha256", "", "sha256 of the previous snapshot; enables stale-frame detection + auto-retry")
 		pcb.AddCommand(c)
 	}
+	// ── stage-snapshot: recording/demo stage capture (snapshot + data bundle) ──
+	pcb.AddCommand(newPcbStageSnapshotCmd(cfg, &window, stdout, stderr))
 	// ── autoroute: one-command Freerouting round-trip ────────────────────────
 	// export DSN → run an external Freerouting engine → import the routed SES → DRC.
 	// The engine is external (Freerouting needs Java 17+); decoupled via a command

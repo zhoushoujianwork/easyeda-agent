@@ -27,12 +27,18 @@ EasyEDA tooling.
 6. Persist good checkpoints with explicit `easyeda sch save` / PCB save workflows;
    debounced autosave is only a safety net.
 7. Judge correctness from data (`list`, `check`, `drc`, `layout-lint`), not screenshots.
-   Screenshots can be stale after API edits. **Exception — recording/demo mode:** when
-   the user explicitly says they are recording, making a demo/tutorial, or wants
-   screenshots, images become a *deliverable*, not just a judge. Add a visual-artifact
-   gate on top of the data gates: capture a native `sch/pcb snapshot` at each stage,
-   compare adjacent-frame `sha256` to catch stale frames (redraw + retry if identical),
-   and never substitute a data-rendered recap image for a live screenshot without
+   A capture can be **stale** (byte-identical after an edit) or outright **blank** (the
+   EasyEDA window isn't rendering the doc — minimized / backgrounded / behind other
+   windows). A data↔screenshot divergence (e.g. `primitiveCount>0` but a flat blank
+   frame) is a first-class signal that the *window isn't rendering*, not that the design
+   is wrong. **No API call repaints a hidden window** — verified: `view fit` / zoomToAll /
+   ratline / `openDocument` / tab-switch all fail; the only fix is bringing EasyEDA to the
+   foreground on the target tab. **Exception — recording/demo mode:** when the user
+   explicitly says they are recording, making a demo/tutorial, or wants screenshots,
+   images become a *deliverable*. Use `easyeda pcb stage-snapshot --stage … [--previous-sha256 …]`
+   — it captures a native snapshot + data bundle and **gates** on blank / stale / wrong-document
+   frames (non-zero exit), so a `set -e` recording script halts instead of banking a bad
+   frame. Never substitute a data-rendered recap image for a live screenshot without
    flagging it. See `references/design-flow.md` → "录制 / 演示模式".
 
 ## What To Read

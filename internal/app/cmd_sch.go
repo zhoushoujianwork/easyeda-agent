@@ -702,7 +702,12 @@ compare primitiveCount and judge STATE by data (sch list/getAll), not the pixels
 				if previousSha != "" {
 					payload["previousSha256"] = previousSha
 				}
-				return dispatch(cfg, "schematic.snapshot", window, payload, stdout, stderr)
+				res, err := dispatchCapture(cfg, "schematic.snapshot", window, payload, stdout)
+				if err != nil {
+					return err
+				}
+				warnIfBlankSnapshot(res, stderr)
+				return nil
 			},
 		}
 		c.Flags().BoolVar(&noFit, "no-fit", false, "do NOT zoom to fit before capturing (keep current viewport)")
