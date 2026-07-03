@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -21,21 +22,27 @@ func newDebugCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	// debug.exec_js
 	{
 		var code string
+		var timeoutSec int
 		c := &cobra.Command{
 			Use:   "exec",
 			Short: "Run raw eda.* JavaScript in the connector (escape hatch)",
 			Args:  cobra.NoArgs,
 			Example: `  easyeda debug exec --code "return eda.getProjectInfo()"
-  easyeda debug exec --window win-1 --code "return eda.getState_Rotation('id123')"`,
+  easyeda debug exec --timeout 60 --code "return await eda.sch_Netlist.getNetlist()"`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if code == "" {
 					return fmt.Errorf("--code is required")
 				}
-				return dispatch(cfg, "debug.exec_js", window,
-					map[string]any{"code": code}, stdout, stderr)
+				timeout := defaultActionTimeout
+				if timeoutSec > 0 {
+					timeout = time.Duration(timeoutSec) * time.Second
+				}
+				return dispatchTimed(cfg, "debug.exec_js", window,
+					map[string]any{"code": code}, timeout, stdout, stderr)
 			},
 		}
 		c.Flags().StringVar(&code, "code", "", "JavaScript expression to execute in the connector (required)")
+		c.Flags().IntVar(&timeoutSec, "timeout", 0, "round-trip timeout in seconds (default 20; raise for slow calls like getNetlist)")
 		dbg.AddCommand(c)
 	}
 

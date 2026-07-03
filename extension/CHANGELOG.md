@@ -7,6 +7,19 @@ follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **`connect_pin`/`sch autoconnect` now actually FORM the net (grid-snap fix).** The stub
+  endpoint (grid-aligned pin + a non-grid offset like 18 → 338) landed off the 10-unit
+  schematic grid, but a created netflag/netport SNAPS to the nearest grid point (340) — so
+  the stub ended a grid-step short of the flag's connection pin, the flag floated
+  unconnected, its net NAME never applied, and same-named flags NEVER merged (every pin
+  became its own auto-named 1-pin net `$1N…`). connect_pin now snaps its stub endpoint to
+  the grid so it coincides with the snapped flag pin. Verified: two `--net MERGE` netports
+  now read back as one net `MERGE deg 2 [R1.2, R2.1]` (was two `$1N` singletons). Unblocks
+  building a netlisted schematic from scratch via the API. (Re-import needed.)
+- **`easyeda debug exec --timeout <sec>`** — override the 20s round-trip default for slow
+  eda.* calls (e.g. `sch_Netlist.getNetlist()`, which can loop >90s on a schematic with
+  floating pins — prefer `getNetlistFile()`, which `sch read` already uses and never hangs).
+  Go/CLI only, no re-import.
 - **`pcb.pour.create` refuses a netless pour.** An empty/absent `net` used to be
   silently coerced to `''`, creating dead copper (a net:"" pour) that `pour-fit
   --replace` can't clear — the #34 confusion. It now errors `net is required`. The CLI

@@ -1392,6 +1392,11 @@ interface CheckFinding {
 // catches a pin sitting ON a pass-through segment.
 const CHECK_EPS = 0.05;
 
+// EasyEDA Pro schematic placement grid (0.1 inch = 10 doc units). A created
+// netflag/netport snaps its anchor+connection-pin to this grid; connect_pin aligns
+// its stub endpoint to it so the two coincide (see the snap in schematicPowerConnectPin).
+const SCH_GRID = 10;
+
 // True if (px,py) lies on the segment (x1,y1)-(x2,y2) — endpoints included.
 function pointOnSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {
 	if (px < Math.min(x1, x2) - CHECK_EPS || px > Math.max(x1, x2) + CHECK_EPS) return false;
@@ -2237,6 +2242,17 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 				`Unknown direction "${direction}"; expected up/down/left/right.`,
 			);
 	}
+
+	// Snap the stub endpoint (and thus the flag) to the 10-unit schematic grid.
+	// EasyEDA grid-snaps a created netflag/netport to the nearest grid point, so an
+	// OFF-grid endpoint (a grid-aligned pin + a non-grid offset like 18 → 338) leaves
+	// the flag's connection pin a grid-step away from the stub end. The stub then
+	// connects the pin to an empty point, the flag floats unconnected, its net NAME
+	// never applies, and same-named flags NEVER merge into one net — every pin becomes
+	// its own auto-named 1-pin net ($1N1, $1N2, …). Aligning both to the grid makes the
+	// stub end and the snapped flag pin coincide, so the flag connects and merges.
+	endX = Math.round(endX / SCH_GRID) * SCH_GRID;
+	endY = Math.round(endY / SCH_GRID) * SCH_GRID;
 
 	if (endX === pinX && endY === pinY) {
 		throw new ActionError(
