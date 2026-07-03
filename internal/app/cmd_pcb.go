@@ -1309,7 +1309,7 @@ import-autoroute / snapshot) work regardless.
 Without a router configured, autoroute exports the DSN and stops — route it
 externally, then run 'easyeda pcb import-autoroute <file.ses>'.
 
-PREREQUISITE (see docs/test-case-esp32-pcb.md): keep-out zones (antenna / board
+PREREQUISITE: keep-out zones (antenna / board
 edge) MUST be in the DSN, else the router will route under the antenna. Verify the
 exported DSN contains keepout entries before trusting the result.`,
 			Args: cobra.NoArgs,

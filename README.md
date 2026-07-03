@@ -81,7 +81,7 @@ skillhub install easyeda-agent --registry https://skillhub.cn
 |---|---|
 | <img src="docs/assets/demo-outline-before.png" width="330" alt="前:板框过大"/> → <img src="docs/assets/demo-outline-after.png" width="330" alt="后:板框贴合器件"/> | <img src="docs/assets/demo-silk-before.png" width="330" alt="前:位号散乱重叠"/> → 对齐后见上方成品板 |
 
-> 端到端跑通的录屏 GIF 随后补充(分镜脚本见 [docs/demo-storyboard-esp32-mini.md](docs/demo-storyboard-esp32-mini.md):原理图 → 导入 PCB → 4 层叠层 → 布局 → GND 内电层/VCC 信号 plane → 天线禁区+检查 → 丝印/LED 极性 → 挖槽);上面都是回归板的真机 `pcb snapshot`,非 mockup。这也是项目的固定端到端回归用例,见 [docs/test-case-esp32-blink.md](docs/test-case-esp32-blink.md)。
+> 端到端跑通的录屏 GIF 随后补充(原理图 → 导入 PCB → 4 层叠层 → 布局 → GND 内电层/VCC 信号 plane → 天线禁区+检查 → 丝印/LED 极性 → 挖槽);上面都是回归板的真机 `pcb snapshot`,非 mockup。这也是项目的固定端到端回归用例(拿原始需求从零跑),见 [esp32MiniRequire.md](esp32MiniRequire.md)。
 
 ## 能力清单(已支持)
 

@@ -88,8 +88,9 @@ flag → DRC), not hand-drawn symbols. Layout follows the
 from a 嘉立创 reference design: **flags only on power/ground rails; signals are real
 local orthogonal wires; decoupling hugs each IC's VCC pad; multi-page by function.**
 
-This is also the project's fixed end-to-end regression case — see
-[docs/test-case-esp32-blink.md](docs/test-case-esp32-blink.md).
+This is also the project's fixed end-to-end regression case — driven from the raw
+requirement in [esp32MiniRequire.md](esp32MiniRequire.md) (the agent does all the
+engineering itself; no pre-solved BOM/netlist is handed to it).
 
 ### ESP32-S3-WROOM-1 minimal system board
 

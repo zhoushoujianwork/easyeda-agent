@@ -328,7 +328,7 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 - `gen.py` 把部分方法挂错命名空间（实测 `rebuildCopperRegion` 实际在 `IPCB_PrimitivePour`，
   却被索引为 `pcb_Net`）。`api search` 个别结果 namespace 不准 → gen.py 的 class 跟踪待修。
 
-> 关联：task #5（管线）/ #11（keep-out，docs/test-case-esp32-pcb.md）/ issue #28 #29。
+> 关联：task #5（管线）/ #11（keep-out）/ issue #28 #29。
 
 ### 8.5 重大转向：自研启发式可行（社区扩展实证），推翻「不可行」结论
 

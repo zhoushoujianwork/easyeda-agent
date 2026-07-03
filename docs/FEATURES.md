@@ -264,12 +264,12 @@ These are planned and **not implemented** today.
 两块 ESP32 最小系统板作为**端到端检查验收基准**——跑通即证明放置→布线→`pcb check`
 (含新的丝印正反 / 走线压焊盘 / 非正交走线规则)→DRC 全流程闭环。
 
-- **task #34 — ESP32 **模组**最小系统板 (module minimal system).** 承接
-  [`docs/test-case-esp32-blink.md`](test-case-esp32-blink.md) 的 ESP32-S3-WROOM-1
-  模组板,升级为「完整最小系统」验收:3V3 供电 + 去耦 + EN/IO0 上拉 straps + 点灯 LED,
-  PCB 侧走 [`docs/test-case-esp32-pcb.md`](test-case-esp32-pcb.md) 脊柱,**收尾必须
-  `pcb check` 0 ERROR**(含丝印正反、走线压焊盘)。模组自带天线/晶振/flash,keep-out
-  只需盖模组天线区。
+- **task #34 — ESP32 **模组**开发板 (module dev board).** 拿原始需求
+  [`esp32MiniRequire.md`](../esp32MiniRequire.md)(4 层板 + 点灯 + 5V 供电端子 + 降压 3V3 +
+  CH340 USB 烧录 + BOOT/RESET 按键 + 四角 M3 固定,**不含 BOM/网表**)从零跑:agent 自己选型 →
+  放置 → 编组 → 布线 → 转 PCB,照 `skills/easyeda-agent/references/design-flow.md` 的 S0–S6 + P0–P10
+  脊柱,**收尾必须 `pcb check` 0 ERROR**(含丝印正反、走线压焊盘)。WROOM-1 模组自带天线/晶振/flash,
+  keep-out 只需盖模组天线区。
 - **task #35 — ESP32 **芯片级** N8R8 最小系统板 (bare-chip minimal system, no module
   template).** 用裸 **ESP32-S3** 芯片(不是 WROOM 模组),自己搭最小系统:**PCB 板载
   天线 + π 型匹配网络**、**N8R8 = 8MB flash + 8MB PSRAM**、40MHz 晶振、EN/boot straps、

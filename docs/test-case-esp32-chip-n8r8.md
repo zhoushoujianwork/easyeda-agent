@@ -1,7 +1,7 @@
 # 验收用例 — ESP32-S3 **芯片级** N8R8 最小系统板(天线 + flash + PSRAM)
 
 > **状态:验收目标(task #35),尚未端到端跑通。** 这是比
-> [`test-case-esp32-blink.md`](test-case-esp32-blink.md)(模组板)更硬的回归基准——
+> [`esp32MiniRequire.md`](../esp32MiniRequire.md)(模组开发板原始需求)更硬的回归基准——
 > 用**裸 ESP32-S3 芯片**(不是 WROOM 模组、不用现成模板)从零搭最小系统,把
 > `pcb check` 的**走线**(非正交 / 压焊盘)和**丝印正反**规则、天线 keep-out、
 > 晶振布局全压满。跑通标准见文末验收清单。
@@ -46,7 +46,7 @@
 
 ## 跑测流程(复用 PCB 流程脊柱 + 芯片级约束)
 
-沿用 [`test-case-esp32-pcb.md`](test-case-esp32-pcb.md) 的 P0–P6,额外强约束:
+沿用 `skills/easyeda-agent/references/design-flow.md` 的 PCB 脊柱 P0–P10,额外强约束:
 
 | 阶段 | 芯片级额外约束 |
 |---|---|
