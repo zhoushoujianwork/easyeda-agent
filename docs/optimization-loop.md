@@ -23,7 +23,9 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 | A4 | (约束非 bug)**后台/被遮挡窗口重画布计算永不完成**:`pcb_Drc.check` 超时,轻 API 正常;客户端重试会在 webview 堆积任务恶化 | 5 连超时;窗口切前台后第 1 次尝试即完成 | — 文档化即可 |
 | A5 | (量纲)DRC 明细叶子 x/y 单位是 **mil/10** | 全部 leaf 需 ×10 才对齐 mil 坐标 | — 文档化 |
 
-> 提交渠道待确认(jlceda 官方仓库 / EasyEDA 论坛);已具备复现设计,**发布前需用户确认**。
+> **已提交官方仓库 `easyeda/pro-api-sdk`(2026-07-04,用户授权)**:
+> A1 → [#31](https://github.com/easyeda/pro-api-sdk/issues/31) · A2 → [#32](https://github.com/easyeda/pro-api-sdk/issues/32) · A3 → [#33](https://github.com/easyeda/pro-api-sdk/issues/33)。
+> A4/A5 属约束/量纲,不提 issue,文档化于 memory + references。历史 issue:#27(sch_Drc verbose)、#28(autoRouting @alpha)、#29(DSN 丢 keepout)、#30(getNetlist 卡死)。
 
 ### B. CLI / daemon 改进
 
