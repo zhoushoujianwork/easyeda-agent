@@ -1,0 +1,2197 @@
+{
+ "version": 1,
+ "meta": {
+  "name": "esp32-mini-pcb",
+  "description": "esp32MiniRequire 四层板从零全流程(放置→板框/M3/天线→铜→铺铜/内电层→丝印→门禁);uniqueId 用 --var UID_U1=… 对齐 sch read 读到的值(fresh 工程默认 gge1..gge19)",
+  "project": "ceshi",
+  "doc": "PCB1"
+ },
+ "defaults": {
+  "timeoutSec": 60,
+  "retry": 1
+ },
+ "vars": {
+  "UID_U1": "gge1",
+  "UID_U2": "gge2",
+  "UID_U3": "gge3",
+  "UID_J1": "gge4",
+  "UID_J2": "gge5",
+  "UID_SW1": "gge6",
+  "UID_SW2": "gge7",
+  "UID_LED1": "gge8",
+  "UID_R1": "gge9",
+  "UID_R2": "gge10",
+  "UID_R3": "gge11",
+  "UID_R4": "gge12",
+  "UID_R5": "gge13",
+  "UID_C1": "gge14",
+  "UID_C2": "gge15",
+  "UID_C3": "gge16",
+  "UID_C4": "gge17",
+  "UID_C5": "gge18",
+  "UID_C6": "gge19"
+ },
+ "steps": [
+  {
+   "id": "add-U1",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "ebc5227ec05f4bcbbb5581e49a5f7cc6",
+    "x": 700,
+    "y": 849.5,
+    "layer": 1,
+    "designator": "U1",
+    "unique-id": "${UID_U1}",
+    "nets": "{\"2\":\"+3V3\",\"3\":\"EN\",\"36\":\"U0RXD\",\"37\":\"U0TXD\",\"41\":\"GND\",\"40\":\"GND\",\"1\":\"GND\",\"38\":\"LED_CTRL\",\"27\":\"IO0\"}"
+   }
+  },
+  {
+   "id": "add-U2",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "9f9c6cb41c7449fd8acf96aceed2661a",
+    "x": 1995,
+    "y": 510,
+    "layer": 1,
+    "designator": "U2",
+    "unique-id": "${UID_U2}",
+    "nets": "{\"1\":\"GND\",\"2\":\"+3V3\",\"3\":\"+5V\",\"4\":\"+3V3\"}"
+   }
+  },
+  {
+   "id": "add-U3",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "4951b3094e3e48a7b4c8c708b64932e4",
+    "x": 1500,
+    "y": 800,
+    "layer": 1,
+    "designator": "U3",
+    "unique-id": "${UID_U3}",
+    "nets": "{\"1\":\"GND\",\"2\":\"U0RXD\",\"3\":\"U0TXD\",\"4\":\"+3V3\",\"5\":\"USB_DP\",\"6\":\"USB_DN\",\"16\":\"+3V3\"}"
+   }
+  },
+  {
+   "id": "add-J1",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "fafc5d2de09d4595b0cc7abedc0530e6",
+    "x": 1550,
+    "y": 207.7,
+    "layer": 1,
+    "designator": "J1",
+    "unique-id": "${UID_J1}",
+    "nets": "{\"A4B9\":\"+5V\",\"B4A9\":\"+5V\",\"A1B12\":\"GND\",\"B1A12\":\"GND\",\"8\":\"GND\",\"9\":\"GND\",\"10\":\"GND\",\"11\":\"GND\",\"A6\":\"USB_DP\",\"A7\":\"USB_DN\",\"B6\":\"USB_DP\",\"B7\":\"USB_DN\",\"A5\":\"CC1\",\"B5\":\"CC2\"}"
+   }
+  },
+  {
+   "id": "add-J2",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "41ddecaaf01b4c1aa92ec4bfe22149b7",
+    "x": 2290,
+    "y": 900,
+    "layer": 1,
+    "designator": "J2",
+    "unique-id": "${UID_J2}",
+    "nets": "{\"1\":\"+5V\",\"2\":\"GND\"}",
+    "rotation": 90
+   }
+  },
+  {
+   "id": "add-SW1",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "cff07d923b95482c818b184e98b80db7",
+    "x": 1050,
+    "y": 130,
+    "layer": 1,
+    "designator": "SW1",
+    "unique-id": "${UID_SW1}",
+    "nets": "{\"2\":\"GND\",\"1\":\"IO0\"}"
+   }
+  },
+  {
+   "id": "add-SW2",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "cff07d923b95482c818b184e98b80db7",
+    "x": 160,
+    "y": 500,
+    "layer": 1,
+    "designator": "SW2",
+    "unique-id": "${UID_SW2}",
+    "nets": "{\"2\":\"GND\",\"1\":\"EN\"}",
+    "rotation": 180
+   }
+  },
+  {
+   "id": "add-LED1",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "06303f8c50b646d88d0dd08d2ec9692c",
+    "x": 1340,
+    "y": 1380,
+    "layer": 1,
+    "designator": "LED1",
+    "unique-id": "${UID_LED1}",
+    "nets": "{\"2\":\"GND\",\"1\":\"LED_A\"}",
+    "rotation": 180
+   }
+  },
+  {
+   "id": "add-R1",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "a60160c6e65140998078961749427162",
+    "x": 1220,
+    "y": 1230,
+    "layer": 1,
+    "designator": "R1",
+    "unique-id": "${UID_R1}",
+    "nets": "{\"2\":\"LED_A\",\"1\":\"LED_CTRL\"}"
+   }
+  },
+  {
+   "id": "add-R2",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "c3b9baa5ef2e4070a4c0f9e9cd04fe6e",
+    "x": 240,
+    "y": 690,
+    "layer": 1,
+    "designator": "R2",
+    "unique-id": "${UID_R2}",
+    "nets": "{\"2\":\"EN\",\"1\":\"+3V3\"}"
+   }
+  },
+  {
+   "id": "add-R3",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "c3b9baa5ef2e4070a4c0f9e9cd04fe6e",
+    "x": 1200,
+    "y": 500,
+    "layer": 1,
+    "designator": "R3",
+    "unique-id": "${UID_R3}",
+    "nets": "{\"2\":\"IO0\",\"1\":\"+3V3\"}",
+    "rotation": 180
+   }
+  },
+  {
+   "id": "add-R4",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "ef1f93374e0c4079b48a2d1a3cec8f6b",
+    "x": 1330,
+    "y": 480,
+    "layer": 1,
+    "designator": "R4",
+    "unique-id": "${UID_R4}",
+    "nets": "{\"2\":\"GND\",\"1\":\"CC1\"}",
+    "rotation": 90
+   }
+  },
+  {
+   "id": "add-R5",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "ef1f93374e0c4079b48a2d1a3cec8f6b",
+    "x": 1765,
+    "y": 460,
+    "layer": 1,
+    "designator": "R5",
+    "unique-id": "${UID_R5}",
+    "nets": "{\"2\":\"GND\",\"1\":\"CC2\"}",
+    "rotation": 90
+   }
+  },
+  {
+   "id": "add-C1",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "6e5726223dd84f70bc3b626fc7d1f72c",
+    "x": 2050,
+    "y": 250,
+    "layer": 1,
+    "designator": "C1",
+    "unique-id": "${UID_C1}",
+    "nets": "{\"1\":\"+5V\",\"2\":\"GND\"}",
+    "rotation": 90
+   }
+  },
+  {
+   "id": "add-C2",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "159c3da60be9490abf4e97599788a0d5",
+    "x": 2300,
+    "y": 480,
+    "layer": 1,
+    "designator": "C2",
+    "unique-id": "${UID_C2}",
+    "nets": "{\"1\":\"+3V3\",\"2\":\"GND\"}",
+    "rotation": 270
+   }
+  },
+  {
+   "id": "add-C3",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 220,
+    "y": 1140,
+    "layer": 1,
+    "designator": "C3",
+    "unique-id": "${UID_C3}",
+    "nets": "{\"2\":\"GND\",\"1\":\"+3V3\"}",
+    "rotation": 270
+   }
+  },
+  {
+   "id": "add-C4",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 220,
+    "y": 1025,
+    "layer": 1,
+    "designator": "C4",
+    "unique-id": "${UID_C4}",
+    "nets": "{\"2\":\"GND\",\"1\":\"+3V3\"}",
+    "rotation": 270
+   }
+  },
+  {
+   "id": "add-C5",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 220,
+    "y": 910,
+    "layer": 1,
+    "designator": "C5",
+    "unique-id": "${UID_C5}",
+    "nets": "{\"2\":\"GND\",\"1\":\"+3V3\"}",
+    "rotation": 270
+   }
+  },
+  {
+   "id": "add-C6",
+   "run": "pcb add-component",
+   "flags": {
+    "library": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 240,
+    "y": 795,
+    "layer": 1,
+    "designator": "C6",
+    "unique-id": "${UID_C6}",
+    "nets": "{\"2\":\"GND\",\"1\":\"EN\"}",
+    "rotation": 180
+   }
+  },
+  {
+   "id": "stackup-4layer",
+   "run": "pcb stackup set",
+   "name": "先升 4 层(内层铺铜的前提)",
+   "flags": {
+    "layers": 4
+   }
+  },
+  {
+   "id": "save-placed",
+   "action": "pcb.save",
+   "checkpoint": true
+  },
+  {
+   "id": "outline",
+   "run": "pcb outline-round",
+   "flags": {
+    "rect": "0,0,2600,1500",
+    "radius": 120
+   }
+  },
+  {
+   "id": "m3-slot-1",
+   "run": "pcb slot",
+   "flags": {
+    "points": "[[213.0, 150.0], [210.9, 166.3], [204.6, 181.5], [194.5, 194.5], [181.5, 204.6], [166.3, 210.9], [150.0, 213.0], [133.7, 210.9], [118.5, 204.6], [105.5, 194.5], [95.4, 181.5], [89.1, 166.3], [87.0, 150.0], [89.1, 133.7], [95.4, 118.5], [105.5, 105.5], [118.5, 95.4], [133.7, 89.1], [150.0, 87.0], [166.3, 89.1], [181.5, 95.4], [194.5, 105.5], [204.6, 118.5], [210.9, 133.7]]"
+   }
+  },
+  {
+   "id": "m3-ring-1",
+   "run": "pcb region create",
+   "flags": {
+    "rect": "20,20,280,280",
+    "rule": [
+     "no-pours",
+     "no-wires",
+     "no-fills"
+    ]
+   }
+  },
+  {
+   "id": "m3-slot-2",
+   "run": "pcb slot",
+   "flags": {
+    "points": "[[2513.0, 150.0], [2510.9, 166.3], [2504.6, 181.5], [2494.5, 194.5], [2481.5, 204.6], [2466.3, 210.9], [2450.0, 213.0], [2433.7, 210.9], [2418.5, 204.6], [2405.5, 194.5], [2395.4, 181.5], [2389.1, 166.3], [2387.0, 150.0], [2389.1, 133.7], [2395.4, 118.5], [2405.5, 105.5], [2418.5, 95.4], [2433.7, 89.1], [2450.0, 87.0], [2466.3, 89.1], [2481.5, 95.4], [2494.5, 105.5], [2504.6, 118.5], [2510.9, 133.7]]"
+   }
+  },
+  {
+   "id": "m3-ring-2",
+   "run": "pcb region create",
+   "flags": {
+    "rect": "2320,20,2580,280",
+    "rule": [
+     "no-pours",
+     "no-wires",
+     "no-fills"
+    ]
+   }
+  },
+  {
+   "id": "m3-slot-3",
+   "run": "pcb slot",
+   "flags": {
+    "points": "[[213.0, 1350.0], [210.9, 1366.3], [204.6, 1381.5], [194.5, 1394.5], [181.5, 1404.6], [166.3, 1410.9], [150.0, 1413.0], [133.7, 1410.9], [118.5, 1404.6], [105.5, 1394.5], [95.4, 1381.5], [89.1, 1366.3], [87.0, 1350.0], [89.1, 1333.7], [95.4, 1318.5], [105.5, 1305.5], [118.5, 1295.4], [133.7, 1289.1], [150.0, 1287.0], [166.3, 1289.1], [181.5, 1295.4], [194.5, 1305.5], [204.6, 1318.5], [210.9, 1333.7]]"
+   }
+  },
+  {
+   "id": "m3-ring-3",
+   "run": "pcb region create",
+   "flags": {
+    "rect": "20,1220,280,1480",
+    "rule": [
+     "no-pours",
+     "no-wires",
+     "no-fills"
+    ]
+   }
+  },
+  {
+   "id": "m3-slot-4",
+   "run": "pcb slot",
+   "flags": {
+    "points": "[[2513.0, 1350.0], [2510.9, 1366.3], [2504.6, 1381.5], [2494.5, 1394.5], [2481.5, 1404.6], [2466.3, 1410.9], [2450.0, 1413.0], [2433.7, 1410.9], [2418.5, 1404.6], [2405.5, 1394.5], [2395.4, 1381.5], [2389.1, 1366.3], [2387.0, 1350.0], [2389.1, 1333.7], [2395.4, 1318.5], [2405.5, 1305.5], [2418.5, 1295.4], [2433.7, 1289.1], [2450.0, 1287.0], [2466.3, 1289.1], [2481.5, 1295.4], [2494.5, 1305.5], [2504.6, 1318.5], [2510.9, 1333.7]]"
+   }
+  },
+  {
+   "id": "m3-ring-4",
+   "run": "pcb region create",
+   "flags": {
+    "rect": "2320,1220,2580,1480",
+    "rule": [
+     "no-pours",
+     "no-wires",
+     "no-fills"
+    ]
+   }
+  },
+  {
+   "id": "antenna-l1",
+   "run": "pcb region create",
+   "name": "天线禁布 L1(含内层 no-inner-electrical)",
+   "flags": {
+    "rect": "306,1200,1094,1500",
+    "name": "antenna_keepout",
+    "rule": [
+     "no-pours",
+     "no-wires",
+     "no-fills",
+     "no-inner-electrical"
+    ]
+   }
+  },
+  {
+   "id": "antenna-l2",
+   "run": "pcb region create",
+   "name": "天线禁布 L2(pcb check 要求每层独立)",
+   "flags": {
+    "rect": "306,1200,1094,1500",
+    "layer": 2,
+    "name": "antenna_keepout_bottom",
+    "rule": [
+     "no-pours",
+     "no-wires",
+     "no-fills"
+    ]
+   }
+  },
+  {
+   "id": "gate-lint-placed",
+   "run": "pcb layout-lint",
+   "name": "可布性门(overlap/off-board 即非零退出)",
+   "assert": {
+    "$.overlaps": "len==0"
+   },
+   "flags": {
+    "json": true
+   }
+  },
+  {
+   "id": "silk-align",
+   "run": "pcb silk-align"
+  },
+  {
+   "id": "save-infra",
+   "action": "pcb.save",
+   "checkpoint": true
+  },
+  {
+   "id": "t1",
+   "run": "pcb track",
+   "flags": {
+    "x1": 220,
+    "y1": 926.5,
+    "x2": 180,
+    "y2": 926.5,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t2",
+   "run": "pcb track",
+   "flags": {
+    "x1": 220,
+    "y1": 1041.5,
+    "x2": 180,
+    "y2": 1041.5,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t3",
+   "run": "pcb track",
+   "flags": {
+    "x1": 220,
+    "y1": 1156.5,
+    "x2": 180,
+    "y2": 1156.5,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t4",
+   "run": "pcb track",
+   "flags": {
+    "x1": 223,
+    "y1": 690,
+    "x2": 180,
+    "y2": 690,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t5",
+   "run": "pcb track",
+   "flags": {
+    "x1": 355.5,
+    "y1": 1149.7,
+    "x2": 295,
+    "y2": 1149.7,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t6",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1217,
+    "y1": 500,
+    "x2": 1217,
+    "y2": 462,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t7",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1325,
+    "y1": 913.1,
+    "x2": 1325,
+    "y2": 965,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t8",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1475,
+    "y1": 686.9,
+    "x2": 1475,
+    "y2": 648,
+    "layer": 1,
+    "width": 10,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t9",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2111.9,
+    "y1": 510,
+    "x2": 2300,
+    "y2": 510,
+    "layer": 1,
+    "width": 12,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t10",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2300,
+    "y1": 510,
+    "x2": 2300,
+    "y2": 519.4,
+    "layer": 1,
+    "width": 12,
+    "net": "+3V3"
+   }
+  },
+  {
+   "id": "t11",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1453.1999999999998,
+    "y1": 308,
+    "x2": 1453.1999999999998,
+    "y2": 390,
+    "layer": 1,
+    "width": 10,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t12",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1646.9,
+    "y1": 308,
+    "x2": 1646.9,
+    "y2": 353,
+    "layer": 1,
+    "width": 10,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t13",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1646.9,
+    "y1": 353,
+    "x2": 1700,
+    "y2": 353,
+    "layer": 1,
+    "width": 10,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t14",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1646.9,
+    "y1": 353,
+    "x2": 1646.9,
+    "y2": 390,
+    "layer": 1,
+    "width": 10,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t15",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2110,
+    "y1": 210.6,
+    "x2": 2050,
+    "y2": 210.6,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t16",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2110,
+    "y1": 353,
+    "x2": 2110,
+    "y2": 210.6,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t17",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2110,
+    "y1": 353,
+    "x2": 1700,
+    "y2": 353,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t18",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2111.9,
+    "y1": 670,
+    "x2": 2111.9,
+    "y2": 600.6,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t19",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2111.9,
+    "y1": 670,
+    "x2": 2290,
+    "y2": 670,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t20",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2290,
+    "y1": 670,
+    "x2": 2290,
+    "y2": 801.5999999999999,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t21",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2290,
+    "y1": 670,
+    "x2": 2360,
+    "y2": 670,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t22",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2360,
+    "y1": 353,
+    "x2": 2360,
+    "y2": 670,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t23",
+   "run": "pcb track",
+   "flags": {
+    "x1": 2360,
+    "y1": 353,
+    "x2": 2110,
+    "y2": 353,
+    "layer": 1,
+    "width": 20,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t24",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1453.1999999999998,
+    "y1": 390,
+    "x2": 1646.9,
+    "y2": 390,
+    "layer": 2,
+    "width": 12,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "t25",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1330,
+    "y1": 440,
+    "x2": 1330,
+    "y2": 463,
+    "layer": 1,
+    "width": 6,
+    "net": "CC1"
+   }
+  },
+  {
+   "id": "t26",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1500.7999999999997,
+    "y1": 308,
+    "x2": 1500.7999999999997,
+    "y2": 440,
+    "layer": 1,
+    "width": 6,
+    "net": "CC1"
+   }
+  },
+  {
+   "id": "t27",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1500.7999999999997,
+    "y1": 440,
+    "x2": 1330,
+    "y2": 440,
+    "layer": 1,
+    "width": 6,
+    "net": "CC1"
+   }
+  },
+  {
+   "id": "t28",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1618.9,
+    "y1": 308,
+    "x2": 1618.9,
+    "y2": 420,
+    "layer": 1,
+    "width": 6,
+    "net": "CC2"
+   }
+  },
+  {
+   "id": "t29",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1618.9,
+    "y1": 420,
+    "x2": 1765,
+    "y2": 420,
+    "layer": 1,
+    "width": 6,
+    "net": "CC2"
+   }
+  },
+  {
+   "id": "t30",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1765,
+    "y1": 420,
+    "x2": 1765,
+    "y2": 443,
+    "layer": 1,
+    "width": 6,
+    "net": "CC2"
+   }
+  },
+  {
+   "id": "t31",
+   "run": "pcb track",
+   "flags": {
+    "x1": 290,
+    "y1": 500,
+    "x2": 246,
+    "y2": 500,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t32",
+   "run": "pcb track",
+   "flags": {
+    "x1": 290,
+    "y1": 690,
+    "x2": 257,
+    "y2": 690,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t33",
+   "run": "pcb track",
+   "flags": {
+    "x1": 290,
+    "y1": 690,
+    "x2": 290,
+    "y2": 500,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t34",
+   "run": "pcb track",
+   "flags": {
+    "x1": 290,
+    "y1": 795,
+    "x2": 256.5,
+    "y2": 795,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t35",
+   "run": "pcb track",
+   "flags": {
+    "x1": 290,
+    "y1": 795,
+    "x2": 290,
+    "y2": 690,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t36",
+   "run": "pcb track",
+   "flags": {
+    "x1": 290,
+    "y1": 1099.7,
+    "x2": 290,
+    "y2": 795,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t37",
+   "run": "pcb track",
+   "flags": {
+    "x1": 355.5,
+    "y1": 1099.7,
+    "x2": 290,
+    "y2": 1099.7,
+    "layer": 1,
+    "width": 6,
+    "net": "EN"
+   }
+  },
+  {
+   "id": "t38",
+   "run": "pcb track",
+   "flags": {
+    "x1": 355.5,
+    "y1": 1185,
+    "x2": 298,
+    "y2": 1185,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t39",
+   "run": "pcb track",
+   "flags": {
+    "x1": 355.5,
+    "y1": 1194,
+    "x2": 355.5,
+    "y2": 1185,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t40",
+   "run": "pcb track",
+   "flags": {
+    "x1": 585.8,
+    "y1": 895.8,
+    "x2": 530,
+    "y2": 895.8,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t41",
+   "run": "pcb track",
+   "flags": {
+    "x1": 640.9000000000001,
+    "y1": 895.8,
+    "x2": 668,
+    "y2": 895.8,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t42",
+   "run": "pcb track",
+   "flags": {
+    "x1": 668,
+    "y1": 895.8,
+    "x2": 668,
+    "y2": 990,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t43",
+   "run": "pcb track",
+   "flags": {
+    "x1": 668,
+    "y1": 990,
+    "x2": 720,
+    "y2": 990,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t44",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1044.5,
+    "y1": 1185,
+    "x2": 1115,
+    "y2": 1185,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t45",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1044.5,
+    "y1": 1194,
+    "x2": 1044.5,
+    "y2": 1185,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t46",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1293,
+    "y1": 107.4,
+    "x2": 1350.4,
+    "y2": 107.4,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t47",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1293,
+    "y1": 272,
+    "x2": 1350.4,
+    "y2": 272,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t48",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1300,
+    "y1": 686.9,
+    "x2": 1300,
+    "y2": 1012,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t49",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1325,
+    "y1": 686.9,
+    "x2": 1300,
+    "y2": 686.9,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t50",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1423,
+    "y1": 308,
+    "x2": 1423,
+    "y2": 367,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t51",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1677,
+    "y1": 308,
+    "x2": 1677,
+    "y2": 330,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t52",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1677,
+    "y1": 330,
+    "x2": 1780,
+    "y2": 330,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t53",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1780,
+    "y1": 318,
+    "x2": 1812,
+    "y2": 318,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t54",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1780,
+    "y1": 330,
+    "x2": 1780,
+    "y2": 318,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t55",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1807,
+    "y1": 107.4,
+    "x2": 1749.6,
+    "y2": 107.4,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t56",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1807,
+    "y1": 272,
+    "x2": 1749.6,
+    "y2": 272,
+    "layer": 1,
+    "width": 10,
+    "net": "GND"
+   }
+  },
+  {
+   "id": "t57",
+   "run": "pcb track",
+   "flags": {
+    "x1": 964,
+    "y1": 250,
+    "x2": 964,
+    "y2": 130,
+    "layer": 1,
+    "width": 6,
+    "net": "IO0"
+   }
+  },
+  {
+   "id": "t58",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1044.5,
+    "y1": 549.7,
+    "x2": 1120,
+    "y2": 549.7,
+    "layer": 1,
+    "width": 6,
+    "net": "IO0"
+   }
+  },
+  {
+   "id": "t59",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1120,
+    "y1": 250,
+    "x2": 964,
+    "y2": 250,
+    "layer": 1,
+    "width": 6,
+    "net": "IO0"
+   }
+  },
+  {
+   "id": "t60",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1120,
+    "y1": 500,
+    "x2": 1183,
+    "y2": 500,
+    "layer": 1,
+    "width": 6,
+    "net": "IO0"
+   }
+  },
+  {
+   "id": "t61",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1120,
+    "y1": 500,
+    "x2": 1120,
+    "y2": 250,
+    "layer": 1,
+    "width": 6,
+    "net": "IO0"
+   }
+  },
+  {
+   "id": "t62",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1120,
+    "y1": 549.7,
+    "x2": 1120,
+    "y2": 500,
+    "layer": 1,
+    "width": 6,
+    "net": "IO0"
+   }
+  },
+  {
+   "id": "t63",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1237,
+    "y1": 1230,
+    "x2": 1298.7,
+    "y2": 1230,
+    "layer": 1,
+    "width": 6,
+    "net": "LED_A"
+   }
+  },
+  {
+   "id": "t64",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1298.7,
+    "y1": 1230,
+    "x2": 1298.7,
+    "y2": 1380,
+    "layer": 1,
+    "width": 6,
+    "net": "LED_A"
+   }
+  },
+  {
+   "id": "t65",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1044.5,
+    "y1": 1099.7,
+    "x2": 1140,
+    "y2": 1099.7,
+    "layer": 1,
+    "width": 6,
+    "net": "LED_CTRL"
+   }
+  },
+  {
+   "id": "t66",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1140,
+    "y1": 1099.7,
+    "x2": 1140,
+    "y2": 1230,
+    "layer": 1,
+    "width": 6,
+    "net": "LED_CTRL"
+   }
+  },
+  {
+   "id": "t67",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1140,
+    "y1": 1230,
+    "x2": 1203,
+    "y2": 1230,
+    "layer": 1,
+    "width": 6,
+    "net": "LED_CTRL"
+   }
+  },
+  {
+   "id": "t68",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1240,
+    "y1": 625,
+    "x2": 1240,
+    "y2": 999.7,
+    "layer": 1,
+    "width": 6,
+    "net": "U0RXD"
+   }
+  },
+  {
+   "id": "t69",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1240,
+    "y1": 999.7,
+    "x2": 1044.5,
+    "y2": 999.7,
+    "layer": 1,
+    "width": 6,
+    "net": "U0RXD"
+   }
+  },
+  {
+   "id": "t70",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1375,
+    "y1": 625,
+    "x2": 1240,
+    "y2": 625,
+    "layer": 1,
+    "width": 6,
+    "net": "U0RXD"
+   }
+  },
+  {
+   "id": "t71",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1375,
+    "y1": 686.9,
+    "x2": 1375,
+    "y2": 625,
+    "layer": 1,
+    "width": 6,
+    "net": "U0RXD"
+   }
+  },
+  {
+   "id": "t72",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1398,
+    "y1": 595,
+    "x2": 1398,
+    "y2": 1049.7,
+    "layer": 1,
+    "width": 6,
+    "net": "U0TXD"
+   }
+  },
+  {
+   "id": "t73",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1398,
+    "y1": 1049.7,
+    "x2": 1044.5,
+    "y2": 1049.7,
+    "layer": 1,
+    "width": 6,
+    "net": "U0TXD"
+   }
+  },
+  {
+   "id": "t74",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1425,
+    "y1": 595,
+    "x2": 1398,
+    "y2": 595,
+    "layer": 1,
+    "width": 6,
+    "net": "U0TXD"
+   }
+  },
+  {
+   "id": "t75",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1425,
+    "y1": 686.9,
+    "x2": 1425,
+    "y2": 595,
+    "layer": 1,
+    "width": 6,
+    "net": "U0TXD"
+   }
+  },
+  {
+   "id": "t76",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1520.5,
+    "y1": 270,
+    "x2": 1559.8,
+    "y2": 270,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DN"
+   }
+  },
+  {
+   "id": "t77",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1520.5,
+    "y1": 308,
+    "x2": 1520.5,
+    "y2": 270,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DN"
+   }
+  },
+  {
+   "id": "t78",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1559.8,
+    "y1": 270,
+    "x2": 1559.8,
+    "y2": 308,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DN"
+   }
+  },
+  {
+   "id": "t79",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1559.8,
+    "y1": 308,
+    "x2": 1559.8,
+    "y2": 610,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DN"
+   }
+  },
+  {
+   "id": "t80",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1559.8,
+    "y1": 610,
+    "x2": 1575,
+    "y2": 610,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DN"
+   }
+  },
+  {
+   "id": "t81",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1575,
+    "y1": 610,
+    "x2": 1575,
+    "y2": 686.9,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DN"
+   }
+  },
+  {
+   "id": "t82",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1525,
+    "y1": 655,
+    "x2": 1525,
+    "y2": 686.9,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t83",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1525,
+    "y1": 810,
+    "x2": 1525,
+    "y2": 687,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t84",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1540.2,
+    "y1": 308,
+    "x2": 1540.2,
+    "y2": 655,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t85",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1540.2,
+    "y1": 655,
+    "x2": 1525,
+    "y2": 655,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t86",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1579.5,
+    "y1": 308,
+    "x2": 1579.5,
+    "y2": 570,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t87",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1579.5,
+    "y1": 570,
+    "x2": 1720,
+    "y2": 570,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t88",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1720,
+    "y1": 570,
+    "x2": 1720,
+    "y2": 810,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "t89",
+   "run": "pcb track",
+   "flags": {
+    "x1": 1720,
+    "y1": 810,
+    "x2": 1525,
+    "y2": 810,
+    "layer": 1,
+    "width": 6,
+    "net": "USB_DP"
+   }
+  },
+  {
+   "id": "v1",
+   "run": "pcb via",
+   "flags": {
+    "x": 180,
+    "y": 690,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v2",
+   "run": "pcb via",
+   "flags": {
+    "x": 180,
+    "y": 926.5,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v3",
+   "run": "pcb via",
+   "flags": {
+    "x": 180,
+    "y": 1041.5,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v4",
+   "run": "pcb via",
+   "flags": {
+    "x": 180,
+    "y": 1156.5,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v5",
+   "run": "pcb via",
+   "flags": {
+    "x": 295,
+    "y": 1149.7,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v6",
+   "run": "pcb via",
+   "flags": {
+    "x": 1217,
+    "y": 462,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v7",
+   "run": "pcb via",
+   "flags": {
+    "x": 1325,
+    "y": 965,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v8",
+   "run": "pcb via",
+   "flags": {
+    "x": 1475,
+    "y": 648,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v9",
+   "run": "pcb via",
+   "flags": {
+    "x": 1860,
+    "y": 580,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v10",
+   "run": "pcb via",
+   "flags": {
+    "x": 1920,
+    "y": 580,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v11",
+   "run": "pcb via",
+   "flags": {
+    "x": 2180,
+    "y": 510,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v12",
+   "run": "pcb via",
+   "flags": {
+    "x": 2240,
+    "y": 510,
+    "net": "+3V3",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v13",
+   "run": "pcb via",
+   "flags": {
+    "x": 1453.1999999999998,
+    "y": 390,
+    "net": "+5V",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v14",
+   "run": "pcb via",
+   "flags": {
+    "x": 1646.9,
+    "y": 390,
+    "net": "+5V",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v15",
+   "run": "pcb via",
+   "flags": {
+    "x": 180,
+    "y": 350,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v16",
+   "run": "pcb via",
+   "flags": {
+    "x": 298,
+    "y": 1185,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v17",
+   "run": "pcb via",
+   "flags": {
+    "x": 350,
+    "y": 300,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v18",
+   "run": "pcb via",
+   "flags": {
+    "x": 530,
+    "y": 895.8,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v19",
+   "run": "pcb via",
+   "flags": {
+    "x": 560,
+    "y": 800,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v20",
+   "run": "pcb via",
+   "flags": {
+    "x": 560,
+    "y": 990,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v21",
+   "run": "pcb via",
+   "flags": {
+    "x": 700,
+    "y": 1160,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v22",
+   "run": "pcb via",
+   "flags": {
+    "x": 720,
+    "y": 800,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v23",
+   "run": "pcb via",
+   "flags": {
+    "x": 720,
+    "y": 990,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v24",
+   "run": "pcb via",
+   "flags": {
+    "x": 1115,
+    "y": 1185,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v25",
+   "run": "pcb via",
+   "flags": {
+    "x": 1150,
+    "y": 300,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v26",
+   "run": "pcb via",
+   "flags": {
+    "x": 1150,
+    "y": 420,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v27",
+   "run": "pcb via",
+   "flags": {
+    "x": 1150,
+    "y": 700,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v28",
+   "run": "pcb via",
+   "flags": {
+    "x": 1293,
+    "y": 107.4,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v29",
+   "run": "pcb via",
+   "flags": {
+    "x": 1293,
+    "y": 272,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v30",
+   "run": "pcb via",
+   "flags": {
+    "x": 1300,
+    "y": 1012,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v31",
+   "run": "pcb via",
+   "flags": {
+    "x": 1423,
+    "y": 367,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v32",
+   "run": "pcb via",
+   "flags": {
+    "x": 1807,
+    "y": 107.4,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v33",
+   "run": "pcb via",
+   "flags": {
+    "x": 1807,
+    "y": 272,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v34",
+   "run": "pcb via",
+   "flags": {
+    "x": 1812,
+    "y": 318,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v35",
+   "run": "pcb via",
+   "flags": {
+    "x": 2100,
+    "y": 1150,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v36",
+   "run": "pcb via",
+   "flags": {
+    "x": 2200,
+    "y": 250,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "v37",
+   "run": "pcb via",
+   "flags": {
+    "x": 2450,
+    "y": 450,
+    "net": "GND",
+    "hole": 12,
+    "diameter": 24
+   }
+  },
+  {
+   "id": "save-copper",
+   "action": "pcb.save",
+   "checkpoint": true
+  },
+  {
+   "id": "bondfill-1",
+   "run": "pcb fill create",
+   "flags": {
+    "rect": "1443,380,1463,400",
+    "layer": 1,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "bondfill-2",
+   "run": "pcb fill create",
+   "flags": {
+    "rect": "1636.9,380,1656.9,400",
+    "layer": 1,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "bondfill-3",
+   "run": "pcb fill create",
+   "flags": {
+    "rect": "1443,380,1463,400",
+    "layer": 2,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "bondfill-4",
+   "run": "pcb fill create",
+   "flags": {
+    "rect": "1636.9,380,1656.9,400",
+    "layer": 2,
+    "net": "+5V"
+   }
+  },
+  {
+   "id": "pour-3v3-l16",
+   "run": "pcb pour-fit",
+   "flags": {
+    "net": "+3V3",
+    "layer": 16,
+    "inset": 30
+   }
+  },
+  {
+   "id": "pour-thermal",
+   "run": "pcb pour",
+   "name": "U2 散热岛(顶层 +3V3)",
+   "flags": {
+    "net": "+3V3",
+    "layer": 1,
+    "points": "[[1727,503],[2027,503],[2027,1100],[1727,1100]]"
+   }
+  },
+  {
+   "id": "pour-gnd-l15",
+   "run": "pcb pour-fit",
+   "flags": {
+    "net": "GND",
+    "layer": 15,
+    "inset": 30
+   }
+  },
+  {
+   "id": "pour-gnd-l1",
+   "run": "pcb pour-fit",
+   "flags": {
+    "net": "GND",
+    "layer": 1,
+    "inset": 15,
+    "replace": false
+   }
+  },
+  {
+   "id": "pour-gnd-l2",
+   "run": "pcb pour-fit",
+   "flags": {
+    "net": "GND",
+    "layer": 2,
+    "inset": 15,
+    "replace": false
+   }
+  },
+  {
+   "id": "plane-flip",
+   "run": "pcb stackup set",
+   "flags": {
+    "plane": 15
+   },
+   "name": "L15 → GND 内电层(必须在铺铜之后翻,#32)"
+  },
+  {
+   "id": "pour-rebuild",
+   "run": "pcb pour-rebuild"
+  },
+  {
+   "id": "save-pours",
+   "action": "pcb.save",
+   "checkpoint": true
+  },
+  {
+   "id": "silk-plus",
+   "run": "pcb silk-add",
+   "flags": {
+    "x": 1220,
+    "y": 1360,
+    "text": "+",
+    "font-size": 40,
+    "line-width": 6
+   }
+  },
+  {
+   "id": "silk-minus",
+   "run": "pcb silk-add",
+   "flags": {
+    "x": 1440,
+    "y": 1360,
+    "text": "-",
+    "font-size": 40,
+    "line-width": 6
+   }
+  },
+  {
+   "id": "silk-credit",
+   "run": "pcb silk-add",
+   "flags": {
+    "x": 1150,
+    "y": 1430,
+    "font-size": 45,
+    "line-width": 6,
+    "text": "ESP32-S3 mini  github:zhoushoujianwork/easyeda-agent"
+   }
+  },
+  {
+   "id": "gate-lint-final",
+   "run": "pcb layout-lint",
+   "flags": {
+    "json": true
+   },
+   "assert": {
+    "$.score": ">=95"
+   }
+  },
+  {
+   "id": "gate-check",
+   "run": "pcb check",
+   "flags": {
+    "strict": true
+   },
+   "name": "DFM 门:任何 finding 即非零退出"
+  },
+  {
+   "id": "save-final",
+   "action": "pcb.save",
+   "checkpoint": true
+  },
+  {
+   "id": "drc-final",
+   "run": "pcb drc",
+   "onFail": "continue",
+   "name": "官方 DRC(需 EasyEDA 前台;剩 1 条 Netlist Error = 平台 #33,预期内)"
+  },
+  {
+   "id": "done",
+   "notify": "✅ esp32-mini PCB 回放完成"
+  }
+ ]
+}

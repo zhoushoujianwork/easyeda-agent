@@ -111,7 +111,7 @@ func newApplyCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	var (
 		dryRun, resume, yes, quiet bool
 		fromRef, toRef             string
-		journalPath, window        string
+		journalPath, window, doc   string
 		varOverrides               []string
 		stepDelay                  float64
 	)
@@ -140,6 +140,9 @@ Precedence: CLI flag > playbook file > built-in default.`,
 			effWindow := window
 			if effWindow == "" {
 				effWindow = pb.Meta.Window
+			}
+			if doc != "" { // CLI flag > playbook meta.doc
+				pb.Meta.Doc = doc
 			}
 			vars := map[string]string{}
 			maps.Copy(vars, pb.Vars)
@@ -192,6 +195,7 @@ Precedence: CLI flag > playbook file > built-in default.`,
 	cmd.Flags().StringVar(&toRef, "to", "", "stop after step (id or 1-based index)")
 	cmd.Flags().StringVar(&journalPath, "journal", "", "journal path (default <playbook>.journal.jsonl)")
 	cmd.Flags().StringVar(&window, "window", "", "EasyEDA window ID (overrides meta.window)")
+	cmd.Flags().StringVar(&doc, "doc", "", "target document to switch to first (overrides meta.doc)")
 	cmd.Flags().StringArrayVar(&varOverrides, "var", nil, "override/add a playbook var: KEY=VALUE (repeatable)")
 	cmd.Flags().Float64Var(&stepDelay, "step-delay", 0, "pause N seconds between steps (demo / recording pacing)")
 	return cmd
@@ -1018,6 +1022,10 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 		switch t := v.(type) {
 		case bool:
 			argv = append(argv, fmt.Sprintf("--%s=%v", k, t))
+		case []any: // repeatable flag (e.g. region create --rule a --rule b)
+			for _, item := range t {
+				argv = append(argv, "--"+k, fmt.Sprintf("%v", item))
+			}
 		default:
 			argv = append(argv, "--"+k, fmt.Sprintf("%v", t))
 		}

@@ -1,0 +1,466 @@
+{
+ "version": 1,
+ "meta": {
+  "name": "esp32-mini-schematic",
+  "description": "esp32MiniRequire 原理图从零全流程(19 器件 + 13 网络);先切到目标空白页(meta.doc),换页名用 --window/编辑本文件",
+  "project": "ceshi",
+  "doc": "P1"
+ },
+ "defaults": {
+  "timeoutSec": 30,
+  "retry": 1
+ },
+ "vars": {
+  "LIB": "0819f05c4eef4c71ace90d822a990e87"
+ },
+ "steps": [
+  {
+   "id": "clear-page",
+   "run": "sch clear",
+   "name": "清空当前页(保留图框)——确认门控,--yes 放行",
+   "confirm": true
+  },
+  {
+   "id": "place-U1",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "ebc5227ec05f4bcbbb5581e49a5f7cc6",
+    "x": 760,
+    "y": 430
+   },
+   "capture": {
+    "P_U1": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-U1",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_U1}",
+    "patch": "{\"designator\": \"U1\"}"
+   }
+  },
+  {
+   "id": "place-U2",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "9f9c6cb41c7449fd8acf96aceed2661a",
+    "x": 120,
+    "y": 700
+   },
+   "capture": {
+    "P_U2": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-U2",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_U2}",
+    "patch": "{\"designator\": \"U2\"}"
+   }
+  },
+  {
+   "id": "place-U3",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "4951b3094e3e48a7b4c8c708b64932e4",
+    "x": 480,
+    "y": 700
+   },
+   "capture": {
+    "P_U3": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-U3",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_U3}",
+    "patch": "{\"designator\": \"U3\"}"
+   }
+  },
+  {
+   "id": "place-J1",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "fafc5d2de09d4595b0cc7abedc0530e6",
+    "x": 120,
+    "y": 470
+   },
+   "capture": {
+    "P_J1": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-J1",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_J1}",
+    "patch": "{\"designator\": \"J1\"}"
+   }
+  },
+  {
+   "id": "place-J2",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "41ddecaaf01b4c1aa92ec4bfe22149b7",
+    "x": 120,
+    "y": 250
+   },
+   "capture": {
+    "P_J2": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-J2",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_J2}",
+    "patch": "{\"designator\": \"J2\"}"
+   }
+  },
+  {
+   "id": "place-SW1",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "cff07d923b95482c818b184e98b80db7",
+    "x": 480,
+    "y": 470
+   },
+   "capture": {
+    "P_SW1": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-SW1",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_SW1}",
+    "patch": "{\"designator\": \"SW1\"}"
+   }
+  },
+  {
+   "id": "place-SW2",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "cff07d923b95482c818b184e98b80db7",
+    "x": 630,
+    "y": 470
+   },
+   "capture": {
+    "P_SW2": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-SW2",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_SW2}",
+    "patch": "{\"designator\": \"SW2\"}"
+   }
+  },
+  {
+   "id": "place-LED1",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "06303f8c50b646d88d0dd08d2ec9692c",
+    "x": 480,
+    "y": 250
+   },
+   "capture": {
+    "P_LED1": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-LED1",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_LED1}",
+    "patch": "{\"designator\": \"LED1\"}"
+   }
+  },
+  {
+   "id": "place-R1",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "a60160c6e65140998078961749427162",
+    "x": 630,
+    "y": 250
+   },
+   "capture": {
+    "P_R1": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-R1",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_R1}",
+    "patch": "{\"designator\": \"R1\"}"
+   }
+  },
+  {
+   "id": "place-R2",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "c3b9baa5ef2e4070a4c0f9e9cd04fe6e",
+    "x": 1000,
+    "y": 700
+   },
+   "capture": {
+    "P_R2": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-R2",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_R2}",
+    "patch": "{\"designator\": \"R2\"}"
+   }
+  },
+  {
+   "id": "place-R3",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "c3b9baa5ef2e4070a4c0f9e9cd04fe6e",
+    "x": 1080,
+    "y": 700
+   },
+   "capture": {
+    "P_R3": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-R3",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_R3}",
+    "patch": "{\"designator\": \"R3\"}"
+   }
+  },
+  {
+   "id": "place-R4",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "ef1f93374e0c4079b48a2d1a3cec8f6b",
+    "x": 300,
+    "y": 250
+   },
+   "capture": {
+    "P_R4": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-R4",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_R4}",
+    "patch": "{\"designator\": \"R4\"}"
+   }
+  },
+  {
+   "id": "place-R5",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "ef1f93374e0c4079b48a2d1a3cec8f6b",
+    "x": 380,
+    "y": 250
+   },
+   "capture": {
+    "P_R5": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-R5",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_R5}",
+    "patch": "{\"designator\": \"R5\"}"
+   }
+  },
+  {
+   "id": "place-C1",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "6e5726223dd84f70bc3b626fc7d1f72c",
+    "x": 300,
+    "y": 700
+   },
+   "capture": {
+    "P_C1": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-C1",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_C1}",
+    "patch": "{\"designator\": \"C1\"}"
+   }
+  },
+  {
+   "id": "place-C2",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "159c3da60be9490abf4e97599788a0d5",
+    "x": 380,
+    "y": 700
+   },
+   "capture": {
+    "P_C2": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-C2",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_C2}",
+    "patch": "{\"designator\": \"C2\"}"
+   }
+  },
+  {
+   "id": "place-C3",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 1000,
+    "y": 480
+   },
+   "capture": {
+    "P_C3": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-C3",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_C3}",
+    "patch": "{\"designator\": \"C3\"}"
+   }
+  },
+  {
+   "id": "place-C4",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 1080,
+    "y": 480
+   },
+   "capture": {
+    "P_C4": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-C4",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_C4}",
+    "patch": "{\"designator\": \"C4\"}"
+   }
+  },
+  {
+   "id": "place-C5",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 630,
+    "y": 700
+   },
+   "capture": {
+    "P_C5": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-C5",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_C5}",
+    "patch": "{\"designator\": \"C5\"}"
+   }
+  },
+  {
+   "id": "place-C6",
+   "run": "sch place",
+   "flags": {
+    "lib": "0819f05c4eef4c71ace90d822a990e87",
+    "uuid": "87bb635d0b2f489a9f60e7cd225beb3c",
+    "x": 1000,
+    "y": 250
+   },
+   "capture": {
+    "P_C6": "$.primitiveId"
+   }
+  },
+  {
+   "id": "desig-C6",
+   "run": "sch modify",
+   "flags": {
+    "id": "${P_C6}",
+    "patch": "{\"designator\": \"C6\"}"
+   }
+  },
+  {
+   "id": "save-placed",
+   "action": "schematic.save",
+   "checkpoint": true
+  },
+  {
+   "id": "autoconnect",
+   "run": "sch autoconnect",
+   "name": "64 个网络标志批量落地(约 3-5 分钟)",
+   "flags": {
+    "spec": "examples/esp32-mini/sch-connect.spec.json"
+   }
+  },
+  {
+   "id": "save-wired",
+   "action": "schematic.save",
+   "checkpoint": true
+  },
+  {
+   "id": "gate-lint",
+   "run": "sch layout-lint",
+   "name": "布局门:overlap 即非零退出"
+  },
+  {
+   "id": "gate-drc",
+   "run": "sch drc",
+   "name": "电气门:fatal 即非零退出(3 条悬空 warn = 模组备用脚,预期内)"
+  },
+  {
+   "id": "check-info",
+   "run": "sch check",
+   "onFail": "continue",
+   "name": "重建式检查(信息性;悬空备用脚会列出)"
+  },
+  {
+   "id": "save-final",
+   "action": "schematic.save",
+   "checkpoint": true
+  },
+  {
+   "id": "done",
+   "notify": "✅ esp32-mini 原理图回放完成"
+  }
+ ]
+}

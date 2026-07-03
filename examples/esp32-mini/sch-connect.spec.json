@@ -1,0 +1,81 @@
+{
+  "connections": [
+    {"pin":"U1:1","kind":"gnd","net":"GND"},
+    {"pin":"U1:40","kind":"gnd","net":"GND"},
+    {"pin":"U1:41","kind":"gnd","net":"GND"},
+    {"pin":"U2:1","kind":"gnd","net":"GND"},
+    {"pin":"U3:1","kind":"gnd","net":"GND"},
+    {"pin":"J1:A1B12","kind":"gnd","net":"GND"},
+    {"pin":"J1:B1A12","kind":"gnd","net":"GND"},
+    {"pin":"J1:8","kind":"gnd","net":"GND"},
+    {"pin":"J1:9","kind":"gnd","net":"GND"},
+    {"pin":"J1:10","kind":"gnd","net":"GND"},
+    {"pin":"J1:11","kind":"gnd","net":"GND"},
+    {"pin":"J2:2","kind":"gnd","net":"GND"},
+    {"pin":"C1:2","kind":"gnd","net":"GND"},
+    {"pin":"C2:2","kind":"gnd","net":"GND"},
+    {"pin":"C3:2","kind":"gnd","net":"GND"},
+    {"pin":"C4:2","kind":"gnd","net":"GND"},
+    {"pin":"C5:2","kind":"gnd","net":"GND"},
+    {"pin":"C6:2","kind":"gnd","net":"GND"},
+    {"pin":"R4:2","kind":"gnd","net":"GND"},
+    {"pin":"R5:2","kind":"gnd","net":"GND"},
+    {"pin":"SW1:2","kind":"gnd","net":"GND"},
+    {"pin":"SW2:2","kind":"gnd","net":"GND"},
+    {"pin":"LED1:2","kind":"gnd","net":"GND"},
+
+    {"pin":"J1:A4B9","kind":"power","net":"+5V"},
+    {"pin":"J1:B4A9","kind":"power","net":"+5V"},
+    {"pin":"J2:1","kind":"power","net":"+5V"},
+    {"pin":"U2:3","kind":"power","net":"+5V"},
+    {"pin":"C1:1","kind":"power","net":"+5V"},
+
+    {"pin":"U2:2","kind":"power","net":"+3V3"},
+    {"pin":"U2:4","kind":"power","net":"+3V3"},
+    {"pin":"C2:1","kind":"power","net":"+3V3"},
+    {"pin":"U1:2","kind":"power","net":"+3V3"},
+    {"pin":"U3:16","kind":"power","net":"+3V3"},
+    {"pin":"U3:4","kind":"power","net":"+3V3"},
+    {"pin":"C3:1","kind":"power","net":"+3V3"},
+    {"pin":"C4:1","kind":"power","net":"+3V3"},
+    {"pin":"C5:1","kind":"power","net":"+3V3"},
+    {"pin":"R2:1","kind":"power","net":"+3V3"},
+    {"pin":"R3:1","kind":"power","net":"+3V3"},
+
+    {"pin":"J1:A6","kind":"netport","net":"USB_DP"},
+    {"pin":"J1:B6","kind":"netport","net":"USB_DP"},
+    {"pin":"U3:5","kind":"netport","net":"USB_DP"},
+
+    {"pin":"J1:A7","kind":"netport","net":"USB_DN"},
+    {"pin":"J1:B7","kind":"netport","net":"USB_DN"},
+    {"pin":"U3:6","kind":"netport","net":"USB_DN"},
+
+    {"pin":"U1:37","kind":"netport","net":"U0TXD"},
+    {"pin":"U3:3","kind":"netport","net":"U0TXD"},
+
+    {"pin":"U1:36","kind":"netport","net":"U0RXD"},
+    {"pin":"U3:2","kind":"netport","net":"U0RXD"},
+
+    {"pin":"U1:3","kind":"netport","net":"EN"},
+    {"pin":"R2:2","kind":"netport","net":"EN"},
+    {"pin":"C6:1","kind":"netport","net":"EN"},
+    {"pin":"SW2:1","kind":"netport","net":"EN"},
+
+    {"pin":"U1:27","kind":"netport","net":"IO0"},
+    {"pin":"R3:2","kind":"netport","net":"IO0"},
+    {"pin":"SW1:1","kind":"netport","net":"IO0"},
+
+    {"pin":"U1:38","kind":"netport","net":"LED_CTRL"},
+    {"pin":"R1:1","kind":"netport","net":"LED_CTRL"},
+
+    {"pin":"R1:2","kind":"netport","net":"LED_A"},
+    {"pin":"LED1:1","kind":"netport","net":"LED_A"},
+
+    {"pin":"J1:A5","kind":"netport","net":"CC1"},
+    {"pin":"R4:1","kind":"netport","net":"CC1"},
+
+    {"pin":"J1:B5","kind":"netport","net":"CC2"},
+    {"pin":"R5:1","kind":"netport","net":"CC2"}
+  ],
+  "rules": {"avoidTitleBlock":true,"avoidPinFanout":true,"staggerLabels":true,"offsetRange":[18,80],"offsetStep":6,"minLabelGap":12}
+}

@@ -1,4 +1,4 @@
-.PHONY: help test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test release replay demo-replay
+.PHONY: help test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test release replay demo-replay replay-sch replay-pcb
 
 DIST := dist
 
@@ -39,6 +39,14 @@ replay: ## 回放 esp32-mini 移件 playbook,恢复布局(PROJECT=ceshi)
 
 demo-replay: ## 演示:挪乱4件→观察→逐步回放恢复(PAUSE=30 STEP_DELAY=1.2 可覆写)
 	bash examples/esp32-mini/demo-replay.sh
+
+DOC_SCH ?= P1
+DOC_PCB ?= PCB1
+replay-sch: ## 阶段一:原理图从零全流程回放(PROJECT/DOC_SCH 可覆写)
+	easyeda apply examples/esp32-mini/schematic.playbook.json --project $(PROJECT) --doc $(DOC_SCH) --yes
+
+replay-pcb: ## 阶段二:PCB 从零全流程回放(PROJECT/DOC_PCB 可覆写;uniqueId 见 examples/esp32-mini/README)
+	easyeda apply examples/esp32-mini/pcb.playbook.json --project $(PROJECT) --doc $(DOC_PCB) --yes
 
 api-index: ## regenerate the embedded eda.* API index (run after bumping pro-api-types)
 	python3 internal/apidoc/gen.py
