@@ -22,6 +22,26 @@
 			"basic": false,
 			"desc": "ESP32-S3 Wi-Fi+BLE module (flash+xtal+antenna integrated)"
 		},
+		"ic.ch340c": {
+			"value": "CH340C",
+			"mpn": "CH340C",
+			"lcsc": "C84681",
+			"manufacturer": "WCH",
+			"deviceUuid": "4951b3094e3e48a7b4c8c708b64932e4",
+			"footprint": "SOP-16_L10.0-W3.9-P1.27-LS6.0-BL",
+			"basic": false,
+			"desc": "USB-to-UART bridge, SOP-16, no external crystal (built-in); V3 tied to VCC at 3.3V"
+		},
+		"conn.screw_terminal_2p": {
+			"value": "KF301-5.0-2P",
+			"mpn": "KF301-5.0-2P",
+			"lcsc": "C474881",
+			"manufacturer": "Cheng Du Kai Hong",
+			"deviceUuid": "41ddecaaf01b4c1aa92ec4bfe22149b7",
+			"footprint": "CONN-TH_P5.00_KF301-5.0-2P",
+			"basic": false,
+			"desc": "2-pin 5.0mm pitch screw terminal (external 5V input)"
+		},
 		"ldo.ams1117_3v3": {
 			"value": "AMS1117-3.3",
 			"mpn": "AMS1117-3.3",
