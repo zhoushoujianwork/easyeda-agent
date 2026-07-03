@@ -67,5 +67,22 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
   验收线:DRC Connection=0 ∧ Clearance=0、`pcb check`=0、`layout-lint`≥95、BOM 全 C 号、已 save。
   Netlist Error≤1 且 `netlist-diff` 判定一致时视为通过(直至 A3 修复)。
 
+## 第三大块:外壳设计(调研 2026-07-04,待支持)
+
+集齐「原理图 → PCB → **外壳**」三大块。官方 API 现状(`easyeda api search 外壳`):
+
+| API(均 @beta) | 能力 | 判定 |
+|---|---|---|
+| `eda.pcb_ManufactureData.get3DShellFile(fileName?, 'stl'\|'step'\|'obj')` | 获取平台**自动生成**的 3D 外壳文件 | ✅ 出口已有 |
+| `eda.pcb_ManufactureData.place3DShellOrder(interactive?, ignoreWarning?)` | 3D 外壳**直接下单**(interactive=false 或可 headless) | ✅ 制造闭环已有 |
+| 参数化配置(壁厚/高度/开孔/螺柱) | **无 API**——应在 UI 弹窗 | ❌ 平台墙候选 |
+| (相邻)`get3DFile(step/obj, 元件/过孔/丝印可选)` | 整板 3D 模型导出 | ✅ 可一并封装 |
+
+**待办(等 apply 落地后排期)**:
+- [ ] 真机实测 `get3DShellFile` 默认外壳质量(对 ceshi 板导 STL 目检:板框贴合度/按键-USB 开孔/M3 螺柱)。
+- [ ] 封装 typed action + 子命令:`pcb shell-export [--type stl|step|obj]`、`pcb shell-order [--yes]`、`pcb 3d-export`。
+- [ ] 若默认外壳不可参数化 → 记平台墙,评估「导 STEP → OpenSCAD/CadQuery 后处理开孔」的自研补位;必要时向官方提 feature request(参数化外壳 API)。
+
 ## 待办勾稽
-- 探针轮次 #2 触发条件:B 列 P0 全部落地后重跑 esp32MiniRequire 全流程。
+- 探针轮次 #2 触发条件:B 列 P0(首位 = `easyeda apply`)全部落地后重跑 esp32MiniRequire 全流程。
+- 外壳三件套(上节)在 apply 之后排期。
