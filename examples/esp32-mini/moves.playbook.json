@@ -1,0 +1,335 @@
+{
+  "version": 1,
+  "meta": {
+    "name": "esp32-mini-moves",
+    "description": "exported from audit 2026-07-03 (1920 rows → 27 steps, 0 capture(s), 23 raw id(s) need review)",
+    "project": "ceshi"
+  },
+  "defaults": {},
+  "steps": [
+    {
+      "id": "s1-rip_up",
+      "action": "pcb.route.rip_up"
+    },
+    {
+      "id": "s2-delete",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.pour.delete",
+      "payload": {
+        "primitiveIds": [
+          "0e902a5d72f6dc46",
+          "341667eeb688fa23",
+          "5d25935899eeb816"
+        ]
+      }
+    },
+    {
+      "id": "s3-delete",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.region.delete",
+      "payload": {
+        "primitiveIds": [
+          "8c4076aaf57ac3e7",
+          "4db09a220daa0e83",
+          "74282286d7e1abe3",
+          "482c20c677865ccc"
+        ]
+      }
+    },
+    {
+      "id": "s4-delete",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.fill.delete",
+      "payload": {
+        "primitiveIds": [
+          "6cae87819b5838b9",
+          "7f0153885beb813d",
+          "80a33d209167945e",
+          "d34f02d2f8fc9511"
+        ]
+      }
+    },
+    {
+      "id": "s5-set",
+      "action": "pcb.stackup.set",
+      "payload": {
+        "layers": [
+          {
+            "id": 15,
+            "type": "signal"
+          }
+        ]
+      }
+    },
+    {
+      "id": "s6-save",
+      "action": "pcb.save",
+      "checkpoint": true
+    },
+    {
+      "id": "s7-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 700,
+          "y": 849.5
+        },
+        "primitiveId": "5bcd949e0b308640"
+      }
+    },
+    {
+      "id": "s8-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1500,
+          "y": 800
+        },
+        "primitiveId": "286eeca32ceaf0ef"
+      }
+    },
+    {
+      "id": "s9-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1995,
+          "y": 510
+        },
+        "primitiveId": "4ea63b8143255c60"
+      }
+    },
+    {
+      "id": "s10-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 2290,
+          "y": 900
+        },
+        "primitiveId": "27e76fbac844f45c"
+      }
+    },
+    {
+      "id": "s11-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1050,
+          "y": 130
+        },
+        "primitiveId": "78e0b37f10a445c8"
+      }
+    },
+    {
+      "id": "s12-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 160,
+          "y": 500
+        },
+        "primitiveId": "995010b6abd0aa9f"
+      }
+    },
+    {
+      "id": "s13-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1340,
+          "y": 1380
+        },
+        "primitiveId": "f2a96783c287b247"
+      }
+    },
+    {
+      "id": "s14-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1220,
+          "y": 1230
+        },
+        "primitiveId": "969fcb6da5e1809f"
+      }
+    },
+    {
+      "id": "s15-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 240,
+          "y": 690
+        },
+        "primitiveId": "01d692258c972012"
+      }
+    },
+    {
+      "id": "s16-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1200,
+          "y": 500
+        },
+        "primitiveId": "00547c7db694d77a"
+      }
+    },
+    {
+      "id": "s17-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1330,
+          "y": 480
+        },
+        "primitiveId": "5f003e778ed604e5"
+      }
+    },
+    {
+      "id": "s18-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 1765,
+          "y": 460
+        },
+        "primitiveId": "5bf271fda01ce08b"
+      }
+    },
+    {
+      "id": "s19-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 2050,
+          "y": 250
+        },
+        "primitiveId": "035a0f7257233ffd"
+      }
+    },
+    {
+      "id": "s20-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "rotation": 270,
+          "x": 2300,
+          "y": 480
+        },
+        "primitiveId": "10fae6bbd932151d"
+      }
+    },
+    {
+      "id": "s21-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "rotation": 270,
+          "x": 220,
+          "y": 1140
+        },
+        "primitiveId": "cd499d5b7efb16e7"
+      }
+    },
+    {
+      "id": "s22-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "rotation": 270,
+          "x": 220,
+          "y": 1025
+        },
+        "primitiveId": "f6ca95f410451a79"
+      }
+    },
+    {
+      "id": "s23-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "rotation": 270,
+          "x": 220,
+          "y": 910
+        },
+        "primitiveId": "fe4ff381ded57964"
+      }
+    },
+    {
+      "id": "s24-modify",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.modify",
+      "payload": {
+        "patch": {
+          "x": 240,
+          "y": 795
+        },
+        "primitiveId": "b87e1a94c4fb5e01"
+      }
+    },
+    {
+      "id": "s25-delete",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.component.delete",
+      "payload": {
+        "primitiveIds": [
+          "6e1d93ee5cb03547"
+        ]
+      }
+    },
+    {
+      "id": "s26-add_component",
+      "name": "raw-id: references a primitive created outside this export — review before replay",
+      "action": "pcb.add_component",
+      "payload": {
+        "designator": "J1",
+        "layer": 1,
+        "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+        "nets": {
+          "10": "GND",
+          "11": "GND",
+          "8": "GND",
+          "9": "GND",
+          "A1B12": "GND",
+          "A4B9": "+5V",
+          "A5": "CC1",
+          "A6": "USB_DP",
+          "A7": "USB_DN",
+          "B1A12": "GND",
+          "B4A9": "+5V",
+          "B5": "CC2",
+          "B6": "USB_DP",
+          "B7": "USB_DN"
+        },
+        "uniqueId": "gge4",
+        "uuid": "fafc5d2de09d4595b0cc7abedc0530e6",
+        "x": 1550,
+        "y": 207.7
+      }
+    },
+    {
+      "id": "s27-save",
+      "action": "pcb.save",
+      "checkpoint": true
+    }
+  ]
+}

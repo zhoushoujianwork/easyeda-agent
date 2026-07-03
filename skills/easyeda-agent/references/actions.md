@@ -27,6 +27,13 @@ easyeda apply steps.json --yes              # 放行确认门控(delete/clear/ri
   (mutation 可能已生效——先读回校验再 `--resume`);变更步骤可带 `verify:` 读回块自证。
 - journal 头带 playbook sha,文件改动会拒绝 `--resume`(改用 `--from`)。
 
+**录制导出**:`easyeda audit export --playbook --day 2026-07-03 --since 15:17 --until 15:19
+-o replay.json` 把真实会话(审计日志)提取成 playbook——只留变更步骤、自动挤压 autosave
+风暴、**自动接线 capture/${var}**(后步引用前步 result.primitiveId 时);引用「窗外出生」
+裸 id 的步骤会标 `raw-id` 警告(只能对同一板态回放,先 review)。⚠️ 提取物可能含
+rip-up/clear 等破坏性步骤——整册回放前先 `--dry-run` 看计划,或用 `--from/--to` 只放安全区间
+(已实证:esp32 移件段 18 步区间回放,幂等,lint 保持 100)。
+
 ## Navigation
 
 - `system.health` — daemon + connector 可用性，已连接窗口列表

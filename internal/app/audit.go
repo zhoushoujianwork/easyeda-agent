@@ -21,6 +21,7 @@ func newAuditCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Inspect the action audit log",
 	}
 	audit.AddCommand(newAuditTailCmd(stdout, stderr))
+	audit.AddCommand(newAuditExportCmd(stdout, stderr))
 	return audit
 }
 
