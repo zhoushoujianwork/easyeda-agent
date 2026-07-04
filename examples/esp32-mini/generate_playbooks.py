@@ -195,6 +195,14 @@ def gen_pcb(tracks, vias):
                       "flags": {"rect": rect, "layer": layer, "net": "+5V"}})
 
     # 5) 铺铜序列(pour-while-SIGNAL → flip PLANE → rebuild 配方)
+    # 5.0) 先给铺铜间距加余量(10→12mil,raise-only):新建 PCB 的 reflow 会对配置
+    # 间距打 ~3% 折且不生成热焊盘(平台疑点,见 README 已知问题),余量让打折后的
+    # reflow 依旧 ≥10mil DRC 下限;写入同时把系统预设变自定义配置,热焊盘也随之恢复。
+    steps += [
+        {"id": "rules-pour-margin", "run": "pcb drc-rules-set",
+         "flags": {"pour-clearance": 12},
+         "name": "铺铜间距余量 10→12mil(新板 reflow 打折 workaround)"},
+    ]
     steps += [
         {"id": "pour-3v3-l16", "run": "pcb pour-fit",
          "flags": {"net": "+3V3", "layer": 16, "inset": 30}},
@@ -211,6 +219,14 @@ def gen_pcb(tracks, vias):
          "name": "L15 → GND 内电层(必须在铺铜之后翻,#32)"},
         {"id": "pour-rebuild", "run": "pcb pour-rebuild"},
         {"id": "save-pours", "action": "pcb.save", "checkpoint": True},
+        # 5.1) 新建 PCB 的 reflow 用创建时规则快照:写规则/重灌都不生效,必须真正
+        # 关闭+重开文档后再 rebuild 一次,reflow 才读当前规则(间距+热焊盘同时恢复)。
+        # doc reload 内部先 save,不丢编辑;tab 切换不等于重载。
+        {"id": "reload-pcb", "run": "doc reload",
+         "name": "重载文档:刷新 reflow 规则快照(新建 PCB 平台疑点)"},
+        {"id": "pour-rebuild-2", "run": "pcb pour-rebuild",
+         "name": "重载后二次重灌:reflow 此时才按 12mil 余量 + 生成热焊盘"},
+        {"id": "save-pours-2", "action": "pcb.save", "checkpoint": True},
     ]
 
     # 6) 丝印:LED 极性 + 板注

@@ -2063,6 +2063,14 @@
    }
   },
   {
+   "id": "rules-pour-margin",
+   "run": "pcb drc-rules-set",
+   "flags": {
+    "pour-clearance": 12
+   },
+   "name": "铺铜间距余量 10→12mil(新板 reflow 打折 workaround)"
+  },
+  {
    "id": "pour-3v3-l16",
    "run": "pcb pour-fit",
    "flags": {
@@ -2124,6 +2132,21 @@
   },
   {
    "id": "save-pours",
+   "action": "pcb.save",
+   "checkpoint": true
+  },
+  {
+   "id": "reload-pcb",
+   "run": "doc reload",
+   "name": "重载文档:刷新 reflow 规则快照(新建 PCB 平台疑点)"
+  },
+  {
+   "id": "pour-rebuild-2",
+   "run": "pcb pour-rebuild",
+   "name": "重载后二次重灌:reflow 此时才按 12mil 余量 + 生成热焊盘"
+  },
+  {
+   "id": "save-pours-2",
    "action": "pcb.save",
    "checkpoint": true
   },

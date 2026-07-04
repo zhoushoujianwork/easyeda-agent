@@ -6,6 +6,39 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-04
+
+Fresh-PCB pour-reflow fix, solidified end to end (root cause pinned → commands →
+playbook → fresh-board replay-verified: DRC 55 → 1). Go/CLI only — no connector
+code change, no re-import needed.
+
+**Root cause pinned**: a PCB document created in the current session and never
+reloaded computes pour reflow from a **creation-time rules snapshot** — rule
+writes (readback shows them), `pour-rebuild`, and tab-switching have NO effect
+until the document is really closed and reopened; already-reloaded documents
+honor rule writes immediately. On top of that, the fresh-board reflow runs ~3%
+under the configured clearance (10mil → ~9.7mil) and skips thermal spokes
+(suspected platform issue, to be reported upstream).
+
+### Added
+- **`easyeda doc reload [name|uuid]`** — save + close + reopen a document (a
+  real reload; `doc switch` only changes the foreground tab). Refreshes the
+  per-document reflow rules snapshot; run `pcb pour-rebuild` after reloading a
+  PCB. Saves first (typed `schematic.save`/`pcb.save` by document type), so no
+  edits are lost.
+- **`easyeda pcb drc-rules-set --pour-clearance <mil>`** — the write side of
+  `drc-rules` (v1 knob: pour/plane copper clearance, **raise-only** — never
+  loosens a stricter board). Patches `Plane` `lineClearance` (copperRegion both
+  pad models + innerPlane) of the current rule configuration, writes it back
+  (bare-config API shape — the `{name, config}` wrapper silently no-ops),
+  verifies by re-read; a write on a system preset turns it into a per-board
+  自定义配置 copy, as the platform requires.
+- **esp32-mini playbook: `rules-pour-margin` + `reload-pcb` + `pour-rebuild-2`
+  steps** (182→186) — margin 10→12mil before pouring, then a document reload +
+  second rebuild after, so a replay on a **freshly created PCB** passes DRC
+  directly. Verified end to end on a fresh board (ceshi/Board4): 47 + 186 steps
+  green, official DRC = 1 (the known #33 add-component netlist false positive).
+
 ## [0.8.0] - 2026-07-03
 
 Recording/demo-mode reliability — a one-call **stage capture** that gates on the

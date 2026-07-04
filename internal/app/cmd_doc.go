@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -103,7 +104,101 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	}
 	switchCmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a line")
 
-	doc.AddCommand(lsCmd, switchCmd)
+	// doc reload — save + close + reopen a document. Exists because some
+	// per-document engine state only refreshes on a real close/reopen: a
+	// freshly CREATED PCB's pour reflow keeps using a creation-time rules
+	// snapshot — rule writes and pour-rebuilds are ignored until the document
+	// is reloaded (tab-switching away and back does NOT reload). The esp32-mini
+	// playbook relies on this after its pour sequence.
+	reloadCmd := &cobra.Command{
+		Use:   "reload [name|uuid]",
+		Short: "Save + close + reopen a document (default: the active one) — refreshes per-doc engine state",
+		Long: `Save a document, close its tab, and reopen it — a real reload, unlike
+"doc switch" which only changes the foreground tab.
+
+Why: a freshly CREATED PCB document's copper-pour reflow keeps using the rules
+snapshot taken at creation — writing rules (pcb drc-rules-set) and re-pouring
+(pcb pour-rebuild) have NO effect until the document is closed and reopened.
+After a reload the reflow honors the current rule configuration (clearance AND
+thermal-spoke generation). Run "pcb pour-rebuild" after reloading a PCB.
+
+The target document is saved first (schematic.save / pcb.save by type), so no
+edits are lost. Defaults to the active document; pass a name/uuid to reload
+another (it is brought to the front first).`,
+		Args: cobra.MaximumNArgs(1),
+		Example: `  easyeda doc reload                      # reload the active document
+  easyeda doc reload PCB3 --project ceshi # reload a specific PCB
+  easyeda pcb pour-rebuild                # then re-pour under the refreshed rules`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			docs, activeUUID, win, err := discoverDocs(cfg, window)
+			if err != nil {
+				return err
+			}
+			target := activeUUID
+			if len(args) == 1 {
+				match, err := resolveDoc(docs, args[0])
+				if err != nil {
+					return err
+				}
+				target = match.UUID
+			}
+			if target == "" {
+				return fmt.Errorf("no active document to reload (run `easyeda doc ls`)")
+			}
+			// Bring the target to the front so the typed save + close hit it.
+			if target != activeUUID {
+				if _, err := requestAction(cfg, "document.open", win,
+					map[string]any{"uuid": target}); err != nil {
+					return err
+				}
+			}
+			cur, err := requestAction(cfg, "document.current", win, nil)
+			if err != nil {
+				return err
+			}
+			if cur.Context == nil || cur.Context.DocumentUUID != target || cur.Context.TabID == "" {
+				return fmt.Errorf("could not activate document %s before reload (active=%v)", target, cur.Context)
+			}
+			docType := cur.Context.DocumentType
+			saveAction := "schematic.save"
+			if docType == "pcb" {
+				saveAction = "pcb.save"
+			}
+			if _, err := requestAction(cfg, saveAction, win, nil); err != nil {
+				return fmt.Errorf("save before reload failed: %w", err)
+			}
+			closeJS := fmt.Sprintf("return await eda.dmt_EditorControl.closeDocument(%q)", cur.Context.TabID)
+			if _, err := requestAction(cfg, "debug.exec_js", win, map[string]any{"code": closeJS}); err != nil {
+				return fmt.Errorf("close document failed: %w", err)
+			}
+			time.Sleep(1 * time.Second)
+			if _, err := requestAction(cfg, "document.open", win,
+				map[string]any{"uuid": target}); err != nil {
+				return fmt.Errorf("reopen after close failed: %w", err)
+			}
+			// Poll until the reopened document is the live active one.
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				cur, err = requestAction(cfg, "document.current", win, nil)
+				if err == nil && cur.Context != nil && cur.Context.DocumentUUID == target {
+					break
+				}
+				if time.Now().After(deadline) {
+					return fmt.Errorf("document %s did not become active within 10s after reopen", target)
+				}
+				time.Sleep(500 * time.Millisecond)
+			}
+			out := map[string]any{"reloaded": target, "documentType": docType, "saved": true}
+			if jsonOut {
+				return writeJSON(stdout, out)
+			}
+			fmt.Fprintf(stdout, "✓ reloaded %s %s (saved → closed → reopened)\n", docType, target)
+			return nil
+		},
+	}
+	reloadCmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a line")
+
+	doc.AddCommand(lsCmd, switchCmd, reloadCmd)
 	return doc
 }
 

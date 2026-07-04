@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -565,6 +566,47 @@ curves are approximated by line segments. Reports whether all components fall in
 			return dispatch(cfg, "pcb.drc.rules", window, nil, stdout, stderr)
 		},
 	})
+	// drc-rules-set — the write side of drc-rules. v1 exposes exactly one knob:
+	// the pour/plane copper clearance (Plane.*.lineClearance), raise-only. This
+	// is the solidified fix for the fresh-PCB pour-reflow divergence (a newly
+	// created PCB reflows ~3% under the configured clearance AND skips thermal
+	// spokes while a sibling PCB in the same project honors the same rules —
+	// suspected platform issue). Raising the pour clearance above the DRC
+	// minimum restores margin so even a discounted reflow stays legal, and
+	// writing the config (which turns the immutable system preset into a
+	// custom copy) also restores thermal-spoke generation.
+	{
+		var pourClearance float64
+		c := &cobra.Command{
+			Use:   "drc-rules-set",
+			Short: "Raise the pour/plane copper clearance rule (raise-only) — margin fix for the fresh-PCB reflow divergence",
+			Args:  cobra.NoArgs,
+			Long: `Raise the copper-pour / inner-plane clearance (Plane lineClearance) of the
+active PCB's CURRENT rule configuration to at least --pour-clearance mil.
+
+Raise-only: values already at or above the target are left untouched, so a
+board configured stricter than the target is never loosened. When the current
+configuration is an immutable system preset (JLCPCB Capability …), writing
+turns it into a per-board 自定义配置 copy — expected and required (system
+presets cannot be modified). Run "pcb pour-rebuild" afterwards so existing
+pours reflow under the new clearance.`,
+			Example: `  easyeda pcb drc-rules-set --pour-clearance 12   # 10→12mil margin, then:
+  easyeda pcb pour-rebuild`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if !cmd.Flags().Changed("pour-clearance") {
+					return fmt.Errorf("--pour-clearance is required (mil, e.g. 12)")
+				}
+				if pourClearance < 4 || pourClearance > 100 {
+					return fmt.Errorf("--pour-clearance %.4g mil is out of the sane range [4, 100]", pourClearance)
+				}
+				return dispatchTimed(cfg, "debug.exec_js", window,
+					map[string]any{"code": pourClearanceRaiseJS(pourClearance)},
+					40*time.Second, stdout, stderr)
+			},
+		}
+		c.Flags().Float64Var(&pourClearance, "pour-clearance", 0, "minimum pour/plane copper clearance in mil (raise-only; required)")
+		pcb.AddCommand(c)
+	}
 
 	// ── track / via (copper routing) ───────────────────────────────────────
 	// pcb.line.create / pcb.via.create — real routing primitives. Bind to a net
@@ -2357,4 +2399,65 @@ func asBool(v any) bool {
 		return b
 	}
 	return false
+}
+
+// pourClearanceRaiseJS builds the connector-side script for `pcb drc-rules-set
+// --pour-clearance`. It patches every lineClearance row under the Plane rules
+// (copperRegion multi/single pad models + innerPlane) of the CURRENT rule
+// configuration, raise-only, then writes the config back and verifies by
+// re-reading. Two platform traps are baked in: overwriteCurrentRuleConfiguration
+// takes the BARE config content (passing the {name, config} wrapper from
+// getCurrentRuleConfiguration silently no-ops), and system presets are
+// immutable (a successful write turns the board's config into 自定义配置).
+func pourClearanceRaiseJS(mil float64) string {
+	mm := mil * 0.0254
+	return fmt.Sprintf(`
+const MIN_MM = %.6f;
+const cfg = await eda.pcb_Drc.getCurrentRuleConfiguration();
+if (!cfg || !cfg.config) throw new Error('getCurrentRuleConfiguration returned no config — is a PCB the active document?');
+function planeModels(config) {
+  const plane = config['Plane'] || {};
+  const models = [];
+  try {
+    const cr = plane['Copper Zone'].copperRegion.form;
+    if (cr.multiLayerPadModel && cr.multiLayerPadModel.data) models.push(['copperRegion.multiLayerPadModel', cr.multiLayerPadModel.data]);
+    if (cr.singleLayerPadModel && cr.singleLayerPadModel.data) models.push(['copperRegion.singleLayerPadModel', cr.singleLayerPadModel.data]);
+  } catch (e) {}
+  try {
+    const ip = plane['Plane Zone'].innerPlane.form;
+    if (ip.data) models.push(['innerPlane', ip.data]);
+  } catch (e) {}
+  return models;
+}
+const models = planeModels(cfg.config);
+if (!models.length) throw new Error('no Plane pour/innerPlane rules found in the current configuration');
+const before = {}, after = {};
+let changed = false;
+for (const [label, data] of models) {
+  for (const [row, entry] of Object.entries(data)) {
+    if (!entry || typeof entry.lineClearance !== 'number') continue;
+    const key = label + '[' + row + ']';
+    before[key] = entry.lineClearance;
+    if (entry.lineClearance < MIN_MM - 1e-9) { entry.lineClearance = MIN_MM; changed = true; }
+    after[key] = entry.lineClearance;
+  }
+}
+let writeOk = null, verified = null;
+if (changed) {
+  // MUST pass the bare config content — the {name, config} wrapper silently no-ops.
+  writeOk = await eda.pcb_Drc.overwriteCurrentRuleConfiguration(cfg.config);
+  const again = await eda.pcb_Drc.getCurrentRuleConfiguration();
+  verified = true;
+  for (const [label, data] of planeModels(again && again.config || {})) {
+    for (const [row, entry] of Object.entries(data)) {
+      if (!entry || typeof entry.lineClearance !== 'number') continue;
+      if (entry.lineClearance < MIN_MM - 1e-6) verified = false;
+    }
+  }
+  if (writeOk !== true || !verified) throw new Error('rule write did not stick (writeOk=' + writeOk + ', verified=' + verified + ') — is the active document a PCB?');
+}
+const configName = await eda.pcb_Drc.getCurrentRuleConfigurationName();
+return { targetMil: %.4g, targetMm: MIN_MM, changed, writeOk, verified, configName, before, after,
+         hint: changed ? 'run "easyeda pcb pour-rebuild" so existing pours reflow under the new clearance; on a freshly CREATED PCB also run "easyeda doc reload" first — its reflow keeps the creation-time rules snapshot until the document is reopened' : 'already at or above target — nothing written' };
+`, mm, mil)
 }

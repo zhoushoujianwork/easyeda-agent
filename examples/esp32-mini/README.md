@@ -24,16 +24,18 @@ easyeda apply examples/esp32-mini/schematic.playbook.json --project xx --doc P2 
 网络标志 → **layout-lint 门 + DRC 门内嵌**,不过即停。完成后可用
 `easyeda sch read` 自验:19 parts / 13 nets(GND=23、+3V3=11、+5V=5…)。
 
-## 阶段二:PCB(182 步,约 10-20 分钟)
+## 阶段二:PCB(186 步,约 10-20 分钟)
 
 ```bash
 make replay-pcb                       # 默认 PROJECT=ceshi DOC=PCB1
 ```
 
 放置(评审面板胜出的布局坐标)→ 4 层 → 板框/四角 M3/天线逐层禁铜 → 位号对齐 →
-89 tracks + 37 vias(金板逐条导出)→ +5V via 桥键合 fill → 铺铜序列
-(pour-while-SIGNAL → 翻内电层 → rebuild)→ LED 极性/板注丝印 → **lint≥95 门 +
-`pcb check --strict` 门**。末步官方 DRC 需 EasyEDA 前台;剩 1 条 Netlist Error 为平台
+89 tracks + 37 vias(金板逐条导出)→ +5V via 桥键合 fill → **铺铜间距余量
+10→12mil**(`rules-pour-margin` 步)→ 铺铜序列(pour-while-SIGNAL → 翻内电层 →
+rebuild)→ **`doc reload` + 二次 rebuild**(`reload-pcb`/`pour-rebuild-2` 步,
+新建 PCB 的 reflow 规则快照只在文档重开后刷新,见下方已知问题)→ LED 极性/板注
+丝印 → **lint≥95 门 + `pcb check --strict` 门**。末步官方 DRC 需 EasyEDA 前台;剩 1 条 Netlist Error 为平台
 [#33](https://github.com/easyeda/pro-api-sdk/issues/33),预期内。
 
 ⚠️ **uniqueId 对齐**:sch↔PCB 关联键。全新工程按放置顺序即 `gge1..gge19`(默认值);
@@ -65,21 +67,29 @@ make demo-replay                            # 挪乱4件→观察→回放归位
 > - **阶段二**:182/182 步执行成功;铜几何与金板逐条一致(89 tracks / 37 vias / 5 pours),
 >   `layout-lint` 100/100、`pcb check` 0。
 
-## ⚠️ 已知问题:新 PCB 上铺铜 reflow 行为不一致(已有 API 侧修法)
+## ⚠️ 已知问题:新 PCB 上铺铜 reflow 行为不一致(已固化 workaround)
 
 在新建 PCB 上回放后,官方 DRC 报 GND 热焊盘未生成(No Connection)+ 铺铜到焊盘
 ~9.7mil(<10 规则)。**已排除**:DRC 规则(与金板逐键一致,仅浮点尾数差)、叠层
 (4 层 + L15 PLANE 相同)、pour 图元属性(fill/priority/silos 相同)、创建时机
-(同规则下重新 pour-fit 复现)。金板同期复测依旧全绿 → **同工程内两块 PCB 对相同
-输入的 reflow 结果不同**,疑似 per-PCB 隐藏填充参数或平台缺陷(候选官方 issue)。
+(同规则下重新 pour-fit 复现)。金板同期复测依旧全绿。
 
-**已验证的 API 侧修法(2026-07-04,ceshi/PCB2 DRC 28→1)**:用
-`eda.pcb_Drc.overwriteCurrentRuleConfiguration(cfg.config)` 把 `config.Plane` 下
-`copperRegion`(两个 pad model)+ `innerPlane` 的 `lineClearance` 从 0.254 提到
-0.3048mm(10→12mil),再 `pcb pour-rebuild` —— 21 处铺铜间距违例**和** 6 处 GND
-No-Connection(热焊盘缺失)一次全清,剩 1 条为已知 add-component 网表常驻误报。
-两个陷阱:①参数必须传**裸 config 内容**(`getCurrentRuleConfiguration()` 返回的
-`{name, config}` 整个传入会**静默失败**,resolve `undefined` 且读回不变);
-②系统预设 `JLCPCB Capability(...)` 不可修改,写入成功后当前配置自动变为「自定义配置」。
-值得注意:切到自定义配置后同一次 rebuild 连热焊盘也正常生成了 —— 分歧疑似与
-**系统预设配置在新建 PCB 上的 reflow 路径**有关,可作为最小复现的切入点。
+**根因(2026-07-04 探针轮次#3 定位)**:**新建(本次会话内创建、从未重载过的)PCB
+文档,铺铜 reflow 用的是创建时的规则快照** ——之后写规则(读回已生效)、重灌铺铜、
+tab 切走切回,统统不影响 reflow 结果;只有**真正关闭+重开文档**
+(`dmt_EditorControl.closeDocument` + `openDocument`,即 `easyeda doc reload`)后,
+reflow 才按当前规则计算(间距与热焊盘同时恢复正常)。已重载过的文档(如经历过
+EasyEDA 重启的 PCB2)写规则即时生效,无需重载 —— 这解释了此前"同工程两块板行为
+不同"的全部现象。仍属平台缺陷(候选官方 issue:快照不随规则写入失效)。
+
+**已固化的 workaround(playbook 已内置,全新板回放直接过)**:
+1. `rules-pour-margin` 步:`easyeda pcb drc-rules-set --pour-clearance 12`
+   (raise-only)把 `Plane` 的 `lineClearance` 10→12mil,给打折的 reflow 留余量;
+2. `reload-pcb` 步:`easyeda doc reload`(内部先 save,不丢编辑)刷新规则快照;
+3. `pour-rebuild-2` 步:重载后二次重灌,此时 reflow 按 12mil + 正常生成热焊盘。
+实测:ceshi/PCB3 全新回放,重载前 DRC 55(21 间距 + 33 开路 + 1 网表),重载+重灌后
+**DRC 1**(仅剩已知 add-component 网表常驻误报 #33)。
+两个 API 陷阱:①`overwriteCurrentRuleConfiguration` 必须传**裸 config 内容**
+(`getCurrentRuleConfiguration()` 返回的 `{name, config}` 整个传入会**静默失败**,
+resolve `undefined` 且读回不变);②系统预设 `JLCPCB Capability(...)` 不可修改,
+写入成功后当前配置自动变为「自定义配置」。
