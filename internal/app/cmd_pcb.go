@@ -168,6 +168,87 @@ so in a single-design project you can just run 'easyeda pcb new-board'.`,
 		},
 	})
 
+	// pcb.layers.set_current — switch the active/edit layer.
+	{
+		var layer string
+		c := &cobra.Command{
+			Use:   "layer-set",
+			Short: "Switch the active/edit PCB layer (id|name|top|bottom|inner1)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb layer-set --layer bottom --project ceshi
+  easyeda pcb layer-set --layer Inner1`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if layer == "" {
+					return fmt.Errorf("--layer is required (id|name|top|bottom|inner1)")
+				}
+				return dispatch(cfg, "pcb.layers.set_current", window,
+					map[string]any{"layer": layer}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&layer, "layer", "", "layer id|name|top|bottom|inner1")
+		pcb.AddCommand(c)
+	}
+
+	// pcb.layers.visibility — show/hide/focus layers for visual QA.
+	{
+		var preset string
+		var show, hide []string
+		var exclusive bool
+		c := &cobra.Command{
+			Use:   "layer-visibility",
+			Short: "Show/hide/focus PCB layers (preset or explicit show/hide)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb layer-visibility --preset bottom-only --project ceshi
+  easyeda pcb layer-visibility --show bottom --show 4 --exclusive
+  easyeda pcb layer-visibility --hide top`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if preset != "" {
+					payload["preset"] = preset
+				}
+				if len(show) > 0 {
+					payload["show"] = show
+				}
+				if len(hide) > 0 {
+					payload["hide"] = hide
+				}
+				if exclusive {
+					payload["exclusive"] = true
+				}
+				if len(payload) == 0 {
+					return fmt.Errorf("nothing to do — use --preset, or --show/--hide (ids from `easyeda pcb layers`)")
+				}
+				return dispatch(cfg, "pcb.layers.visibility", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&preset, "preset", "", "focus preset: top-only|bottom-only|copper-only|silk-only")
+		c.Flags().StringSliceVar(&show, "show", nil, "layer spec to show (repeatable; id|name|top|bottom)")
+		c.Flags().StringSliceVar(&hide, "hide", nil, "layer spec to hide (repeatable; id|name|top|bottom)")
+		c.Flags().BoolVar(&exclusive, "exclusive", false, "when showing, hide every other layer")
+		pcb.AddCommand(c)
+	}
+
+	// pcb.view.side — switch to top/bottom side for snapshots / QA.
+	{
+		var side string
+		c := &cobra.Command{
+			Use:   "view-side",
+			Short: "Switch the PCB view to the top or bottom side (for snapshots)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb view-side --side bottom --project ceshi
+  easyeda pcb snapshot   # then capture the bottom-focused view`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if side == "" {
+					return fmt.Errorf("--side is required (top|bottom)")
+				}
+				return dispatch(cfg, "pcb.view.side", window,
+					map[string]any{"side": side}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&side, "side", "", "top|bottom")
+		pcb.AddCommand(c)
+	}
+
 	// ── nets ──────────────────────────────────────────────────────────────
 	// pcb.nets.list
 	pcb.AddCommand(&cobra.Command{

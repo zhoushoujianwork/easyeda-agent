@@ -2412,7 +2412,48 @@ const pcbComponentsList: Handler = async (payload) => {
  * List all layers of the active PCB, plus the current layer and copper count.
  * `IPCB_LayerItem` is a plain data object, so it serializes directly.
  */
+// Well-known PCB layer ids + name aliases. TOP/BOTTOM copper = 1/2, silks = 3/4
+// (mirrors PCB_TOP_SILK/PCB_BOTTOM_SILK below); inner-copper ids are higher and
+// resolved by NAME from getAllLayers (e.g. "Inner1"). Used by set_current /
+// visibility / view.side to accept id | name | top | bottom | inner1.
+const PCB_LAYER_ALIASES: Record<string, number> = {
+	top: 1, topcopper: 1, toplayer: 1,
+	bottom: 2, bottomcopper: 2, bottomlayer: 2,
+	topsilk: 3, topsilkscreen: 3,
+	bottomsilk: 4, bottomsilkscreen: 4,
+};
+
+// Resolve a layer id|name|alias to its numeric layer id. Numbers/numeric strings
+// pass through; known aliases map directly; otherwise match a layer's name from
+// getAllLayers (case-insensitive, whitespace-insensitive) — that's how inner
+// layers (Inner1…) resolve. Throws MISSING_PAYLOAD_FIELD if nothing matches.
+function resolveLayerId(spec: unknown, layers: Array<IPCB_LayerItem>): number {
+	if (typeof spec === 'number' && Number.isFinite(spec)) return spec;
+	if (typeof spec === 'string') {
+		const raw = spec.trim();
+		if (/^\d+$/.test(raw)) return Number(raw);
+		const key = raw.toLowerCase().replace(/[\s_-]+/g, '');
+		if (key in PCB_LAYER_ALIASES) return PCB_LAYER_ALIASES[key];
+		for (const l of layers) {
+			if (l.name.toLowerCase().replace(/[\s_-]+/g, '') === key) {
+				return l.id as unknown as number;
+			}
+		}
+	}
+	throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD,
+		`could not resolve layer "${String(spec)}" — pass a numeric id, top|bottom, or a layer name from pcb.layers.list`);
+}
+
 const pcbLayersList: Handler = async () => {
+	// Ensure the PCB tab is the foreground/active document before reading
+	// getCurrentLayer — a null currentLayer in the issue (#40) traced to the PCB
+	// not being the active tab, so the sync getCurrentLayer returned undefined.
+	try {
+		const cur = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+		if (cur?.tabId) await eda.dmt_EditorControl.activateDocument(cur.tabId);
+	}
+	catch { /* best-effort activation */ }
+
 	let layers;
 	try {
 		layers = await eda.pcb_Layer.getAllLayers();
@@ -2432,7 +2473,138 @@ const pcbLayersList: Handler = async () => {
 	}
 	catch { /* best-effort */ }
 
-	return { result: { layers, currentLayer, copperLayerCount, count: layers.length } };
+	// Fallback display-state evidence (#40 acceptance #3): when getCurrentLayer is
+	// empty (new board with no manual layer pick), surface the set of currently
+	// SHOWN layers (layerStatus === SHOW) so the caller can still reason about
+	// what's on screen.
+	let visibleLayers: unknown = null;
+	if (currentLayer == null && Array.isArray(layers)) {
+		visibleLayers = layers
+			.filter(l => l.layerStatus === 1 /* EPCB_LayerStatus.SHOW */)
+			.map(l => ({ id: l.id, name: l.name }));
+	}
+
+	return { result: { layers, currentLayer, visibleLayers, copperLayerCount, count: layers.length } };
+};
+
+// pcb.layers.set_current — switch the active/edit layer (#40 acceptance #1/#4).
+// Wraps eda.pcb_Layer.selectLayer; accepts id | name | top | bottom | inner1.
+const pcbLayerSetCurrent: Handler = async (payload) => {
+	const layers = await eda.pcb_Layer.getAllLayers();
+	const id = resolveLayerId(payload.layer, layers);
+	let ok: boolean;
+	try {
+		ok = await eda.pcb_Layer.selectLayer(id as unknown as TPCB_LayersInTheSelectable);
+	}
+	catch (err) {
+		throw edaError(err, `Failed to select layer ${id}.`);
+	}
+	let currentLayer: unknown = null;
+	try { currentLayer = eda.pcb_Layer.getCurrentLayer() ?? null; }
+	catch { /* best-effort */ }
+	await waitForCanvasSettle();
+	return { result: { ok, requested: payload.layer ?? null, layer: id, currentLayer } };
+};
+
+// pcb.layers.visibility — show/hide/focus a layer set. `preset` gives one-shot
+// focus views (top-only|bottom-only|copper-only|silk-only); or pass explicit
+// show[]/hide[] layer specs. `exclusive` (default true for presets) hides every
+// other layer so the snapshot shows only the requested set (#40 acceptance #2).
+const VISIBILITY_PRESETS: Record<string, number[]> = {
+	'top-only': [1, 3],
+	'bottom-only': [2, 4],
+	'copper-only': [1, 2],
+	'silk-only': [3, 4],
+};
+
+const pcbLayerVisibility: Handler = async (payload) => {
+	const layers = await eda.pcb_Layer.getAllLayers();
+	const preset = optionalString(payload, 'preset');
+	const shown: number[] = [];
+	const hidden: number[] = [];
+
+	if (preset) {
+		const key = preset.trim().toLowerCase();
+		const ids = VISIBILITY_PRESETS[key];
+		if (!ids) {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD,
+				`unknown preset "${preset}" — use top-only|bottom-only|copper-only|silk-only, or show/hide`);
+		}
+		try {
+			await eda.pcb_Layer.setLayerVisible(ids as unknown as TPCB_LayersInTheSelectable[], true);
+		}
+		catch (err) {
+			throw edaError(err, `Failed to apply visibility preset "${preset}".`);
+		}
+		shown.push(...ids);
+	}
+	else {
+		const show = Array.isArray(payload.show) ? payload.show : [];
+		const hide = Array.isArray(payload.hide) ? payload.hide : [];
+		if (show.length === 0 && hide.length === 0) {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD,
+				'nothing to do — pass preset, or show[] / hide[] layer specs');
+		}
+		const exclusive = optionalBoolean(payload, 'exclusive') === true;
+		if (show.length > 0) {
+			const ids = show.map(s => resolveLayerId(s, layers));
+			try { await eda.pcb_Layer.setLayerVisible(ids as unknown as TPCB_LayersInTheSelectable[], exclusive); }
+			catch (err) { throw edaError(err, 'Failed to show layers.'); }
+			shown.push(...ids);
+		}
+		if (hide.length > 0) {
+			const ids = hide.map(s => resolveLayerId(s, layers));
+			try { await eda.pcb_Layer.setLayerInvisible(ids as unknown as TPCB_LayersInTheSelectable[], false); }
+			catch (err) { throw edaError(err, 'Failed to hide layers.'); }
+			hidden.push(...ids);
+		}
+	}
+
+	await waitForCanvasSettle();
+	const after = await eda.pcb_Layer.getAllLayers();
+	return { result: { preset: preset ?? null, shown, hidden, layers: after } };
+};
+
+// pcb.view.side — one-shot switch to the top or bottom side for snapshots / QA.
+// Selects that side's copper as the current layer AND focuses the side's layer
+// set (copper + silk) so a subsequent pcb.snapshot shows that side (#40 #1/#2).
+// NOTE: EasyEDA Pro exposes no native canvas flip/mirror-view API, so this is a
+// layer-focus approximation, not a physical board flip.
+const pcbViewSide: Handler = async (payload) => {
+	const side = (optionalString(payload, 'side') ?? '').trim().toLowerCase();
+	if (side !== 'top' && side !== 'bottom') {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'side must be "top" or "bottom"');
+	}
+	const copperId = side === 'top' ? 1 : 2;
+	const focusIds = side === 'top' ? [1, 3] : [2, 4];
+	// Ensure the PCB tab is active so selectLayer/visibility land on it.
+	try {
+		const cur = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+		if (cur?.tabId) await eda.dmt_EditorControl.activateDocument(cur.tabId);
+	}
+	catch { /* best-effort */ }
+	try {
+		await eda.pcb_Layer.selectLayer(copperId as unknown as TPCB_LayersInTheSelectable);
+	}
+	catch (err) {
+		throw edaError(err, `Failed to select ${side} copper layer.`);
+	}
+	try {
+		await eda.pcb_Layer.setLayerVisible(focusIds as unknown as TPCB_LayersInTheSelectable[], true);
+	}
+	catch (err) {
+		throw edaError(err, `Failed to focus ${side}-side layers.`);
+	}
+	await waitForCanvasSettle();
+	let currentLayer: unknown = null;
+	try { currentLayer = eda.pcb_Layer.getCurrentLayer() ?? null; }
+	catch { /* best-effort */ }
+	return {
+		result: {
+			side, currentLayer, focusedLayers: focusIds,
+			note: 'Layer-focus approximation (no native canvas flip API). Take pcb.snapshot next; thread its sha256 back as previousSha256 to defeat a stale frame.',
+		},
+	};
 };
 
 // pcb.stackup.set — configure the board stackup: set the copper layer count
@@ -5179,6 +5351,9 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.documents.list': pcbDocumentsList,
 	'pcb.components.list': pcbComponentsList,
 	'pcb.layers.list': pcbLayersList,
+	'pcb.layers.set_current': pcbLayerSetCurrent,
+	'pcb.layers.visibility': pcbLayerVisibility,
+	'pcb.view.side': pcbViewSide,
 	'pcb.stackup.set': pcbStackupSet,
 	'pcb.silk.align': pcbSilkAlign,
 	'pcb.silk.list': pcbSilkList,

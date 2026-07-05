@@ -190,6 +190,14 @@ layer 12, so list/delete via `pcb fill list --layer 12` / `pcb fill delete`.
 > 2. `easyeda pcb snapshot --fit=false --previous-sha256 <上一次的 sha256>`。
 > 3. 若结果 `stale:true`，说明画布未刷新 — 告警/失败，不要用该帧。
 > 4. 用 `pcb list` / `pcb drc` / `pcb check` / `pcb layout-lint` 做**权威**正确性校验（截图只作视觉终检）。
+>
+> **底面视觉 QA（issue #40）** — 不再需要人工点 UI 切层。`easyeda pcb view-side --side bottom`
+> 会选底铜为当前层并聚焦底面铜+丝印层，随后 `easyeda pcb snapshot`（thread `--previous-sha256`
+> 防陈帧）即反映底面（底丝印/底铜/背面装配标记）。更细的显隐用 `easyeda pcb layer-visibility
+> --preset bottom-only|top-only|copper-only|silk-only` 或 `--show/--hide`。切当前编辑层用
+> `easyeda pcb layer-set --layer bottom|Inner1|<id>`。**注意**：EasyEDA 无原生画布翻面/镜像视图
+> API，`view-side` 是「层聚焦」近似（切当前层 + 只显示该面层），不是物理翻板；丝印极性仍以
+> `pcb check` 的 silkscreen-flipped 规则（`layer=4` + `mirror=true`）做数据级判定为准。
 
 > **Routing boundary (load-bearing — see `docs/ecosystem-survey.md` §7):** EasyEDA's
 > interactive 布线 menu (single/multi/differential **routing**, stretch, optimize,

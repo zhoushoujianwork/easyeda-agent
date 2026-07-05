@@ -9,11 +9,24 @@ planned. Ground truth for the action catalog is `make actions`
 > [`ecosystem-survey.md`](ecosystem-survey.md) 系统对比了官方开源扩展用到的 API、我们的盲区,
 > 以及一份带优先级的可吸收功能清单(A1–A9),是下一阶段 roadmap 的主要输入。
 
-**90 typed actions** total — 45 `pcb`, 26 `schematic`, 7 `board`, 6 `document`,
+**93 typed actions** total — 48 `pcb`, 26 `schematic`, 7 `board`, 6 `document`,
 2 `system`, 2 `artifact`, and one each in `project`, `debug`.
 All but `system.health` are dispatched to the connector; `system.health` is
 answered by the daemon itself (daemon/connector liveness, no window required).
 (Run `make actions` for the authoritative list — this prose count can lag.)
+
+> **2026-07-05 — PCB layer/view switching + currentLayer readback (issue #40).** Three
+> new typed PCB actions for bottom-side visual QA without manual UI clicks:
+> **`pcb.layers.set_current`** (`pcb layer-set --layer id|name|top|bottom|inner1`,
+> `selectLayer`), **`pcb.layers.visibility`** (`pcb layer-visibility --preset
+> top-only|bottom-only|copper-only|silk-only` or `--show/--hide`, `setLayerVisible/Invisible`),
+> and **`pcb.view.side`** (`pcb view-side --side top|bottom` — selects that side's copper +
+> focuses its copper/silk layers so the next `pcb snapshot` reflects that side). `pcb.layers.list`
+> now activates the PCB tab before reading `getCurrentLayer` (fixes the `currentLayer: null`
+> from the issue) and returns `visibleLayers` as display-state evidence when there's no current
+> layer. **Platform wall:** no native canvas flip/mirror-view API exists, so `view-side` is a
+> layer-focus approximation, not a physical board flip — silkscreen polarity stays a data check
+> (`pcb check` silkscreen-flipped: `layer=4` + `mirror=true`).
 
 > **2026-07-01 — PCB automation pass (tasks #21–#32).** Added, each real-machine
 > verified on the ESP32 regression board: rule-aware `route-short`/`auto-place`/`pour`
