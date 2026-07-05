@@ -73,6 +73,12 @@ skillhub install easyeda-agent --registry https://skillhub.cn
 > 19 器件原理图 + 四层 PCB(GND 内电层/VCC 电源层/天线禁铜/四角 M3),
 > `pcb drc` Connection/Clearance 双归零、`pcb check` 0、`layout-lint` 100/100,附原生截图与全流程复盘。
 
+下面两段录屏来自真实 EasyEDA 画布:AI 从空白页开始生成原理图,再切到 PCB 完成布局、板框、铺铜和丝印。它不是生成一张电路图图片,而是在编辑器里一步步执行 typed actions:
+
+| 原理图从空白页生成 | PCB 布局与铺铜 |
+|---|---|
+| <img src="docs/assets/demo-schematic-generation.gif" width="420" alt="AI 在 EasyEDA 中从空白页生成原理图"/> | <img src="docs/assets/demo-pcb-layout.gif" width="420" alt="AI 在 EasyEDA 中完成 PCB 布局、板框和铺铜"/> |
+
 下面这块板由 agent 驱动完整 PCB 流程产出——**自动布局 → 板框贴合 → 规则感知布线 → 4 层电源平面 → 丝印碰撞避让**——并在真实 EasyEDA 画布上验证(DRC 31 → 3、No-Connection 归零):
 
 <p align="center">
@@ -85,7 +91,7 @@ skillhub install easyeda-agent --registry https://skillhub.cn
 |---|---|
 | <img src="docs/assets/demo-outline-before.png" width="330" alt="前:板框过大"/> → <img src="docs/assets/demo-outline-after.png" width="330" alt="后:板框贴合器件"/> | <img src="docs/assets/demo-silk-before.png" width="330" alt="前:位号散乱重叠"/> → 对齐后见上方成品板 |
 
-> 端到端跑通的录屏 GIF 随后补充(原理图 → 导入 PCB → 4 层叠层 → 布局 → GND 内电层/VCC 信号 plane → 天线禁区+检查 → 丝印/LED 极性 → 挖槽);上面都是回归板的真机 `pcb snapshot`,非 mockup。这也是项目的固定端到端回归用例(拿原始需求从零跑),见 [esp32MiniRequire.md](esp32MiniRequire.md)。
+> 上面 GIF 和截图都来自回归板真机流程(原理图 → 导入 PCB → 4 层叠层 → 布局 → GND 内电层/VCC 信号 plane → 天线禁区+检查 → 丝印/LED 极性 → 挖槽),非 mockup。这也是项目的固定端到端回归用例(拿原始需求从零跑),见 [esp32MiniRequire.md](esp32MiniRequire.md)。
 
 ## 能力清单(已支持)
 
