@@ -136,6 +136,7 @@ type pcbCheckSummary struct {
 	ParallelCoupling  int `json:"parallelCoupling"`
 	AntennaKeepout    int `json:"antennaKeepout"`
 	NetlessPours      int `json:"netlessPours"`
+	ViaCrossesPlane   int `json:"viaCrossesPlane"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
@@ -761,6 +762,106 @@ func findNetlessPours(pours []pcbPourP) []pcbCheckFinding {
 	return out
 }
 
+// ── R12: via crossing an inner PLANE (内电层) on a foreign net ──────────────
+// Official defect easyeda/pro-api-sdk#32: once an inner layer is 内电层/PLANE, a
+// via created AFTERWARDS on a different net does NOT get an anti-pad cut into
+// the negative plane — DRC reports Plane Zone to Via + Hole to Plane Zone, and
+// `pour-rebuild` alone does not repair it. The via list exposes no anti-pad or
+// creation-order data, so this is a BEST-EFFORT guard: every via whose net
+// differs from the plane's net is flagged WARN with the fix guidance. Known
+// edges: a via placed BEFORE the plane flip (proper anti-pad, clean DRC) is
+// flagged too — cross-check with `pcb drc`, only vias that also show Plane Zone
+// errors are actually broken; blind/buried vias that don't reach the plane are
+// indistinguishable from through vias (all flagged); a PLANE layer with no
+// net-bound pour has an unknown net and gets its own WARN instead of via checks.
+
+// pcbPlaneLayer is one inner copper layer of type PLANE (内电层), plus the
+// net(s) bound to it via its pour(s).
+type pcbPlaneLayer struct {
+	Layer int
+	Name  string
+	Nets  []string
+}
+
+// bindPlaneNets attaches each plane's net(s) from the pours on its layer
+// (netless pours don't bind — R11 flags those separately).
+func bindPlaneNets(planes []pcbPlaneLayer, pours []pcbPourP) []pcbPlaneLayer {
+	for i := range planes {
+		seen := map[string]bool{}
+		for _, p := range pours {
+			net := strings.TrimSpace(p.Net)
+			if p.Layer != planes[i].Layer || net == "" || seen[net] {
+				continue
+			}
+			seen[net] = true
+			planes[i].Nets = append(planes[i].Nets, net)
+		}
+		sort.Strings(planes[i].Nets)
+	}
+	return planes
+}
+
+func findViaCrossesPlane(vias []pcbViaP, planes []pcbPlaneLayer) []pcbCheckFinding {
+	var out []pcbCheckFinding
+	for _, pl := range planes {
+		name := pl.Name
+		if name == "" {
+			name = fmt.Sprintf("layer %d", pl.Layer)
+		}
+		if len(pl.Nets) == 0 {
+			out = append(out, pcbCheckFinding{
+				Type: "via-crosses-plane", Level: "WARN", Layer: pl.Layer,
+				Message: fmt.Sprintf("inner PLANE %s has no net-bound pour — plane net unknown; pour the net while the layer is still SIGNAL, then flip to PLANE and pour-rebuild (`pcb power-planes` does this)", name),
+			})
+			continue
+		}
+		netSet := map[string]bool{}
+		for _, n := range pl.Nets {
+			netSet[n] = true
+		}
+		for _, v := range vias {
+			if netSet[v.Net] {
+				continue
+			}
+			vnet := v.Net
+			if strings.TrimSpace(vnet) == "" {
+				vnet = "(no net)"
+			}
+			out = append(out, pcbCheckFinding{
+				Type: "via-crosses-plane", Level: "WARN", Net: v.Net, Layer: pl.Layer,
+				Primitives: []string{v.ID}, At: &pcbXY{round2(v.X), round2(v.Y)},
+				Message: fmt.Sprintf("via (net %s) crosses inner PLANE %s (net %s) — a via created after the plane existed gets NO anti-pad (easyeda/pro-api-sdk#32; DRC: Plane Zone to Via / Hole to Plane Zone); prefer removing it and routing on outer layers, or `easyeda doc reload` then `pcb pour-rebuild`, then confirm with `pcb drc`",
+					vnet, name, strings.Join(pl.Nets, ",")),
+			})
+		}
+	}
+	return out
+}
+
+// fetchPcbPlaneLayers reads the stackup (pcb.layers.list) and returns the
+// copper layers whose type is PLANE (内电层). Net binding comes from the pours
+// (bindPlaneNets) — the layer item itself carries no net.
+func fetchPcbPlaneLayers(cfg *appConfig, window string) ([]pcbPlaneLayer, error) {
+	res, err := requestAction(cfg, "pcb.layers.list", window, nil)
+	if err != nil {
+		return nil, err
+	}
+	var planes []pcbPlaneLayer
+	for _, rl := range mnavSlice(res.Result, "layers") {
+		lm, ok := rl.(map[string]any)
+		if !ok {
+			continue
+		}
+		if typ, _ := lm["type"].(string); typ != "PLANE" {
+			continue
+		}
+		idf, _ := asFloatOK(lm["id"])
+		name, _ := lm["name"].(string)
+		planes = append(planes, pcbPlaneLayer{Layer: int(idf), Name: name})
+	}
+	return planes, nil
+}
+
 func fetchPcbPours(cfg *appConfig, window string) ([]pcbPourP, error) {
 	res, err := requestAction(cfg, "pcb.pour.list", window, nil)
 	if err != nil {
@@ -1028,16 +1129,27 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 		rep.Passed = rep.Summary.Total == 0
 	}
 
-	// Netless-pour is a LIVE-only rule (needs the pour list, which the pure copper
-	// core doesn't take). Degrade gracefully if the fetch fails.
+	// Netless-pour + via-crosses-plane are LIVE-only rules (they need the pour
+	// list / the stackup, which the pure copper core doesn't take). Degrade
+	// gracefully if a fetch fails.
 	if pours, perr := fetchPcbPours(cfg, window); perr != nil {
-		fmt.Fprintf(stderr, "warning: netless-pour check skipped (%v)\n", perr)
+		fmt.Fprintf(stderr, "warning: netless-pour + via-crosses-plane checks skipped (%v)\n", perr)
 	} else {
 		for _, f := range findNetlessPours(pours) {
 			rep.Findings = append(rep.Findings, f)
 			rep.Summary.NetlessPours++
 			rep.Summary.Warnings++
 			rep.Summary.Total++
+		}
+		if planes, lerr := fetchPcbPlaneLayers(cfg, window); lerr != nil {
+			fmt.Fprintf(stderr, "warning: via-crosses-plane check skipped (%v)\n", lerr)
+		} else if len(planes) > 0 {
+			for _, f := range findViaCrossesPlane(vias, bindPlaneNets(planes, pours)) {
+				rep.Findings = append(rep.Findings, f)
+				rep.Summary.ViaCrossesPlane++
+				rep.Summary.Warnings++
+				rep.Summary.Total++
+			}
 		}
 		rep.Passed = rep.Summary.Total == 0
 	}
@@ -1282,9 +1394,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d\n",
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d\n",
 		s.Errors, s.Warnings-s.Errors,
-		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours)
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {

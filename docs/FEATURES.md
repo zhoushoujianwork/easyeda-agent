@@ -15,6 +15,19 @@ All but `system.health` are dispatched to the connector; `system.health` is
 answered by the daemon itself (daemon/connector liveness, no window required).
 (Run `make actions` for the authoritative list — this prose count can lag.)
 
+> **2026-07-06 — `pcb check` via-crosses-plane 守护 + PLANE 工作流文档统一 (issue #30).**
+> New `pcb check` rule **via-crosses-plane**: reads the stackup (`pcb.layers.list`,
+> `type=="PLANE"`) + each plane's net from its pours (`pcb.pour.list`), and flags every
+> via whose net ≠ the plane's net → WARN. Guards the official anti-pad defect
+> ([easyeda/pro-api-sdk#32](https://github.com/easyeda/pro-api-sdk/issues/32)): a via
+> created AFTER an inner PLANE exists gets no anti-pad (DRC: Plane Zone to Via / Hole to
+> Plane Zone; `pour-rebuild` alone doesn't repair). Fix guidance in the finding: remove
+> the via and route on outer layers, or `doc reload` + `pour-rebuild`, confirm with
+> `pcb drc`. Best-effort by design — no anti-pad data in the API, so pre-flip vias (clean
+> DRC) are flagged too; `pcb drc` arbitrates. Docs de-contradicted: `design-flow.md` P8 no
+> longer says "keep inner planes SIGNAL" — the verified end state IS 内电层/PLANE
+> (pour-while-SIGNAL → flip → rebuild, what `power-planes --gnd-plane` does by default).
+
 > **2026-07-05 — PCB layer/view switching + currentLayer readback (issue #40).** Three
 > new typed PCB actions for bottom-side visual QA without manual UI clicks:
 > **`pcb.layers.set_current`** (`pcb layer-set --layer id|name|top|bottom|inner1`,
