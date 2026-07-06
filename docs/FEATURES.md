@@ -166,11 +166,13 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `board.delete` | Delete a board by name (confirmation-gated, no undo). Mutates. |
 | `board.rebind` | Repair a stale/orphaned board binding after a PCB rebuild: delete the board (by `--name`, else current) and re-create it bound to `--schematic` (+ `--pcb`), rolling back on failure. Clears the false DRC Netlist Error left when the binding points at a deleted schematic UUID. `--force` moves a schematic already bound elsewhere. Mutates. |
 
-### Draw / edit (9 actions, all mutate)
+### Draw / edit (11 actions, all mutate)
 
 | Action | What |
 |---|---|
 | `schematic.component.place` | Place a device by library identity (`libraryUuid` + `uuid`) at `x,y` with optional rotation/mirror/BOM flags. |
+| `schematic.rebind.footprint` | Swap a placed component's footprint via the **five-step binding** (`lib_Device.modify → delete → create → restore`) — `modify` alone cannot change a placed instance's footprint reference. Matches by footprint name (exact, same-name-multi/miss → error; pass `--footprint-uuid` to bind directly). Reverse-resolves an empty device `libraryUuid` from the project library first. Captures & restores designator/position/rotation/mirror/BOM flags/manufacturer/supplier/otherProperty; rolls back on any failure. **Re-placing mints a NEW primitiveId — wires may need re-drawing; run `sch drc`/`sch check` after.** Mutates. |
+| `schematic.rebind.symbol` | Swap a placed component's symbol via the same five-step binding. Same matching/rollback/caveats as `rebind.footprint`. Mutates. |
 | `schematic.component.modify` | Patch position, designator, name, BOM flags, or custom properties (components only — not flags). |
 | `schematic.component.delete` | Delete component primitives (confirmation-gated). **Only removes components** — wires/buses/graphics survive; use `schematic.page.clear` for a full page reset. |
 | `schematic.primitives.delete` | Delete primitives of **any** type by id (components, flags, wires, buses, graphics) — routes each id to its owning class. Omit ids to delete the current selection (select-all → delete). Confirmation-gated, no undo. |

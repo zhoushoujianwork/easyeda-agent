@@ -416,6 +416,108 @@ command fails fast after a short timeout with a hint instead of stalling.`,
 		sch.AddCommand(c)
 	}
 
+	// ── rebind-footprint ────────────────────────────────────────────────────
+	// schematic.rebind.footprint — swap a placed component's footprint (五步绑定法).
+	{
+		var id, footprint, footprintUUID, footprintLib, scope string
+		c := &cobra.Command{
+			Use:   "rebind-footprint",
+			Short: "Swap a placed component's footprint (five-step rebind: modify→delete→create→restore)",
+			Args:  cobra.NoArgs,
+			Long: `Rebind the footprint of an already-placed schematic component to a same-named
+(or explicitly identified) library footprint.
+
+modify() cannot change the footprint reference of a placed instance, so this runs the
+"five-step binding": lib_Device.modify → delete old instance → create fresh instance →
+restore designator/position/props. Imported devices with an empty libraryUuid are
+reverse-looked-up in the project library first.
+
+NOTE: re-placing mints a NEW primitiveId; wires on the old pins may need re-drawing —
+run ` + "`easyeda sch drc`" + ` / ` + "`easyeda sch check`" + ` after to confirm connectivity.`,
+			Example: `  easyeda sch rebind-footprint --id <primitiveId> --footprint QFN-32_L5.0-W5.0
+  easyeda sch rebind-footprint --id <id> --footprint-uuid <u> --footprint-lib <l>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if id == "" {
+					return fmt.Errorf("--id is required")
+				}
+				if footprint == "" && footprintUUID == "" {
+					return fmt.Errorf("provide --footprint (name) or --footprint-uuid")
+				}
+				payload := map[string]any{"primitiveId": id}
+				if footprint != "" {
+					payload["footprint"] = footprint
+				}
+				if footprintUUID != "" {
+					payload["footprintUuid"] = footprintUUID
+				}
+				if footprintLib != "" {
+					payload["footprintLibraryUuid"] = footprintLib
+				}
+				if scope != "" {
+					payload["scope"] = scope
+				}
+				return dispatch(cfg, "schematic.rebind.footprint", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&id, "id", "", "placed component primitive ID (required)")
+		c.Flags().StringVar(&footprint, "footprint", "", "target footprint name to search and bind")
+		c.Flags().StringVar(&footprintUUID, "footprint-uuid", "", "target footprint UUID (bypasses name search)")
+		c.Flags().StringVar(&footprintLib, "footprint-lib", "", "target footprint library UUID (with --footprint-uuid)")
+		c.Flags().StringVar(&scope, "scope", "", "library search scope (default: project)")
+		sch.AddCommand(c)
+	}
+
+	// ── rebind-symbol ────────────────────────────────────────────────────────
+	// schematic.rebind.symbol — swap a placed component's symbol (五步绑定法).
+	{
+		var id, symbol, symbolUUID, symbolLib, scope string
+		c := &cobra.Command{
+			Use:   "rebind-symbol",
+			Short: "Swap a placed component's symbol (five-step rebind: modify→delete→create→restore)",
+			Args:  cobra.NoArgs,
+			Long: `Rebind the symbol of an already-placed schematic component to a same-named
+(or explicitly identified) library symbol.
+
+modify() cannot change the symbol reference of a placed instance, so this runs the
+"five-step binding": lib_Device.modify → delete old instance → create fresh instance →
+restore designator/position/props. Imported devices with an empty libraryUuid are
+reverse-looked-up in the project library first.
+
+NOTE: re-placing mints a NEW primitiveId; wires on the old pins may need re-drawing —
+run ` + "`easyeda sch drc`" + ` / ` + "`easyeda sch check`" + ` after to confirm connectivity.`,
+			Example: `  easyeda sch rebind-symbol --id <primitiveId> --symbol ESP32-S3
+  easyeda sch rebind-symbol --id <id> --symbol-uuid <u> --symbol-lib <l>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if id == "" {
+					return fmt.Errorf("--id is required")
+				}
+				if symbol == "" && symbolUUID == "" {
+					return fmt.Errorf("provide --symbol (name) or --symbol-uuid")
+				}
+				payload := map[string]any{"primitiveId": id}
+				if symbol != "" {
+					payload["symbol"] = symbol
+				}
+				if symbolUUID != "" {
+					payload["symbolUuid"] = symbolUUID
+				}
+				if symbolLib != "" {
+					payload["symbolLibraryUuid"] = symbolLib
+				}
+				if scope != "" {
+					payload["scope"] = scope
+				}
+				return dispatch(cfg, "schematic.rebind.symbol", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&id, "id", "", "placed component primitive ID (required)")
+		c.Flags().StringVar(&symbol, "symbol", "", "target symbol name to search and bind")
+		c.Flags().StringVar(&symbolUUID, "symbol-uuid", "", "target symbol UUID (bypasses name search)")
+		c.Flags().StringVar(&symbolLib, "symbol-lib", "", "target symbol library UUID (with --symbol-uuid)")
+		c.Flags().StringVar(&scope, "scope", "", "library search scope (default: project)")
+		sch.AddCommand(c)
+	}
+
 	// ── delete ────────────────────────────────────────────────────────────
 	// schematic.component.delete
 	{

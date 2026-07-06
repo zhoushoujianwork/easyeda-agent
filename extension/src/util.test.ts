@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { ActionError } from './protocol';
-import { normalizeRegion, normalizeWirePoints } from './util';
+import { normalizeRegion, normalizeWirePoints, pickNamedCandidate } from './util';
 
 test('normalizeWirePoints: flat input is returned unchanged', () => {
 	assert.deepEqual(normalizeWirePoints([195, 350, 215, 350]), [195, 350, 215, 350]);
@@ -67,4 +67,41 @@ test('normalizeRegion: zero-area box (collapsed axis) throws', () => {
 test('normalizeRegion: non-finite bound throws', () => {
 	assert.throws(() => normalizeRegion(NaN, 730, 300, 520), ActionError);
 	assert.throws(() => normalizeRegion(400, Infinity, 300, 520), ActionError);
+});
+
+// ─── pickNamedCandidate (rebind footprint/symbol matcher) ─────────────
+
+const lib = (name: string, uuid: string) => ({ name, uuid, libraryUuid: 'L1' });
+
+test('pickNamedCandidate: exact case-sensitive single hit matches', () => {
+	const res = pickNamedCandidate('QFN-32', [lib('QFN-32', 'a'), lib('QFN-48', 'b')]);
+	assert.equal(res.kind, 'match');
+	assert.equal(res.kind === 'match' && res.item.uuid, 'a');
+});
+
+test('pickNamedCandidate: no hit returns none (never a partial/substring match)', () => {
+	const res = pickNamedCandidate('QFN', [lib('QFN-32', 'a'), lib('QFN-48', 'b')]);
+	assert.equal(res.kind, 'none');
+});
+
+test('pickNamedCandidate: multiple identical names are ambiguous', () => {
+	const res = pickNamedCandidate('QFN-32', [lib('QFN-32', 'a'), lib('QFN-32', 'b')]);
+	assert.equal(res.kind, 'ambiguous');
+	assert.deepEqual(res.kind === 'ambiguous' && res.matches.map(m => m.uuid), ['a', 'b']);
+});
+
+test('pickNamedCandidate: falls back to case-insensitive when no exact hit', () => {
+	const res = pickNamedCandidate('qfn-32', [lib('QFN-32', 'a'), lib('QFN-48', 'b')]);
+	assert.equal(res.kind, 'match');
+	assert.equal(res.kind === 'match' && res.item.uuid, 'a');
+});
+
+test('pickNamedCandidate: case-sensitive hit wins over case-insensitive duplicates', () => {
+	const res = pickNamedCandidate('QFN-32', [lib('QFN-32', 'a'), lib('qfn-32', 'b')]);
+	assert.equal(res.kind, 'match');
+	assert.equal(res.kind === 'match' && res.item.uuid, 'a');
+});
+
+test('pickNamedCandidate: empty candidate list returns none', () => {
+	assert.equal(pickNamedCandidate('QFN-32', []).kind, 'none');
 });

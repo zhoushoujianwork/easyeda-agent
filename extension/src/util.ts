@@ -79,6 +79,56 @@ export function asPayload(payload?: Record<string, unknown>): PayloadRecord {
 }
 
 /**
+ * A library item that can be matched by name — the common shape of
+ * `lib_Footprint.search` / `lib_Symbol.search` results ({ uuid, libraryUuid,
+ * name }). Extra fields are ignored.
+ */
+export interface NamedLibItem {
+	uuid: string;
+	libraryUuid: string;
+	name: string;
+}
+
+/** The outcome of matching a name against a list of library candidates. */
+export type NamedMatch<T extends NamedLibItem> =
+	| { kind: 'match'; item: T }
+	| { kind: 'none' }
+	| { kind: 'ambiguous'; matches: Array<T> };
+
+/**
+ * Pick a single library candidate by name, deterministically.
+ *
+ * Matching precedence (the rebind actions rely on an EXACT swap, so we never
+ * silently take a fuzzy/partial hit):
+ *   1. exact case-sensitive name → if exactly one, that's the match; if several
+ *      share the identical name, it's ambiguous (caller must disambiguate by uuid).
+ *   2. no case-sensitive hit → exact case-insensitive name (same one-vs-many rule).
+ *   3. otherwise → no match (the search returned only partial/substring hits).
+ *
+ * Returning a discriminated result (rather than throwing) keeps this pure and
+ * unit-testable without the `eda` runtime; the handler maps it to an ActionError.
+ *
+ * @param name - the footprint/symbol name to bind to
+ * @param candidates - the search results to choose from
+ * @returns a discriminated match result
+ */
+export function pickNamedCandidate<T extends NamedLibItem>(
+	name: string,
+	candidates: Array<T>,
+): NamedMatch<T> {
+	const exact = candidates.filter(c => c.name === name);
+	if (exact.length === 1) return { kind: 'match', item: exact[0] };
+	if (exact.length > 1) return { kind: 'ambiguous', matches: exact };
+
+	const lower = name.toLowerCase();
+	const ci = candidates.filter(c => c.name.toLowerCase() === lower);
+	if (ci.length === 1) return { kind: 'match', item: ci[0] };
+	if (ci.length > 1) return { kind: 'ambiguous', matches: ci };
+
+	return { kind: 'none' };
+}
+
+/**
  * Require a string field from the payload, throwing a structured error if absent.
  *
  * @param payload - request payload

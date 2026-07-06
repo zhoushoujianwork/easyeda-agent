@@ -16,11 +16,13 @@ import {
 	asPayload,
 	blobToBase64,
 	newArtifactId,
+	type NamedLibItem,
 	normalizeRegion,
 	normalizeWirePoints,
 	optionalBoolean,
 	optionalNumber,
 	optionalString,
+	pickNamedCandidate,
 	requireNumber,
 	requireString,
 } from './util';
@@ -2093,6 +2095,288 @@ const schematicLibraryGetByLcscIds: Handler = async (payload) => {
 		},
 	};
 };
+
+// ─── Rebind: swap a placed component's footprint / symbol ─────────────
+
+/** A device-library identity ({ libraryUuid, uuid }) as reported by getState_Component(). */
+interface DeviceRef { libraryUuid: string; uuid: string }
+
+/**
+ * Resolve a device's real library UUID. Imported devices (Altium/KiCad → EasyEDA)
+ * often carry an EMPTY `libraryUuid` on the placed instance, which makes
+ * `lib_Device.modify` / `sch_PrimitiveComponent.create` hang. When that happens we
+ * reverse-look-up the true library UUID by searching the PROJECT library by the
+ * device's name and matching on the device uuid (falling back to a lone hit).
+ *
+ * @param ref - the { libraryUuid, uuid } from getState_Component()
+ * @param name - the device name (getState_Name()) used for the reverse search
+ * @returns the ref with libraryUuid filled in, or a structured error if unresolvable
+ */
+async function resolveDeviceLibrary(ref: DeviceRef, name: string | undefined): Promise<DeviceRef> {
+	if (ref.libraryUuid) return ref;
+	if (!name) {
+		throw new ActionError(
+			ErrorCodes.INVALID_STATE,
+			'This component has an empty device libraryUuid and no name to reverse-look-up from. '
+			+ 'Cannot rebind — re-import the device from a library first.',
+		);
+	}
+	let raw: Array<Record<string, unknown>>;
+	try {
+		// 'project' scope: search the current project's library (imported devices live here).
+		raw = (await eda.lib_Device.search(name, 'project')) as unknown as Array<Record<string, unknown>>;
+	}
+	catch (err) {
+		throw edaError(err, `Failed to reverse-look-up device library for "${name}".`);
+	}
+	if (!Array.isArray(raw) || raw.length === 0) {
+		throw new ActionError(
+			ErrorCodes.INVALID_STATE,
+			`Device "${name}" has an empty libraryUuid and was not found in the project library. `
+			+ 'Cannot resolve its real library UUID for rebind.',
+		);
+	}
+	const byUuid = raw.find(r => r.uuid === ref.uuid);
+	const chosen = byUuid ?? (raw.length === 1 ? raw[0] : undefined);
+	if (!chosen || typeof chosen.libraryUuid !== 'string' || !chosen.libraryUuid) {
+		throw new ActionError(
+			ErrorCodes.INVALID_STATE,
+			`Could not resolve a unique library UUID for device "${name}" (${raw.length} candidates). `
+			+ 'Rebind aborted to avoid modifying the wrong device.',
+		);
+	}
+	return { libraryUuid: chosen.libraryUuid, uuid: typeof chosen.uuid === 'string' ? chosen.uuid : ref.uuid };
+}
+
+/** Keep only the string|number|boolean entries of an otherProperty map (modify's accepted shape). */
+function cleanOtherProperty(
+	op: Record<string, unknown> | undefined,
+): Record<string, string | number | boolean> | undefined {
+	if (!op) return undefined;
+	const out: Record<string, string | number | boolean> = {};
+	for (const [k, v] of Object.entries(op)) {
+		if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+	}
+	return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * Fetch the placed component primitive by id, or throw a NOT-FOUND-style error.
+ */
+async function getComponentOrThrow(primitiveId: string): Promise<SchComponent> {
+	let component: SchComponent | undefined;
+	try {
+		component = await eda.sch_PrimitiveComponent.get(primitiveId);
+	}
+	catch (err) {
+		throw edaError(err, `Failed to read component "${primitiveId}".`);
+	}
+	if (!component) {
+		throw new ActionError(
+			ErrorCodes.INVALID_STATE,
+			`No schematic component found with primitiveId "${primitiveId}".`,
+		);
+	}
+	return component;
+}
+
+/**
+ * The "five-step binding method" for swapping a placed component's footprint OR
+ * symbol, exposed as a typed action so the operation no longer needs `debug.exec_js`.
+ *
+ * WHY delete-then-create (not a plain modify): `sch_PrimitiveComponent.modify` cannot
+ * change the symbol/footprint reference of an already-placed instance (see
+ * marketplace-coverage.md:64). The reference lives on the DEVICE-library record, so we:
+ *   1. resolve the device's real library UUID (imported devices carry an empty one),
+ *   2. `lib_Device.modify` the device association to the new footprint/symbol,
+ *   3. `delete` the stale placed instance,
+ *   4. `create` a fresh instance (which now inherits the new footprint/symbol),
+ *   5. `modify` the new instance to restore designator / uniqueId / manufacturer /
+ *      supplier / otherProperty (position, rotation, mirror & BOM flags are replayed
+ *      into `create` directly).
+ *
+ * Original state is captured up front; any failure after step 2 rolls back the device
+ * association and re-creates the original instance so the schematic is never left
+ * half-rebound.
+ *
+ * CAVEAT (surface in the CLI help / PR): delete-then-create mints a NEW primitiveId,
+ * so wires that were attached to the old instance's pins may need re-drawing — run
+ * `sch drc` / `sch check` after a rebind to confirm connectivity survived.
+ *
+ * @param kind - 'footprint' or 'symbol'
+ * @returns a Handler
+ */
+function makeRebindHandler(kind: 'footprint' | 'symbol'): Handler {
+	return async (payload) => {
+		const primitiveId = requireString(payload, 'primitiveId');
+		// Two ways to name the target: a free-text name to search, or an explicit
+		// { uuid, libraryUuid } pair that bypasses search (deterministic, no ambiguity).
+		const targetName = optionalString(payload, kind);
+		const explicitUuid = optionalString(payload, `${kind}Uuid`);
+		const explicitLibraryUuid = optionalString(payload, `${kind}LibraryUuid`);
+		// Scope for the name search; defaults to 'project' (where the device lives).
+		const scope = optionalString(payload, 'scope') ?? 'project';
+		if (!targetName && !explicitUuid) {
+			throw new ActionError(
+				ErrorCodes.MISSING_PAYLOAD_FIELD,
+				`Provide either "${kind}" (a name to search) or "${kind}Uuid" (+ optional "${kind}LibraryUuid").`,
+			);
+		}
+
+		const component = await getComponentOrThrow(primitiveId);
+		const snapshot = serializeComponent(component);
+		const deviceRaw = component.getState_Component() as DeviceRef;
+		const oldSymbol = component.getState_Symbol() as DeviceRef | undefined;
+		const oldFootprint = component.getState_Footprint() as DeviceRef | undefined;
+		const device = await resolveDeviceLibrary(
+			{ libraryUuid: deviceRaw?.libraryUuid ?? '', uuid: deviceRaw?.uuid ?? '' },
+			typeof snapshot.name === 'string' ? snapshot.name : undefined,
+		);
+
+		// Resolve the target footprint/symbol identity.
+		let target: NamedLibItem;
+		if (explicitUuid) {
+			target = { uuid: explicitUuid, libraryUuid: explicitLibraryUuid ?? device.libraryUuid, name: targetName ?? explicitUuid };
+		}
+		else {
+			let results: Array<NamedLibItem>;
+			try {
+				const searcher = kind === 'footprint' ? eda.lib_Footprint : eda.lib_Symbol;
+				results = (await searcher.search(targetName as string, scope)) as unknown as Array<NamedLibItem>;
+			}
+			catch (err) {
+				throw edaError(err, `Failed to search ${kind} library for "${targetName}".`);
+			}
+			const match = pickNamedCandidate(targetName as string, Array.isArray(results) ? results : []);
+			if (match.kind === 'none') {
+				throw new ActionError(
+					ErrorCodes.INVALID_STATE,
+					`No ${kind} named "${targetName}" found in scope "${scope}". `
+					+ `Pass "${kind}Uuid" (+ "${kind}LibraryUuid") to bind directly, or check the name.`,
+				);
+			}
+			if (match.kind === 'ambiguous') {
+				const uuids = match.matches.map(m => m.uuid).join(', ');
+				throw new ActionError(
+					ErrorCodes.INVALID_STATE,
+					`${match.matches.length} ${kind}s named "${targetName}" match (uuids: ${uuids}). `
+					+ `Pass "${kind}Uuid" to pick one.`,
+				);
+			}
+			target = match.item;
+		}
+
+		// Build the new + rollback associations for lib_Device.modify.
+		const newAssoc = kind === 'footprint'
+			? { footprint: { uuid: target.uuid, libraryUuid: target.libraryUuid } }
+			: { symbol: { uuid: target.uuid, libraryUuid: target.libraryUuid } };
+		const oldRef = kind === 'footprint' ? oldFootprint : oldSymbol;
+		const rollbackAssoc = oldRef
+			? (kind === 'footprint'
+				? { footprint: { uuid: oldRef.uuid, libraryUuid: oldRef.libraryUuid } }
+				: { symbol: { uuid: oldRef.uuid, libraryUuid: oldRef.libraryUuid } })
+			: undefined;
+
+		// Replay helpers so both the happy path and rollback re-place identically.
+		const x = typeof snapshot.x === 'number' ? snapshot.x : 0;
+		const y = typeof snapshot.y === 'number' ? snapshot.y : 0;
+		const subPartName = typeof snapshot.subPartName === 'string' ? snapshot.subPartName : undefined;
+		const rotation = typeof snapshot.rotation === 'number' ? snapshot.rotation : undefined;
+		const mirror = typeof snapshot.mirror === 'boolean' ? snapshot.mirror : undefined;
+		const addIntoBom = typeof snapshot.addIntoBom === 'boolean' ? snapshot.addIntoBom : undefined;
+		const addIntoPcb = typeof snapshot.addIntoPcb === 'boolean' ? snapshot.addIntoPcb : undefined;
+		const restoreProps = {
+			...(typeof snapshot.designator === 'string' ? { designator: snapshot.designator } : {}),
+			...(typeof snapshot.uniqueId === 'string' ? { uniqueId: snapshot.uniqueId } : {}),
+			...(typeof snapshot.manufacturer === 'string' ? { manufacturer: snapshot.manufacturer } : {}),
+			...(typeof snapshot.manufacturerId === 'string' ? { manufacturerId: snapshot.manufacturerId } : {}),
+			...(typeof snapshot.supplier === 'string' ? { supplier: snapshot.supplier } : {}),
+			...(typeof snapshot.supplierId === 'string' ? { supplierId: snapshot.supplierId } : {}),
+			...(cleanOtherProperty(snapshot.otherProperty as Record<string, unknown> | undefined)
+				? { otherProperty: cleanOtherProperty(snapshot.otherProperty as Record<string, unknown> | undefined) }
+				: {}),
+		};
+
+		const recreate = async (): Promise<SchComponent | undefined> => {
+			const c = await eda.sch_PrimitiveComponent.create(
+				{ libraryUuid: device.libraryUuid, uuid: device.uuid },
+				x, y, subPartName, rotation, mirror, addIntoBom, addIntoPcb,
+			);
+			if (c && Object.keys(restoreProps).length) {
+				try { await eda.sch_PrimitiveComponent.modify(c.getState_PrimitiveId(), restoreProps); }
+				catch { /* best-effort restore */ }
+			}
+			return c ?? undefined;
+		};
+
+		let deleted = false;
+		const rollback = async () => {
+			if (rollbackAssoc) {
+				try { await eda.lib_Device.modify(device.uuid, device.libraryUuid, undefined, undefined, rollbackAssoc); }
+				catch { /* best-effort */ }
+			}
+			if (deleted) {
+				try { await recreate(); } catch { /* best-effort */ }
+			}
+		};
+
+		// Step 2: point the device at the new footprint/symbol.
+		try {
+			const ok = await eda.lib_Device.modify(device.uuid, device.libraryUuid, undefined, undefined, newAssoc);
+			if (ok === false) {
+				throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `lib_Device.modify returned false for ${kind} rebind.`);
+			}
+		}
+		catch (err) {
+			if (err instanceof ActionError) throw err;
+			throw edaError(err, `Failed to bind the new ${kind} onto device "${device.uuid}".`);
+		}
+
+		// Step 3: delete the stale placed instance.
+		try {
+			await eda.sch_PrimitiveComponent.delete(primitiveId);
+			deleted = true;
+		}
+		catch (err) {
+			await rollback();
+			throw edaError(err, `Failed to delete the old instance "${primitiveId}" (rolled back the ${kind} binding).`);
+		}
+
+		// Step 4 + 5: re-place and restore original state.
+		let created: SchComponent | undefined;
+		try {
+			created = await recreate();
+		}
+		catch (err) {
+			await rollback();
+			throw edaError(err, `Failed to re-place the component after ${kind} rebind (rolled back).`);
+		}
+		if (!created) {
+			await rollback();
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`Re-placing the component after ${kind} rebind returned no primitive (rolled back).`,
+			);
+		}
+
+		return {
+			result: {
+				primitiveId: created.getState_PrimitiveId(),
+				previousPrimitiveId: primitiveId,
+				rebound: kind,
+				device: { uuid: device.uuid, libraryUuid: device.libraryUuid },
+				[kind]: { uuid: target.uuid, libraryUuid: target.libraryUuid, name: target.name },
+				component: serializeComponent(created),
+			},
+			warnings: [
+				`Re-placing minted a new primitiveId; wires on the old instance's pins may need re-drawing — run \`sch drc\` / \`sch check\` to confirm connectivity.`,
+			],
+		};
+	};
+}
+
+const schematicRebindFootprint: Handler = makeRebindHandler('footprint');
+const schematicRebindSymbol: Handler = makeRebindHandler('symbol');
 
 // ─── Composite: pin → wire → netflag/netport in one call ────────────
 
@@ -5348,6 +5632,8 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.power.connect_pin': schematicPowerConnectPin,
 	'schematic.library.search': schematicLibrarySearch,
 	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
+	'schematic.rebind.footprint': schematicRebindFootprint,
+	'schematic.rebind.symbol': schematicRebindSymbol,
 	'pcb.documents.list': pcbDocumentsList,
 	'pcb.components.list': pcbComponentsList,
 	'pcb.layers.list': pcbLayersList,
