@@ -17,7 +17,7 @@ Skill / CLI -> Go daemon -> EasyEDA Agent Connector -> official eda.* API
 
 **原理图从空白页生成：**
 
-![AI 在 EasyEDA 中从空白页生成原理图](images/demo-schematic-generation.gif)
+![AI 在 EasyEDA 中从空白页生成原理图](images/demo-schematic-generation.png)
 
 **PCB 布局与铺铜：**
 
