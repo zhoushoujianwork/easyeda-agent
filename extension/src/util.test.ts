@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { ActionError } from './protocol';
-import { normalizeRegion, normalizeWirePoints } from './util';
+import { classifyPinConnectivity, normalizeRegion, normalizeWirePoints } from './util';
 
 test('normalizeWirePoints: flat input is returned unchanged', () => {
 	assert.deepEqual(normalizeWirePoints([195, 350, 215, 350]), [195, 350, 215, 350]);
@@ -67,4 +67,31 @@ test('normalizeRegion: zero-area box (collapsed axis) throws', () => {
 test('normalizeRegion: non-finite bound throws', () => {
 	assert.throws(() => normalizeRegion(NaN, 730, 300, 520), ActionError);
 	assert.throws(() => normalizeRegion(400, Infinity, 300, 520), ActionError);
+});
+
+// ─── classifyPinConnectivity: geometry × JSON-authoritative netlist cross-check ──
+// The three acceptance scenarios from issue #45, plus the netlist-muted guard.
+
+test('classifyPinConnectivity: geometry + netlist agree connected → connected', () => {
+	// netlist has a net AND geometry sees a wire.
+	assert.equal(classifyPinConnectivity(true, true, true), 'connected');
+});
+
+test('classifyPinConnectivity: geom floating but netlist has net → connected (降误报 #15)', () => {
+	// #15-class false positive: geometry misses the connection, netlist is authoritative.
+	assert.equal(classifyPinConnectivity(true, false, true), 'connected');
+});
+
+test('classifyPinConnectivity: geom connected but netlist no net → geom-net-mismatch (补漏报)', () => {
+	assert.equal(classifyPinConnectivity(false, true, true), 'geom-net-mismatch');
+});
+
+test('classifyPinConnectivity: neither source connects → floating', () => {
+	assert.equal(classifyPinConnectivity(false, false, true), 'floating');
+});
+
+test('classifyPinConnectivity: netlist muted → pure geometry, never mismatch', () => {
+	// getNetlistFile failed: geom-connected pins must NOT surface as mismatches.
+	assert.equal(classifyPinConnectivity(false, true, false), 'connected');
+	assert.equal(classifyPinConnectivity(false, false, false), 'floating');
 });

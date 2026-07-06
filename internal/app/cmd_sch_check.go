@@ -13,8 +13,12 @@ import (
 // {count,type} — the per-item detail the UI panel shows is not exposed by any
 // public API. schematic.check reconstructs the actionable findings from the
 // primitives directly (connector side). Rule 1: floating pins via geometric
-// connectivity. This file renders that report and (with --strict) gates on it.
-// Output is by designator + pin number — feed it straight into `sch no-connect`.
+// connectivity CROSS-CHECKED against the JSON-authoritative netlist — a net in
+// the netlist drops #15-class geometric false positives, while geometry that
+// touches a pin the netlist puts on no net surfaces as a geom-net-mismatch
+// (suspected missed report). This file renders that report and (with --strict)
+// gates on it. Output is by designator + pin number — feed it straight into
+// `sch no-connect`.
 
 type checkPinDetail struct {
 	Number string  `json:"number"`
@@ -46,6 +50,7 @@ type checkFinding struct {
 type checkSummary struct {
 	FloatingPins           int `json:"floatingPins"`
 	ComponentsWithFloating int `json:"componentsWithFloating"`
+	GeomNetMismatches      int `json:"geomNetMismatches"`
 	NetMarkerMismatches    int `json:"netMarkerMismatches"`
 	MultiNetWires          int `json:"multiNetWires"`
 	WireCrossings          int `json:"wireCrossings"`
@@ -131,8 +136,8 @@ func checkLevelTag(level string) string {
 
 func renderCheckReport(rep checkReport, w io.Writer) {
 	s := rep.Summary
-	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d net-marker mismatch(es), %d multi-net wire(s), %d wire-crossing(s), %d wire-over-pin(s), %d zero-length wire(s), %d dangling wire(s)\n",
-		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.NetMarkerMismatches, s.MultiNetWires, s.WireCrossings, s.WireOverPins, s.ZeroLengthWires, s.DanglingWires)
+	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d geom-net mismatch(es), %d net-marker mismatch(es), %d multi-net wire(s), %d wire-crossing(s), %d wire-over-pin(s), %d zero-length wire(s), %d dangling wire(s)\n",
+		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.GeomNetMismatches, s.NetMarkerMismatches, s.MultiNetWires, s.WireCrossings, s.WireOverPins, s.ZeroLengthWires, s.DanglingWires)
 
 	for _, f := range rep.Findings {
 		tag := checkLevelTag(f.Level)
@@ -185,6 +190,11 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 	if s.FloatingPins > 0 {
 		// The floating-pin list is the exact input `sch no-connect` takes.
 		fmt.Fprintln(w, "→ floating pins: wire them, or (where supported) mark intentional ones NC")
+	}
+	if s.GeomNetMismatches > 0 {
+		// Geometry touches the pin but the authoritative netlist has no net for it —
+		// recompile the netlist, or fix the wire so it electrically connects.
+		fmt.Fprintln(w, "→ geom-net mismatch: wire touches pin but netlist has no net — recompile netlist, or fix the stub so it truly connects")
 	}
 	if s.WireCrossings > 0 || s.WireOverPins > 0 {
 		fmt.Fprintln(w, "→ routing: reroute crossings in clear channels (L-bends); never run a wire through a pin")
