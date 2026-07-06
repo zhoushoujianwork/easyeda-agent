@@ -58,12 +58,14 @@ EASYEDA_SKILL_PRESERVE=1             curl -fsSL .../install.sh | sh  # 保留本
 Skill slug 为 `easyeda-agent`(后缀有意为之,区分于官方 EasyEDA 工具)。只从 registry 装 skill:
 
 ```bash
-# ClawHub
+# ClawHub(make release 时自动同步发布,版本与 repo 对齐)
 clawhub install easyeda-agent
-
-# 国内 SkillHub
-skillhub install easyeda-agent --registry https://skillhub.cn
 ```
+
+> 国内用户注意:skillhub.cn 目前是纯网页社区,未实现 CLI 安装接口
+> (`/api/cli/v1` 返回的是网页而非 API),`skillhub install --registry
+> https://skillhub.cn` 无法工作。请改用上面的一键脚本,或从 GitHub Release
+> 下载 `skills.tar.gz` 解压到 `~/.claude/skills/` 或 `~/.codex/skills/`。
 
 > EasyEDA 需开启「**允许外部交互**」,连接器的 WebSocket 才能连到本地 daemon。
 

@@ -1,4 +1,4 @@
-.PHONY: help test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test release replay demo-replay replay-sch replay-pcb
+.PHONY: help test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test release publish-skill replay demo-replay replay-sch replay-pcb
 
 DIST := dist
 
@@ -127,6 +127,8 @@ eext-fresh: ## bump patch + FRESH uuid (imports as new entry; delete the old one
 #   • copies the latest .eext from extension/build/dist/
 #   • tarballs the merged easyeda-agent skill into skills.tar.gz
 #   • creates a git tag, pushes it, and creates a GitHub Release with all assets
+#   • publishes the skill to ClawHub at the same version (best-effort — a hub
+#     outage won't fail the release; retry with `make publish-skill VERSION=…`)
 _LDFLAGS = -s -w -X 'github.com/zhoushoujianwork/easyeda-agent/internal/version.Version=$(VERSION)'
 
 release: ## cross-compile + package + GitHub Release  (VERSION=vX.Y.Z required)
@@ -166,4 +168,18 @@ endif
 		$(DIST)/install.sh \
 		--title "easyeda-agent $(VERSION)" \
 		--notes "$$(printf 'One-line install/update:\n\`\`\`\ncurl -fsSL https://raw.githubusercontent.com/zhoushoujianwork/easyeda-agent/main/install.sh | sh\n\`\`\`\n\nInstalls/updates:\n- easyeda CLI/daemon\n- easyeda-agent skill for Codex (~/.codex/skills) and/or Claude Code (~/.claude/skills) when detected\n- prints EasyEDA connector .eext import URL\n\nSkill targets: set \`EASYEDA_INSTALL_SKILLS=codex,claude\` to force targets, \`none\` to skip, or \`EASYEDA_SKILL_PRESERVE=1\` to keep local edits.')"
+	@echo "  publishing skill to ClawHub..."
+	@$(MAKE) publish-skill VERSION=$(VERSION) \
+		|| echo "  ⚠️  ClawHub publish failed — retry with: clawhub login && make publish-skill VERSION=$(VERSION)"
 	@echo "✅ Released: https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/$(VERSION)"
+
+# 单独发布 skill 到 ClawHub(release 失败后重试用)。
+# 注意:必须用 $(CURDIR) 绝对路径 —— clawhub 的 workdir 可能被全局配置(如 ~/clawd)
+# 劫持,相对路径 skills/easyeda-agent 会解析到别处、把旧副本发上去(0.8.1 踩过)。
+# ClawHub 版本号不可覆盖,重名直接报错;版本与 repo tag 对齐(去掉 v 前缀)。
+publish-skill: ## publish skills/easyeda-agent to ClawHub  (VERSION=vX.Y.Z required)
+ifndef VERSION
+	$(error VERSION is required — usage: make publish-skill VERSION=v0.8.2)
+endif
+	clawhub publish $(CURDIR)/skills/easyeda-agent --slug easyeda-agent --version $(VERSION:v%=%) \
+		--changelog "easyeda-agent $(VERSION) — https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/$(VERSION)"

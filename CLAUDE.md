@@ -105,7 +105,7 @@ make release VERSION=v0.5.1
 curl -fsSL https://raw.githubusercontent.com/zhoushoujianwork/easyeda-agent/main/install.sh | sh
 ```
 
-**版本号约定**：CLI 和 connector 始终用同一版本号（`make release` 负责把 `extension.json` 同步到 VERSION，不需要提前跑 `make eext`）。`make release` 会自动打 git tag、push 并创建 GitHub Release。
+**版本号约定**：CLI 和 connector 始终用同一版本号（`make release` 负责把 `extension.json` 同步到 VERSION，不需要提前跑 `make eext`）。`make release` 会自动打 git tag、push 并创建 GitHub Release，**并把 skill 同版本发布到 ClawHub**（best-effort，失败不阻断；重试 `make publish-skill VERSION=…`，需已 `clawhub login`）。ClawHub 版本号不可覆盖；`publish-skill` 必须用绝对路径——clawhub 的 workdir 会被全局配置劫持到 `~/clawd`，相对路径会把旧副本发上去（0.8.1 踩过）。skillhub.cn 无 CLI API（纯网页社区），不集成。
 
 **Changelog 门禁**：`extension/CHANGELOG.md` 必须有对应版本的 `## [x.y.z]` 条目。`make release` 会**硬校验**（缺条目直接报错退出，发版前先补 changelog）；`make eext`（dev 循环）只**警告**不阻断。校验逻辑在 `extension/scripts/bump.mjs`（`--require-changelog`）。
 

@@ -69,12 +69,15 @@ community automation layer from official EasyEDA tooling). To install only the s
 from a registry:
 
 ```bash
-# ClawHub
+# ClawHub (published automatically by `make release`, version matches the repo)
 clawhub install easyeda-agent
-
-# 国内 SkillHub
-skillhub install easyeda-agent --registry https://skillhub.cn
 ```
+
+> Note: skillhub.cn is currently a web-only community without a CLI install API
+> (`/api/cli/v1` serves the web page, not an API), so `skillhub install
+> --registry https://skillhub.cn` cannot work. Use the one-line installer above,
+> or unpack `skills.tar.gz` from the GitHub Release into `~/.claude/skills/` or
+> `~/.codex/skills/`.
 
 The old split skills (`easyeda-schematic`, `easyeda-pcb`, `easyeda-design-flow`,
 `easyeda-conventions`) have been merged and removed from the repository.
