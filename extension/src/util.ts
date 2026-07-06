@@ -317,3 +317,37 @@ export function normalizeRegion(
 	}
 	return { left: minX, right: maxX, top: minY, bottom: maxY };
 }
+
+/**
+ * Cross-check a pin's GEOMETRIC connectivity against the JSON-authoritative
+ * netlist (getNetlistFile → pin→net). Pure (no `eda` runtime) so it can be unit
+ * tested; the schematic.check handler feeds it live geometry + netlist facts.
+ *
+ * @param hasNetlistNet    - the authoritative netlist assigns this pin a non-empty net
+ * @param geomConnected    - geometry says the pin is touched by a wire / net marker
+ * @param netlistAvailable - the netlist JSON was actually fetched+parsed. When it is
+ *                           NOT available (getNetlistFile failed / empty), the netlist
+ *                           source is muted and we fall back to PURE geometry — a
+ *                           geom-connected pin is 'connected', never a mismatch, so a
+ *                           missing/uncompiled netlist can't manufacture false reports.
+ * @returns
+ *   - 'connected'         netlist has a net (authoritative — drops #15-class geometric
+ *                         false positives), OR netlist unavailable + geometry connects
+ *   - 'floating'          neither source connects it → real floating pin
+ *   - 'geom-net-mismatch' netlist available + geometry says wired but netlist has NO
+ *                         net → suspected missed report: a wire touches the pin yet it
+ *                         is on no net (cosmetic touch, or a not-yet-compiled netlist)
+ */
+export type PinConnectivity = 'connected' | 'floating' | 'geom-net-mismatch';
+
+export function classifyPinConnectivity(
+	hasNetlistNet: boolean,
+	geomConnected: boolean,
+	netlistAvailable: boolean,
+): PinConnectivity {
+	if (hasNetlistNet) return 'connected';
+	// Netlist muted (couldn't fetch) → trust geometry alone, no mismatch signal.
+	if (!netlistAvailable) return geomConnected ? 'connected' : 'floating';
+	if (geomConnected) return 'geom-net-mismatch';
+	return 'floating';
+}

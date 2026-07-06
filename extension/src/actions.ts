@@ -15,6 +15,7 @@ import {
 import {
 	asPayload,
 	blobToBase64,
+	classifyPinConnectivity,
 	newArtifactId,
 	type NamedLibItem,
 	normalizeRegion,
@@ -1373,7 +1374,7 @@ interface CheckPinDetail {
 
 // One reconstructed design-check finding. Reuses the DRC severity buckets.
 interface CheckFinding {
-	type: string; // 'floating-pin' | 'wire-crossing' | 'wire-over-pin' | 'net-marker-mismatch' | 'multi-net-wire' | 'zero-length-wire' | 'dangling-wire'
+	type: string; // 'floating-pin' | 'geom-net-mismatch' | 'wire-crossing' | 'wire-over-pin' | 'net-marker-mismatch' | 'multi-net-wire' | 'zero-length-wire' | 'dangling-wire'
 	level: DrcSeverity;
 	designator?: string;
 	primitiveId?: string; // owning component (floating-pin / wire-over-pin)
@@ -1446,17 +1447,28 @@ function collectWireSegments(wires: Array<{ getState_Line: () => Array<number>; 
 	return segs;
 }
 
-async function collectNetlistPinNets(): Promise<Map<string, Map<string, string>>> {
+// Result of reading the JSON-authoritative netlist. `available` distinguishes
+// "netlist fetched+parsed" (trust its pin→net facts, even the ABSENCE of a net)
+// from "couldn't fetch/parse" (netlist muted → geometry alone decides). Without
+// this flag an uncompiled/missing netlist would look like "every pin has no net"
+// and manufacture geom-net-mismatch false reports.
+interface NetlistPinNets {
+	byDesignator: Map<string, Map<string, string>>;
+	available: boolean;
+}
+
+async function collectNetlistPinNets(): Promise<NetlistPinNets> {
 	const byDesignator = new Map<string, Map<string, string>>();
+	const muted = (): NetlistPinNets => ({ byDesignator, available: false });
 	let file: File | undefined;
 	try { file = await eda.sch_ManufactureData.getNetlistFile(); }
-	catch { return byDesignator; }
-	if (!file) return byDesignator;
+	catch { return muted(); }
+	if (!file) return muted();
 	let parsed: unknown;
 	try { parsed = JSON.parse(await file.text()); }
-	catch { return byDesignator; }
+	catch { return muted(); }
 	const components = (parsed as { components?: Record<string, NetlistComponentInfo> })?.components;
-	if (!components || typeof components !== 'object') return byDesignator;
+	if (!components || typeof components !== 'object') return muted();
 	for (const comp of Object.values(components)) {
 		const designator = String(comp.props?.Designator ?? '');
 		if (!designator || !comp.pinInfoMap) continue;
@@ -1468,7 +1480,7 @@ async function collectNetlistPinNets(): Promise<Map<string, Map<string, string>>
 		}
 		byDesignator.set(designator, pins);
 	}
-	return byDesignator;
+	return { byDesignator, available: true };
 }
 
 type Seg = [number, number, number, number];
@@ -1515,7 +1527,7 @@ function interiorOnSegment(px: number, py: number, s: Seg): boolean {
 const schematicCheck: Handler = async (payload) => {
 	const allPages = optionalBoolean(payload, 'allPages') === true;
 	let components, wires;
-	const netlistPinNets = await collectNetlistPinNets();
+	const { byDesignator: netlistPinNets, available: netlistAvailable } = await collectNetlistPinNets();
 	try {
 		components = await eda.sch_PrimitiveComponent.getAll(undefined, allPages);
 		wires = await eda.sch_PrimitiveWire.getAll();
@@ -1623,6 +1635,9 @@ const schematicCheck: Handler = async (payload) => {
 
 	let floatingTotal = 0;
 	let componentsWithFloating = 0;
+	// Geometry says the pin is wired but the authoritative netlist puts it on no net
+	// — a suspected MISSED report (the cross-check's "补漏报" direction).
+	let geomNetMismatches = 0;
 	// All component pins, kept for the wire-over-pin rule below.
 	const allPins: Array<{ designator: string; number: string; x: number; y: number }> = [];
 
@@ -1648,17 +1663,35 @@ const schematicCheck: Handler = async (payload) => {
 			try { if (p.getState_NoConnected && p.getState_NoConnected()) continue; }
 			catch { /* treat as not-NC */ }
 			const netlistNet = netlistPinNets.get(designator)?.get(num) ?? '';
-			const connected = Boolean(netlistNet)
-				|| segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]))
-				// A pin landing directly on a netflag/netport/netlabel is connected too.
+			// Pure-geometry connectivity: a wire touches the pin, or it sits on a
+			// netflag/netport/netlabel anchor.
+			const geomConnected = segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]))
 				|| connectionMarkers.some(m => Math.hypot(px - m.x, py - m.y) <= COINCIDE_TOL);
-			if (!connected) {
+			// Cross-check geometry against the JSON-authoritative netlist:
+			//   connected         → netlist has a net (drops #15-class false positives),
+			//                        or netlist muted + geometry wires it
+			//   floating          → neither source connects it (real floating pin)
+			//   geom-net-mismatch → geometry wires it but netlist has NO net (补漏报)
+			const status = classifyPinConnectivity(Boolean(netlistNet), geomConnected, netlistAvailable);
+			if (status === 'floating') {
 				floating.push(num);
 				const name = (() => {
 					try { return String(p.getState_PinName?.() ?? ''); }
 					catch { return ''; }
 				})();
 				floatingDetails.push({ number: num, name: name || undefined, x: px, y: py });
+			}
+			else if (status === 'geom-net-mismatch') {
+				geomNetMismatches++;
+				findings.push({
+					type: 'geom-net-mismatch',
+					level: 'warn',
+					designator,
+					primitiveId,
+					pins: [num],
+					at: { x: px, y: py },
+					message: '导线触碰该引脚但网表未将其归入任何 net(疑似漏连:未编译网表或仅几何贴合未真正连通)',
+				});
 			}
 		}
 		if (floating.length > 0) {
@@ -1794,6 +1827,7 @@ const schematicCheck: Handler = async (payload) => {
 	const summary = {
 		floatingPins: floatingTotal,
 		componentsWithFloating,
+		geomNetMismatches,
 		netMarkerMismatches,
 		multiNetWires,
 		wireCrossings: crossingTotal,
@@ -1861,7 +1895,7 @@ const schematicRead: Handler = async (payload) => {
 	}
 
 	// JSON-authoritative pin→net per designator (same source as schematic.check).
-	const pinNets = await collectNetlistPinNets();
+	const { byDesignator: pinNets } = await collectNetlistPinNets();
 
 	const netToPins = new Map<string, Array<string>>();
 	const floating: Array<string> = [];

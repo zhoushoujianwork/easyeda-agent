@@ -122,3 +122,43 @@ func TestRenderCheck_Clean(t *testing.T) {
 		t.Errorf("expected clean line, got:\n%s", buf.String())
 	}
 }
+
+// geom-net-mismatch: geometry touches the pin but the JSON-authoritative netlist
+// puts it on no net (the "补漏报" direction of the #45 cross-check). Render shows
+// the type, designator, pin, coords, and the recompile/fix hint.
+func TestParseAndRenderCheck_GeomNetMismatch(t *testing.T) {
+	result := map[string]any{
+		"passed": false,
+		"summary": map[string]any{
+			"geomNetMismatches": float64(1),
+			"total":             float64(1),
+		},
+		"findings": []any{
+			map[string]any{
+				"type":        "geom-net-mismatch",
+				"level":       "warn",
+				"designator":  "U1",
+				"primitiveId": "c1",
+				"pins":        []any{"7"},
+				"at":          map[string]any{"x": float64(120), "y": float64(-80)},
+				"message":     "导线触碰该引脚但网表未将其归入任何 net",
+			},
+		},
+	}
+	rep, err := parseCheckReport(result)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if rep.Summary.GeomNetMismatches != 1 || len(rep.Findings) != 1 {
+		t.Errorf("unexpected summary/findings: %+v", rep)
+	}
+
+	var buf bytes.Buffer
+	renderCheckReport(rep, &buf)
+	out := buf.String()
+	for _, want := range []string{"WARN", "geom-net-mismatch", "U1", "[7]", "@(120.00,-80.00)", "geom-net mismatch"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+}
