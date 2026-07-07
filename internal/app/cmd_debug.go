@@ -28,7 +28,7 @@ func newDebugCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			Short: "Run raw eda.* JavaScript in the connector (escape hatch)",
 			Args:  cobra.NoArgs,
 			Example: `  easyeda debug exec --code "return eda.getProjectInfo()"
-  easyeda debug exec --timeout 60 --code "return await eda.sch_Netlist.getNetlist()"`,
+  easyeda debug exec --timeout 60 --code "const f = await eda.sch_ManufactureData.getNetlistFile('netlist.json'); return f && await f.text()"`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if code == "" {
 					return fmt.Errorf("--code is required")
@@ -42,7 +42,7 @@ func newDebugCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			},
 		}
 		c.Flags().StringVar(&code, "code", "", "JavaScript expression to execute in the connector (required)")
-		c.Flags().IntVar(&timeoutSec, "timeout", 0, "round-trip timeout in seconds (default 20; raise for slow calls like getNetlist)")
+		c.Flags().IntVar(&timeoutSec, "timeout", 0, "round-trip timeout in seconds (default 20; raise only for unavoidable slow calls)")
 		dbg.AddCommand(c)
 	}
 

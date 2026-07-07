@@ -20,6 +20,13 @@ EasyEDA tooling.
    missing and the user explicitly accepts a debug path.
 3. Inspect before mutating: read docs/pages, components, pins, board/layers/nets, and
    relevant rules before placing, moving, wiring, syncing, or saving.
+3a. **Netlist source of truth:** never call deprecated `eda.sch_Netlist.getNetlist()`
+    for schematic reads or debug snippets. Official prodocs marks it obsolete and
+    says to use `SCH_ManufactureData.getNetlistFile()`; issue easyeda/pro-api-sdk#30
+    shows `getNetlist()` can hang indefinitely on schematics with floating pins.
+    Use `easyeda sch read`, `easyeda sch check`, or `easyeda sch netlist/export`;
+    if a raw debug path is unavoidable, call `eda.sch_ManufactureData.getNetlistFile(...)`
+    and read the returned `File.text()`.
 4. Confirm before destructive operations such as clear/delete/import bulk changes.
 4a. `sch autoconnect` is idempotent (issue #50): before connecting it reads each
     pin's current net, SKIPS pins already on the target net (`already-connected`),
@@ -59,6 +66,10 @@ EasyEDA tooling.
 - Whole board, from scratch, or >~10 parts: read `references/design-flow.md` first.
 - Schematic work: read `references/schematic.md` and `references/actions.md`.
 - PCB work: read `references/pcb.md`.
+- New/uncertain raw `eda.*` API use: first run `easyeda api search/show`, then check
+  the matching official prodocs reference page when the method is `@alpha`, `@beta`,
+  `@deprecated`, or has a known upstream issue. Record the caveat in references before
+  turning it into an agent workflow.
 - Schematic layout rules: read `references/schematic-layout-conventions.md`.
 - PCB placement/routing rules: read `references/pcb-layout-conventions.md`.
 - CLI placement/routing hard pits and auto-layout/autoconnect SOP: read
