@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { ActionError } from './protocol';
-import { classifyPinConnectivity, normalizeRegion, normalizeWirePoints, pickNamedCandidate } from './util';
+import { classifyPinConnectivity, filterExactLcsc, isLcscQuery, normalizeRegion, normalizeWirePoints, pickNamedCandidate, readLcscField } from './util';
 
 test('normalizeWirePoints: flat input is returned unchanged', () => {
 	assert.deepEqual(normalizeWirePoints([195, 350, 215, 350]), [195, 350, 215, 350]);
@@ -137,4 +137,40 @@ test('classifyPinConnectivity: designator-less flag pin (netlist muted) + geomet
 	// Probe round #3: netflags/netports expose a pin "1" but never appear in the
 	// netlist components map — callers mute the netlist for them (available=false).
 	assert.equal(classifyPinConnectivity(false, true, false), 'connected');
+});
+
+test('isLcscQuery: bare C-numbers match (case/space tolerant)', () => {
+	assert.equal(isLcscQuery('C5665'), true);
+	assert.equal(isLcscQuery('c5665'), true);
+	assert.equal(isLcscQuery('  C71629 '), true);
+});
+
+test('isLcscQuery: non C-number queries do not match', () => {
+	assert.equal(isLcscQuery('CLC5665IMX'), false);
+	assert.equal(isLcscQuery('100nF 0402'), false);
+	assert.equal(isLcscQuery('C'), false);
+	assert.equal(isLcscQuery('C5665 0402'), false);
+});
+
+test('readLcscField: reads supplierId, falls back to Supplier Part, else empty', () => {
+	assert.equal(readLcscField({ supplierId: 'C5665' }), 'C5665');
+	assert.equal(readLcscField({ otherProperty: { 'Supplier Part': 'C5665' } }), 'C5665');
+	assert.equal(readLcscField({}), '');
+});
+
+test('filterExactLcsc: keeps only strict LCSC matches, drops fuzzy keyword hits', () => {
+	const raw = [
+		{ name: 'CLC5665IMX', supplierId: 'C123456' }, // op-amp, name contains 5665 but wrong C#
+		{ name: 'IDC-TH_10P-P2.54', supplierId: 'C5665' }, // the real part
+		{ name: 'other', otherProperty: { 'Supplier Part': 'c5665' } }, // migrated field, case-insensitive
+		{ name: 'nope', supplierId: 'C9999' },
+	];
+	const out = filterExactLcsc(raw, 'C5665');
+	assert.equal(out.length, 2);
+	assert.deepEqual(out.map(r => r.name), ['IDC-TH_10P-P2.54', 'other']);
+});
+
+test('filterExactLcsc: empty when nothing matches the C-number', () => {
+	const raw = [{ name: 'CLC5665IMX', supplierId: 'C123456' }];
+	assert.deepEqual(filterExactLcsc(raw, 'C5665'), []);
 });

@@ -16,6 +16,8 @@ import {
 	asPayload,
 	blobToBase64,
 	classifyPinConnectivity,
+	filterExactLcsc,
+	isLcscQuery,
 	newArtifactId,
 	type NamedLibItem,
 	normalizeRegion,
@@ -2061,6 +2063,7 @@ const schematicExportBom: Handler = async (payload) => {
 const schematicLibrarySearch: Handler = async (payload) => {
 	const query = requireString(payload, 'query');
 	const limit = optionalNumber(payload, 'limit') ?? 10;
+	const allowFuzzy = optionalBoolean(payload, 'allowFuzzy') ?? false;
 
 	let raw: Array<unknown>;
 	try {
@@ -2071,6 +2074,41 @@ const schematicLibrarySearch: Handler = async (payload) => {
 	}
 	if (!Array.isArray(raw)) {
 		return { result: { count: 0, components: [] } };
+	}
+
+	// Exact LCSC mode. When the query is itself a bare C-number (e.g. "C5665"),
+	// EasyEDA's free-text search still ranks by keyword — so "C5665" surfaces the
+	// op-amp CLC5665IMX (name contains "5665") over the real part whose LCSC id
+	// equals C5665. Strictly filter the raw results by the lcsc/supplierId field so
+	// batch selection never silently binds the wrong device. Opt out with
+	// allowFuzzy to fall through to the ranked free-text path below.
+	if (!allowFuzzy && isLcscQuery(query)) {
+		const exact = filterExactLcsc(raw as Array<Record<string, unknown>>, query)
+			.slice(0, limit)
+			.map((r) => {
+				const otherProperty = (r.otherProperty as Record<string, unknown> | undefined) ?? {};
+				return {
+					uuid: r.uuid,
+					libraryUuid: r.libraryUuid,
+					name: r.name,
+					value: otherProperty.Value,
+					footprintName: r.footprintName,
+					symbolName: r.symbolName,
+					lcsc: r.supplierId ?? otherProperty['Supplier Part'],
+					manufacturer: r.manufacturer ?? otherProperty.Manufacturer,
+					manufacturerId: r.manufacturerId ?? otherProperty['Manufacturer Part'],
+					description: typeof r.description === 'string' ? r.description.slice(0, 200) : r.description,
+				};
+			});
+		if (exact.length === 0) {
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`No device exactly matches LCSC id "${query}". The raw search returned ${raw.length} `
+				+ 'fuzzy candidate(s) whose LCSC field differs — re-run with allowFuzzy (CLI: --allow-fuzzy) '
+				+ 'to see them, or use "lib by-lcsc" for a deterministic lookup.',
+			);
+		}
+		return { result: { count: exact.length, query, exactMatch: true, components: exact } };
 	}
 
 	// Relevance rerank. EasyEDA's raw order often surfaces the wrong category first
