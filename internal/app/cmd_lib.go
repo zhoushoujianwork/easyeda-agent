@@ -22,25 +22,40 @@ func newLibCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	{
 		var query string
 		var limit int
+		var exact bool
+		var allowFuzzy bool
 		c := &cobra.Command{
 			Use:   "search",
 			Short: "Search the EasyEDA device library by MPN, value+package, or name",
 			Args:  cobra.NoArgs,
 			Example: `  easyeda lib search --query "ESP32-S3-WROOM-1"
-  easyeda lib search --query "100nF 0402" --limit 5`,
+  easyeda lib search --query "100nF 0402" --limit 5
+  easyeda lib search --query C5665              # exact LCSC match (auto-detected)
+  easyeda lib search --query C5665 --allow-fuzzy # keep the fuzzy ranked results`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if query == "" {
 					return fmt.Errorf("--query is required")
 				}
+				if exact && allowFuzzy {
+					return fmt.Errorf("--exact and --allow-fuzzy are mutually exclusive")
+				}
 				payload := map[string]any{"query": query}
 				if cmd.Flags().Changed("limit") {
 					payload["limit"] = limit
+				}
+				// --allow-fuzzy forces the ranked free-text path even for a bare C-number.
+				// A bare C-number query is exact by default (the connector auto-detects
+				// ^C\d+$); --exact is accepted for explicitness but changes nothing on its own.
+				if allowFuzzy {
+					payload["allowFuzzy"] = true
 				}
 				return dispatch(cfg, "schematic.library.search", window, payload, stdout, stderr)
 			},
 		}
 		c.Flags().StringVar(&query, "query", "", "search query: MPN, value+package, or component name (required)")
 		c.Flags().IntVar(&limit, "limit", 10, "maximum number of results to return")
+		c.Flags().BoolVar(&exact, "exact", false, "when --query is an LCSC C-number, only return devices whose LCSC field matches exactly (default for C-numbers)")
+		c.Flags().BoolVar(&allowFuzzy, "allow-fuzzy", false, "keep the fuzzy ranked results even when --query is an LCSC C-number")
 		lib.AddCommand(c)
 	}
 

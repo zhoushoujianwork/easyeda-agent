@@ -351,3 +351,42 @@ export function classifyPinConnectivity(
 	if (geomConnected) return 'geom-net-mismatch';
 	return 'floating';
 }
+
+// ─── LCSC C-number exact matching ─────────────────────────────────────
+
+/**
+ * Does this string look like a bare LCSC C-number (e.g. "C5665")? Used to
+ * detect when a `lib search --query` is really an exact-part lookup rather
+ * than free text. Case-insensitive; leading/trailing space tolerated.
+ */
+export function isLcscQuery(query: string): boolean {
+	return /^\s*C\d+\s*$/i.test(query);
+}
+
+/**
+ * Read a device-library record's LCSC C-number. Current builds emit it as the
+ * top-level `supplierId`; newer/migrated records carry it in
+ * `otherProperty['Supplier Part']` (canonical EasyEDA property name). Read
+ * top-level first, then fall back — mirrors the projection in
+ * `schematicLibraryGetByLcscIds`. Returns '' when neither is present.
+ */
+export function readLcscField(record: Record<string, unknown>): string {
+	const op = (record.otherProperty as Record<string, unknown> | undefined) ?? {};
+	const raw = record.supplierId ?? op['Supplier Part'];
+	return raw == null ? '' : String(raw);
+}
+
+/**
+ * Filter raw `lib_Device.search` results down to those whose LCSC field is a
+ * strict, case-insensitive match for the requested C-number. This is the
+ * convergence step the free-text ranker lacks: `search("C5665")` returns an
+ * op-amp `CLC5665IMX` (name contains "5665") ranked first, but only the record
+ * whose `supplierId`/`Supplier Part` equals `C5665` is the real part.
+ */
+export function filterExactLcsc(
+	records: Array<Record<string, unknown>>,
+	lcsc: string,
+): Array<Record<string, unknown>> {
+	const want = lcsc.trim().toUpperCase();
+	return records.filter(r => readLcscField(r).trim().toUpperCase() === want);
+}
