@@ -109,7 +109,7 @@ No one-call PCB autorouter exists on this build (A4 blocked — see survey §6).
 | `document.current` | Active editor document + schematic page context. |
 | `schematic.pages.list` | Schematic documents and pages in the project. |
 | `schematic.page.open` | Open/activate a page by uuid. |
-| `schematic.components.list` | Components on the active page (optional `allPages`, `includePins`) with designator, name, coords, and `getState_*` fields. |
+| `schematic.components.list` | Components on the active page (optional `allPages`, `includePins`) with designator, name, coords, and `getState_*` fields. Each carries a structured `device:{libraryUuid,uuid,name}` — the device-library identity of the placed part (from `getState_Component()`, the same identity rebind resolves) — distinct from the placed-INSTANCE `component/symbol/footprint/uniqueId` ids. Use `device.uuid` to lock onto a golden design's exact symbol variant instead of re-searching by LCSC C-number; imported devices may report an empty `device.libraryUuid` (resolve via `lib search`/`lib by-lcsc` before `sch place`). |
 | `schematic.select` | Select primitives by id, return the active selection. |
 
 **Discover + switch loop (CLI, no new actions):** `easyeda doc ls [--project X]`

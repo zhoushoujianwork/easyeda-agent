@@ -67,19 +67,48 @@ function edaError(err: unknown, message: string): ActionError {
  * Serialize a schematic component primitive to plain JSON using its public
  * getState_* accessors.
  *
- * NOTE: the `uniqueId`, `component`, `symbol`, and `footprint` fields are
- * placed-INSTANCE identifiers (sub-primitive ids of this specific placement).
- * They are NOT the device-library uuid that `schematicComponentPlace`
- * ({ libraryUuid, uuid }) expects — replaying one of them into `sch place`
- * makes `eda.sch_PrimitiveComponent.create` hang. To re-place the same part,
- * fetch a fresh device uuid via `schematicLibrarySearch` (lib search). The
- * connector exposes no replayable deviceUuid because `eda.sch_*` does not
- * surface the source device-library identity of a placed instance.
+ * NOTE on identity fields:
+ *   - `uniqueId`, `symbol`, `footprint` are placed-INSTANCE identifiers
+ *     (sub-primitive ids of this specific placement). They are NOT device-library
+ *     uuids — replaying one into `sch place` makes `sch_PrimitiveComponent.create` hang.
+ *   - `device` is the device-library identity of the placed part, taken from
+ *     `getState_Component()` — the SAME { libraryUuid, uuid } shape the rebind
+ *     handler consumes (see `makeRebindHandler` / `resolveDeviceLibrary`). Its
+ *     `uuid` is the device uuid that `lib_Device.search` reports and `sch place
+ *     --uuid` expects. CAVEAT: imported devices (Altium/KiCad → EasyEDA) often
+ *     carry an EMPTY `libraryUuid` on the placed instance; when empty, resolve it
+ *     via `lib search` / `lib by-lcsc` or the rebind path's `resolveDeviceLibrary`
+ *     before feeding it back into `sch place`. Exposing this lets an image-tracing
+ *     flow lock onto the exact symbol variant of a golden design instead of
+ *     re-searching by LCSC C-number (which can hit a different pin-numbering variant).
+ *   - `component` is kept for backward compatibility (raw `getState_Component()`).
  *
  * @param component - the component primitive object
  * @returns a plain JSON record
  */
-function serializeComponent(component: SchComponent): Record<string, unknown> {
+/**
+ * Project the raw `getState_Component()` value into a stable, structured device
+ * identity { libraryUuid, uuid, name }. This is the device-library identity of the
+ * placed part (same shape `sch place` / rebind consume), NOT a placed-instance id.
+ *
+ * `libraryUuid` may be an empty string for imported devices — that is reported
+ * faithfully (no reverse look-up here to keep list a pure read); resolve it via
+ * `lib search` / `lib by-lcsc` before replaying into `sch place`.
+ *
+ * @param raw - the value from `getState_Component()` ({ libraryUuid, uuid })
+ * @param name - the device name from `getState_Name()`
+ * @returns { libraryUuid, uuid, name }
+ */
+export function normalizeDeviceRef(raw: unknown, name: unknown): Record<string, unknown> {
+	const ref = (raw ?? {}) as Partial<DeviceRef>;
+	return {
+		libraryUuid: typeof ref.libraryUuid === 'string' ? ref.libraryUuid : '',
+		uuid: typeof ref.uuid === 'string' ? ref.uuid : '',
+		name: typeof name === 'string' ? name : '',
+	};
+}
+
+export function serializeComponent(component: SchComponent): Record<string, unknown> {
 	return {
 		primitiveId: component.getState_PrimitiveId(),
 		componentType: component.getState_ComponentType(),
@@ -99,6 +128,7 @@ function serializeComponent(component: SchComponent): Record<string, unknown> {
 		supplier: component.getState_Supplier(),
 		supplierId: component.getState_SupplierId(),
 		component: component.getState_Component(),
+		device: normalizeDeviceRef(component.getState_Component(), component.getState_Name()),
 		symbol: component.getState_Symbol(),
 		footprint: component.getState_Footprint(),
 		otherProperty: component.getState_OtherProperty(),

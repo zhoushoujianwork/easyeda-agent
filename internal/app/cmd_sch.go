@@ -306,6 +306,19 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			Use:   "list",
 			Short: "List components on the active (or all) schematic page(s)",
 			Args:  cobra.NoArgs,
+			Long: `List components on the active (or all) schematic page(s).
+
+Each component carries a structured ` + "`device`" + ` field
+{libraryUuid, uuid, name} — the device-library identity of the placed part
+(the same identity the rebind path resolves via ` + "`lib_Device.search`" + `). This is
+distinct from the ` + "`component`/`symbol`/`footprint`/`uniqueId`" + ` fields, which are
+placed-INSTANCE sub-primitive ids and cannot be replayed into ` + "`sch place`" + `.
+
+Use ` + "`device.uuid`" + ` to lock onto the exact symbol variant of a golden design
+instead of re-searching by LCSC C-number (which may hit a different pin-numbering
+variant). NOTE: imported devices (Altium/KiCad → EasyEDA) often report an EMPTY
+` + "`device.libraryUuid`" + `; when empty, resolve it via ` + "`lib search`" + ` / ` + "`lib by-lcsc`" + `
+before feeding it back into ` + "`sch place --uuid`" + `.`,
 			Example: `  easyeda sch list
   easyeda sch list --all-pages
   easyeda sch list --include-bbox

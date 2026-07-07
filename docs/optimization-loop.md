@@ -99,9 +99,12 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
   已连接 pin 会再叠一份新 flag+stub wire。
 - [ ] [#51](https://github.com/zhoushoujianwork/easyeda-agent/issues/51) **删除 netflag/netport 不连带删除 stub wire**,
   `dangling-wire` 规则也抓不到残留孤儿线。
-- [ ] [#52](https://github.com/zhoushoujianwork/easyeda-agent/issues/52) `schematic.components.list` 不暴露器件
+- [x] [#52](https://github.com/zhoushoujianwork/easyeda-agent/issues/52) `schematic.components.list` 不暴露器件
   device/symbol uuid(只有 footprint uuid)——同 LCSC C 号可能对应多个 pin 编号
-  体系不同的 symbol 变体。
+  体系不同的 symbol 变体。**已修复**:`serializeComponent` 新增结构化 `device:{libraryUuid,uuid,name}`
+  字段(取自 `getState_Component()`,即 rebind 路径复用的 device-library 身份),
+  暴露器件本身的 device 身份;导入器件 `libraryUuid` 可能为空,如实返回并在 CLI/文档标注需先经
+  `lib search`/`lib by-lcsc` 补齐再喂给 `sch place`。真机复放语义待人工回归确认。
 - [ ] 缺 **按坐标区域批量查询/删除图元**的 typed action(训练中用
   `debug exec` 遍历 `sch_PrimitiveWire.getAll()` 按 xy 过滤应急)——暂未开 issue,
   优先级低于上面四项。
