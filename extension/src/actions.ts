@@ -764,6 +764,101 @@ const schematicWireCreate: Handler = async (payload) => {
 	};
 };
 
+// ─── Group move (virtual grouping — no native EasyEDA "组合" API exists) ────
+// Investigated 2026-07-07: EasyEDA Pro's UI has a real "组合"(Combination) field
+// on the component property panel (and a matching left-panel tree tab), but it
+// is 100% UI-only — ESCH_PrimitiveType has no Group/Combination member, no
+// sch_PrimitiveComponent getter/setter touches it, and it isn't smuggled into
+// OtherProperty either. There is no way for an extension to read, write, or
+// query it. So this does NOT use or persist that native field; it is a
+// stateless "move this ad-hoc bag of primitives together" primitive — the
+// caller (typically an agent that just placed the assembly) supplies the full
+// member list each time. Components translate via a plain x/y modify; wires
+// have no modify-in-place (see the delete-then-create note on
+// schematicComponentModify above) so they are deleted and recreated at the
+// shifted endpoints, preserving net/color/width/lineType. Rotation is
+// untouched — a pure translation cannot disturb each member's own orientation
+// or the assembly's internal relative layout, which is the entire point.
+
+const schematicGroupMove: Handler = async (payload) => {
+	const raw = payload.primitiveIds;
+	if (!Array.isArray(raw) || raw.length === 0 || !raw.every(id => typeof id === 'string')) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "primitiveIds" (non-empty string[]).');
+	}
+	const wantIds = new Set(raw as Array<string>);
+	const dx = requireNumber(payload, 'dx');
+	const dy = requireNumber(payload, 'dy');
+
+	// Resolve via getAll() + local filter, NOT a per-id .get(id) call: a
+	// component created earlier in the SAME session/batch can 404 on a direct
+	// .get(id) immediately after creation (observed live, 2026-07-07) despite
+	// being fully present in getAll() — the same "pull fresh via a list call"
+	// caution this codebase already applies elsewhere (rip_up, route delete).
+	let allComponents, allWires;
+	try {
+		allComponents = await eda.sch_PrimitiveComponent.getAll();
+		allWires = await eda.sch_PrimitiveWire.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'group-move: failed to read components/wires for id resolution.');
+	}
+
+	const movedComponents: Array<Record<string, unknown>> = [];
+	const movedWires: Array<Record<string, unknown>> = [];
+	const notFound: Array<string> = [];
+	const seen = new Set<string>();
+
+	for (const comp of allComponents) {
+		const id = comp.getState_PrimitiveId();
+		if (!wantIds.has(id)) continue;
+		seen.add(id);
+		const from = { x: comp.getState_X(), y: comp.getState_Y() };
+		const to = { x: from.x + dx, y: from.y + dy };
+		let moved;
+		try { moved = await eda.sch_PrimitiveComponent.modify(id, { x: to.x, y: to.y }); }
+		catch (err) { throw edaError(err, `group-move: failed to translate component ${id}.`); }
+		if (!moved) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `group-move: modify returned no primitive for component ${id}.`);
+		movedComponents.push({ primitiveId: id, designator: moved.getState_Designator?.() ?? null, from, to });
+	}
+
+	for (const wire of allWires) {
+		const id = wire.getState_PrimitiveId();
+		if (!wantIds.has(id)) continue;
+		seen.add(id);
+		const line = normalizeWirePoints(wire.getState_Line());
+		const shifted = line.map((v, i) => (i % 2 === 0 ? v + dx : v + dy));
+		const net = wire.getState_Net();
+		const color = wire.getState_Color();
+		const lineWidth = wire.getState_LineWidth();
+		const lineType = wire.getState_LineType();
+		try { await eda.sch_PrimitiveWire.delete([id]); }
+		catch (err) { throw edaError(err, `group-move: failed to remove old wire ${id} before recreating it shifted.`); }
+		let created;
+		try { created = await eda.sch_PrimitiveWire.create(shifted, net, color, lineWidth, lineType); }
+		catch (err) { throw edaError(err, `group-move: failed to recreate wire ${id} at the shifted position (original was deleted — rerun with the same spec to retry).`); }
+		if (!created) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `group-move: recreating wire ${id} returned no primitive (original was deleted).`);
+		movedWires.push({ oldPrimitiveId: id, newPrimitiveId: created.getState_PrimitiveId(), net });
+	}
+
+	for (const id of wantIds) {
+		if (!seen.has(id)) notFound.push(id);
+	}
+
+	if (!movedComponents.length && !movedWires.length) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `group-move: none of the ${wantIds.size} id(s) resolved to a component or wire. Pull fresh ids first.`);
+	}
+
+	return {
+		result: {
+			dx, dy,
+			movedComponents,
+			movedWires,
+			count: movedComponents.length + movedWires.length,
+			...(notFound.length ? { notFound } : {}),
+		},
+	};
+};
+
 // ─── Net flags ────────────────────────────────────────────────────────
 
 type NetFlagIdentification = 'Power' | 'Ground' | 'AnalogGround' | 'ProtectGround';
@@ -5867,6 +5962,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.component.modify': schematicComponentModify,
 	'schematic.component.delete': schematicComponentDelete,
 	'schematic.wire.create': schematicWireCreate,
+	'schematic.group.move': schematicGroupMove,
 	'schematic.netflag.create': schematicNetflagCreate,
 	'schematic.pin.set_no_connect': schematicPinSetNoConnect,
 	'schematic.select': schematicSelect,

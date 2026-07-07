@@ -608,6 +608,52 @@ run ` + "`easyeda sch drc`" + ` / ` + "`easyeda sch check`" + ` after to confirm
 		sch.AddCommand(c)
 	}
 
+	// ── group-move ────────────────────────────────────────────────────────
+	// schematic.group.move — a virtual, stateless group: pass the full member
+	// id list every call (components AND wires in any mix), nothing persists
+	// between calls. NOT backed by EasyEDA's native "组合" UI field (verified
+	// 2026-07-07: that field has zero extension-API surface — no primitive
+	// type, no getter/setter, not smuggled into OtherProperty either).
+	{
+		var idsJSON string
+		var dx, dy float64
+		c := &cobra.Command{
+			Use:   "group-move",
+			Short: "Translate a set of components+wires together as one rigid assembly (dx,dy)",
+			Long: `Move a component and its surrounding stub wires/flags together as a single
+unit — internal relative layout is untouched, only the whole assembly shifts by
+(dx,dy). This is a STATELESS virtual group: pass every member's primitiveId on
+each call, nothing is remembered between invocations (there is no EasyEDA API
+for its native "组合" UI field to persist against — see docs/optimization-loop.md).
+
+Components translate via a plain position modify (same primitiveId survives).
+Wires have no modify-in-place, so each is deleted and recreated at the shifted
+endpoints (net/color/width/lineType preserved) — a wire's primitiveId CHANGES;
+pull fresh ids before any follow-up mutation on it.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda sch group-move --ids '["idComp1","idWire1","idWire2"]' --dx 200 --dy 0
+  easyeda sch group-move --ids '["<R4>","<stub-wire>","<flag>"]' --dx 0 --dy -150`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if idsJSON == "" {
+					return fmt.Errorf("--ids is required (component and/or wire primitiveIds)")
+				}
+				if !cmd.Flags().Changed("dx") && !cmd.Flags().Changed("dy") {
+					return fmt.Errorf("at least one of --dx / --dy is required (a zero-move is a no-op)")
+				}
+				var ids []any
+				if err := json.Unmarshal([]byte(idsJSON), &ids); err != nil {
+					return fmt.Errorf("invalid --ids json (expected array): %w", err)
+				}
+				payload := map[string]any{"primitiveIds": ids, "dx": dx, "dy": dy}
+				return dispatch(cfg, "schematic.group.move", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&idsJSON, "ids", "", "JSON array of primitiveIds (components and/or wires) to move together (required)")
+		c.Flags().Float64Var(&dx, "dx", 0, "X translation (mil)")
+		c.Flags().Float64Var(&dy, "dy", 0, "Y translation (mil)")
+		sch.AddCommand(c)
+	}
+
 	// ── netflag ───────────────────────────────────────────────────────────
 	// schematic.netflag.create
 	{

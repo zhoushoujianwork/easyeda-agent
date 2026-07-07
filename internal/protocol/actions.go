@@ -268,6 +268,17 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.primitive.get", "schematic.snapshot"},
 		},
 		{
+			Name:        "schematic.group.move",
+			Domain:      DomainSchematic,
+			Phase:       1,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Translate a set of primitives (components AND wires, in any mix) together by (dx,dy) as a rigid assembly — a component + its surrounding stub wires + flags move as one unit, internal relative layout untouched. NOT backed by EasyEDA's native '组合' UI field — investigated 2026-07-07: that field has zero extension-API exposure (not a primitive type, no getter/setter, not in OtherProperty), so it can't be read, written, or driven programmatically. This is a stateless virtual group: pass the full member id list every call, nothing is remembered between calls. Components translate via a plain modify; wires have no modify-in-place so they are deleted and recreated at the shifted endpoints (net/color/width/lineType preserved) — a wire's returned primitiveId CHANGES, re-fetch fresh ids before any follow-up mutation.",
+			Inputs:      []string{"primitiveIds (string[], components and/or wires)", "dx", "dy"},
+			Outputs:     []string{"movedComponents[]{primitiveId,designator,from,to}", "movedWires[]{oldPrimitiveId,newPrimitiveId,net}", "count", "notFound"},
+			VerifyWith:  []string{"schematic.components.list", "schematic.snapshot"},
+		},
+		{
 			Name:        "schematic.netflag.create",
 			Domain:      DomainSchematic,
 			Phase:       1,

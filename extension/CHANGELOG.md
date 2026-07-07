@@ -6,6 +6,17 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.13] - 2026-07-07
+
+### Added
+- `schematic.group.move`(`easyeda sch group-move`)——把一个器件+周边 stub 导线/flag
+  当一个刚性整体平移(dx,dy),内部相对布局不变。**不对接 EasyEDA 原生"组合"字段**——
+  查证该字段无任何扩展 API 暴露(非 primitive 类型、无 getter/setter、不在
+  OtherProperty),这是独立的无状态虚拟分组:每次调用传完整成员 id,不跨调用记忆。
+  器件走 x/y modify(id 不变);导线无原地 modify,删除重建(net/color/width/lineType
+  保留,id 变)。id 解析走 `getAll()` 本地过滤(刚创建的图元直接 `.get(id)` 会瞬时
+  404,同批 `getAll()` 能看到——实测踩过,已修）。
+
 ## [0.8.11] - 2026-07-07
 
 探针轮次 #3(esp32MiniRequire 回归)实测暴露的两处修复。
