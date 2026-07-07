@@ -292,6 +292,7 @@ LED 也可用 `LED1` 这种语义化命名（兼容 `D1`），EasyEDA 不强制 
 - 对超大模块（pin > 100），九宫格容纳能力有限，可能要分多页（用 `schematic.pages.list` + `schematic.page.open`）。
 - 多页之间通过 `net_port` (`createNetPort('IN/OUT/BI')`) 在页间建立电气连接，net 名称相同视为同网。
 - `getCurrentRenderedAreaImage` **实测不可靠**：在后台标签 / 某些状态下它返回的是**缓存的旧渲染**——既不跟随 `zoomToSelectedPrimitives` / `zoomToRegion`，也可能不反映刚做的增删（实测：两次不同板面状态下截图逐字节相同、md5 一致）。用它做"改完截图确认"前，务必先确认它真的刷新了（例如截图前后做一处明显改动并比对像素）；否则改用纯数据校验（如 schematic-lint）或直接肉眼看 EasyEDA 界面。
+- ⚠️ **`schematic.page.rename` 改完立即 `doc ls` 会读到旧页名（issue #55）**：`modifySchematicPageName` 返回 `ok:true` 后，新名字**不会立刻**写进 `getAllSchematicPagesInfo()`（`schematic.pages.list` / `doc ls` 的数据源）——平台的页面元数据缓存要等某个**后续写操作**触发才刷新（`sch clear` 等任意无关动作会"顺便"刷到，造成"看似延迟生效"）。同属 `createNetFlag` 立即回显那一类平台异步陷阱。**连接器已内建写后自校验**：`page.rename` 成功后会短间隔重试读回 `getAllSchematicPagesInfo()` 确认新名生效，命中返回 `verified:true`；重试耗尽仍未同步返回 `verified:false` + `warning`。**确认重命名真的生效的可靠做法 = 看返回值的 `verified` 字段**（而不是紧接着 `doc ls`）；若拿到 `verified:false`，稍后重试或触发任意写操作后再 `doc ls`。
 - 目前两份 reference（§7 motobox、§8 ESP32S3R8N8）覆盖了「贴近 3×3 理想」与「RF MCU 占角 + 横向电源链」两种典型。若再采集到第三种（例如纯模拟前端、或多电源域工控板），应继续补充以避免 agent 过拟合到单一案例。
 
 ## 11. 图纸边界与标题栏 keep-out (sheet / title-block keep-out)

@@ -16,6 +16,9 @@ import {
 	asPayload,
 	blobToBase64,
 	classifyPinConnectivity,
+	classifyWireConnectivity,
+	filterExactLcsc,
+	isLcscQuery,
 	newArtifactId,
 	type NamedLibItem,
 	normalizeRegion,
@@ -354,7 +357,20 @@ const schematicPageCreate: Handler = async (payload) => {
 	return { result: { pageUuid: uuid } };
 };
 
-/** Rename a schematic page. */
+/**
+ * Rename a schematic page.
+ *
+ * Platform quirk (issue #55): `modifySchematicPageName` returns ok=true, but the
+ * new name does NOT immediately show up in `getAllSchematicPagesInfo()` — the
+ * platform's page-metadata cache only refreshes after some later write op fires,
+ * so an immediate `doc ls` reads the STALE old name. This is the same family of
+ * platform-async traps as the getState_Rotation echo (schematic-layout-conventions.md).
+ *
+ * We can't fix the platform, so we do a write-after read-back verification here:
+ * retry `getAllSchematicPagesInfo()` a few times with small delays and confirm the
+ * target page's name is actually the new value. Report the truth to the caller via
+ * `verified` (+ a `warning` when it never settles) instead of blindly echoing ok.
+ */
 const schematicPageRename: Handler = async (payload) => {
 	const pageUuid = requireString(payload, 'pageUuid');
 	const name = requireString(payload, 'name');
@@ -365,8 +381,44 @@ const schematicPageRename: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to rename schematic page.');
 	}
-	return { result: { ok } };
+	// Write-after self-verification: poll the page list until the new name lands,
+	// so callers doing an immediate `doc ls` don't read the stale old name.
+	const verified = await verifySchematicPageName(pageUuid, name);
+	if (verified) {
+		return { result: { ok, verified: true } };
+	}
+	return {
+		result: {
+			ok,
+			verified: false,
+			warning: '重命名已提交，但页面列表元数据尚未同步为新名（EasyEDA 平台异步缓存，issue #55）；'
+				+ '请稍后重试或触发任意其他写操作后再用 doc ls 确认。',
+		},
+	};
 };
+
+/**
+ * Poll `getAllSchematicPagesInfo()` up to a few times until the target page's name
+ * equals `expected`. Returns true once observed, false if it never settles.
+ * Best-effort: read errors are swallowed and treated as "not yet settled".
+ */
+async function verifySchematicPageName(pageUuid: string, expected: string): Promise<boolean> {
+	const delays = [0, 120, 250, 500]; // ~0.87s worst case, small enough to stay snappy
+	for (const wait of delays) {
+		if (wait > 0) {
+			await new Promise<void>(resolve => setTimeout(resolve, wait));
+		}
+		try {
+			const pages = await eda.dmt_Schematic.getAllSchematicPagesInfo();
+			const hit = pages.find(p => p.uuid === pageUuid);
+			if (hit && hit.name === expected) return true;
+		}
+		catch {
+			/* best-effort — treat as not-yet-settled and keep polling */
+		}
+	}
+	return false;
+}
 
 /** Delete a schematic page. */
 const schematicPageDelete: Handler = async (payload) => {
@@ -799,6 +851,101 @@ const schematicWireCreate: Handler = async (payload) => {
 			primitiveId: wire.getState_PrimitiveId(),
 			net: wire.getState_Net(),
 			line: wire.getState_Line(),
+		},
+	};
+};
+
+// ─── Group move (virtual grouping — no native EasyEDA "组合" API exists) ────
+// Investigated 2026-07-07: EasyEDA Pro's UI has a real "组合"(Combination) field
+// on the component property panel (and a matching left-panel tree tab), but it
+// is 100% UI-only — ESCH_PrimitiveType has no Group/Combination member, no
+// sch_PrimitiveComponent getter/setter touches it, and it isn't smuggled into
+// OtherProperty either. There is no way for an extension to read, write, or
+// query it. So this does NOT use or persist that native field; it is a
+// stateless "move this ad-hoc bag of primitives together" primitive — the
+// caller (typically an agent that just placed the assembly) supplies the full
+// member list each time. Components translate via a plain x/y modify; wires
+// have no modify-in-place (see the delete-then-create note on
+// schematicComponentModify above) so they are deleted and recreated at the
+// shifted endpoints, preserving net/color/width/lineType. Rotation is
+// untouched — a pure translation cannot disturb each member's own orientation
+// or the assembly's internal relative layout, which is the entire point.
+
+const schematicGroupMove: Handler = async (payload) => {
+	const raw = payload.primitiveIds;
+	if (!Array.isArray(raw) || raw.length === 0 || !raw.every(id => typeof id === 'string')) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "primitiveIds" (non-empty string[]).');
+	}
+	const wantIds = new Set(raw as Array<string>);
+	const dx = requireNumber(payload, 'dx');
+	const dy = requireNumber(payload, 'dy');
+
+	// Resolve via getAll() + local filter, NOT a per-id .get(id) call: a
+	// component created earlier in the SAME session/batch can 404 on a direct
+	// .get(id) immediately after creation (observed live, 2026-07-07) despite
+	// being fully present in getAll() — the same "pull fresh via a list call"
+	// caution this codebase already applies elsewhere (rip_up, route delete).
+	let allComponents, allWires;
+	try {
+		allComponents = await eda.sch_PrimitiveComponent.getAll();
+		allWires = await eda.sch_PrimitiveWire.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'group-move: failed to read components/wires for id resolution.');
+	}
+
+	const movedComponents: Array<Record<string, unknown>> = [];
+	const movedWires: Array<Record<string, unknown>> = [];
+	const notFound: Array<string> = [];
+	const seen = new Set<string>();
+
+	for (const comp of allComponents) {
+		const id = comp.getState_PrimitiveId();
+		if (!wantIds.has(id)) continue;
+		seen.add(id);
+		const from = { x: comp.getState_X(), y: comp.getState_Y() };
+		const to = { x: from.x + dx, y: from.y + dy };
+		let moved;
+		try { moved = await eda.sch_PrimitiveComponent.modify(id, { x: to.x, y: to.y }); }
+		catch (err) { throw edaError(err, `group-move: failed to translate component ${id}.`); }
+		if (!moved) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `group-move: modify returned no primitive for component ${id}.`);
+		movedComponents.push({ primitiveId: id, designator: moved.getState_Designator?.() ?? null, from, to });
+	}
+
+	for (const wire of allWires) {
+		const id = wire.getState_PrimitiveId();
+		if (!wantIds.has(id)) continue;
+		seen.add(id);
+		const line = normalizeWirePoints(wire.getState_Line());
+		const shifted = line.map((v, i) => (i % 2 === 0 ? v + dx : v + dy));
+		const net = wire.getState_Net();
+		const color = wire.getState_Color();
+		const lineWidth = wire.getState_LineWidth();
+		const lineType = wire.getState_LineType();
+		try { await eda.sch_PrimitiveWire.delete([id]); }
+		catch (err) { throw edaError(err, `group-move: failed to remove old wire ${id} before recreating it shifted.`); }
+		let created;
+		try { created = await eda.sch_PrimitiveWire.create(shifted, net, color, lineWidth, lineType); }
+		catch (err) { throw edaError(err, `group-move: failed to recreate wire ${id} at the shifted position (original was deleted — rerun with the same spec to retry).`); }
+		if (!created) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `group-move: recreating wire ${id} returned no primitive (original was deleted).`);
+		movedWires.push({ oldPrimitiveId: id, newPrimitiveId: created.getState_PrimitiveId(), net });
+	}
+
+	for (const id of wantIds) {
+		if (!seen.has(id)) notFound.push(id);
+	}
+
+	if (!movedComponents.length && !movedWires.length) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `group-move: none of the ${wantIds.size} id(s) resolved to a component or wire. Pull fresh ids first.`);
+	}
+
+	return {
+		result: {
+			dx, dy,
+			movedComponents,
+			movedWires,
+			count: movedComponents.length + movedWires.length,
+			...(notFound.length ? { notFound } : {}),
 		},
 	};
 };
@@ -1848,21 +1995,34 @@ const schematicCheck: Handler = async (payload) => {
 			continue;
 		}
 
-		// Dangling: no vertex touches a pin, a marker, or another wire's segment.
-		const connected = verts.some(v =>
-			allPins.some(p => Math.hypot(v[0] - p.x, v[1] - p.y) <= COINCIDE_TOL)
-			|| connectionMarkers.some(m => Math.hypot(v[0] - m.x, v[1] - m.y) <= COINCIDE_TOL)
-			|| wireSegs.some(ws => ws.wirePrimitiveId !== wirePid
-				&& pointOnSegment(v[0], v[1], ws.seg[0], ws.seg[1], ws.seg[2], ws.seg[3])));
-		if (!connected) {
+		// Classify each of the wire's TWO extreme endpoints separately: does it touch
+		// a pin, and does it touch a marker (netflag/netport/netlabel) or a DIFFERENT
+		// wire? The old rule collapsed all vertices with `verts.some(...)`, so a stub
+		// with one end on a pin always looked "connected" and orphan stubs (flag
+		// deleted, wire残留) slipped through. Per-end classification lets us tell a
+		// genuine terminus from a pin-anchored stub whose far end floats (issue #51).
+		const endpoints: Array<[number, number]> = [verts[0], verts[verts.length - 1]];
+		const touchOf = (v: [number, number]) => ({
+			touchesPin: allPins.some(p => Math.hypot(v[0] - p.x, v[1] - p.y) <= COINCIDE_TOL),
+			touchesMarker: connectionMarkers.some(m => Math.hypot(v[0] - m.x, v[1] - m.y) <= COINCIDE_TOL)
+				|| wireSegs.some(ws => ws.wirePrimitiveId !== wirePid
+					&& pointOnSegment(v[0], v[1], ws.seg[0], ws.seg[1], ws.seg[2], ws.seg[3])),
+		});
+		const ends = endpoints.map(touchOf);
+		const verdict = classifyWireConnectivity(ends, wnet);
+		if (verdict !== 'connected') {
 			danglingWires++;
 			if (findings.filter(f => f.type === 'dangling-wire').length < STRAY_CAP) {
+				const orphan = verdict === 'orphan-stub';
 				findings.push({
 					type: 'dangling-wire',
 					level: 'warn',
 					wirePrimitiveId: wirePid || undefined,
+					wireNet: orphan ? wnet : undefined,
 					at: { x: verts[0][0], y: verts[0][1] },
-					message: `悬挂导线(两端不接任何引脚/标识/导线${wnet ? '' : '、空网名'},孤立残留)`,
+					message: orphan
+						? `疑似孤儿 stub(一端连引脚、另一端游离,网名 ${wnet} 为 EasyEDA 自动生成 — flag/port 疑似已删除,wire 残留;用 sch disconnect 清除)`
+						: `悬挂导线(两端不接任何引脚/标识/导线${wnet ? '' : '、空网名'},孤立残留)`,
 				});
 			}
 		}
@@ -2051,6 +2211,7 @@ const schematicExportBom: Handler = async (payload) => {
 const schematicLibrarySearch: Handler = async (payload) => {
 	const query = requireString(payload, 'query');
 	const limit = optionalNumber(payload, 'limit') ?? 10;
+	const allowFuzzy = optionalBoolean(payload, 'allowFuzzy') ?? false;
 
 	let raw: Array<unknown>;
 	try {
@@ -2061,6 +2222,41 @@ const schematicLibrarySearch: Handler = async (payload) => {
 	}
 	if (!Array.isArray(raw)) {
 		return { result: { count: 0, components: [] } };
+	}
+
+	// Exact LCSC mode. When the query is itself a bare C-number (e.g. "C5665"),
+	// EasyEDA's free-text search still ranks by keyword — so "C5665" surfaces the
+	// op-amp CLC5665IMX (name contains "5665") over the real part whose LCSC id
+	// equals C5665. Strictly filter the raw results by the lcsc/supplierId field so
+	// batch selection never silently binds the wrong device. Opt out with
+	// allowFuzzy to fall through to the ranked free-text path below.
+	if (!allowFuzzy && isLcscQuery(query)) {
+		const exact = filterExactLcsc(raw as Array<Record<string, unknown>>, query)
+			.slice(0, limit)
+			.map((r) => {
+				const otherProperty = (r.otherProperty as Record<string, unknown> | undefined) ?? {};
+				return {
+					uuid: r.uuid,
+					libraryUuid: r.libraryUuid,
+					name: r.name,
+					value: otherProperty.Value,
+					footprintName: r.footprintName,
+					symbolName: r.symbolName,
+					lcsc: r.supplierId ?? otherProperty['Supplier Part'],
+					manufacturer: r.manufacturer ?? otherProperty.Manufacturer,
+					manufacturerId: r.manufacturerId ?? otherProperty['Manufacturer Part'],
+					description: typeof r.description === 'string' ? r.description.slice(0, 200) : r.description,
+				};
+			});
+		if (exact.length === 0) {
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`No device exactly matches LCSC id "${query}". The raw search returned ${raw.length} `
+				+ 'fuzzy candidate(s) whose LCSC field differs — re-run with allowFuzzy (CLI: --allow-fuzzy) '
+				+ 'to see them, or use "lib by-lcsc" for a deterministic lookup.',
+			);
+		}
+		return { result: { count: exact.length, query, exactMatch: true, components: exact } };
 	}
 
 	// Relevance rerank. EasyEDA's raw order often surfaces the wrong category first
@@ -2687,6 +2883,180 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 			offset,
 			rotation,
 			appliedRotation: applied,
+		},
+	};
+};
+
+// ─── schematic.pin.disconnect ────────────────────────────────────────
+// Symmetric inverse of schematic.power.connect_pin. connect_pin builds a
+// "pin → stub wire → netflag/netport" triplet; deleting only the flag (via
+// schematic.primitives.delete) leaves the stub wire dangling with an EasyEDA
+// auto-named single-pin net ($3N…). This action locates that stub — the wire
+// whose one endpoint sits ON the target pin — plus any netflag/netport/netlabel
+// on the wire's OTHER endpoint, and deletes wire + flag together (issue #51).
+//
+// Target the pin by either `designator`+`pin`, or a known `flagPrimitiveId` /
+// `wirePrimitiveId` (whatever connect_pin returned). At least one locator required.
+const schematicPinDisconnect: Handler = async (payload) => {
+	const designator = optionalString(payload, 'designator');
+	const pinNumber = optionalString(payload, 'pin');
+	const flagPrimitiveId = optionalString(payload, 'flagPrimitiveId');
+	const wirePrimitiveId = optionalString(payload, 'wirePrimitiveId');
+	if (!flagPrimitiveId && !wirePrimitiveId && !(designator && pinNumber)) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			'Provide either "designator"+"pin", or a "flagPrimitiveId"/"wirePrimitiveId" to disconnect.',
+		);
+	}
+
+	let components;
+	let wires;
+	try {
+		components = await eda.sch_PrimitiveComponent.getAll();
+		wires = await eda.sch_PrimitiveWire.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read schematic primitives.');
+	}
+
+	// Resolve the target pin coordinate. Prefer explicit designator+pin; else derive
+	// it from the located stub's pin-side endpoint further below.
+	let pinX: number | undefined;
+	let pinY: number | undefined;
+	if (designator && pinNumber) {
+		for (const c of components ?? []) {
+			if ((c.getState_Designator?.() ?? '') !== designator) continue;
+			let pins;
+			try { pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(c.getState_PrimitiveId()); }
+			catch { continue; }
+			for (const p of pins ?? []) {
+				if (String(p.getState_PinNumber?.() ?? '') === pinNumber) {
+					pinX = p.getState_X();
+					pinY = p.getState_Y();
+				}
+			}
+		}
+		if (pinX === undefined || pinY === undefined) {
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`Pin ${designator}:${pinNumber} not found on the current schematic.`,
+			);
+		}
+	}
+
+	// A generous tolerance shared with the check rules (grid-snap slop).
+	const TOL = CHECK_EPS * 8;
+	// Endpoints of a wire as [x,y] pairs (first + last vertex).
+	const endpointsOf = (w: { getState_Line: () => Array<number> | Array<Array<number>> }): Array<[number, number]> => {
+		let line;
+		try { line = w.getState_Line(); }
+		catch { return []; }
+		if (!Array.isArray(line) || line.length === 0) return [];
+		const verts: Array<[number, number]> = [];
+		if (Array.isArray(line[0])) {
+			for (const p of line as Array<Array<number>>) verts.push([p[0], p[1]]);
+		}
+		else {
+			const flat = line as Array<number>;
+			for (let i = 0; i + 1 < flat.length; i += 2) verts.push([flat[i], flat[i + 1]]);
+		}
+		if (verts.length === 0) return [];
+		return [verts[0], verts[verts.length - 1]];
+	};
+
+	// Locate the stub wire.
+	let stubWire: { pid: string; ends: Array<[number, number]> } | undefined;
+	if (wirePrimitiveId) {
+		for (const w of wires ?? []) {
+			if (String(w.getState_PrimitiveId?.() ?? '') === wirePrimitiveId) {
+				stubWire = { pid: wirePrimitiveId, ends: endpointsOf(w) };
+			}
+		}
+	}
+	// Derive pin coordinate from a flag if that's all we were given.
+	if (!stubWire && flagPrimitiveId && (pinX === undefined || pinY === undefined)) {
+		for (const c of components ?? []) {
+			if (String(c.getState_PrimitiveId?.() ?? '') === flagPrimitiveId) {
+				// The wire endpoint that coincides with THIS flag is the free end;
+				// the opposite endpoint is the pin. Find the wire touching the flag.
+				const fx = c.getState_X();
+				const fy = c.getState_Y();
+				for (const w of wires ?? []) {
+					const ends = endpointsOf(w);
+					if (ends.length !== 2) continue;
+					const [a, b] = ends;
+					const aFlag = Math.hypot(a[0] - fx, a[1] - fy) <= TOL;
+					const bFlag = Math.hypot(b[0] - fx, b[1] - fy) <= TOL;
+					if (aFlag || bFlag) {
+						const pinEnd = aFlag ? b : a;
+						pinX = pinEnd[0];
+						pinY = pinEnd[1];
+						stubWire = { pid: String(w.getState_PrimitiveId?.() ?? ''), ends };
+					}
+				}
+			}
+		}
+	}
+	// With a pin coordinate but no wire yet, find the wire with an endpoint on the pin.
+	if (!stubWire && pinX !== undefined && pinY !== undefined) {
+		for (const w of wires ?? []) {
+			const ends = endpointsOf(w);
+			if (ends.length !== 2) continue;
+			const onPin = ends.some(e => Math.hypot(e[0] - pinX!, e[1] - pinY!) <= TOL);
+			if (onPin) {
+				stubWire = { pid: String(w.getState_PrimitiveId?.() ?? ''), ends };
+				break;
+			}
+		}
+	}
+
+	if (!stubWire) {
+		throw new ActionError(
+			ErrorCodes.EDA_CALL_FAILED,
+			'No stub wire found on the target pin — nothing to disconnect (already clean?).',
+		);
+	}
+
+	// Find the flag/port/label sitting on the stub's non-pin endpoint(s).
+	const NET_MARKER_TYPES = new Set(['netflag', 'netport', 'netlabel', 'short_symbol']);
+	const flagIds: Array<string> = [];
+	for (const c of components ?? []) {
+		let type: string;
+		try { type = String(c.getState_ComponentType?.() ?? ''); }
+		catch { continue; }
+		if (!NET_MARKER_TYPES.has(type)) continue;
+		let cx: number;
+		let cy: number;
+		try { cx = c.getState_X(); cy = c.getState_Y(); }
+		catch { continue; }
+		const onEnd = stubWire.ends.some(e => Math.hypot(e[0] - cx, e[1] - cy) <= TOL);
+		if (onEnd) flagIds.push(String(c.getState_PrimitiveId?.() ?? ''));
+	}
+
+	// Delete wire + any flags together via the same routed delete used elsewhere.
+	const deleted: { wires: Array<string>; components: Array<string> } = { wires: [], components: [] };
+	try {
+		if (stubWire.pid) {
+			await deleteSchGroup('wires', [stubWire.pid]);
+			deleted.wires.push(stubWire.pid);
+		}
+		const validFlags = flagIds.filter(Boolean);
+		if (validFlags.length) {
+			await deleteSchGroup('components', validFlags);
+			deleted.components.push(...validFlags);
+		}
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete stub wire / flag.');
+	}
+
+	return {
+		result: {
+			disconnected: true,
+			pin: designator && pinNumber ? `${designator}:${pinNumber}` : undefined,
+			at: pinX !== undefined && pinY !== undefined ? { x: pinX, y: pinY } : undefined,
+			deletedWires: deleted.wires,
+			deletedFlags: deleted.components,
 		},
 	};
 };
@@ -5906,6 +6276,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.component.modify': schematicComponentModify,
 	'schematic.component.delete': schematicComponentDelete,
 	'schematic.wire.create': schematicWireCreate,
+	'schematic.group.move': schematicGroupMove,
 	'schematic.netflag.create': schematicNetflagCreate,
 	'schematic.pin.set_no_connect': schematicPinSetNoConnect,
 	'schematic.select': schematicSelect,
@@ -5917,6 +6288,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.export.netlist': schematicExportNetlist,
 	'schematic.export.bom': schematicExportBom,
 	'schematic.power.connect_pin': schematicPowerConnectPin,
+	'schematic.pin.disconnect': schematicPinDisconnect,
 	'schematic.library.search': schematicLibrarySearch,
 	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
 	'schematic.rebind.footprint': schematicRebindFootprint,

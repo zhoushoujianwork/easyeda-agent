@@ -269,11 +269,15 @@ func renderLayoutReport(rep layoutReport, w io.Writer) {
 		fmt.Fprintf(w, "  note: %d non-part primitive(s) excluded (sheet/title-frame, netflag/netport/…); pass --include-non-parts to include\n", rep.SkippedNonParts)
 	}
 	if len(rep.NoBBox) > 0 {
-		fmt.Fprintf(w, "  note: %d component(s) had no bbox (skipped): %v\n", len(rep.NoBBox), rep.NoBBox)
+		fmt.Fprintf(w, "  WARN   no-bbox  %d component(s) NOT CHECKED (no bbox — likely non-active-page shallow data under --all-pages; `doc switch` to that page to lint it): %v\n", len(rep.NoBBox), rep.NoBBox)
+	}
+	skipCaveat := ""
+	if len(rep.NoBBox) > 0 {
+		skipCaveat = fmt.Sprintf("; %d component(s) NOT checked (skipped ≠ confirmed clear)", len(rep.NoBBox))
 	}
 	if rep.OK {
-		fmt.Fprintf(w, "✓ no overlaps; %d tight pair(s)\n", len(rep.TightPairs))
+		fmt.Fprintf(w, "✓ no overlaps among checked components; %d tight pair(s)%s\n", len(rep.TightPairs), skipCaveat)
 	} else {
-		fmt.Fprintf(w, "✗ %d overlap(s), %d tight pair(s)\n", len(rep.Overlaps), len(rep.TightPairs))
+		fmt.Fprintf(w, "✗ %d overlap(s), %d tight pair(s)%s\n", len(rep.Overlaps), len(rep.TightPairs), skipCaveat)
 	}
 }
