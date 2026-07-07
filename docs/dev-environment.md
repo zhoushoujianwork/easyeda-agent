@@ -9,6 +9,33 @@ Companion docs: [connector-contract.md](connector-contract.md) (the wire
 protocol & runtime constraints) and [protocol.md](protocol.md) (message
 envelopes). This file is the operational "how do I run it" guide.
 
+## The AI-agent automation testing loop (what this whole setup is for)
+
+The pieces below combine into one repeatable loop an AI agent (or you) runs to
+develop + regression-test the connector against a LIVE editor, hands-free:
+
+1. **Bootstrap the live environment** — with a browser-control tool
+   (chrome-devtools MCP) the agent opens the web editor, opens a project by
+   `#id=<projectUuid>`, and waits for the connector to attach — no manual clicks.
+   The agent-facing SOP (exact steps, retries, pitfalls) is
+   [`skills/easyeda-agent/references/environment-setup.md`](../skills/easyeda-agent/references/environment-setup.md);
+   §1–4 below are the manual equivalent.
+2. **Iterate the connector fast** — edit `extension/src`, `make eext`, then
+   **hot-reload** into the running editor via IndexedDB (§5) — no uninstall /
+   re-import / restart. Go/daemon changes hot-reload via `air` (`make dev`).
+3. **Verify against real geometry, not tests alone** — drive the typed actions
+   against the live board; judge by data (`sch/pcb list`, `drc`, `check`,
+   `layout-lint`), never by a screenshot alone (stale/blank-frame traps, Core
+   Rule 7 in the skill). "Builds + unit tests pass" ≠ "works live" — several bugs
+   this project shipped only surfaced on a real board.
+4. **Probe → file → fix → merge → re-verify** — run a real design task as the
+   probe (the fixed regression case is [`esp32MiniRequire.md`](../esp32MiniRequire.md);
+   the copy-a-golden-board harness is `training/copy-check.py`), file each gap as
+   a GitHub issue labeled `ready-for-agent`, let ClawFlow implement + open a PR,
+   then **you merge and live-verify** (the operator can't do runtime acceptance —
+   see the advisory-loop section at the bottom). The rolling gap/roadmap ledger is
+   [`optimization-loop.md`](optimization-loop.md).
+
 ## TL;DR loop
 
 ```
@@ -23,8 +50,12 @@ easyeda project info --project <name>   # first typed action round-trip
 
 - Go toolchain + `make` (see repo root `Makefile`).
 - `air` for daemon hot-reload: `go install github.com/air-verse/air@latest`.
-- Node ≥ 20 for building the connector `.eext` (`make eext`).
+- Node ≥ 20 for building the connector `.eext` (`make eext`); run
+  `npm install` in `extension/` once (brings `ws`, used by the hot-reload server).
 - EasyEDA Pro: desktop client **or** the web editor `https://pro.lceda.cn/editor`.
+- For the hands-free agent loop (optional): a **chrome-devtools MCP** server (drives
+  the web editor + runs the hot-reload inject) and the **`gh` CLI** (the
+  probe → issue → PR → merge cycle). Without them the manual §1–5 flow still works.
 
 ## 1. Start the daemon
 
@@ -120,31 +151,33 @@ HTTP.
 
 ### Steps
 
-Any local WS server that serves file contents works. A convenient off-the-shelf
-one is the community "扩展开发助手" file server (a `chokidar` + `ws` script that
-watches a dir and answers file requests). The protocol is trivial (see below),
-so you can also inline it into `make dev`.
+Two committed scripts do this end to end — no external tooling needed:
+`extension/scripts/hot-reload-server.mjs` (the WS file server) and
+`extension/scripts/hot-reload-inject.js` (the browser-side IndexedDB writer).
 
 ```bash
-# 1. Run a WS file server pointing at the connector's build output.
-#    (Example using the community dev-assistant server.js:)
-node server.js -o <repo>/extension/dist -h 127.0.0.1 -p 8790 &
+# 0. One-time: install the ws devDependency the server uses.
+(cd extension && npm install)
 
-# 2. Rebuild the connector after editing its source.
-make eext            # recompiles extension/dist/index.js (+ bumps patch)
+# 1. Rebuild the connector after editing its source (bumps the patch version).
+make eext                                   # recompiles extension/dist/index.js
 
-# 3. In the editor page, run a script (via chrome-devtools MCP evaluate,
-#    or the dev-assistant extension UI) that:
-#      a. opens ws://127.0.0.1:8790
-#      b. requests the file tree, then requests dist/index.js (base64)
-#      c. atob-decodes into a File, puts it to extensionsObjectStorage
-#         under key `<uuid>|dist/index.js`
-#      d. reads extensionsIndex[uuid], updates config.version, puts it back
-#      e. reloads the page
+# 2. Serve the fresh bundle over a local WebSocket (one-shot; exits after serving).
+node extension/scripts/hot-reload-server.mjs &     # ws://127.0.0.1:8790
 
-# 4. Verify: the new code is live.
-easyeda daemon health     # connectorVersion should show the new version
+# 3. In the EDITOR PAGE, run hot-reload-inject.js — paste into the browser console,
+#    or (agent-driven) pass its body to a chrome-devtools MCP evaluate_script call.
+#    Fill in TEAM (teamUuid, from `easyeda project info`), UUID + VERSION (from
+#    extension/extension.json). It pulls the bundle over ws://, overwrites the
+#    connector's <uuid>|dist/index.js record + bumps config.version, then reloads.
+
+# 4. Verify the new code is live.
+easyeda daemon health                       # connectorVersion shows the new version
 ```
+
+The inject script writes the IndexedDB records described above; the server reads
+`extension/dist/index.js` + the version from `extension.json`. Both take flags
+(`--port`, `--bundle`; `--keep` to stay resident) — see the file headers.
 
 `connectorVersion` in `daemon health` is compiled into `index.js`
 (`CONNECTOR_VERSION`), so a changed value is proof the new bundle is running.
@@ -185,6 +218,21 @@ lands at IndexedDB key `<uuid>|dist/index.js`. Mind that offset.
   you don't need to re-import after the relaunch.
 - **Network blocks a git host** (e.g. a corporate gateway blocking a mirror) —
   clone from a machine with open egress (a cloud VM) and copy the tree back.
+- **Connector port-scans forever (`WebSocket ... closed before ... established`
+  on every port 49620–49629), `daemon health` shows a daemon but `windows: 0`** —
+  usually TWO daemons fighting over the port: `air` restarted the daemon after a
+  `.go` edit but a previous instance lingered, so `/health` answers on the port
+  while the other instance's `/eda` WebSocket never completes the handshake.
+  Diagnose + fix:
+  ```bash
+  pgrep -fl "easyeda daemon"          # >1 line = orphans fighting
+  lsof -iTCP:49620 -sTCP:LISTEN -n    # which PID owns the port
+  pkill -f "easyeda daemon"; sleep 2  # kill all, then start ONE clean:
+  nohup ./bin/easyeda daemon start > /tmp/easyeda-daemon.log 2>&1 &
+  ```
+  Then reload the editor page so the connector re-handshakes. (If you run the
+  daemon under `make dev`/air, prefer letting air own it — but after a messy
+  restart, a single clean `daemon start` is the reliable reset.)
 
 ## Notes
 
