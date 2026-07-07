@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // clearScene is an empty world: no parts, pins, flags, or title block. A pin in
 // open space — every penalty is zero, so only offset cost + direction bonuses
@@ -160,6 +163,62 @@ func TestResolvePinCoord(t *testing.T) {
 	}
 }
 
+func TestResolvePinCoord_OffPageHintWithPageInfo(t *testing.T) {
+	// D7 is known to the scene (from --all-pages) but has no pins here — it lives
+	// on page B. The error must name the page and point at `doc switch`, not blame
+	// a typo.
+	scene := acScene{
+		Pins: []acPin{{X: 10, Y: 20, Designator: "U1", PinNumber: "1"}},
+		Components: []acComponent{
+			{Designator: "U1", HasPins: true},
+			{Designator: "D7", HasPins: false, PageUuid: "0395abcd", PageName: "Page B"},
+		},
+	}
+	_, err := resolvePinCoord(scene, "D7:2")
+	if err == nil {
+		t.Fatal("expected an off-page error for D7:2")
+	}
+	msg := err.Error()
+	for _, want := range []string{"0395abcd", "Page B", "doc switch", "ANOTHER"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("off-page hint missing %q; got: %s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "not placed") {
+		t.Errorf("off-page hint should NOT say 'not placed'; got: %s", msg)
+	}
+}
+
+func TestResolvePinCoord_OffPageHintWithoutPageInfo(t *testing.T) {
+	// Same off-page component, but the extension didn't supply page uuid/name.
+	// Degrade to a generic switch hint — still not "not placed".
+	scene := acScene{Components: []acComponent{{Designator: "D7", HasPins: false}}}
+	_, err := resolvePinCoord(scene, "D7:2")
+	if err == nil {
+		t.Fatal("expected an off-page error for D7:2")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "doc switch") || !strings.Contains(msg, "ANOTHER") {
+		t.Errorf("generic off-page hint should mention doc switch and ANOTHER page; got: %s", msg)
+	}
+	if strings.Contains(msg, "not placed") {
+		t.Errorf("off-page hint should NOT say 'not placed'; got: %s", msg)
+	}
+}
+
+func TestResolvePinCoord_TrulyNotPlacedKeepsGenericError(t *testing.T) {
+	// A designator the scene has never heard of → keep the original "not placed"
+	// diagnostic (real typo / unplaced part), NOT the off-page hint.
+	scene := acScene{Components: []acComponent{{Designator: "U1", HasPins: true}}}
+	_, err := resolvePinCoord(scene, "U9:1")
+	if err == nil {
+		t.Fatal("expected error for unknown designator")
+	}
+	if !strings.Contains(err.Error(), "not placed") {
+		t.Errorf("unknown designator should keep the 'not placed' hint; got: %s", err.Error())
+	}
+}
+
 func TestBuildScene_ClassifiesPrimitives(t *testing.T) {
 	result := map[string]any{"components": []any{
 		map[string]any{
@@ -187,6 +246,9 @@ func TestBuildScene_ClassifiesPrimitives(t *testing.T) {
 	}
 	if len(scene.Flags) != 1 {
 		t.Errorf("expected 1 flag bbox, got %d", len(scene.Flags))
+	}
+	if len(scene.Components) != 1 || scene.Components[0].Designator != "U1" || !scene.Components[0].HasPins {
+		t.Errorf("expected 1 component U1 with pins, got %+v", scene.Components)
 	}
 	if scene.TitleBlock == nil || scene.TitleBlockProvisional {
 		t.Errorf("title block keep-out should be derived from sheet, got tb=%+v prov=%v", scene.TitleBlock, scene.TitleBlockProvisional)
@@ -270,6 +332,38 @@ func TestBuildScene_ParsesPinNet(t *testing.T) {
 	}
 	if p := byNum["4"]; p.NetKnown {
 		t.Errorf("pin 4: no net key → should be unknown, got known=%v", p.NetKnown)
+	}
+}
+
+func TestBuildScene_OffPageComponentIsPinlessWithPage(t *testing.T) {
+	// --all-pages surfaces D7 (on page B) with page tags but NO pins (the active
+	// page's pin lookup didn't return them). buildScene must record it as a
+	// pin-less component carrying its page, so resolvePinCoord can hint correctly.
+	result := map[string]any{"components": []any{
+		map[string]any{"componentType": "part", "designator": "U1",
+			"bbox": map[string]any{"minX": 0.0, "minY": 0.0, "maxX": 10.0, "maxY": 10.0},
+			"pins": []any{map[string]any{"pinNumber": "1", "pinName": "VCC", "x": 0.0, "y": 5.0}},
+		},
+		map[string]any{"componentType": "part", "designator": "D7",
+			"bbox":     map[string]any{"minX": 20.0, "minY": 20.0, "maxX": 24.0, "maxY": 24.0},
+			"pageUuid": "0395abcd", "pageName": "Page B",
+		},
+	}}
+	scene := buildScene(result)
+	var d7 *acComponent
+	for i := range scene.Components {
+		if scene.Components[i].Designator == "D7" {
+			d7 = &scene.Components[i]
+		}
+	}
+	if d7 == nil {
+		t.Fatalf("D7 not recorded in scene.Components: %+v", scene.Components)
+	}
+	if d7.HasPins {
+		t.Error("off-page D7 should be pin-less (HasPins=false)")
+	}
+	if d7.PageUuid != "0395abcd" || d7.PageName != "Page B" {
+		t.Errorf("D7 page info not carried: %+v", d7)
 	}
 }
 

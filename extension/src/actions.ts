@@ -449,6 +449,31 @@ const schematicRename: Handler = async (payload) => {
 
 // ─── Components ───────────────────────────────────────────────────────
 
+// tagComponentPages attributes each component to its owning schematic page by
+// visiting every page in turn (the EDA API exposes no per-component page accessor
+// and getAll only takes a boolean allPages flag). It restores the originally
+// active page before returning, so the caller's view is unchanged. Returns a
+// primitiveId → {pageUuid,pageName} map; on any failure it returns an empty map
+// (page tagging is best-effort — autoconnect degrades to a generic switch hint).
+async function tagComponentPages(): Promise<Map<string, { pageUuid: string; pageName: string }>> {
+	const byId = new Map<string, { pageUuid: string; pageName: string }>();
+	try {
+		const current = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+		const pages = await eda.dmt_Schematic.getAllSchematicPagesInfo();
+		for (const page of pages) {
+			await eda.dmt_EditorControl.openDocument(page.uuid);
+			// getAll() with no allPages flag returns only the ACTIVE page's parts.
+			for (const c of await eda.sch_PrimitiveComponent.getAll()) {
+				byId.set(c.getState_PrimitiveId(), { pageUuid: page.uuid, pageName: page.name });
+			}
+		}
+		// Restore the page the caller was on.
+		if (current?.uuid) await eda.dmt_EditorControl.openDocument(current.uuid);
+	}
+	catch { /* best-effort: leave the map as-is */ }
+	return byId;
+}
+
 const schematicComponentsList: Handler = async (payload) => {
 	const allPages = optionalBoolean(payload, 'allPages') === true;
 	const includePins = optionalBoolean(payload, 'includePins') === true;
@@ -456,6 +481,13 @@ const schematicComponentsList: Handler = async (payload) => {
 	// (via eda.sch_Primitive.getPrimitivesBBox) so the agent / `sch layout-lint`
 	// can reason about size, spacing, and overlap — mirrors pcb.components.list.
 	const includeBBox = optionalBoolean(payload, 'includeBBox') === true;
+	// tagPages attributes each component to its owning page (pageUuid/pageName).
+	// Opt-in because it briefly cycles the active page; autoconnect requests it so
+	// its off-page error can point at the exact `doc switch` target.
+	const tagPages = optionalBoolean(payload, 'tagPages') === true;
+	// Tag pages BEFORE the main getAll so the active-page cycling doesn't disturb
+	// the component set we ultimately serialize.
+	const pageById = tagPages ? await tagComponentPages() : null;
 	let components;
 	try {
 		components = await eda.sch_PrimitiveComponent.getAll(undefined, allPages);
@@ -478,6 +510,13 @@ const schematicComponentsList: Handler = async (payload) => {
 	const serialized: Array<Record<string, unknown>> = [];
 	for (const component of components) {
 		const record = serializeComponent(component);
+		if (pageById) {
+			const page = pageById.get(component.getState_PrimitiveId());
+			if (page) {
+				record.pageUuid = page.pageUuid;
+				record.pageName = page.pageName;
+			}
+		}
 		if (includeBBox) {
 			try {
 				const box = await eda.sch_Primitive.getPrimitivesBBox([component.getState_PrimitiveId()]);

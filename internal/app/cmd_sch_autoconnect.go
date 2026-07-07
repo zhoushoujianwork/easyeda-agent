@@ -67,14 +67,28 @@ type acPin struct {
 	NetKnown bool
 }
 
+// acComponent is a part known to the scene, whether or not its pins made it in.
+// When the scene is built with --all-pages, parts on non-active pages still appear
+// here (by designator) but have HasPins=false because the EDA pin lookup only
+// returns pins for the active page. PageUuid/PageName are populated when the
+// extension supplies them; empty otherwise. This lets resolvePinCoord tell
+// "placed on another page" apart from "truly not placed / pin typo".
+type acComponent struct {
+	Designator string
+	HasPins    bool
+	PageUuid   string
+	PageName   string
+}
+
 // acScene is the full geometric context one autoconnect run reasons against.
 // Flags grows as connections are placed so later labels stagger off earlier ones.
 type acScene struct {
-	Parts                 []layoutBBox // real part bboxes (componentType "part")
-	Pins                  []acPin      // every pin across all parts
-	Flags                 []layoutBBox // existing netflag/netport/netlabel bboxes
-	TitleBlock            *layoutBBox  // derived keep-out (nil if not applied)
-	TitleBlockProvisional bool         // true when no sheet bbox was found (keep-out NOT geometrically applied)
+	Parts                 []layoutBBox  // real part bboxes (componentType "part")
+	Pins                  []acPin       // every pin across all parts
+	Flags                 []layoutBBox  // existing netflag/netport/netlabel bboxes
+	Components            []acComponent // every part seen (by designator), even pin-less off-page ones
+	TitleBlock            *layoutBBox   // derived keep-out (nil if not applied)
+	TitleBlockProvisional bool          // true when no sheet bbox was found (keep-out NOT geometrically applied)
 }
 
 // ── candidate + scoring ─────────────────────────────────────────────────────
