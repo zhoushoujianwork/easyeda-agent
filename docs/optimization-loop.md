@@ -80,7 +80,7 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 ### D. Skill / references 更新
 - [x] `references/pcb.md`:「连通性键合真值表」小节 + via 桥 SOP(fill 法 / `via-hop`)已加(2026-07-07);PLANE 翻转后禁新建异网 via 已在 P8 + via-crosses-plane 规则覆盖;`pcb drc` 条目含前台约束 + `--json`/`--timeout`。
 - [x] `references/design-flow.md`:P7 加 via-hop/精准删;P10 加"via 桥必须配 fill"与"DRC 需前台(daemon 已防重入)"两条硬注意(2026-07-07)。
-- [ ] `references/pcb-layout-conventions.md`:USB-C 16P 双极性 tie 拓扑(DN 对南区 tie 过 A6 焊盘下方 + DP 对东绕;16P 脚下隐藏 NPTH 槽 ≈ (±98, +43) 相对锚点)。
+- [x] `references/pcb-layout-conventions.md`:USB-C tie 拓扑已按**官方板对标**落地(§7.8,2026-07-07):A6+B6/A7+B7 双取向 tie 是正解(官方 ESP32S3R8N8 实测),单取向仅降级手段;NPTH 槽坑轮次#3 亲验(via 打上去三连报)。对标还带回:双 PLANE 叠层、线宽分级 6/9.5/15/20、via 12/20+GND 缝合 135 颗量级、顶底三网分区 pour、Q1/Q2 自动下载、功能丝印、CHIP_PU 命名——全在 §7.8 对标表。
 - [ ] `standard-parts.json` 已入库 CH340C(C84681)、KF301-5.0-2P(C474881)✓(已提交 3eed339)。
 
 ### E. 回归基准
