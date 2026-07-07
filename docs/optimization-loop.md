@@ -92,47 +92,36 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
   `training/copy-check.py` 判 100% 一致。首个闭环 XDS110下载器(见
   `skills/easyeda-agent/references/copy-training.md`)。
 
-### F. 抄图训练暴露的 CLI/连接器缺口(2026-07-07,XDS110)
-- [ ] **`lib search` 按 LCSC C 号查询是模糊匹配,不保证精确命中**——`--query "C5665"`
-  命中了运放芯片而非目标排针(footprint 描述里恰好含"c5665"字样撞了关键字)。
-  应加一个精确模式(如 `--lcsc <C号> --exact`)校验返回结果的 `lcsc` 字段严格相等,
-  不等就报错而不是静默返回模糊匹配的第一条。
-- [ ] **`sch autoconnect --spec` 对同一 spec 重跑不是幂等的**——已连接 pin 会再叠一份
-  新 flag+stub wire,而不是跳过/更新。应检测「该 pin 已有同名网络的 flag」时跳过,
-  或提供 `--replace` 语义。当前无提示地静默叠加,容易造成难以定位的重复连线。
-- [ ] **删除 netflag/netport 后,它的 stub wire 变成悬空单 pin 网络($3N…)且
-  `dangling-wire` 规则抓不到**(wire 仍"触碰"pin,只是没有名字)。应新增
-  `pin.disconnect`(flag+wire 一起删,对称于 `connect_pin`)或让 `dangling-wire`
-  规则识别"孤立自动命名网络"。
-- [ ] `schematic.components.list` 不暴露源器件的 device/symbol uuid(只有
-  footprint uuid)——同一 LCSC C 号可能对应库里多个 symbol 变体(如 USB-C 有
-  6pin 简化编号版和 16pin A/B合并编号版),导致「按 C 号重新选型」无法保证选到
-  与原设计**完全相同**的符号变体,pin 编号体系可能不同。暴露 device uuid 能让
-  抄图/BOM 复刻更精确。
+### F. 抄图训练暴露的 CLI/连接器缺口(2026-07-07,XDS110)—— 已开 issue,交 ClawFlow
+- [ ] [#49](https://github.com/zhoushoujianwork/easyeda-agent/issues/49) **`lib search` 按 LCSC C 号查询是模糊匹配,不保证精确命中**——
+  `--query "C5665"` 命中了运放芯片而非目标排针。
+- [ ] [#50](https://github.com/zhoushoujianwork/easyeda-agent/issues/50) **`sch autoconnect --spec` 对同一 spec 重跑不是幂等的**——
+  已连接 pin 会再叠一份新 flag+stub wire。
+- [ ] [#51](https://github.com/zhoushoujianwork/easyeda-agent/issues/51) **删除 netflag/netport 不连带删除 stub wire**,
+  `dangling-wire` 规则也抓不到残留孤儿线。
+- [ ] [#52](https://github.com/zhoushoujianwork/easyeda-agent/issues/52) `schematic.components.list` 不暴露器件
+  device/symbol uuid(只有 footprint uuid)——同 LCSC C 号可能对应多个 pin 编号
+  体系不同的 symbol 变体。
 - [ ] 缺 **按坐标区域批量查询/删除图元**的 typed action(训练中用
-  `debug exec` 遍历 `sch_PrimitiveWire.getAll()` 按 xy 过滤应急,生产该有
-  `schematic.primitives.list_by_region` 或类似)。
+  `debug exec` 遍历 `sch_PrimitiveWire.getAll()` 按 xy 过滤应急)——暂未开 issue,
+  优先级低于上面四项。
 
-### G. 多页原理图训练暴露的缺口(2026-07-07,XDS110 单页→多页重排)
+### G. 多页原理图训练暴露的缺口(2026-07-07,XDS110 单页→多页重排)—— 已开 issue
 
 把同一 45 件设计从单张 A3 拆成两张 A4(USB/电源/调试 15 件 + 主控 30 件)验证「多
 页跨页同名网络自动合并」的机制,过程暴露:
 
-- [ ] **`sch autoconnect --all-pages` 会跨页尝试落笔,但 mutation(建 wire+flag)只能
-  作用于当前激活页的器件**——对非激活页的器件报「pin not found」而不是清晰的
-  「该器件在页 X,请先切过去」提示。应让报错明确指出目标器件所在页,或者
-  `autoconnect` 干脆按 spec 里每个 pin 所属页自动分组、内部依次切页执行。
-- [ ] **`sch read --all-pages` / `sch layout-lint --all-pages` 对非激活页的器件只给
-  壳数据**——前者 pins 数组为空,后者报 "N component(s) had no bbox (skipped)"。
-  两处都没在文档/报错里说明这个限制,容易让人误信"这就是全部真实数据"。应在
-  `--all-pages` 的说明里显式标注"仅当前激活页有完整 pin/bbox,其余页是聚合计数",
-  或者干脆让它们内部自动切页抓取(慢但数据真实完整)。
+- [ ] [#53](https://github.com/zhoushoujianwork/easyeda-agent/issues/53) **`sch autoconnect --all-pages` 跨页落笔失败且报错含糊**——
+  应提示切页而非笼统"not placed"。
+- [ ] [#54](https://github.com/zhoushoujianwork/easyeda-agent/issues/54) **`sch read` / `sch layout-lint --all-pages` 对非激活页
+  数据残缺**(pins 空数组 / bbox 被跳过)且无文档说明。
+- [ ] [#55](https://github.com/zhoushoujianwork/easyeda-agent/issues/55) **`sch page-rename` 返回 `ok:true` 但 `doc ls` 立即
+  读取仍是旧名**,需等待不确定的刷新触发(2026-07-07 现场复现:重命名后 `doc ls`
+  读到旧名,跑一次无关的 `sch clear` 后才刷新)。
 - [x] **再次印证 autoconnect 非幂等的代价有多大**:调试期间因为不确定连接是否
   生效而多跑了几次同一 spec,导致同一批 pin 上堆了 4 层重复 flag(124 netflag+
-  124 netport,应为约 60),电气上不影响正确性但视觉/后续维护是灾难。**唯一安全
-  做法是每次 autoconnect 落地前先 `--dry-run` 确认、落地后只读验证一次,绝不
-  因为"不确定"就重跑同一 spec**——这条应该写进 SKILL 的 Core Rules(不是训练
-  方法论,是操作纪律)。
+  124 netport,应为约 60),电气上不影响正确性但视觉/后续维护是灾难。已写入
+  `SKILL.md` Core Rule 4a(操作纪律,不是训练方法论)。
 
 ## 探针轮次 #3 — esp32MiniRequire 从零重跑(2026-07-07,Board2/PCB2,agent 全程自驱)
 
