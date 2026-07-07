@@ -5922,13 +5922,14 @@ const pcbRouteDelete: Handler = async (payload) => {
 	return { result: { deleted: results, removed, count: removed.length, skippedLocked, notFound } };
 };
 
-// ─── PCB routing: via-hop (layer hop with bonded vias) ───────────────
+// ─── PCB routing: via-hop (layer hop) ────────────────────────────────
 // One command for "cross to the other layer and come back": stub → via → hop
-// track → via → stub, PLUS a small net-bound bond fill on BOTH layers of BOTH
-// vias. The fills are load-bearing, not decoration: on this platform a track
-// touching a via does NOT register as connected on 4-layer / ex-PLANE boards
-// (pro-api-sdk#31) — a net-bound fill overlapping via+track is the only
-// reliable bridge. Rolls back everything it created on mid-sequence failure.
+// track → via → stub. Optional (off by default) net-bound bond fills over the
+// vias. The fills were once thought load-bearing under pro-api-sdk#31, but that
+// was our misdiagnosis — track↔via DOES register as connected (verified live
+// 2026-07-07; the old "floating" symptom was stale pour connectivity, cured by
+// re-pouring). So bondFill is now an opt-in extra, not a requirement. Rolls
+// back everything it created on mid-sequence failure.
 
 const pcbRouteViaHop: Handler = async (payload) => {
 	const net = requireString(payload, 'net');
@@ -5942,7 +5943,7 @@ const pcbRouteViaHop: Handler = async (payload) => {
 	const holeDiameter = optionalNumber(payload, 'holeDiameter') ?? 12;
 	const viaDiameter = optionalNumber(payload, 'viaDiameter') ?? 24;
 	const stub = optionalNumber(payload, 'stub') ?? 20;      // via setback from each endpoint (keeps vias OFF pads — via-on-pad ≠ connected)
-	const bondFill = optionalBoolean(payload, 'bondFill') !== false;
+	const bondFill = optionalBoolean(payload, 'bondFill') === true;
 	const bondSize = optionalNumber(payload, 'bondSize') ?? 20; // square side, centered on each via
 
 	if (Number(layer) === Number(hopLayer)) {
@@ -6015,8 +6016,8 @@ const pcbRouteViaHop: Handler = async (payload) => {
 			fillIds: created.fills,
 			bonded: bondFill,
 			note: bondFill
-				? 'bond fills placed on both layers of both vias (track↔via alone does not register as connected on 4-layer / ex-PLANE boards — pro-api-sdk#31)'
-				: 'bondFill=false: on 4-layer / ex-PLANE boards this hop may NOT register as connected (pro-api-sdk#31) — verify with pcb.drc.check',
+				? 'optional bond fills placed on both layers of both vias (extra copper; NOT required for connectivity)'
+				: 'no bond fills — track↔via registers as connected on its own (pro-api-sdk#31 was a misdiagnosis); verify with pcb.drc.check after a pour-rebuild',
 		},
 	};
 };

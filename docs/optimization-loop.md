@@ -17,7 +17,7 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 
 | # | 现象 | 证据 | 复现要点 |
 |---|------|------|---------|
-| A1 | **track↔via 连通性不注册**(4 层板/曾有 PLANE 层之后)。track 端点在 via 圆心、via 压 track 身体中段均不导通;唯一可靠桥接 = net-bound fill/pour 面重叠 | +5V/U0TXD 三轮重铺(20/12/10mil 全试)DRC 恒报浮空;4 片 20×20mil fill 盖住 via+track 后立即清零 | 4 层板,`pcb_Layer.setTheNumberOfCopperLayers(4)` 后:pad→track→via→底层 track→via→track→pad,跑 `pcb_Drc.check` 看 Connection Error;对照 2 层新板(老会话同 pattern 曾正常) |
+| A1 | ~~**track↔via 连通性不注册**(4 层板/曾有 PLANE 层之后)~~ **❌ 2026-07-07 订正:误诊,#31 已关单**。真机原样复测:track↔via **会**注册连通(两同网 pad + via 桥 → ratline 清零,4 层/PLANE 各状态皆然)。原始"+5V/U0TXD 浮空"真身是**铺铜连通性 stale**,`pcb pour-rebuild` 即复原;当初 fill 键合的功劳被错记。 | ~~+5V/U0TXD 三轮重铺全部浮空;4 片 fill 清零~~ 复测详见 memory `pcb-via-track-bond-rules`(订正版) | 两个同网 SMD pad 造 ratline → `track(L1)→via→track(L2)→via→track(L1)` 桥 → `startCalculatingRatline` → `pcb_Drc.check` 看 Connection Error 是否清零 |
 | A2 | **PLANE 类型层存在时,新建异网 via 不被内电层挖 anti-pad**(Plane-Zone-to-Via + Hole-to-Plane 成对报错;pour-rebuild 不补救) | R2 轮 U0TXD 两颗 via 贴死内电层(anti-pad=0);翻回 SIGNAL 重建再翻 PLANE 也无效 | modifyLayer→PLANE 后 create via(异网)→ DRC |
 | A3 | **`SCH→PCB 器件` API 放置(我们经 add_component/importChanges 路径)后 pad number=None**,直到文档重载;连带 DRC 恒报 1 条 "Netlist Error"(diff 只能 UI 看) | J1 重加后 16 pad 全 None;net degree 机械比对 100% 一致仍报 | add_component 放一件 → `pcb_SelectControl`/`getAllPads` 读 number |
 | A4 | (约束非 bug)**后台/被遮挡窗口重画布计算永不完成**:`pcb_Drc.check` 超时,轻 API 正常;客户端重试会在 webview 堆积任务恶化 | 5 连超时;窗口切前台后第 1 次尝试即完成 | — 文档化即可 |
@@ -25,7 +25,7 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 
 > **已提交官方仓库 `easyeda/pro-api-sdk`(2026-07-04,用户授权)**:
 > A1 → [#31](https://github.com/easyeda/pro-api-sdk/issues/31) · A2 → [#32](https://github.com/easyeda/pro-api-sdk/issues/32) · A3 → [#33](https://github.com/easyeda/pro-api-sdk/issues/33)。
-> A4/A5 属约束/量纲,不提 issue,文档化于 memory + references。历史 issue:#27(sch_Drc verbose)、#28(autoRouting @alpha)、#29(DSN 丢 keepout)、#30(getNetlist 卡死)。
+> A4/A5 属约束/量纲,不提 issue,文档化于 memory + references。历史 issue:#27(sch_Drc verbose)、#28(autoRouting @alpha)、#29(DSN 丢 keepout)、#30(getNetlist 卡死;官方 prodocs 已标 `sch_Netlist.getNetlist()` obsolete,用 `sch_ManufactureData.getNetlistFile()` 替代)。
 
 ### B. CLI / daemon 改进
 
@@ -74,7 +74,7 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 
 ### C. 检查器(Go 侧)改进 — **三项全落地+真机验证(2026-07-07,ceshi)**
 - [x] `pcb check` dangling-end **面积锚定**:同网 pad 铜面内(30mil 容差,先前已有)+ 同网 via **Dia/2 面积**锚定(新);异网保持严格圆心 eps。真机:结点端不再误报,只报真自由端。
-- [x] `pcb check` 新规则 **via-bond**:4 层/PLANE 板上裸 track↔via 结点(端点入 via 铜面 / via 压 track 身)= 不导通(#31)→ **ERROR**+fill/via-hop 修法;同网键合 fill(按真实 bbox,`pcb.fill.list includeBBox`,连接器 0.8.10)或同网铺铜豁免;2 层纯 SIGNAL 板整体跳过。真机:基线 37 via 零误报(pour 豁免生效),裸结点分层各报 1 条,盖 fill 后对应层消失(2→1)。
+- [x] ~~`pcb check` 新规则 **via-bond**:4 层/PLANE 板上裸 track↔via 结点 = 不导通(#31)→ **ERROR**~~ **❌ 2026-07-07 已移除**:#31 证实为误诊(track↔via 会导通),此规则是误报源,连同 `via-hop` 的 bondFill 默认一并回收(bondFill 改为 opt-in `--bond-fill`,默认关)。dangling-end 的 via 面积锚定(上一条)保留有效。
 - [x] `pcb check` **floating-track-island**:≥2 段互锚成组、无任一端锚 pad 的铜岛(dangling 盲区)→ WARN,列全成员 id 直接喂 `track-delete`;同网铺铜豁免;单段留给 dangling。真机:双段+via 桥岛 1 条命中。
 
 ### D. Skill / references 更新

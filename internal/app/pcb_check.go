@@ -137,7 +137,6 @@ type pcbCheckSummary struct {
 	AntennaKeepout    int `json:"antennaKeepout"`
 	NetlessPours      int `json:"netlessPours"`
 	ViaCrossesPlane   int `json:"viaCrossesPlane"`
-	ViaBond           int `json:"viaBond"`
 	FloatingIslands   int `json:"floatingIslands"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
@@ -284,8 +283,9 @@ func anchored(px, py float64, self, layer int, net string, tracks []pcbTrack, vi
 		// but off-center. Foreign vias keep the strict center epsilon (a track
 		// ending on a foreign via is a short, not an anchor — but at the exact
 		// center we still treat it as "not unfinished copper", the historical
-		// behavior). Whether a same-net junction actually CONDUCTS is the
-		// via-bond rule's job (pro-api-sdk#31), not dangling-end's.
+		// behavior). A same-net track↔via junction DOES conduct (pro-api-sdk#31
+		// was our misdiagnosis — verified live 2026-07-07); DRC reports any real
+		// open once ratline/pour connectivity is recomputed.
 		tol := pcbCoincEps
 		if net != "" && v.Net == net {
 			tol = v.Dia/2 + pcbCoincEps
@@ -1143,11 +1143,11 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 		rep.Passed = rep.Summary.Total == 0
 	}
 
-	// Netless-pour + via-crosses-plane + via-bond + floating-track-island are
-	// LIVE-only rules (they need the pour/fill lists / the stackup, which the
+	// Netless-pour + via-crosses-plane + floating-track-island are
+	// LIVE-only rules (they need the pour lists / the stackup, which the
 	// pure copper core doesn't take). Degrade gracefully if a fetch fails.
 	if pours, perr := fetchPcbPours(cfg, window); perr != nil {
-		fmt.Fprintf(stderr, "warning: netless-pour + via-crosses-plane + via-bond + floating-track-island checks skipped (%v)\n", perr)
+		fmt.Fprintf(stderr, "warning: netless-pour + via-crosses-plane + floating-track-island checks skipped (%v)\n", perr)
 	} else {
 		for _, f := range findNetlessPours(pours) {
 			rep.Findings = append(rep.Findings, f)
@@ -1155,34 +1155,15 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 			rep.Summary.Warnings++
 			rep.Summary.Total++
 		}
-		planeCount := 0
 		if planes, lerr := fetchPcbPlaneLayers(cfg, window); lerr != nil {
 			fmt.Fprintf(stderr, "warning: via-crosses-plane check skipped (%v)\n", lerr)
 		} else if len(planes) > 0 {
-			planeCount = len(planes)
 			for _, f := range findViaCrossesPlane(vias, bindPlaneNets(planes, pours)) {
 				rep.Findings = append(rep.Findings, f)
 				rep.Summary.ViaCrossesPlane++
 				rep.Summary.Warnings++
 				rep.Summary.Total++
 			}
-		}
-
-		// via-bond: bare track↔via junctions on the board class where they do
-		// NOT conduct (#31). Fill bboxes exempt properly-bonded junctions; an
-		// older connector without includeBBox degrades inside fetchPcbFills.
-		fills, ferr := fetchPcbFills(cfg, window)
-		if ferr != nil {
-			fmt.Fprintf(stderr, "warning: via-bond check runs without fill data (%v)\n", ferr)
-			fills = nil
-		}
-		copperLayers := fetchPcbCopperLayerCount(cfg, window)
-		for _, f := range findViaBondIssues(tracks, vias, fills, pours, copperLayers, planeCount) {
-			rep.Findings = append(rep.Findings, f)
-			rep.Summary.ViaBond++
-			rep.Summary.Errors++
-			rep.Summary.Warnings++
-			rep.Summary.Total++
 		}
 
 		for _, f := range findFloatingTrackIslands(tracks, vias, pads, pours) {
@@ -1434,9 +1415,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d viaBond=%d floatingIsland=%d\n",
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d floatingIsland=%d\n",
 		s.Errors, s.Warnings-s.Errors,
-		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane, s.ViaBond, s.FloatingIslands)
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane, s.FloatingIslands)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {

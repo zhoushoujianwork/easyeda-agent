@@ -924,28 +924,30 @@ pours reflow under the new clearance.`,
 		pcb.AddCommand(c)
 	}
 
-	// ── via-hop (composite layer hop with bonded vias) ─────────────────────
+	// ── via-hop (composite layer hop) ──────────────────────────────────────
 	// pcb.route.via_hop — one command for "cross on the other layer": stub →
-	// via → hop track → via → stub + bond fills on both layers of both vias.
-	// The fills seal pro-api-sdk#31 (track↔via alone does not register as
-	// connected on 4-layer / ex-PLANE boards).
+	// via → hop track → via → stub. Optional (off by default) bond fills over
+	// each via. Bond fills used to be load-bearing under pro-api-sdk#31, but
+	// that was our misdiagnosis — track↔via DOES register as connected (verified
+	// live 2026-07-07), so the fills are now an opt-in extra, not a requirement.
 	{
 		var net string
 		var layer, hopLayer int
 		var fromX, fromY, toX, toY, width, hole, viaDia, stub, bondSize float64
-		var noBond bool
+		var bondFill bool
 		c := &cobra.Command{
 			Use:   "via-hop",
-			Short: "Route a layer hop: stub→via→hop-track→via→stub + bond fills (seals the track↔via no-connect trap)",
+			Short: "Route a layer hop: stub→via→hop-track→via→stub (optional bond fills)",
 			Long: `Route one net across the other layer and back in a single command:
-entry stub → via → hop-layer track → via → exit stub, plus (default) a small
-net-bound bond FILL on both layers of both vias.
+entry stub → via → hop-layer track → via → exit stub.
 
-The bond fills are load-bearing, not decoration: on 4-layer / ex-PLANE boards a
-track touching a via does NOT register as connected (pro-api-sdk#31) — an
-overlapping net-bound fill is the only reliable bridge. Vias sit --stub mil
-inside the endpoints so they stay OFF pads (via-on-pad ≠ connected either).
-Everything created is rolled back if any step fails. Verify with 'pcb drc'.`,
+track↔via registers as connected on its own (pro-api-sdk#31 was our
+misdiagnosis; the old "floating" symptom was stale pour connectivity, cured by
+'pcb pour-rebuild'), so no bond fill is needed for connectivity. Pass
+--bond-fill only if you want extra thermal/current copper over the vias. Vias
+sit --stub mil inside the endpoints so they stay OFF pads (via-on-pad ≠
+connected). Everything created is rolled back if any step fails. Verify with
+'pcb drc'.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb via-hop --net U0TXD --from-x 1000 --from-y 500 --to-x 1400 --to-y 500
   easyeda pcb via-hop --net +5V --from-x 900 --from-y 200 --to-x 1200 --to-y 400 --hop-layer 2 --width 10`,
@@ -980,9 +982,7 @@ Everything created is rolled back if any step fails. Verify with 'pcb drc'.`,
 				if cmd.Flags().Changed("bond-size") {
 					payload["bondSize"] = bondSize
 				}
-				if noBond {
-					payload["bondFill"] = false
-				}
+				payload["bondFill"] = bondFill
 				return dispatch(cfg, "pcb.route.via_hop", window, payload, stdout, stderr)
 			},
 		}
@@ -998,7 +998,7 @@ Everything created is rolled back if any step fails. Verify with 'pcb drc'.`,
 		c.Flags().Float64Var(&viaDia, "via-diameter", 0, "via outer diameter (mil; default 24)")
 		c.Flags().Float64Var(&stub, "stub", 0, "via setback from each endpoint (mil; default 20 — keeps vias off pads)")
 		c.Flags().Float64Var(&bondSize, "bond-size", 0, "bond fill square side (mil; default 20)")
-		c.Flags().BoolVar(&noBond, "no-bond", false, "skip bond fills (hop may then NOT register as connected — pro-api-sdk#31)")
+		c.Flags().BoolVar(&bondFill, "bond-fill", false, "add net-bound bond fills over each via (optional extra copper; NOT needed for connectivity)")
 		pcb.AddCommand(c)
 	}
 
@@ -2210,10 +2210,6 @@ Rules:
                         (anti-pad risk, easyeda/pro-api-sdk#32: a via created
                         AFTER the plane exists gets no anti-pad; fix = remove it
                         and route on outer layers, or 'doc reload' + 'pour-rebuild')
-  • via-bond          — bare track↔via junction on a 4-layer/PLANE board → ERROR
-                        (does NOT conduct there, pro-api-sdk#31; junctions covered
-                        by a same-net bond fill or pour are exempt — 'pcb via-hop'
-                        makes bonded hops; fix legacy ones with 'pcb fill create')
   • floating-track-island — a connected GROUP of tracks anchoring to no pad → WARN
                         (dangling-end's blind spot: members anchor each other;
                         islands under a same-net pour are exempt)

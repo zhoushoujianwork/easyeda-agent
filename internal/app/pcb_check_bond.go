@@ -1,20 +1,19 @@
 package app
 
-// pcb check — via-bond + floating-track-island (probe round #1 C-list).
+// pcb check — floating-track-island (probe round #1 C-list).
 //
-// Both rules exist because of one platform truth (pro-api-sdk#31, verified live):
-// on 4-layer / PLANE-bearing boards, a track touching a via does NOT register as
-// electrically connected — not endpoint-on-center, not via-on-body. The only
-// reliable bridge is a net-bound FILL (or same-net pour) overlapping the
-// junction. `pcb via-hop` builds bonded hops automatically; these rules catch
-// the LEGACY / hand-made junctions that never got a bond.
+// floating-track-island: a connected GROUP of tracks/vias none of whose
+// endpoints anchors to a pad — dangling-end's blind spot (members anchor each
+// other, so per-endpoint checks stay silent) → WARN per island.
 //
-//   - via-bond: a same-net track↔via junction with no bond fill/pour on the
-//     track's layer → ERROR (it looks routed but is open). Skipped entirely on
-//     plain 2-layer boards, where the junction does register.
-//   - floating-track-island: a connected GROUP of tracks/vias none of whose
-//     endpoints anchors to a pad — dangling-end's blind spot (members anchor
-//     each other, so per-endpoint checks stay silent) → WARN per island.
+// Historical note: this file also carried a `via-bond` ERROR rule built on
+// pro-api-sdk#31 ("track↔via does not register as connected on 4-layer/PLANE
+// boards"). That was our misdiagnosis — live retest on 2026-07-07 showed
+// track↔via DOES register (a via bridge satisfies the ratline in every plane
+// state); the original "floating" symptom was STALE pour connectivity, cured by
+// `pcb pour-rebuild` + a ratline recompute, not by fill-bonding. The rule was a
+// false-positive generator (it flagged junctions DRC reports as connected) and
+// has been removed. DRC now owns the real open-net verdict.
 //
 // Pure functions over list-shaped inputs; live fetches sit at the bottom.
 
@@ -24,101 +23,6 @@ import (
 	"sort"
 	"strings"
 )
-
-// pcbFillP is one net-bound fill (pcb.fill.list --include-bbox). HasBBox is
-// false on older connectors (no bbox support) — the bond check then degrades
-// to "same-net fill exists on the layer" instead of point-in-box.
-type pcbFillP struct {
-	ID                     string
-	Net                    string
-	Layer                  int
-	MinX, MinY, MaxX, MaxY float64
-	HasBBox                bool
-}
-
-// viaBondEps pads the fill bbox / junction geometry tests: a bond fill only
-// has to overlap the junction, not contain it with margin.
-const viaBondEps = 1.0
-
-// findViaBondIssues flags same-net track↔via junctions that have no bond on
-// the track's layer. Active only when the board is 4+ copper layers or has a
-// PLANE layer — the class where bare junctions do not conduct (#31); a 2-layer
-// SIGNAL-only board registers them fine and gets no findings.
-func findViaBondIssues(tracks []pcbTrack, vias []pcbViaP, fills []pcbFillP, pours []pcbPourP, copperLayers int, planeCount int) []pcbCheckFinding {
-	if copperLayers < 4 && planeCount == 0 {
-		return nil
-	}
-
-	// pour nets per layer — a same-net pour reflows onto the via and bonds it.
-	type netLayer struct {
-		net   string
-		layer int
-	}
-	pourOn := map[netLayer]bool{}
-	for _, p := range pours {
-		if strings.TrimSpace(p.Net) != "" {
-			pourOn[netLayer{p.Net, p.Layer}] = true
-		}
-	}
-
-	bonded := func(net string, layer int, x, y float64) bool {
-		if pourOn[netLayer{net, layer}] {
-			return true
-		}
-		for _, f := range fills {
-			if f.Net != net || f.Layer != layer {
-				continue
-			}
-			if !f.HasBBox {
-				return true // older connector: fill exists on net+layer, assume bonded
-			}
-			if x >= f.MinX-viaBondEps && x <= f.MaxX+viaBondEps &&
-				y >= f.MinY-viaBondEps && y <= f.MaxY+viaBondEps {
-				return true
-			}
-		}
-		return false
-	}
-
-	var out []pcbCheckFinding
-	seen := map[string]bool{} // one finding per via+layer
-	for _, v := range vias {
-		if strings.TrimSpace(v.Net) == "" {
-			continue
-		}
-		r := v.Dia / 2
-		for _, t := range tracks {
-			if t.Net != v.Net {
-				continue
-			}
-			// Junction: a track endpoint inside the via copper, or the track
-			// centerline passing through it (via pressed onto the body).
-			touches := math.Hypot(t.X1-v.X, t.Y1-v.Y) <= r+pcbCoincEps ||
-				math.Hypot(t.X2-v.X, t.Y2-v.Y) <= r+pcbCoincEps ||
-				segPtDist(v.X, v.Y, t.X1, t.Y1, t.X2, t.Y2) <= r
-			if !touches {
-				continue
-			}
-			key := fmt.Sprintf("%s|%d", v.ID, t.Layer)
-			if seen[key] || bonded(v.Net, t.Layer, v.X, v.Y) {
-				continue
-			}
-			seen[key] = true
-			out = append(out, pcbCheckFinding{
-				Type: "via-bond", Level: "ERROR", Net: v.Net, Layer: t.Layer,
-				Primitives: []string{v.ID, t.ID}, At: &pcbXY{round2(v.X), round2(v.Y)},
-				Message: fmt.Sprintf("bare track↔via junction (net %s) — on 4-layer/PLANE boards this does NOT register as connected (pro-api-sdk#31); bond it with a ~20×20mil net-bound fill over the junction on this layer (`pcb fill create`), or re-route the hop with `pcb via-hop` (bonds automatically)", v.Net),
-			})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Net != out[j].Net {
-			return out[i].Net < out[j].Net
-		}
-		return out[i].Layer < out[j].Layer
-	})
-	return out
-}
 
 // findFloatingTrackIslands finds connected groups of tracks (linked by touching
 // endpoints/bodies on the same layer, or bridged by a shared via) in which NO
@@ -176,9 +80,9 @@ func findFloatingTrackIslands(tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP,
 			}
 		}
 	}
-	// Via bridges: all tracks touching the same via join one component (that is
-	// the geometric intent, even though the platform may not conduct it — the
-	// via-bond rule owns THAT defect).
+	// Via bridges: all tracks touching the same via join one component — the via
+	// conducts across layers (pro-api-sdk#31), so this is both the geometric
+	// intent and the electrical reality.
 	for _, v := range vias {
 		first := -1
 		for i, t := range tracks {
@@ -255,47 +159,4 @@ func findFloatingTrackIslands(tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP,
 	}
 	sort.Slice(out, func(i, j int) bool { return len(out[i].Primitives) > len(out[j].Primitives) })
 	return out
-}
-
-// fetchPcbFills reads net-bound fills with bboxes (pcb.fill.list includeBBox).
-// Older connectors return no bbox field — HasBBox=false keeps the bond check
-// usable in its degraded form.
-func fetchPcbFills(cfg *appConfig, window string) ([]pcbFillP, error) {
-	res, err := requestAction(cfg, "pcb.fill.list", window, map[string]any{"includeBBox": true})
-	if err != nil {
-		return nil, err
-	}
-	var fills []pcbFillP
-	for _, rf := range mnavSlice(res.Result, "fills") {
-		fm, ok := rf.(map[string]any)
-		if !ok {
-			continue
-		}
-		id, _ := fm["primitiveId"].(string)
-		net, _ := fm["net"].(string)
-		layerF, _ := asFloatOK(fm["layer"])
-		f := pcbFillP{ID: id, Net: net, Layer: int(layerF)}
-		if bb, ok := fm["bbox"].(map[string]any); ok {
-			minX, ok1 := asFloatOK(bb["minX"])
-			minY, ok2 := asFloatOK(bb["minY"])
-			maxX, ok3 := asFloatOK(bb["maxX"])
-			maxY, ok4 := asFloatOK(bb["maxY"])
-			if ok1 && ok2 && ok3 && ok4 {
-				f.MinX, f.MinY, f.MaxX, f.MaxY, f.HasBBox = minX, minY, maxX, maxY, true
-			}
-		}
-		fills = append(fills, f)
-	}
-	return fills, nil
-}
-
-// fetchPcbCopperLayerCount reads copperLayerCount from pcb.layers.list
-// (2 on failure — the conservative class where via-bond stays silent).
-func fetchPcbCopperLayerCount(cfg *appConfig, window string) int {
-	if lres, err := requestAction(cfg, "pcb.layers.list", window, nil); err == nil {
-		if n, ok := asFloatOK(mnav(lres.Result, "copperLayerCount")); ok && n > 0 {
-			return int(n)
-		}
-	}
-	return 2
 }
