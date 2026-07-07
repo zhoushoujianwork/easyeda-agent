@@ -113,6 +113,27 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
   `debug exec` 遍历 `sch_PrimitiveWire.getAll()` 按 xy 过滤应急,生产该有
   `schematic.primitives.list_by_region` 或类似)。
 
+### G. 多页原理图训练暴露的缺口(2026-07-07,XDS110 单页→多页重排)
+
+把同一 45 件设计从单张 A3 拆成两张 A4(USB/电源/调试 15 件 + 主控 30 件)验证「多
+页跨页同名网络自动合并」的机制,过程暴露:
+
+- [ ] **`sch autoconnect --all-pages` 会跨页尝试落笔,但 mutation(建 wire+flag)只能
+  作用于当前激活页的器件**——对非激活页的器件报「pin not found」而不是清晰的
+  「该器件在页 X,请先切过去」提示。应让报错明确指出目标器件所在页,或者
+  `autoconnect` 干脆按 spec 里每个 pin 所属页自动分组、内部依次切页执行。
+- [ ] **`sch read --all-pages` / `sch layout-lint --all-pages` 对非激活页的器件只给
+  壳数据**——前者 pins 数组为空,后者报 "N component(s) had no bbox (skipped)"。
+  两处都没在文档/报错里说明这个限制,容易让人误信"这就是全部真实数据"。应在
+  `--all-pages` 的说明里显式标注"仅当前激活页有完整 pin/bbox,其余页是聚合计数",
+  或者干脆让它们内部自动切页抓取(慢但数据真实完整)。
+- [x] **再次印证 autoconnect 非幂等的代价有多大**:调试期间因为不确定连接是否
+  生效而多跑了几次同一 spec,导致同一批 pin 上堆了 4 层重复 flag(124 netflag+
+  124 netport,应为约 60),电气上不影响正确性但视觉/后续维护是灾难。**唯一安全
+  做法是每次 autoconnect 落地前先 `--dry-run` 确认、落地后只读验证一次,绝不
+  因为"不确定"就重跑同一 spec**——这条应该写进 SKILL 的 Core Rules(不是训练
+  方法论,是操作纪律)。
+
 ## 探针轮次 #3 — esp32MiniRequire 从零重跑(2026-07-07,Board2/PCB2,agent 全程自驱)
 
 **结果:验收线全达标。** 原理图 20 件/13 网络(比前轮 +C7 EN-RC):layout-lint 0 overlap、

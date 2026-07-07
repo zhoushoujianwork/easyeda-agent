@@ -21,6 +21,12 @@ EasyEDA tooling.
 3. Inspect before mutating: read docs/pages, components, pins, board/layers/nets, and
    relevant rules before placing, moving, wiring, syncing, or saving.
 4. Confirm before destructive operations such as clear/delete/import bulk changes.
+4a. `sch autoconnect` / `sch connect` are NOT idempotent — re-running the same spec
+    on already-connected pins stacks a duplicate flag+wire rather than skipping or
+    replacing. If you're unsure whether a batch connect landed, verify with a read
+    (`sch read`/`sch list`), never by re-issuing the same connect call. If a
+    connection came out wrong, delete that pin's existing flag+stub wire first,
+    then reconnect it individually — do not rerun the whole spec.
 5. For non-trivial boards, follow the gated flow: pre-analysis, sheet/page plan,
    module grouping, group placement, channel routing, DRC/check/layout-lint, adjust,
    save checkpoints.
