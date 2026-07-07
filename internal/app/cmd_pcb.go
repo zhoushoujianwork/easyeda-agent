@@ -1760,7 +1760,7 @@ This is a SEED, not a final layout — verify with 'pcb drc'.
 	// Short-trace self-routing (daemon-side; see pcb_shortroute.go).
 	{
 		var maxLen, width, signalWidth, powerWidth, roundRadius float64
-		var dryRun, routePower, noAvoid bool
+		var dryRun, routePower, noAvoid, noMultilayer bool
 		var corner string
 		c := &cobra.Command{
 			Use:   "route-short",
@@ -1835,10 +1835,12 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 				opt.skipPower = !routePower
 				opt.avoid = !noAvoid
 				opt.clearance = rules.clearanceMil
-				segs, diags := planShortRoutes(comps, routed, opt)
+				opt.multilayer = !noMultilayer
+				segs, vias, diags := planShortRoutes(comps, routed, opt)
 
-				// 3. Draw (unless --dry-run), one line.create per segment.
-				drawn := 0
+				// 3. Draw (unless --dry-run): one line.create per segment, then one
+				// via.create per multilayer-hop via (layer-change joints).
+				drawn, viasDrawn := 0, 0
 				var failures []map[string]any
 				if !dryRun {
 					for _, s := range segs {
@@ -1852,19 +1854,30 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 						}
 						drawn++
 					}
+					for _, v := range vias {
+						payload := map[string]any{"x": v.X, "y": v.Y, "net": v.Net, "holeDiameter": opt.viaHole, "diameter": opt.viaDia}
+						if _, err := requestAction(cfg, "pcb.via.create", window, payload); err != nil {
+							failures = append(failures, map[string]any{"net": v.Net, "via": true, "error": err.Error()})
+							continue
+						}
+						viasDrawn++
+					}
 				}
 
 				// 4. Report.
 				out := map[string]any{
-					"ok":       true,
-					"dryRun":   dryRun,
-					"segments": len(segs),
-					"drawn":    drawn,
-					"avoid":    opt.avoid,
-					"rules":    map[string]any{"source": rules.source, "clearanceMil": rules.clearanceMil, "trackWidthMil": rules.trackWidthMil, "signalWidth": opt.signalWidth, "powerWidth": opt.powerWidth},
-					"routes":   segs,
-					"skipped":  diags,
-					"failures": failures,
+					"ok":         true,
+					"dryRun":     dryRun,
+					"segments":   len(segs),
+					"drawn":      drawn,
+					"vias":       len(vias),
+					"viasDrawn":  viasDrawn,
+					"multilayer": opt.multilayer,
+					"avoid":      opt.avoid,
+					"rules":      map[string]any{"source": rules.source, "clearanceMil": rules.clearanceMil, "trackWidthMil": rules.trackWidthMil, "signalWidth": opt.signalWidth, "powerWidth": opt.powerWidth},
+					"routes":     segs,
+					"skipped":    diags,
+					"failures":   failures,
 				}
 				enc := json.NewEncoder(stdout)
 				enc.SetIndent("", "  ")
@@ -1878,6 +1891,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 		c.Flags().StringVar(&corner, "corner", "90", "corner style: 90 (L), 45 (chamfer), round (chord fillet)")
 		c.Flags().Float64Var(&roundRadius, "round-radius", 0, "max fillet radius for --corner round (mil, default 20)")
 		c.Flags().BoolVar(&noAvoid, "no-avoid", false, "disable obstacle-aware L-orientation (v1 naive horizontal-first)")
+		c.Flags().BoolVar(&noMultilayer, "no-multilayer", false, "disable multilayer routing (defer too-long / cross-layer hops to the maze tier instead of detouring them via the alternate copper layer with vias)")
 		c.Flags().BoolVar(&routePower, "route-power", false, "also route power/ground nets as tracks (default skip — pour them instead; VCC/3V3/GND/… routed as thin tracks through pad fields is the #1 DRC source)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the routing plan without drawing anything")
 		pcb.AddCommand(c)

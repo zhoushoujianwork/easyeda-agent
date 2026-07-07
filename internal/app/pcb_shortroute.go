@@ -43,6 +43,15 @@ type rtSeg struct {
 	Width float64 `json:"width"`
 }
 
+// rtVia is one through-hole via to create at (X,Y), bound to Net. A THT via
+// connects every copper layer, so it is the layer-change joint for a multilayer
+// hop (route-short's own answer to a hop a single-layer L can't clear).
+type rtVia struct {
+	Net string  `json:"net"`
+	X   float64 `json:"x"`
+	Y   float64 `json:"y"`
+}
+
 // rtNetDiag explains why a net (or one hop of it) was not routed.
 type rtNetDiag struct {
 	Net    string `json:"net"`
@@ -59,6 +68,10 @@ type rtOptions struct {
 	roundRadius float64 // max fillet radius for corner=="round" (mil)
 	avoid       bool    // obstacle-aware L-orientation selection (#23)
 	clearance   float64 // safe-spacing clearance (mil) — a track must stay this far from other-net pads
+	multilayer  bool    // route the hops a single-layer L can't clear (too long / cross-layer) with a via detour on the alternate copper layer instead of deferring to the maze tier
+	stub        float64 // via setback from each pad on a multilayer hop (mil) — keeps vias OFF pads
+	viaDia      float64 // multilayer-hop via outer diameter (mil)
+	viaHole     float64 // multilayer-hop via hole/drill diameter (mil)
 }
 
 func defaultRtOptions() rtOptions {
@@ -66,6 +79,7 @@ func defaultRtOptions() rtOptions {
 		maxLen: 1000, width: 0, signalWidth: 10, powerWidth: 20,
 		skipPower: true, corner: "90", roundRadius: 20,
 		avoid: true, clearance: 6,
+		multilayer: true, stub: 30, viaDia: 24, viaHole: 12,
 	}
 }
 
@@ -86,7 +100,7 @@ func (o rtOptions) widthFor(net string) float64 {
 // planShortRoutes is the pure planner: given placed components (with pads) and
 // which nets are already routed, return the track segments to create plus
 // diagnostics for every net/hop deliberately left unrouted.
-func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOptions) ([]rtSeg, []rtNetDiag) {
+func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOptions) ([]rtSeg, []rtVia, []rtNetDiag) {
 	byNet := map[string][]rtPad{}
 	var obPads []obPad // every pad (with net) = an obstacle for other nets' tracks
 	for _, c := range comps {
@@ -107,6 +121,7 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 	sort.Strings(nets)
 
 	var segs []rtSeg
+	var vias []rtVia
 	var diags []rtNetDiag
 	for _, net := range nets {
 		pads := byNet[net]
@@ -125,12 +140,23 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 		for _, e := range mstEdges(pads) {
 			a, b := pads[e.u], pads[e.v]
 			hop := fmt.Sprintf("%s.%s↔%s.%s", a.comp, a.pin, b.comp, b.pin)
-			if a.layer != b.layer {
-				diags = append(diags, rtNetDiag{net, fmt.Sprintf("%s needs a via (layers %d/%d)", hop, a.layer, b.layer)})
-				continue
-			}
-			if mlen := math.Abs(a.x-b.x) + math.Abs(a.y-b.y); mlen > opt.maxLen {
-				diags = append(diags, rtNetDiag{net, fmt.Sprintf("%s too long (%.0f > %.0f mil) — maze tier", hop, mlen, opt.maxLen)})
+			crossLayer := a.layer != b.layer
+			mlen := math.Abs(a.x-b.x) + math.Abs(a.y-b.y)
+			// A hop a single-layer L can't clear: different pad layers, or too long
+			// for one straight run. Multilayer routing detours it via the alternate
+			// copper layer instead of deferring to the maze tier (#pcb-multilayer).
+			if crossLayer || mlen > opt.maxLen {
+				if opt.multilayer {
+					hs, hv := routeMultilayerHop(net, a, b, w, opt)
+					segs = append(segs, hs...)
+					vias = append(vias, hv...)
+					continue
+				}
+				if crossLayer {
+					diags = append(diags, rtNetDiag{net, fmt.Sprintf("%s needs a via (layers %d/%d) — enable --multilayer", hop, a.layer, b.layer)})
+				} else {
+					diags = append(diags, rtNetDiag{net, fmt.Sprintf("%s too long (%.0f > %.0f mil) — maze tier or --multilayer", hop, mlen, opt.maxLen)})
+				}
 				continue
 			}
 			// Obstacle-aware: pick the L orientation that hits the fewest other-net
@@ -140,7 +166,57 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			segs = append(segs, hopSegs...)
 		}
 	}
-	return segs, diags
+	return segs, vias, diags
+}
+
+// routeMultilayerHop routes a→b when a single-layer L won't do — either the pads
+// sit on different layers, or the hop is too long to run straight on one layer.
+// Cross-layer: a single via at the corner joins a.layer→b.layer. Same-layer: the
+// long L detours onto the OTHER copper layer (emptier), joined back to the pads
+// by two THT vias set `stub` mil off each pad so a via never lands on a pad.
+// Pad-side stubs stay on the pad's own layer; the trunk rides the other layer.
+func routeMultilayerHop(net string, a, b rtPad, w float64, opt rtOptions) ([]rtSeg, []rtVia) {
+	stub := opt.stub
+	dx, dy := b.x-a.x, b.y-a.y
+	sx, sy := sign(dx), sign(dy)
+
+	if a.layer != b.layer {
+		// Cross-layer: L on a.layer to the corner, one via, then b.layer to b.
+		cx, cy := b.x, a.y
+		segs := appendSeg(nil, net, a.x, a.y, cx, cy, a.layer, w)
+		segs = appendSeg(segs, net, cx, cy, b.x, b.y, b.layer, w)
+		return segs, []rtVia{{net, cx, cy}}
+	}
+
+	other := 2
+	if a.layer == 2 {
+		other = 1
+	}
+	// Nearly one-dimensional hops: a straight run on the other layer, a via at
+	// each end. Otherwise an H-first dogbone with the corner on the other layer.
+	if math.Abs(dx) < 2*stub {
+		v1x, v1y := a.x, a.y+sy*stub
+		v2x, v2y := b.x, b.y-sy*stub
+		segs := appendSeg(nil, net, a.x, a.y, v1x, v1y, a.layer, w)
+		segs = appendSeg(segs, net, v1x, v1y, v2x, v2y, other, w)
+		segs = appendSeg(segs, net, v2x, v2y, b.x, b.y, a.layer, w)
+		return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
+	}
+	if math.Abs(dy) < 2*stub {
+		v1x, v1y := a.x+sx*stub, a.y
+		v2x, v2y := b.x-sx*stub, b.y
+		segs := appendSeg(nil, net, a.x, a.y, v1x, v1y, a.layer, w)
+		segs = appendSeg(segs, net, v1x, v1y, v2x, v2y, other, w)
+		segs = appendSeg(segs, net, v2x, v2y, b.x, b.y, a.layer, w)
+		return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
+	}
+	v1x, v1y := a.x+sx*stub, a.y // via after a short horizontal stub off a
+	v2x, v2y := b.x, b.y-sy*stub // via before a short vertical stub into b
+	segs := appendSeg(nil, net, a.x, a.y, v1x, v1y, a.layer, w)
+	segs = appendSeg(segs, net, v1x, v1y, b.x, a.y, other, w) // other-layer horizontal trunk
+	segs = appendSeg(segs, net, b.x, a.y, v2x, v2y, other, w) // other-layer vertical trunk
+	segs = appendSeg(segs, net, v2x, v2y, b.x, b.y, a.layer, w)
+	return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
 }
 
 // routeHop connects a→b in the requested corner style, all on a.layer at width w.

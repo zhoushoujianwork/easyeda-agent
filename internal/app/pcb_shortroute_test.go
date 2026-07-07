@@ -26,7 +26,10 @@ func routeBoard() []apComp {
 }
 
 func TestPlanShortRoutes(t *testing.T) {
-	segs, diags := planShortRoutes(routeBoard(), map[string]bool{}, defaultRtOptions())
+	// Base (single-layer) tier: too-long / cross-layer hops defer to diagnostics.
+	opt := defaultRtOptions()
+	opt.multilayer = false
+	segs, _, diags := planShortRoutes(routeBoard(), map[string]bool{}, opt)
 
 	routedNets := map[string]bool{}
 	for _, s := range segs {
@@ -74,10 +77,58 @@ func TestPlanShortRoutes(t *testing.T) {
 	}
 }
 
+// Multilayer tier (default): the hops the single-layer tier defers — too-long
+// (FAR) and cross-layer (XL) — get routed with a via detour instead.
+func TestPlanShortRoutes_Multilayer(t *testing.T) {
+	segs, vias, diags := planShortRoutes(routeBoard(), map[string]bool{}, defaultRtOptions())
+
+	routedNets := map[string]bool{}
+	viaNets := map[string]int{}
+	usesLayer2 := map[string]bool{}
+	for _, s := range segs {
+		routedNets[s.Net] = true
+		if s.Layer == 2 {
+			usesLayer2[s.Net] = true
+		}
+	}
+	for _, v := range vias {
+		viaNets[v.Net]++
+	}
+
+	// FAR (too long, same layer) is now routed with a 2-via detour on layer 2.
+	if !routedNets["FAR"] {
+		t.Error("FAR should be routed via multilayer detour")
+	}
+	if viaNets["FAR"] != 2 {
+		t.Errorf("FAR wants 2 vias (down + up), got %d", viaNets["FAR"])
+	}
+	if !usesLayer2["FAR"] {
+		t.Error("FAR's trunk should ride layer 2")
+	}
+	// XL (cross-layer) is routed with a single layer-change via.
+	if !routedNets["XL"] {
+		t.Error("XL cross-layer hop should be routed via one via")
+	}
+	if viaNets["XL"] != 1 {
+		t.Errorf("XL wants 1 layer-change via, got %d", viaNets["XL"])
+	}
+	// Power/ground still deferred (poured), and no bogus "too long" diag survives.
+	joined := ""
+	for _, d := range diags {
+		joined += d.Net + ":" + d.Reason + "\n"
+	}
+	if !strings.Contains(joined, "GND") {
+		t.Errorf("GND should still be a diagnostic (poured); got:\n%s", joined)
+	}
+	if strings.Contains(joined, "too long") || strings.Contains(joined, "needs a via") {
+		t.Errorf("multilayer routed the deferred hops; no maze/via diag should remain; got:\n%s", joined)
+	}
+}
+
 // Already-routed nets are left alone.
 func TestPlanShortRoutes_SkipAlreadyRouted(t *testing.T) {
 	board := routeBoard()
-	segs, _ := planShortRoutes(board, map[string]bool{"EN": true}, defaultRtOptions())
+	segs, _, _ := planShortRoutes(board, map[string]bool{"EN": true}, defaultRtOptions())
 	for _, s := range segs {
 		if s.Net == "EN" {
 			t.Fatal("EN was marked already-routed; must not be re-routed")
@@ -88,7 +139,7 @@ func TestPlanShortRoutes_SkipAlreadyRouted(t *testing.T) {
 // Track width follows net class: power/ground nets get the fatter powerWidth,
 // signals get signalWidth, and an explicit --width overrides both.
 func TestPlanShortRoutes_WidthByClass(t *testing.T) {
-	segs, _ := planShortRoutes(routeBoard(), map[string]bool{}, defaultRtOptions())
+	segs, _, _ := planShortRoutes(routeBoard(), map[string]bool{}, defaultRtOptions())
 	for _, s := range segs {
 		want := 10.0 // signal default
 		if s.Net == "3V3" {
@@ -101,7 +152,7 @@ func TestPlanShortRoutes_WidthByClass(t *testing.T) {
 
 	opt := defaultRtOptions()
 	opt.width = 8 // global override wins for every class
-	forced, _ := planShortRoutes(routeBoard(), map[string]bool{}, opt)
+	forced, _, _ := planShortRoutes(routeBoard(), map[string]bool{}, opt)
 	for _, s := range forced {
 		if s.Width != 8 {
 			t.Errorf("--width override: net %s width %.0f, want 8", s.Net, s.Width)
@@ -123,7 +174,7 @@ func TestRouteHop_CornerStyles(t *testing.T) {
 	// 90°: two axis-aligned segments, no diagonal.
 	opt := defaultRtOptions()
 	opt.corner = "90"
-	segs, _ := planShortRoutes(board, map[string]bool{}, opt)
+	segs, _, _ := planShortRoutes(board, map[string]bool{}, opt)
 	if len(segs) != 2 {
 		t.Fatalf("90° want 2 segs, got %d: %+v", len(segs), segs)
 	}
@@ -135,7 +186,7 @@ func TestRouteHop_CornerStyles(t *testing.T) {
 
 	// 45°: a chamfer — exactly one segment whose run is a true 45° (|dx|==|dy|).
 	opt.corner = "45"
-	segs45, _ := planShortRoutes(board, map[string]bool{}, opt)
+	segs45, _, _ := planShortRoutes(board, map[string]bool{}, opt)
 	diag := 0
 	for _, s := range segs45 {
 		if dx, dy := absf(s.X2-s.X1), absf(s.Y2-s.Y1); dx != 0 && dy != 0 {
@@ -151,7 +202,7 @@ func TestRouteHop_CornerStyles(t *testing.T) {
 
 	// round: a chord-approximated fillet → more segments than the bare L.
 	opt.corner = "round"
-	segsR, _ := planShortRoutes(board, map[string]bool{}, opt)
+	segsR, _, _ := planShortRoutes(board, map[string]bool{}, opt)
 	if len(segsR) <= 2 {
 		t.Errorf("round want >2 chord segments, got %d", len(segsR))
 	}
