@@ -49,12 +49,6 @@ EasyEDA tooling.
   environment itself (open web editor → open project → verify attach → hot-reload
   connector via IndexedDB, no uninstall/re-import); only fall back to asking the
   user when no browser control is available.
-- Asked to copy/replicate an official oshwhub.com open-source board, or to run a
-  "抄图" training round: read `references/copy-training.md` — golden-spec extraction,
-  batch part resolution (LCSC C-number search is fuzzy, verify hits), and the
-  netlist-diff acceptance script (`training/copy-check.py`), plus real pitfalls
-  from the first closed loop (non-idempotent autoconnect, stub-wire orphaning,
-  area-delete collateral damage).
 - Whole board, from scratch, or >~10 parts: read `references/design-flow.md` first.
 - Schematic work: read `references/schematic.md` and `references/actions.md`.
 - PCB work: read `references/pcb.md`.
