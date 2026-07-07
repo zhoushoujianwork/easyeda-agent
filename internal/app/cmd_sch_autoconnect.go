@@ -59,6 +59,12 @@ type acPin struct {
 	PinNumber  string
 	PinName    string
 	OwnerBBox  *layoutBBox
+	// Net is the pin's CURRENT authoritative net (from schematic.components.list
+	// --include-pins). Empty means "floating" when NetKnown is true; NetKnown is
+	// false when the netlist wasn't available, so idempotency checks can't run and
+	// must fall back to unconditional connect. See issue #50.
+	Net      string
+	NetKnown bool
 }
 
 // acComponent is a part known to the scene, whether or not its pins made it in.
@@ -381,6 +387,36 @@ func planConnection(pin acPin, canonicalKind string, scene acScene, rules autoco
 		return all[i].Offset < all[j].Offset
 	})
 	return all
+}
+
+// ── idempotency: three-state pin/net decision (issue #50) ───────────────────
+
+// acConnState is the decision for one connection BEFORE any mutation, so a repeat
+// run over the same spec is idempotent instead of stacking duplicate flags+wires.
+type acConnState string
+
+const (
+	// acStateNew: the pin has no net yet (or we can't tell) → plan + connect.
+	acStateNew acConnState = "new"
+	// acStateAlreadyConnected: the pin is already on the spec's target net → skip.
+	acStateAlreadyConnected acConnState = "already-connected"
+	// acStateConflict: the pin is on a DIFFERENT net → error unless --replace.
+	acStateConflict acConnState = "conflict"
+)
+
+// decideConnState is the PURE idempotency core: given the pin's current net
+// (currentNet, only meaningful when netKnown is true) and the spec's target net,
+// classify the connection. When the current net is unknown (netlist unavailable)
+// we can't prove idempotency, so we fall back to "new" and let connect_pin run —
+// preserving the pre-#50 behavior rather than silently skipping.
+func decideConnState(currentNet string, netKnown bool, targetNet string) acConnState {
+	if !netKnown || currentNet == "" {
+		return acStateNew
+	}
+	if currentNet == targetNet {
+		return acStateAlreadyConnected
+	}
+	return acStateConflict
 }
 
 // dominantReason picks the most expensive penalty for a rejected candidate's

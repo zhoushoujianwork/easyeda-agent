@@ -329,7 +329,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		}
 		c.Flags().BoolVar(&allPages, "all-pages", false, "list components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
 		c.Flags().BoolVar(&includeBBox, "include-bbox", false, "attach each component's rendered extent {minX,minY,maxX,maxY}")
-		c.Flags().BoolVar(&includePins, "include-pins", false, "attach each pin's {pinName,pinNumber,x,y,noConnected} — the data plane for routing/connectivity checks (output grows, esp. with --all-pages)")
+		c.Flags().BoolVar(&includePins, "include-pins", false, "attach each pin's {pinName,pinNumber,x,y,noConnected,net} — the data plane for routing/connectivity checks (net is the pin's current authoritative net, null when the netlist is unavailable; output grows, esp. with --all-pages)")
 		sch.AddCommand(c)
 	}
 

@@ -266,6 +266,75 @@ func TestBuildScene_ProvisionalWhenNoSheet(t *testing.T) {
 	}
 }
 
+// ── idempotency: three-state decision (issue #50) ───────────────────────────
+
+func TestDecideConnState_ThreeStates(t *testing.T) {
+	cases := []struct {
+		name       string
+		currentNet string
+		netKnown   bool
+		targetNet  string
+		want       acConnState
+	}{
+		// Pin floating (net known, empty) → normal new connection.
+		{"floating pin → new", "", true, "GND", acStateNew},
+		// Pin already on the target net → skip (the core idempotency case).
+		{"same net → already-connected", "GND", true, "GND", acStateAlreadyConnected},
+		// Pin on a different net → conflict (default error, --replace overrides).
+		{"different net → conflict", "+3V3", true, "GND", acStateConflict},
+		// Netlist unavailable → can't prove idempotency, fall back to new.
+		{"net unknown → new (fallback)", "GND", false, "GND", acStateNew},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := decideConnState(tc.currentNet, tc.netKnown, tc.targetNet)
+			if got != tc.want {
+				t.Errorf("decideConnState(%q, %v, %q) = %q, want %q",
+					tc.currentNet, tc.netKnown, tc.targetNet, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestBuildScene_ParsesPinNet verifies the pin's current net flows from the
+// extension payload into acPin: a string sets NetKnown, a null does not.
+func TestBuildScene_ParsesPinNet(t *testing.T) {
+	result := map[string]any{"components": []any{
+		map[string]any{
+			"componentType": "part", "designator": "U1",
+			"bbox": map[string]any{"minX": 0.0, "minY": 0.0, "maxX": 10.0, "maxY": 10.0},
+			"pins": []any{
+				map[string]any{"pinNumber": "1", "pinName": "GND", "x": 0.0, "y": 5.0, "net": "GND"},
+				map[string]any{"pinNumber": "2", "pinName": "IN", "x": 0.0, "y": 8.0, "net": ""},
+				// net: nil → netlist unavailable for this pin.
+				map[string]any{"pinNumber": "3", "pinName": "OUT", "x": 0.0, "y": 9.0, "net": nil},
+				// no net key at all → also unknown.
+				map[string]any{"pinNumber": "4", "pinName": "NC", "x": 0.0, "y": 9.5},
+			},
+		},
+	}}
+	scene := buildScene(result)
+	if len(scene.Pins) != 4 {
+		t.Fatalf("expected 4 pins, got %d", len(scene.Pins))
+	}
+	byNum := map[string]acPin{}
+	for _, p := range scene.Pins {
+		byNum[p.PinNumber] = p
+	}
+	if p := byNum["1"]; !p.NetKnown || p.Net != "GND" {
+		t.Errorf("pin 1: want net=GND known, got net=%q known=%v", p.Net, p.NetKnown)
+	}
+	if p := byNum["2"]; !p.NetKnown || p.Net != "" {
+		t.Errorf("pin 2: want floating (empty, known), got net=%q known=%v", p.Net, p.NetKnown)
+	}
+	if p := byNum["3"]; p.NetKnown {
+		t.Errorf("pin 3: net was null → should be unknown, got known=%v", p.NetKnown)
+	}
+	if p := byNum["4"]; p.NetKnown {
+		t.Errorf("pin 4: no net key → should be unknown, got known=%v", p.NetKnown)
+	}
+}
+
 func TestBuildScene_OffPageComponentIsPinlessWithPage(t *testing.T) {
 	// --all-pages surfaces D7 (on page B) with page tags but NO pins (the active
 	// page's pin lookup didn't return them). buildScene must record it as a

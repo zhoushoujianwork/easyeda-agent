@@ -496,6 +496,17 @@ const schematicComponentsList: Handler = async (payload) => {
 		throw edaError(err, 'Failed to list schematic components.');
 	}
 
+	// When pins are requested, also resolve each pin's CURRENT net from the
+	// JSON-authoritative netlist (same source as schematic.read). This is the data
+	// plane `sch autoconnect` needs to be idempotent: without a per-pin net it can't
+	// tell "already connected to the target net" (skip) from "connected to a DIFFERENT
+	// net" (conflict) from "floating" (new connect). See issue #50.
+	let pinNetsByDesignator: Map<string, Map<string, string>> | null = null;
+	if (includePins) {
+		try { pinNetsByDesignator = (await collectNetlistPinNets()).byDesignator; }
+		catch { pinNetsByDesignator = null; }
+	}
+
 	const serialized: Array<Record<string, unknown>> = [];
 	for (const component of components) {
 		const record = serializeComponent(component);
@@ -518,7 +529,14 @@ const schematicComponentsList: Handler = async (payload) => {
 				const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(
 					component.getState_PrimitiveId(),
 				);
-				record.pins = (pins ?? []).map(serializePin);
+				const designator = String(component.getState_Designator?.() ?? '');
+				const netByNumber = pinNetsByDesignator?.get(designator) ?? null;
+				record.pins = (pins ?? []).map((pin) => {
+					const rec = serializePin(pin);
+					// null (not '') distinguishes "known floating" from "netlist unavailable".
+					rec.net = netByNumber ? (netByNumber.get(String(rec.pinNumber ?? '')) ?? '') : null;
+					return rec;
+				});
 			}
 			catch { /* pins are optional */ }
 		}
@@ -2902,10 +2920,16 @@ const schematicPinDisconnect: Handler = async (payload) => {
 	const pinNumber = optionalString(payload, 'pin');
 	const flagPrimitiveId = optionalString(payload, 'flagPrimitiveId');
 	const wirePrimitiveId = optionalString(payload, 'wirePrimitiveId');
-	if (!flagPrimitiveId && !wirePrimitiveId && !(designator && pinNumber)) {
+	// Coordinate locator: `sch autoconnect --replace` (issue #50) already resolved
+	// the pin's (x,y) from the scene, so it can target the stub directly without a
+	// designator round-trip.
+	const payloadPinX = optionalNumber(payload, 'pinX');
+	const payloadPinY = optionalNumber(payload, 'pinY');
+	const hasCoord = payloadPinX !== undefined && payloadPinY !== undefined;
+	if (!flagPrimitiveId && !wirePrimitiveId && !hasCoord && !(designator && pinNumber)) {
 		throw new ActionError(
 			ErrorCodes.MISSING_PAYLOAD_FIELD,
-			'Provide either "designator"+"pin", or a "flagPrimitiveId"/"wirePrimitiveId" to disconnect.',
+			'Provide "designator"+"pin", "pinX"+"pinY", or a "flagPrimitiveId"/"wirePrimitiveId" to disconnect.',
 		);
 	}
 
@@ -2919,11 +2943,12 @@ const schematicPinDisconnect: Handler = async (payload) => {
 		throw edaError(err, 'Failed to read schematic primitives.');
 	}
 
-	// Resolve the target pin coordinate. Prefer explicit designator+pin; else derive
-	// it from the located stub's pin-side endpoint further below.
-	let pinX: number | undefined;
-	let pinY: number | undefined;
-	if (designator && pinNumber) {
+	// Resolve the target pin coordinate. Prefer an explicit pinX/pinY, then
+	// designator+pin; else derive it from the located stub's pin-side endpoint
+	// further below.
+	let pinX: number | undefined = payloadPinX;
+	let pinY: number | undefined = payloadPinY;
+	if (!hasCoord && designator && pinNumber) {
 		for (const c of components ?? []) {
 			if ((c.getState_Designator?.() ?? '') !== designator) continue;
 			let pins;
@@ -6279,6 +6304,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.group.move': schematicGroupMove,
 	'schematic.netflag.create': schematicNetflagCreate,
 	'schematic.pin.set_no_connect': schematicPinSetNoConnect,
+	'schematic.pin.disconnect': schematicPinDisconnect,
 	'schematic.select': schematicSelect,
 	'schematic.snapshot': schematicSnapshot,
 	'schematic.drc.check': schematicDrcCheck,
@@ -6288,7 +6314,6 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.export.netlist': schematicExportNetlist,
 	'schematic.export.bom': schematicExportBom,
 	'schematic.power.connect_pin': schematicPowerConnectPin,
-	'schematic.pin.disconnect': schematicPinDisconnect,
 	'schematic.library.search': schematicLibrarySearch,
 	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
 	'schematic.rebind.footprint': schematicRebindFootprint,
