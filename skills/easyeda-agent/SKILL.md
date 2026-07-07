@@ -37,7 +37,9 @@ EasyEDA tooling.
     rather than re-issuing the same call.
 5. For non-trivial boards, follow the gated flow: pre-analysis, sheet/page plan,
    module grouping, group placement, channel routing, DRC/check/layout-lint, adjust,
-   save checkpoints.
+   save checkpoints. Interaction defaults to milestone-confirmation (three tiers:
+   auto / milestone / step) — see `references/design-flow.md` → "交互模式(Interaction
+   Modes)" for the full definition.
 6. Persist good checkpoints with explicit `easyeda sch save` / PCB save workflows;
    debounced autosave is only a safety net.
 7. Judge correctness from data (`list`, `check`, `drc`, `layout-lint`), not screenshots.
@@ -64,6 +66,11 @@ EasyEDA tooling.
   connector via IndexedDB, no uninstall/re-import); only fall back to asking the
   user when no browser control is available.
 - Whole board, from scratch, or >~10 parts: read `references/design-flow.md` first.
+- Architecture trade-off pitfalls (genuine choices, not one right answer — stackup,
+  ground strategy, connector orientation, part cost tier): read
+  `references/design-decisions.md`; the S0 design-proposal stage produces a proposal
+  from these for the user to confirm. (RF/antenna keepout is a guardrail with one
+  correct answer — full-layer coverage — not a Decision; it stays out of this list.)
 - Schematic work: read `references/schematic.md` and `references/actions.md`.
 - PCB work: read `references/pcb.md`.
 - New/uncertain raw `eda.*` API use: first run `easyeda api search/show`, then check
