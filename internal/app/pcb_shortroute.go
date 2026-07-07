@@ -72,6 +72,20 @@ type rtOptions struct {
 	stub        float64 // via setback from each pad on a multilayer hop (mil) — keeps vias OFF pads
 	viaDia      float64 // multilayer-hop via outer diameter (mil)
 	viaHole     float64 // multilayer-hop via hole/drill diameter (mil)
+
+	// Pre-existing board copper the plan must stay clear of (routing on a board
+	// that already carries tracks/vias — without these the planner only avoids
+	// its OWN segments and lands new copper inside old copper's clearance band).
+	existing     []rtSeg
+	existingVias []obVia
+
+	// minWidth is the fab's legal minimum track width (mil). A hop whose endpoint
+	// sits in a FINE-PITCH pad field (an other-net pad within finePitch of it —
+	// USB-C 16P is 20mil pitch, 0402 is 40) narrows to this: a 10/20mil track
+	// terminating on a 20mil-pitch pad cannot clear the 6mil spacing rule to the
+	// neighbor pad no matter how it is routed — width is the only lever.
+	minWidth  float64
+	finePitch float64
 }
 
 func defaultRtOptions() rtOptions {
@@ -80,6 +94,7 @@ func defaultRtOptions() rtOptions {
 		skipPower: true, corner: "90", roundRadius: 20,
 		avoid: true, clearance: 6,
 		multilayer: true, stub: 30, viaDia: 24, viaHole: 12,
+		minWidth: 6, finePitch: 26,
 	}
 }
 
@@ -122,7 +137,8 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 
 	var segs []rtSeg
 	var vias []rtVia
-	var obVias []obVia // multilayer-hop vias become obstacles for later hops
+	obstacleSegs := append([]rtSeg(nil), opt.existing...)     // pre-existing + planned copper
+	obVias := append([]obVia(nil), opt.existingVias...)       // pre-existing + planned vias
 	var diags []rtNetDiag
 	clr := opt.clearance + nominalPadHalf
 	for _, net := range nets {
@@ -138,13 +154,21 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			diags = append(diags, rtNetDiag{net, "single pad — nothing to route"})
 			continue
 		}
-		w := opt.widthFor(net)
+		classW := opt.widthFor(net)
 		for _, e := range mstEdges(pads) {
 			a, b := pads[e.u], pads[e.v]
 			hop := fmt.Sprintf("%s.%s↔%s.%s", a.comp, a.pin, b.comp, b.pin)
 			crossLayer := a.layer != b.layer
 			mlen := math.Abs(a.x-b.x) + math.Abs(a.y-b.y)
 			mustDetour := crossLayer || mlen > opt.maxLen // can't run as one same-layer L
+
+			// Fine-pitch endpoint → the whole hop narrows to the legal minimum
+			// (see rtOptions.minWidth: at 20mil pitch no wider track can clear).
+			w := classW
+			if opt.minWidth > 0 && opt.minWidth < w &&
+				(finePitchAt(a.x, a.y, net, obPads, opt.finePitch) || finePitchAt(b.x, b.y, net, obPads, opt.finePitch)) {
+				w = opt.minWidth
+			}
 
 			// Without multilayer, a hop that needs a detour defers to the maze tier.
 			if mustDetour && !opt.multilayer {
@@ -160,23 +184,24 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			single := []rtSeg(nil)
 			singleCost := 1 << 30
 			if !mustDetour {
-				single = routeWithAvoid(net, a, b, w, opt, segs, obPads, obVias)
-				singleCost = hopCost(single, net, a, b, segs, obPads, obVias, clr)
+				single = routeWithAvoid(net, a, b, w, opt, obstacleSegs, obPads, obVias)
+				singleCost = hopCost(single, net, a, b, obstacleSegs, obPads, obVias, clr)
 			}
 
 			// Detour onto the emptier copper layer when the hop needs it, or when the
 			// same-layer L would violate clearance and a bottom-layer trunk is cleaner
 			// (all SMD pads sit on top, so the bottom trunk clears the pad field).
 			if opt.multilayer && (mustDetour || singleCost > 0) {
-				ml, mv := routeMultilayerHop(net, a, b, w, opt)
+				ml, mv := routeMultilayerHop(net, a, b, w, opt, obPads, obVias, obstacleSegs)
 				// The detour's cost includes its own vias landing near other nets —
 				// otherwise it would trade a track-over-pad short for a worse via-over-pad.
-				mlCost := hopCost(ml, net, a, b, segs, obPads, obVias, clr)
+				mlCost := hopCost(ml, net, a, b, obstacleSegs, obPads, obVias, clr)
 				for _, vv := range mv {
 					mlCost += viaClearanceCost(vv, obPads, obVias, clr, opt.viaDia/2)
 				}
 				if mustDetour || mlCost < singleCost {
 					segs = append(segs, ml...)
+					obstacleSegs = append(obstacleSegs, ml...)
 					vias = append(vias, mv...)
 					for _, vv := range mv {
 						obVias = append(obVias, obVia{net: vv.Net, x: vv.X, y: vv.Y, r: opt.viaDia / 2})
@@ -185,59 +210,104 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 				}
 			}
 			segs = append(segs, single...)
+			obstacleSegs = append(obstacleSegs, single...)
 		}
 	}
 	return segs, vias, diags
 }
 
-// routeMultilayerHop routes a→b when a single-layer L won't do — either the pads
-// sit on different layers, or the hop is too long to run straight on one layer.
-// Cross-layer: a single via at the corner joins a.layer→b.layer. Same-layer: the
-// long L detours onto the OTHER copper layer (emptier), joined back to the pads
-// by two THT vias set `stub` mil off each pad so a via never lands on a pad.
-// Pad-side stubs stay on the pad's own layer; the trunk rides the other layer.
-func routeMultilayerHop(net string, a, b rtPad, w float64, opt rtOptions) ([]rtSeg, []rtVia) {
-	stub := opt.stub
-	dx, dy := b.x-a.x, b.y-a.y
-	sx, sy := sign(dx), sign(dy)
+// viaSpotClear reports whether a via at (x,y) sits clear of every other-net pad,
+// every via (any net — the drill web), and every other-net segment already down.
+func viaSpotClear(x, y float64, net string, obPads []obPad, obVias []obVia, segs []rtSeg, opt rtOptions) bool {
+	viaR := opt.viaDia / 2
+	for _, p := range obPads {
+		if p.net == net {
+			continue
+		}
+		if math.Hypot(x-p.x, y-p.y) < opt.clearance+viaR+nominalPadHalf {
+			return false
+		}
+	}
+	for _, v := range obVias {
+		if math.Hypot(x-v.x, y-v.y) < viaR+v.r+math.Max(opt.clearance, 4) {
+			return false
+		}
+	}
+	for _, s := range segs {
+		if s.Net == net {
+			continue
+		}
+		if segPointDist(s.X1, s.Y1, s.X2, s.Y2, x, y) < opt.clearance+viaR+s.Width/2 {
+			return false
+		}
+	}
+	return true
+}
 
+// findViaSpot picks a clearance-clean via position near (px,py), searching a ring
+// of candidates at growing offsets. Falls back to the fixed stub offset toward
+// (tx,ty) when nothing is clean (the caller's cost model then judges it).
+func findViaSpot(px, py, tx, ty float64, net string, opt rtOptions, obPads []obPad, obVias []obVia, segs []rtSeg) (float64, float64) {
+	for _, off := range []float64{opt.stub, opt.stub * 2, opt.stub * 3} {
+		for _, d := range stitchDirs {
+			x, y := px+d[0]*off, py+d[1]*off
+			if viaSpotClear(x, y, net, obPads, obVias, segs, opt) {
+				return x, y
+			}
+		}
+	}
+	return px + sign(tx-px)*opt.stub, py
+}
+
+// routeMultilayerHop routes a→b when a single-layer L won't do — either the pads
+// sit on different layers, or the hop can't run clean on its own layer. The via
+// positions are clearance-searched (findViaSpot), not fixed: in a fine-pitch pad
+// field the vias walk OUT of the field instead of landing between pads. Pad-side
+// stubs stay on the pad's own layer; the trunk rides the other copper layer.
+func routeMultilayerHop(net string, a, b rtPad, w float64, opt rtOptions, obPads []obPad, obVias []obVia, obstacleSegs []rtSeg) ([]rtSeg, []rtVia) {
+	isTH := func(l int) bool { return l != 1 && l != 2 }
 	if a.layer != b.layer {
-		// Cross-layer: L on a.layer to the corner, one via, then b.layer to b.
-		cx, cy := b.x, a.y
-		segs := appendSeg(nil, net, a.x, a.y, cx, cy, a.layer, w)
-		segs = appendSeg(segs, net, cx, cy, b.x, b.y, b.layer, w)
-		return segs, []rtVia{{net, cx, cy}}
+		// A through-hole pad (multi-layer, id outside 1/2) reaches every copper
+		// layer by itself — route the whole L on the SMD side's layer, no via.
+		if isTH(a.layer) && !isTH(b.layer) {
+			return lShape90(net, rtPad{x: a.x, y: a.y, layer: b.layer}, b, w, true), nil
+		}
+		if isTH(b.layer) && !isTH(a.layer) {
+			return lShape90(net, a, rtPad{x: b.x, y: b.y, layer: a.layer}, w, true), nil
+		}
+		if isTH(a.layer) && isTH(b.layer) {
+			return lShape90(net, rtPad{x: a.x, y: a.y, layer: 1}, rtPad{x: b.x, y: b.y, layer: 1}, w, true), nil
+		}
+		// True SMD top↔bottom: L on a.layer to a clear via, then b.layer to b.
+		vx, vy := findViaSpot(b.x, a.y, a.x, a.y, net, opt, obPads, obVias, obstacleSegs)
+		segs := bestL(net, a, rtPad{x: vx, y: vy, layer: a.layer}, w, opt, obstacleSegs, obPads, obVias)
+		segs = append(segs, bestL(net, rtPad{x: vx, y: vy, layer: b.layer}, b, w, opt, obstacleSegs, obPads, obVias)...)
+		return segs, []rtVia{{net, vx, vy}}
 	}
 
 	other := 2
 	if a.layer == 2 {
 		other = 1
 	}
-	// Nearly one-dimensional hops: a straight run on the other layer, a via at
-	// each end. Otherwise an H-first dogbone with the corner on the other layer.
-	if math.Abs(dx) < 2*stub {
-		v1x, v1y := a.x, a.y+sy*stub
-		v2x, v2y := b.x, b.y-sy*stub
-		segs := appendSeg(nil, net, a.x, a.y, v1x, v1y, a.layer, w)
-		segs = appendSeg(segs, net, v1x, v1y, v2x, v2y, other, w)
-		segs = appendSeg(segs, net, v2x, v2y, b.x, b.y, a.layer, w)
-		return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
-	}
-	if math.Abs(dy) < 2*stub {
-		v1x, v1y := a.x+sx*stub, a.y
-		v2x, v2y := b.x-sx*stub, b.y
-		segs := appendSeg(nil, net, a.x, a.y, v1x, v1y, a.layer, w)
-		segs = appendSeg(segs, net, v1x, v1y, v2x, v2y, other, w)
-		segs = appendSeg(segs, net, v2x, v2y, b.x, b.y, a.layer, w)
-		return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
-	}
-	v1x, v1y := a.x+sx*stub, a.y // via after a short horizontal stub off a
-	v2x, v2y := b.x, b.y-sy*stub // via before a short vertical stub into b
-	segs := appendSeg(nil, net, a.x, a.y, v1x, v1y, a.layer, w)
-	segs = appendSeg(segs, net, v1x, v1y, b.x, a.y, other, w) // other-layer horizontal trunk
-	segs = appendSeg(segs, net, b.x, a.y, v2x, v2y, other, w) // other-layer vertical trunk
-	segs = appendSeg(segs, net, v2x, v2y, b.x, b.y, a.layer, w)
+	v1x, v1y := findViaSpot(a.x, a.y, b.x, b.y, net, opt, obPads, obVias, obstacleSegs)
+	v2x, v2y := findViaSpot(b.x, b.y, a.x, a.y, net, opt, obPads, obVias, obstacleSegs)
+	segs := bestL(net, a, rtPad{x: v1x, y: v1y, layer: a.layer}, w, opt, obstacleSegs, obPads, obVias) // pad-side stub (a.layer)
+	segs = append(segs, bestL(net, rtPad{x: v1x, y: v1y, layer: other}, rtPad{x: v2x, y: v2y, layer: other}, w, opt, obstacleSegs, obPads, obVias)...) // trunk
+	segs = append(segs, bestL(net, rtPad{x: v2x, y: v2y, layer: b.layer}, b, w, opt, obstacleSegs, obPads, obVias)...) // stub into b
 	return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
+}
+
+// bestL picks the cheaper L orientation between two points on the FROM point's
+// layer — the multilayer hop's sub-segments get the same obstacle-aware
+// orientation choice a plain hop gets, instead of a hardcoded corner.
+func bestL(net string, from, to rtPad, w float64, opt rtOptions, obstacleSegs []rtSeg, obPads []obPad, obVias []obVia) []rtSeg {
+	h := lShape90(net, from, to, w, true)
+	v := lShape90(net, from, to, w, false)
+	clr := opt.clearance + nominalPadHalf
+	if hopCost(v, net, from, to, obstacleSegs, obPads, obVias, clr) < hopCost(h, net, from, to, obstacleSegs, obPads, obVias, clr) {
+		return v
+	}
+	return h
 }
 
 // routeHop connects a→b in the requested corner style, all on a.layer at width w.
@@ -350,6 +420,23 @@ func lShapeRound(net string, a, b rtPad, w, maxR float64, hFirst bool) []rtSeg {
 		px, py = nx, ny
 	}
 	return appendSeg(out, net, px, py, b.x, b.y, a.layer, w) // straight out
+}
+
+// finePitchAt reports whether an other-net pad sits within `pitch` mil of (x,y) —
+// i.e. the point is inside a fine-pitch pad field (USB-C 16P: 20mil pitch).
+func finePitchAt(x, y float64, net string, obPads []obPad, pitch float64) bool {
+	if pitch <= 0 {
+		return false
+	}
+	for _, p := range obPads {
+		if p.net == net {
+			continue
+		}
+		if math.Hypot(p.x-x, p.y-y) <= pitch {
+			return true
+		}
+	}
+	return false
 }
 
 type rtEdge struct{ u, v int }

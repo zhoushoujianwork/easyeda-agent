@@ -1836,6 +1836,18 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 				opt.avoid = !noAvoid
 				opt.clearance = rules.clearanceMil
 				opt.multilayer = !noMultilayer
+				// Existing board copper (tracks/vias from a partial or earlier route)
+				// is an obstacle set — new hops must stay clear of it.
+				if bt, err := fetchPcbTracks(cfg, window); err == nil {
+					for _, t := range bt {
+						opt.existing = append(opt.existing, rtSeg{Net: t.Net, X1: t.X1, Y1: t.Y1, X2: t.X2, Y2: t.Y2, Layer: t.Layer, Width: t.Width})
+					}
+				}
+				if bv, err := fetchPcbVias(cfg, window); err == nil {
+					for _, v := range bv {
+						opt.existingVias = append(opt.existingVias, obVia{net: v.Net, x: v.X, y: v.Y, r: v.Dia / 2})
+					}
+				}
 				segs, vias, diags := planShortRoutes(comps, routed, opt)
 
 				// 3. Draw (unless --dry-run): one line.create per segment, then one
