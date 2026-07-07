@@ -272,13 +272,25 @@ func coreFanoutLanes(core alPart, channelLen, halfWidth float64) []layoutBBox {
 // makePlacement converts a target bbox-CENTER into the part's new ANCHOR
 // coordinate (modify sets the anchor). Moving translates anchor and bbox by the
 // same vector, so newAnchor = oldAnchor + (targetCenter - oldBBoxCenter).
+// schAnchorGrid is the schematic placement grid the final part ANCHOR must land
+// on. EasyEDA snaps a netflag/netport's connection pin to a 5-unit grid, and
+// symbol pins sit at multiples of 5 from the part anchor — so an off-grid
+// anchor puts EVERY pin off-grid, and connect_pin stubs then fail outright
+// (a horizontal stub's snapped endpoint goes diagonal → "Failed to create
+// pin-stub wire") or leave the flag floating. Zone-centering math naturally
+// produces fractional centers (825/4 = 206.25), which is how probe round #3
+// hit this: 53/64 autoconnect failures on an autolayout-placed page.
+const schAnchorGrid = 5
+
+func snapAnchor(v float64) float64 { return math.Round(v/schAnchorGrid) * schAnchorGrid }
+
 func makePlacement(p alPart, targetCX, targetCY float64, module string, retries int) alPlacement {
 	ocx, ocy := bboxCenter(p.BBox)
 	dx, dy := targetCX-ocx, targetCY-ocy
 	return alPlacement{
 		Designator:  p.Designator,
-		X:           round2(p.AnchorX + dx),
-		Y:           round2(p.AnchorY + dy),
+		X:           snapAnchor(p.AnchorX + dx),
+		Y:           snapAnchor(p.AnchorY + dy),
 		Rotation:    p.Rotation,
 		Module:      module,
 		PrimitiveID: p.PrimitiveID,

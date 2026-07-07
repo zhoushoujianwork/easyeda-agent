@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // part is a tiny test helper: a placed part whose anchor sits at its bbox center
 // (anchorOffset 0), so target-center == target-anchor and the asserted
@@ -36,10 +39,15 @@ func TestPlanAutolayout_CorePlacedAtZoneCenter(t *testing.T) {
 		t.Fatal("U1 not placed")
 	}
 	// center zone center: x in [1/3,2/3] of 1188 → mid = 594; y full → 420.
+	// The emitted anchor is grid-snapped (schAnchorGrid) so pins stay on the
+	// netflag grid — accept within half a grid step of the exact center.
 	zr := zoneRect("center", *a4Sheet())
 	wantX, wantY := bboxCenter(zr)
-	if pl.X != round2(wantX) || pl.Y != round2(wantY) {
-		t.Errorf("core not at zone center: got (%.2f,%.2f) want (%.2f,%.2f)", pl.X, pl.Y, wantX, wantY)
+	if math.Abs(pl.X-wantX) > schAnchorGrid/2 || math.Abs(pl.Y-wantY) > schAnchorGrid/2 {
+		t.Errorf("core not at (snapped) zone center: got (%.2f,%.2f) want (%.2f,%.2f)±%.1f", pl.X, pl.Y, wantX, wantY, schAnchorGrid/2.0)
+	}
+	if pl.X != math.Round(pl.X/schAnchorGrid)*schAnchorGrid || pl.Y != math.Round(pl.Y/schAnchorGrid)*schAnchorGrid {
+		t.Errorf("anchor (%.2f,%.2f) not on the %v-grid", pl.X, pl.Y, schAnchorGrid)
 	}
 }
 
@@ -214,5 +222,29 @@ func TestMakePlacement_AnchorOffsetPreserved(t *testing.T) {
 	pl := makePlacement(p, 120, 220, "M", 0)
 	if pl.X != 100 || pl.Y != 200 {
 		t.Errorf("anchor offset not preserved: got (%.2f,%.2f) want (100,200)", pl.X, pl.Y)
+	}
+}
+
+// Probe round #3 regression: zone centering produces fractional centers
+// (825/4 = 206.25); the emitted anchor must land on the 5-unit schematic grid
+// or every pin goes off-grid and connect_pin stubs fail ("Failed to create
+// pin-stub wire") or float.
+func TestMakePlacementSnapsAnchorToGrid(t *testing.T) {
+	p := alPart{
+		Designator: "U2",
+		AnchorX:    200, AnchorY: 600, // placed on-grid by the user
+		HasBBox: true,
+		BBox:    layoutBBox{MinX: 170, MinY: 570, MaxX: 230, MaxY: 630},
+	}
+	// Fractional zone center like the real A4 quarters produce.
+	got := makePlacement(p, 195.0, 618.75, "POWER", 0)
+	for _, v := range []float64{got.X, got.Y} {
+		if v != math.Round(v/schAnchorGrid)*schAnchorGrid {
+			t.Fatalf("anchor (%v, %v) not on the %v-grid", got.X, got.Y, schAnchorGrid)
+		}
+	}
+	// Still near the requested center (within one grid step per axis).
+	if math.Abs(got.X-195) > schAnchorGrid || math.Abs(got.Y-(600+18.75)) > schAnchorGrid {
+		t.Fatalf("snap moved the part too far: (%v, %v)", got.X, got.Y)
 	}
 }

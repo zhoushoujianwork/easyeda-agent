@@ -1672,7 +1672,12 @@ const schematicCheck: Handler = async (payload) => {
 			//                        or netlist muted + geometry wires it
 			//   floating          → neither source connects it (real floating pin)
 			//   geom-net-mismatch → geometry wires it but netlist has NO net (补漏报)
-			const status = classifyPinConnectivity(Boolean(netlistNet), geomConnected, netlistAvailable);
+			// Designator-less primitives (netflags/netports/netlabels DO expose a
+			// pin "1" on this build, despite the note above) can never appear in the
+			// netlist's components map — mute the netlist for them so geometry alone
+			// decides, else every flag pin becomes a geom-net-mismatch false report
+			// (probe round #3: 64/64 stubs flagged on a fully-connected page).
+			const status = classifyPinConnectivity(Boolean(netlistNet), geomConnected, netlistAvailable && Boolean(designator));
 			if (status === 'floating') {
 				floating.push(num);
 				const name = (() => {
@@ -2581,6 +2586,20 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 		throw new ActionError(
 			ErrorCodes.MISSING_PAYLOAD_FIELD,
 			`offset must be non-zero (got ${offset}); pin and netflag would overlap.`,
+		);
+	}
+
+	// An OFF-grid pin cannot get a valid stub at all: the snapped endpoint jogs
+	// the perpendicular axis, turning the stub diagonal (EasyEDA refuses to
+	// create it) — and un-snapping would leave the flag floating instead. Fail
+	// with the actionable cause (probe round #3: autolayout's fractional zone
+	// centers put every pin off-grid → 53/64 cryptic stub failures).
+	const offGridX = pinX !== Math.round(pinX / SCH_GRID) * SCH_GRID;
+	const offGridY = pinY !== Math.round(pinY / SCH_GRID) * SCH_GRID;
+	if ((direction === 'left' || direction === 'right') ? offGridY : offGridX) {
+		throw new ActionError(
+			ErrorCodes.EDA_CALL_FAILED,
+			`Pin (${pinX}, ${pinY}) sits OFF the ${SCH_GRID}-unit schematic grid on the stub's cross axis — the snapped endpoint would make the stub diagonal (EasyEDA refuses it) or leave the flag floating. Re-place the part so its anchor lands on the ${SCH_GRID}-grid (sch autolayout does this automatically), then reconnect.`,
 		);
 	}
 

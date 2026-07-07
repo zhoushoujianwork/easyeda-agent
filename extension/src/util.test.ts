@@ -132,3 +132,9 @@ test('classifyPinConnectivity: netlist muted → pure geometry, never mismatch',
 	assert.equal(classifyPinConnectivity(false, true, false), 'connected');
 	assert.equal(classifyPinConnectivity(false, false, false), 'floating');
 });
+
+test('classifyPinConnectivity: designator-less flag pin (netlist muted) + geometry wired → connected, not mismatch', () => {
+	// Probe round #3: netflags/netports expose a pin "1" but never appear in the
+	// netlist components map — callers mute the netlist for them (available=false).
+	assert.equal(classifyPinConnectivity(false, true, false), 'connected');
+});

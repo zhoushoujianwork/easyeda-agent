@@ -6,6 +6,20 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.11] - 2026-07-07
+
+探针轮次 #3(esp32MiniRequire 回归)实测暴露的两处修复。
+
+### Fixed
+- `schematic.check` geom-net-mismatch 对 netflag/netport 全量误报:此类原语在本
+  build 上**确实暴露 pin "1"**(与旧注释相反),但永远不会出现在网表 JSON 的
+  components 里 → 每个 stub 都被判「几何已连而网表无 net」。修法:designator 为空
+  的原语对网表交叉校验静音,几何单独判(64/64 误报 → 0)。
+- `schematic.power.connect_pin`:引脚本身不在 5 网格上时(横向 stub 的纵轴/纵向
+  stub 的横轴),快速失败并给出可行动报错(「重摆器件上网格」),替代原来晦涩的
+  "Failed to create pin-stub wire"。根因修在 CLI 侧:`sch autolayout` 现在把最终
+  锚点 snap 到 5 网格(分区居中会产出 206.25 这类分数坐标,曾致 53/64 批量失败)。
+
 ## [0.8.10] - 2026-07-07
 
 ### Added
