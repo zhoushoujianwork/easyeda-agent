@@ -352,6 +352,17 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.snapshot", "schematic.drc.check"},
 		},
 		{
+			Name:        "schematic.pin.disconnect",
+			Domain:      DomainSchematic,
+			Phase:       1,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Symmetric inverse of schematic.power.connect_pin — removes a pin's stub wire AND its netflag/netport/netlabel together. Fixes the orphan-stub trap: deleting only the flag (schematic.primitives.delete) leaves the wire dangling with an EasyEDA auto-named single-pin net ($3N…), which the old dangling-wire rule missed. Target by designator+pin, or by a known flagPrimitiveId/wirePrimitiveId (whatever connect_pin returned) — at least one locator required. Resolves ids via getAll()+local filter, not a per-id .get(id) (a just-created primitive can 404 on a direct .get()).",
+			Inputs:      []string{"designator + pin, OR flagPrimitiveId, OR wirePrimitiveId (at least one)"},
+			Outputs:     []string{"disconnected", "pin", "at{x,y}", "deletedWires", "deletedFlags"},
+			VerifyWith:  []string{"schematic.check", "schematic.snapshot"},
+		},
+		{
 			Name:        "schematic.select",
 			Domain:      DomainSchematic,
 			Phase:       1,
