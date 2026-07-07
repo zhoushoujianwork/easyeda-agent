@@ -7,15 +7,38 @@ follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- `schematic.pin.disconnect`:connect_pin 的逆操作,按坐标删除 pin 上的 stub 导线
-  **及其末端 flag/netport(成对删除,避免遗留孤儿线 — issue #51)**。`sch
-  autoconnect --replace` 换网时的底层原语。
+- `schematic.pin.disconnect` 新增 `pinX`+`pinY` 坐标定位:`sch autoconnect
+  --replace`(issue #50)已从场景解析出 pin 坐标,可直接定位 stub 而无需
+  designator 回溯。
 
 ### Changed
 - `schematic.components.list --include-pins`:每个 pin 现在附带 `net` 字段(取自
   权威网表,与 `schematic.read` 同源;网表不可用时为 `null`)。这是 `sch
   autoconnect` 做到幂等(issue #50)所需的数据面 —— 用于判定 pin 当前是否已连到
   目标网络。
+
+## [0.8.13] - 2026-07-07
+
+### Added
+- `schematic.group.move`(`easyeda sch group-move`)——把一个器件+周边 stub 导线/flag
+  当一个刚性整体平移(dx,dy),内部相对布局不变。**不对接 EasyEDA 原生"组合"字段**——
+  查证该字段无任何扩展 API 暴露(非 primitive 类型、无 getter/setter、不在
+  OtherProperty),这是独立的无状态虚拟分组:每次调用传完整成员 id,不跨调用记忆。
+  器件走 x/y modify(id 不变);导线无原地 modify,删除重建(net/color/width/lineType
+  保留,id 变)。id 解析走 `getAll()` 本地过滤(刚创建的图元直接 `.get(id)` 会瞬时
+  404,同批 `getAll()` 能看到——实测踩过,已修）。
+
+### Fixed
+- `schematic.page.rename` 改完立即 `doc ls` 读到旧页名(issue #55):
+  `modifySchematicPageName` 返回 `ok:true` 后,新名不会立刻进
+  `getAllSchematicPagesInfo()` 的元数据缓存,要等后续某个写操作才刷新。现在
+  `page.rename` 成功后做写后自校验——短间隔重试读回页面列表确认新名生效,命中返回
+  `verified:true`;重试耗尽仍未同步返回 `verified:false` + `warning`,把平台异步性
+  如实报给调用方,而不是盲目 echo `ok`。
+- `sch read`/`sch list`/`sch check`/`sch layout-lint` 的 `--all-pages` 对非激活页
+  只给壳数据(issue #54):现在如实警告 pins/bbox 对非激活页可能为空;
+  `layout-lint` 把 "no bbox (skipped)" 从脚注升级成醒目 WARN,并在结论里补一句
+  「skipped ≠ 确认无重叠」,避免空重叠结果被误读成全部过关。
 
 ## [0.8.11] - 2026-07-07
 
