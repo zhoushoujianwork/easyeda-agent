@@ -6,6 +6,13 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-07-07
+
+### Added
+- `pcb.fill.list` 新增 `includeBBox`:逐 fill 返回渲染 bbox(getPrimitivesBBox,
+  失败为 null)。供 `pcb check` 新 **via-bond** 规则判定「track↔via 结点是否已被
+  键合 fill 覆盖」(pro-api-sdk#31 裸结点不导通)。
+
 ## [0.8.9] - 2026-07-07
 
 闭环优化 B/P0 收尾:布线手术刀 + 换层跳线复合动作(封 pro-api-sdk#31 track↔via

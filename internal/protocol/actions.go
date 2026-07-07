@@ -978,9 +978,9 @@ func AllActions() []ActionSpec {
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
-			Description: "List net-bound filled regions (填充区域) on the active PCB, optionally filtered by layer and/or net. Read-only.",
-			Inputs:      []string{"layer optional", "net optional"},
-			Outputs:     []string{"fills[].primitiveId", "fills[].net", "fills[].layer", "fills[].fillMode", "fills[].lineWidth", "fills[].locked", "count"},
+			Description: "List net-bound filled regions (填充区域) on the active PCB, optionally filtered by layer and/or net. includeBBox adds each fill's rendered extent (per-fill getPrimitivesBBox; null on failure) — feeds the `pcb check` via-bond rule (is this track↔via junction covered by a bond fill?). Read-only.",
+			Inputs:      []string{"layer optional", "net optional", "includeBBox optional (default false)"},
+			Outputs:     []string{"fills[].primitiveId", "fills[].net", "fills[].layer", "fills[].fillMode", "fills[].lineWidth", "fills[].locked", "fills[].bbox (includeBBox)", "count"},
 		},
 		{
 			Name:         "pcb.fill.delete",

@@ -72,10 +72,10 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 - [ ] `pcb stage-snapshot` 的前台检测提示统一接入所有重操作(DRC/rebuild)。
 - [ ] `easyeda call --timeout`(与 `debug exec --timeout` 对齐)。
 
-### C. 检查器(Go 侧)改进
-- [ ] `pcb check` dangling-end:按**面积相交**识别「端点在 pad 铜面内」「via 在 track 身体上」(现按圆心;本轮对已通过官方 DRC 的 stub 短暂误报)。
-- [ ] `pcb check` 新规则 **via-bond**:检出 track-endpoint-on-via / via-on-track(在本平台=不导通)→ ERROR + 建议 fill 修法。
-- [ ] `pcb check` netless-pour 已有;补 **floating-track-island**(整段无 pad 锚的铜,同 dangling 但成组)。
+### C. 检查器(Go 侧)改进 — **三项全落地+真机验证(2026-07-07,ceshi)**
+- [x] `pcb check` dangling-end **面积锚定**:同网 pad 铜面内(30mil 容差,先前已有)+ 同网 via **Dia/2 面积**锚定(新);异网保持严格圆心 eps。真机:结点端不再误报,只报真自由端。
+- [x] `pcb check` 新规则 **via-bond**:4 层/PLANE 板上裸 track↔via 结点(端点入 via 铜面 / via 压 track 身)= 不导通(#31)→ **ERROR**+fill/via-hop 修法;同网键合 fill(按真实 bbox,`pcb.fill.list includeBBox`,连接器 0.8.10)或同网铺铜豁免;2 层纯 SIGNAL 板整体跳过。真机:基线 37 via 零误报(pour 豁免生效),裸结点分层各报 1 条,盖 fill 后对应层消失(2→1)。
+- [x] `pcb check` **floating-track-island**:≥2 段互锚成组、无任一端锚 pad 的铜岛(dangling 盲区)→ WARN,列全成员 id 直接喂 `track-delete`;同网铺铜豁免;单段留给 dangling。真机:双段+via 桥岛 1 条命中。
 
 ### D. Skill / references 更新
 - [x] `references/pcb.md`:「连通性键合真值表」小节 + via 桥 SOP(fill 法 / `via-hop`)已加(2026-07-07);PLANE 翻转后禁新建异网 via 已在 P8 + via-crosses-plane 规则覆盖;`pcb drc` 条目含前台约束 + `--json`/`--timeout`。

@@ -5190,6 +5190,7 @@ const pcbFillCreate: Handler = async (payload) => {
 const pcbFillList: Handler = async (payload) => {
 	const layer = optionalNumber(payload, 'layer');
 	const net = optionalString(payload, 'net');
+	const includeBBox = optionalBoolean(payload, 'includeBBox') === true;
 	let fills;
 	try {
 		fills = await eda.pcb_PrimitiveFill.getAll(
@@ -5200,14 +5201,28 @@ const pcbFillList: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to list PCB fills.');
 	}
-	const list = (fills ?? []).map(f => ({
-		primitiveId: f.getState_PrimitiveId(),
-		net: f.getState_Net() ?? null,
-		layer: Number(f.getState_Layer()),
-		fillMode: FILL_MODE_NAME[Number(f.getState_FillMode() ?? 0)] ?? String(f.getState_FillMode()),
-		lineWidth: f.getState_LineWidth(),
-		locked: f.getState_PrimitiveLock(),
-	}));
+	const list: Array<Record<string, unknown>> = [];
+	for (const f of fills ?? []) {
+		const id = f.getState_PrimitiveId();
+		const item: Record<string, unknown> = {
+			primitiveId: id,
+			net: f.getState_Net() ?? null,
+			layer: Number(f.getState_Layer()),
+			fillMode: FILL_MODE_NAME[Number(f.getState_FillMode() ?? 0)] ?? String(f.getState_FillMode()),
+			lineWidth: f.getState_LineWidth(),
+			locked: f.getState_PrimitiveLock(),
+		};
+		if (includeBBox) {
+			// Per-fill rendered extent — feeds `pcb check` via-bond (is this
+			// junction covered by a bond fill?). Best-effort: null on failure.
+			try {
+				const box = await eda.pcb_Primitive.getPrimitivesBBox([id]);
+				item.bbox = box ? { minX: box.minX, minY: box.minY, maxX: box.maxX, maxY: box.maxY } : null;
+			}
+			catch { item.bbox = null; }
+		}
+		list.push(item);
+	}
 	return { result: { fills: list, count: list.length } };
 };
 

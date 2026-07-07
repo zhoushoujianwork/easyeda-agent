@@ -2210,6 +2210,13 @@ Rules:
                         (anti-pad risk, easyeda/pro-api-sdk#32: a via created
                         AFTER the plane exists gets no anti-pad; fix = remove it
                         and route on outer layers, or 'doc reload' + 'pour-rebuild')
+  • via-bond          — bare track↔via junction on a 4-layer/PLANE board → ERROR
+                        (does NOT conduct there, pro-api-sdk#31; junctions covered
+                        by a same-net bond fill or pour are exempt — 'pcb via-hop'
+                        makes bonded hops; fix legacy ones with 'pcb fill create')
+  • floating-track-island — a connected GROUP of tracks anchoring to no pad → WARN
+                        (dangling-end's blind spot: members anchor each other;
+                        islands under a same-net pour are exempt)
 
 Complements 'pcb drc' (rule clearance) and 'pcb layout-lint' (placement/routability).
 Exit code: 0 by default (informational). --strict exits non-zero on any WARN/ERROR
