@@ -144,7 +144,22 @@ easyeda sch autoconnect --pin U1:41 --kind gnd --net GND --dry-run --json
 
 # batch spec — clustered pins auto-stagger so labels don't stack
 easyeda sch autoconnect --spec p1-connect.json
+
+# re-run the SAME spec safely — pins already on the target net are skipped
+easyeda sch autoconnect --spec p1-connect.json          # idempotent, no growth
+
+# re-route pins currently on the WRONG net (delete old flag+wire, reconnect)
+easyeda sch autoconnect --spec p1-connect.json --replace
 ```
+
+**Idempotent (issue #50):** before connecting, autoconnect reads each pin's
+current net (via `sch list --include-pins`, which now carries `net`) and classifies
+every connection into three states — `new` (floating → connect), `already-connected`
+(already on the target net → **skip**, no duplicate flag+wire), and `conflict` (on a
+different net). A conflict is an error by default; pass `--replace` to delete the old
+flag+wire (deleted **together**, so no orphan stub — see issue #51) and reconnect.
+Re-running the same spec is therefore safe and never stacks duplicates. `--dry-run`
+reports the three states without mutating.
 
 Spec JSON (`--spec`): `{"connections":[{"pin":"U1:41","kind":"gnd","net":"GND"},
 {"pin":"U1:3V3","kind":"power","net":"+3V3"}], "rules":{"avoidTitleBlock":true,

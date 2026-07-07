@@ -6,6 +6,17 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `schematic.pin.disconnect` 新增 `pinX`+`pinY` 坐标定位:`sch autoconnect
+  --replace`(issue #50)已从场景解析出 pin 坐标,可直接定位 stub 而无需
+  designator 回溯。
+
+### Changed
+- `schematic.components.list --include-pins`:每个 pin 现在附带 `net` 字段(取自
+  权威网表,与 `schematic.read` 同源;网表不可用时为 `null`)。这是 `sch
+  autoconnect` 做到幂等(issue #50)所需的数据面 —— 用于判定 pin 当前是否已连到
+  目标网络。
+
 ## [0.8.13] - 2026-07-07
 
 ### Added

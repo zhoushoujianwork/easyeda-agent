@@ -59,16 +59,36 @@ type acPin struct {
 	PinNumber  string
 	PinName    string
 	OwnerBBox  *layoutBBox
+	// Net is the pin's CURRENT authoritative net (from schematic.components.list
+	// --include-pins). Empty means "floating" when NetKnown is true; NetKnown is
+	// false when the netlist wasn't available, so idempotency checks can't run and
+	// must fall back to unconditional connect. See issue #50.
+	Net      string
+	NetKnown bool
+}
+
+// acComponent is a part known to the scene, whether or not its pins made it in.
+// When the scene is built with --all-pages, parts on non-active pages still appear
+// here (by designator) but have HasPins=false because the EDA pin lookup only
+// returns pins for the active page. PageUuid/PageName are populated when the
+// extension supplies them; empty otherwise. This lets resolvePinCoord tell
+// "placed on another page" apart from "truly not placed / pin typo".
+type acComponent struct {
+	Designator string
+	HasPins    bool
+	PageUuid   string
+	PageName   string
 }
 
 // acScene is the full geometric context one autoconnect run reasons against.
 // Flags grows as connections are placed so later labels stagger off earlier ones.
 type acScene struct {
-	Parts                 []layoutBBox // real part bboxes (componentType "part")
-	Pins                  []acPin      // every pin across all parts
-	Flags                 []layoutBBox // existing netflag/netport/netlabel bboxes
-	TitleBlock            *layoutBBox  // derived keep-out (nil if not applied)
-	TitleBlockProvisional bool         // true when no sheet bbox was found (keep-out NOT geometrically applied)
+	Parts                 []layoutBBox  // real part bboxes (componentType "part")
+	Pins                  []acPin       // every pin across all parts
+	Flags                 []layoutBBox  // existing netflag/netport/netlabel bboxes
+	Components            []acComponent // every part seen (by designator), even pin-less off-page ones
+	TitleBlock            *layoutBBox   // derived keep-out (nil if not applied)
+	TitleBlockProvisional bool          // true when no sheet bbox was found (keep-out NOT geometrically applied)
 }
 
 // ── candidate + scoring ─────────────────────────────────────────────────────
@@ -367,6 +387,36 @@ func planConnection(pin acPin, canonicalKind string, scene acScene, rules autoco
 		return all[i].Offset < all[j].Offset
 	})
 	return all
+}
+
+// ── idempotency: three-state pin/net decision (issue #50) ───────────────────
+
+// acConnState is the decision for one connection BEFORE any mutation, so a repeat
+// run over the same spec is idempotent instead of stacking duplicate flags+wires.
+type acConnState string
+
+const (
+	// acStateNew: the pin has no net yet (or we can't tell) → plan + connect.
+	acStateNew acConnState = "new"
+	// acStateAlreadyConnected: the pin is already on the spec's target net → skip.
+	acStateAlreadyConnected acConnState = "already-connected"
+	// acStateConflict: the pin is on a DIFFERENT net → error unless --replace.
+	acStateConflict acConnState = "conflict"
+)
+
+// decideConnState is the PURE idempotency core: given the pin's current net
+// (currentNet, only meaningful when netKnown is true) and the spec's target net,
+// classify the connection. When the current net is unknown (netlist unavailable)
+// we can't prove idempotency, so we fall back to "new" and let connect_pin run —
+// preserving the pre-#50 behavior rather than silently skipping.
+func decideConnState(currentNet string, netKnown bool, targetNet string) acConnState {
+	if !netKnown || currentNet == "" {
+		return acStateNew
+	}
+	if currentNet == targetNet {
+		return acStateAlreadyConnected
+	}
+	return acStateConflict
 }
 
 // dominantReason picks the most expensive penalty for a rejected candidate's

@@ -85,6 +85,12 @@ type acConnResult struct {
 	FlagPrimitiveID string       `json:"flagPrimitiveId,omitempty"`
 	DryRun          bool         `json:"dryRun,omitempty"`
 	Error           string       `json:"error,omitempty"`
+	// State is the idempotency decision (issue #50): "new" (planned/connected),
+	// "already-connected" (skipped), or "conflict" (blocked, or replaced under
+	// --replace). CurrentNet is the pin's pre-existing net when known.
+	State      acConnState `json:"state,omitempty"`
+	CurrentNet string      `json:"currentNet,omitempty"`
+	Replaced   bool        `json:"replaced,omitempty"`
 }
 
 type acRejected struct {
@@ -129,12 +135,19 @@ func buildScene(result map[string]any) acScene {
 				scene.Parts = append(scene.Parts, *box)
 			}
 			designator := asString(m["designator"])
+			hasPins := false
 			if pins, ok := m["pins"].([]any); ok {
 				for _, pp := range pins {
 					pm, ok := pp.(map[string]any)
 					if !ok {
 						continue
 					}
+					hasPins = true
+					// The extension attaches each pin's current net as `net`:
+					// a string (possibly "") when the netlist is available, or
+					// null when it isn't. asString collapses null → "", so use
+					// presence-of-key to decide NetKnown.
+					netVal, netKnown := pm["net"]
 					scene.Pins = append(scene.Pins, acPin{
 						X:          asFloat(pm["x"]),
 						Y:          asFloat(pm["y"]),
@@ -142,8 +155,18 @@ func buildScene(result map[string]any) acScene {
 						PinNumber:  asString(pm["pinNumber"]),
 						PinName:    asString(pm["pinName"]),
 						OwnerBBox:  box,
+						Net:        asString(netVal),
+						NetKnown:   netKnown && netVal != nil,
 					})
 				}
+			}
+			if designator != "" {
+				scene.Components = append(scene.Components, acComponent{
+					Designator: designator,
+					HasPins:    hasPins,
+					PageUuid:   asString(m["pageUuid"]),
+					PageName:   asString(m["pageName"]),
+				})
 			}
 		case "netflag", "netport", "netlabel":
 			if box != nil {
@@ -194,19 +217,50 @@ func resolvePinCoord(scene acScene, ref string) (acPin, error) {
 	case 1:
 		return matches[0], nil
 	case 0:
+		// The pin isn't on the active page. Before blaming a typo, check whether
+		// the component itself IS known to the scene but has no pins here — that's
+		// the tell for "placed on another page" (mutations only land on the active
+		// page, so its pins never came through). Give an actionable switch hint
+		// instead of the misleading "not placed".
+		for _, comp := range scene.Components {
+			if comp.Designator == desig && !comp.HasPins {
+				return acPin{}, fmt.Errorf("%s", offPageHint(ref, comp))
+			}
+		}
 		return acPin{}, fmt.Errorf("no pin %q found (component %q not placed, or pin number/name mismatch — check `easyeda sch list --include-pins`)", ref, desig)
 	default:
 		return acPin{}, fmt.Errorf("pin reference %q is ambiguous (%d matches); use the pin NUMBER instead of name", ref, len(matches))
 	}
 }
 
+// offPageHint builds the "this component is on another page — switch first"
+// message. When the extension supplies the owning page's uuid/name it points at
+// the exact `doc switch` target; otherwise it degrades to a generic hint (the
+// current EDA API can't attribute a component to a page without switching to it,
+// so pageUuid/pageName may be empty).
+func offPageHint(ref string, comp acComponent) string {
+	base := fmt.Sprintf("no pin %q found on the active page: component %q is placed on ANOTHER schematic page", ref, comp.Designator)
+	if comp.PageUuid != "" {
+		where := comp.PageUuid
+		if comp.PageName != "" {
+			where = fmt.Sprintf("%s (%s)", comp.PageName, comp.PageUuid)
+		}
+		return fmt.Sprintf("%s: %s — switch to it first: `easyeda doc switch %s`. Note: --all-pages only widens candidate scoring, it does NOT build wires across pages.", base, where, comp.PageUuid)
+	}
+	return fmt.Sprintf("%s — switch to that page first with `easyeda doc switch <page>` (see `easyeda doc ls`). Note: --all-pages only widens candidate scoring, it does NOT build wires across pages.", base)
+}
+
 // runAutoconnect is the command core: build the scene once, then plan → (dispatch)
 // each connection sequentially, staggering later labels off earlier placements.
-func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules autoconnectRules, allPages, dryRun, asJSON bool, stdout, stderr io.Writer) error {
+func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules autoconnectRules, allPages, dryRun, replace, asJSON bool, stdout, stderr io.Writer) error {
 	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{
 		"includeBBox": true,
 		"includePins": true,
 		"allPages":    allPages,
+		// With --all-pages, parts on non-active pages come through pin-less; tagPages
+		// attributes each to its owning page so an off-page pin ref yields a precise
+		// `doc switch` hint instead of a misleading "not placed".
+		"tagPages": allPages,
 	})
 	if err != nil {
 		return err
@@ -250,6 +304,44 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 			continue
 		}
 		cr.PinX, cr.PinY = pin.X, pin.Y
+
+		// Idempotency decision (issue #50): classify the pin's current net BEFORE
+		// planning/mutating so a repeat run doesn't stack duplicate flags+wires.
+		state := decideConnState(pin.Net, pin.NetKnown, c.Net)
+		cr.State = state
+		if pin.NetKnown {
+			cr.CurrentNet = pin.Net
+		}
+
+		switch state {
+		case acStateAlreadyConnected:
+			// Pin is already on the target net — nothing to do, and NOT an error.
+			// Skip planning entirely so no candidate is reported as "would place".
+			report.Connections = append(report.Connections, cr)
+			continue
+		case acStateConflict:
+			if !replace {
+				cr.Error = fmt.Sprintf("pin already connected to net %q, not %q; pass --replace to delete the old flag+wire and reconnect", pin.Net, c.Net)
+				report.OK = false
+				report.Connections = append(report.Connections, cr)
+				continue
+			}
+			// --replace: on a real run, remove the old stub (wire+flag together, so
+			// no orphan wire — see #51) before reconnecting. In dry-run we only
+			// report the intent.
+			cr.Replaced = true
+			if !dryRun {
+				if _, derr := requestAction(cfg, "schematic.pin.disconnect", window, map[string]any{
+					"pinX": pin.X,
+					"pinY": pin.Y,
+				}); derr != nil {
+					cr.Error = fmt.Sprintf("replace: failed to disconnect old net %q: %v", pin.Net, derr)
+					report.OK = false
+					report.Connections = append(report.Connections, cr)
+					continue
+				}
+			}
+		}
 
 		all := planConnection(pin, canonicalKind, scene, rules)
 		selected := all[0]
@@ -330,12 +422,31 @@ func countFailed(r acReport) int {
 	return n
 }
 
+// countStates tallies the three idempotency states for the report header (issue
+// #50). "conflict" counts every pin found on a different net, whether it errored
+// out (no --replace) or was replaced.
+func countStates(r acReport) (newCount, skipCount, conflictCount int) {
+	for _, c := range r.Connections {
+		switch c.State {
+		case acStateAlreadyConnected:
+			skipCount++
+		case acStateConflict:
+			conflictCount++
+		case acStateNew:
+			newCount++
+		}
+	}
+	return
+}
+
 func renderAutoconnectReport(r acReport, dryRun bool, w io.Writer) {
 	mode := "connect"
 	if dryRun {
 		mode = "plan (dry-run)"
 	}
-	fmt.Fprintf(w, "autoconnect: %d connection(s), mode=%s\n", len(r.Connections), mode)
+	nNew, nSkip, nConflict := countStates(r)
+	fmt.Fprintf(w, "autoconnect: %d connection(s), mode=%s — %d new, %d already-connected, %d conflict\n",
+		len(r.Connections), mode, nNew, nSkip, nConflict)
 	if r.Note != "" {
 		fmt.Fprintf(w, "  note: %s\n", r.Note)
 	}
@@ -348,9 +459,22 @@ func renderAutoconnectReport(r acReport, dryRun bool, w io.Writer) {
 			fmt.Fprintf(w, "  ✗ %s → %s [%s]: %s\n", id, c.Net, c.Kind, c.Error)
 			continue
 		}
+		// already-connected: idempotent skip, no plan/mutation happened.
+		if c.State == acStateAlreadyConnected {
+			fmt.Fprintf(w, "  ⏭ %s → %s [%s]: already-connected (skipped)\n", id, c.Net, c.Kind)
+			continue
+		}
 		s := c.Selected
-		fmt.Fprintf(w, "  ✓ %s → %s [%s]: %s offset=%.0f end=(%.2f,%.2f) score=%.2f\n",
-			id, c.Net, c.Kind, s.Direction, s.Offset, s.EndPoint.X, s.EndPoint.Y, s.Score)
+		tag := ""
+		if c.Replaced {
+			verb := "will replace"
+			if !dryRun {
+				verb = "replaced"
+			}
+			tag = fmt.Sprintf(" [%s net %q]", verb, c.CurrentNet)
+		}
+		fmt.Fprintf(w, "  ✓ %s → %s [%s]: %s offset=%.0f end=(%.2f,%.2f) score=%.2f%s\n",
+			id, c.Net, c.Kind, s.Direction, s.Offset, s.EndPoint.X, s.EndPoint.Y, s.Score, tag)
 		if !dryRun {
 			fmt.Fprintf(w, "      wire=%s flag=%s\n", c.WirePrimitiveID, c.FlagPrimitiveID)
 		}
@@ -368,6 +492,7 @@ func newAutoconnectCmd(cfg *appConfig, window *string, stdout, stderr io.Writer)
 		avoidTitleBlock, avoidFanout bool
 		offsetMin, offsetMax, step   float64
 		allPages, dryRun, asJSON     bool
+		replace                      bool
 	)
 	c := &cobra.Command{
 		Use:   "autoconnect",
@@ -388,7 +513,12 @@ into a deterministic geometry decision:
 
 The scorer is pure and deterministic: the same schematic state + spec always
 yields the same selection. Use --dry-run to see the plan (and rejected options)
-without mutating.`,
+without mutating.
+
+Idempotent by default: before connecting, each pin's CURRENT net is checked.
+A pin already on the target net is SKIPPED (already-connected), so re-running the
+same spec never stacks duplicate flags+wires. A pin on a DIFFERENT net is an error
+unless you pass --replace, which deletes the old flag+wire and reconnects.`,
 		Args: cobra.NoArgs,
 		Example: `  easyeda sch autoconnect --pin U1:41 --kind gnd --net GND
   easyeda sch autoconnect --x 720 --y 670 --kind gnd --net GND
@@ -447,7 +577,7 @@ without mutating.`,
 				conns = append(conns, cs)
 			}
 
-			return runAutoconnect(cfg, *window, conns, rules, allPages, dryRun, asJSON, stdout, stderr)
+			return runAutoconnect(cfg, *window, conns, rules, allPages, dryRun, replace, asJSON, stdout, stderr)
 		},
 	}
 	c.Flags().StringVar(&pin, "pin", "", "pin reference DESIGNATOR:PIN (number or name), e.g. U1:41 or U1:3V3")
@@ -461,8 +591,9 @@ without mutating.`,
 	c.Flags().Float64Var(&offsetMin, "offset-min", 18, "minimum stub offset to consider")
 	c.Flags().Float64Var(&offsetMax, "offset-max", 80, "maximum stub offset to consider")
 	c.Flags().Float64Var(&step, "offset-step", 6, "offset increment")
-	c.Flags().BoolVar(&allPages, "all-pages", false, "build the scene from all schematic pages")
+	c.Flags().BoolVar(&allPages, "all-pages", false, "widen candidate SCORING to all schematic pages (avoids cross-page label conflicts); does NOT build wires across pages — mutations only land on the ACTIVE page, so `doc switch` to the target page first")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "plan and print the selection without mutating")
+	c.Flags().BoolVar(&replace, "replace", false, "when a pin is already on a DIFFERENT net, delete its old flag+wire and reconnect (without --replace such pins error out; pins already on the target net are always skipped)")
 	c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
 	return c
 }
