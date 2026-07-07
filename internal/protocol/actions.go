@@ -164,9 +164,9 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Rename a schematic page.",
+			Description: "Rename a schematic page. Verifies the new name landed in the page list (issue #55 platform-async cache); returns verified=false + warning if it hasn't synced yet.",
 			Inputs:      []string{"pageUuid", "name"},
-			Outputs:     []string{"ok"},
+			Outputs:     []string{"ok", "verified", "warning"},
 		},
 		{
 			Name:         "schematic.page.delete",

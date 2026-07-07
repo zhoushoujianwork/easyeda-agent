@@ -6,6 +6,14 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- `schematic.page.rename` 改完立即 `doc ls` 读到旧页名(issue #55):
+  `modifySchematicPageName` 返回 `ok:true` 后,新名不会立刻进
+  `getAllSchematicPagesInfo()` 的元数据缓存,要等后续某个写操作才刷新。现在
+  `page.rename` 成功后做写后自校验——短间隔重试读回页面列表确认新名生效,命中返回
+  `verified:true`;重试耗尽仍未同步返回 `verified:false` + `warning`,把平台异步性
+  如实报给调用方,而不是盲目 echo `ok`。
+
 ## [0.8.11] - 2026-07-07
 
 探针轮次 #3(esp32MiniRequire 回归)实测暴露的两处修复。

@@ -354,7 +354,20 @@ const schematicPageCreate: Handler = async (payload) => {
 	return { result: { pageUuid: uuid } };
 };
 
-/** Rename a schematic page. */
+/**
+ * Rename a schematic page.
+ *
+ * Platform quirk (issue #55): `modifySchematicPageName` returns ok=true, but the
+ * new name does NOT immediately show up in `getAllSchematicPagesInfo()` — the
+ * platform's page-metadata cache only refreshes after some later write op fires,
+ * so an immediate `doc ls` reads the STALE old name. This is the same family of
+ * platform-async traps as the getState_Rotation echo (schematic-layout-conventions.md).
+ *
+ * We can't fix the platform, so we do a write-after read-back verification here:
+ * retry `getAllSchematicPagesInfo()` a few times with small delays and confirm the
+ * target page's name is actually the new value. Report the truth to the caller via
+ * `verified` (+ a `warning` when it never settles) instead of blindly echoing ok.
+ */
 const schematicPageRename: Handler = async (payload) => {
 	const pageUuid = requireString(payload, 'pageUuid');
 	const name = requireString(payload, 'name');
@@ -365,8 +378,44 @@ const schematicPageRename: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to rename schematic page.');
 	}
-	return { result: { ok } };
+	// Write-after self-verification: poll the page list until the new name lands,
+	// so callers doing an immediate `doc ls` don't read the stale old name.
+	const verified = await verifySchematicPageName(pageUuid, name);
+	if (verified) {
+		return { result: { ok, verified: true } };
+	}
+	return {
+		result: {
+			ok,
+			verified: false,
+			warning: '重命名已提交，但页面列表元数据尚未同步为新名（EasyEDA 平台异步缓存，issue #55）；'
+				+ '请稍后重试或触发任意其他写操作后再用 doc ls 确认。',
+		},
+	};
 };
+
+/**
+ * Poll `getAllSchematicPagesInfo()` up to a few times until the target page's name
+ * equals `expected`. Returns true once observed, false if it never settles.
+ * Best-effort: read errors are swallowed and treated as "not yet settled".
+ */
+async function verifySchematicPageName(pageUuid: string, expected: string): Promise<boolean> {
+	const delays = [0, 120, 250, 500]; // ~0.87s worst case, small enough to stay snappy
+	for (const wait of delays) {
+		if (wait > 0) {
+			await new Promise<void>(resolve => setTimeout(resolve, wait));
+		}
+		try {
+			const pages = await eda.dmt_Schematic.getAllSchematicPagesInfo();
+			const hit = pages.find(p => p.uuid === pageUuid);
+			if (hit && hit.name === expected) return true;
+		}
+		catch {
+			/* best-effort — treat as not-yet-settled and keep polling */
+		}
+	}
+	return false;
+}
 
 /** Delete a schematic page. */
 const schematicPageDelete: Handler = async (payload) => {
