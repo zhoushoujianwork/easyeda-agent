@@ -1,0 +1,491 @@
+{
+ "U10": {
+  "footprint": "tqfp-128_l14.0-w14.0-p0.40-ls16.0-tl",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C2052786",
+  "nets": {
+   "1": "$1N32170",
+   "3": "$1N7299",
+   "4": "$1N7693",
+   "7": "XDS_VDD",
+   "8": "XDS_VDD",
+   "10": "GND",
+   "16": "XDS_VDD",
+   "17": "GND",
+   "26": "XDS_VDD",
+   "28": "XDS_VDD",
+   "33": "XDS_RX",
+   "34": "XDS_TX",
+   "35": "XDS_TCK",
+   "36": "XDS_TMS",
+   "37": "XDS_TDO",
+   "38": "XDS_TDI",
+   "39": "XDS_VDD",
+   "40": "XDS_RESET",
+   "47": "XDS_VDD",
+   "48": "GND",
+   "51": "XDS_VDD",
+   "52": "XDS_VDD",
+   "55": "GND",
+   "58": "GND",
+   "59": "$1N5959",
+   "60": "$1N7887",
+   "61": "$1N7896",
+   "62": "$1N7906",
+   "63": "$1N7916",
+   "64": "GND",
+   "66": "GND",
+   "69": "XDS_VDD",
+   "70": "$1N3489",
+   "79": "XDS_VDD",
+   "80": "GND",
+   "87": "VDDC",
+   "88": "$1N5747",
+   "89": "$1N5754",
+   "90": "XDS_VDD",
+   "93": "USBLS_N",
+   "94": "USBLS_P",
+   "96": "$1N6388",
+   "97": "TDO",
+   "101": "XDS_VDD",
+   "113": "XDS_VDD",
+   "114": "GND",
+   "115": "VDDC",
+   "122": "XDS_VDD"
+  }
+ },
+ "R1": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25744",
+  "nets": {
+   "2": "XDS_VDD",
+   "1": "$1N3489"
+  }
+ },
+ "R17": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25744",
+  "nets": {
+   "2": "XDS_RESET",
+   "1": "XDS_VDD"
+  }
+ },
+ "USB1": {
+  "footprint": "usb-c-smd_type-c-6pin-2md-073",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C2765186",
+  "nets": {
+   "1": "GND",
+   "2": "VBUS",
+   "4": "$1N3761",
+   "5": "USBLS_N",
+   "6": "USBLS_P",
+   "7": "USBLS_N",
+   "8": "USBLS_P",
+   "10": "$1N3766",
+   "11": "VBUS",
+   "12": "GND",
+   "13": "GND",
+   "14": "GND"
+  }
+ },
+ "R2": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25905",
+  "nets": {
+   "2": "GND",
+   "1": "$1N3761"
+  }
+ },
+ "R3": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25905",
+  "nets": {
+   "2": "GND",
+   "1": "$1N3766"
+  }
+ },
+ "F1": {
+  "footprint": "f0603",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C883095",
+  "nets": {
+   "1": "USB_VDD",
+   "2": "VBUS"
+  }
+ },
+ "C2": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "GND",
+   "2": "USB_VDD"
+  }
+ },
+ "C3": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "GND",
+   "2": "XDS_VDD"
+  }
+ },
+ "C13": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "GND",
+   "2": "VDDC"
+  }
+ },
+ "C20": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C21": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C24": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "GND",
+   "2": "XDS_VDD"
+  }
+ },
+ "C25": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C26": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C27": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C28": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C30": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C32": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C33": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C34": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C35": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C71629",
+  "nets": {
+   "1": "XDS_VDD",
+   "2": "GND"
+  }
+ },
+ "C9": {
+  "footprint": "c0603",
+  "name": "={Value}",
+  "supplierId": "C6119842",
+  "nets": {
+   "1": "GND",
+   "2": "XDS_VDD"
+  }
+ },
+ "C22": {
+  "footprint": "c0603",
+  "name": "={Value}",
+  "supplierId": "C6119842",
+  "nets": {
+   "1": "GND",
+   "2": "USB_VDD"
+  }
+ },
+ "X1": {
+  "footprint": "crystal-smd_4p-l2.0-w1.6-bl",
+  "name": "={Value}",
+  "supplierId": "C2965579",
+  "nets": {
+   "1": "$1N5747",
+   "3": "$1N5754",
+   "4": "GND",
+   "2": "GND"
+  }
+ },
+ "C11": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C393682",
+  "nets": {
+   "1": "GND",
+   "2": "$1N5747"
+  }
+ },
+ "C12": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C393682",
+  "nets": {
+   "1": "GND",
+   "2": "$1N5754"
+  }
+ },
+ "R4": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25902",
+  "nets": {
+   "2": "$1N5959",
+   "1": "GND"
+  }
+ },
+ "LED2": {
+  "footprint": "led0402-rd",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C130719",
+  "nets": {
+   "1": "GND",
+   "2": "$1N7545"
+  }
+ },
+ "LED3": {
+  "footprint": "led0402-rd",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C130723",
+  "nets": {
+   "1": "GND",
+   "2": "$1N7672"
+  }
+ },
+ "R12": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C4109",
+  "nets": {
+   "2": "$1N7693",
+   "1": "$1N7672"
+  }
+ },
+ "C14": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C12530",
+  "nets": {
+   "1": "GND",
+   "2": "VDDC"
+  }
+ },
+ "C16": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C1518208",
+  "nets": {
+   "1": "GND",
+   "2": "XDS_VDD"
+  }
+ },
+ "C29": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C1518208",
+  "nets": {
+   "1": "GND",
+   "2": "VDDC"
+  }
+ },
+ "P1": {
+  "footprint": "idc-th_10p-p2.54_c5665",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C5665",
+  "nets": {
+   "1": "USB_VDD",
+   "2": "XDS_RESET",
+   "3": "XDS_VDD",
+   "4": "XDS_TDO",
+   "5": "XDS_TMS",
+   "6": "XDS_TDI",
+   "7": "XDS_TCK",
+   "8": "XDS_TX",
+   "9": "GND",
+   "10": "XDS_RX"
+  }
+ },
+ "U12": {
+  "footprint": "sot-89-3_l4.5-w2.5-p1.50-ls4.2-br",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C18723569",
+  "nets": {
+   "1": "GND",
+   "2": "XDS_VDD",
+   "3": "USB_VDD"
+  }
+ },
+ "SW2": {
+  "footprint": "sw-smd_l3.9-w3.0-p4.45",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C455280",
+  "nets": {
+   "2": "GND",
+   "1": "TDO"
+  }
+ },
+ "RN2": {
+  "footprint": "res-array-smd_0402-8p-l2.0-w1.0-bl",
+  "name": "={Value}",
+  "supplierId": "C25726",
+  "nets": {
+   "1": "$1N7887",
+   "2": "$1N7896",
+   "3": "$1N7906",
+   "4": "$1N7916",
+   "5": "XDS_VDD",
+   "6": "XDS_VDD",
+   "7": "XDS_VDD",
+   "8": "XDS_VDD"
+  }
+ },
+ "R18": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25076",
+  "nets": {
+   "2": "USB_VDD",
+   "1": "$1N6388"
+  }
+ },
+ "R19": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25076",
+  "nets": {
+   "2": "$1N7299",
+   "1": "$1N7545"
+  }
+ },
+ "R6": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C25778",
+  "nets": {
+   "2": "USB_VDD",
+   "1": "$1N32170"
+  }
+ },
+ "R7": {
+  "footprint": "r0402",
+  "name": "={Value}",
+  "supplierId": "C138030",
+  "nets": {
+   "2": "$1N32170",
+   "1": "GND"
+  }
+ },
+ "D5": {
+  "footprint": "sot-23-6_l2.9-w1.6-p0.95-ls2.8-br",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C406203",
+  "nets": {
+   "6": "XDS_RX",
+   "5": "XDS_VDD",
+   "4": "XDS_RESET",
+   "3": "XDS_TDI",
+   "2": "GND",
+   "1": "XDS_TX"
+  }
+ },
+ "D6": {
+  "footprint": "sot-23-6_l2.9-w1.6-p0.95-ls2.8-br",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C406203",
+  "nets": {
+   "5": "XDS_VDD",
+   "4": "XDS_TDO",
+   "3": "XDS_TMS",
+   "2": "GND",
+   "1": "XDS_TCK"
+  }
+ },
+ "D7": {
+  "footprint": "sot-23-6_l2.9-w1.6-p0.95-ls2.8-br",
+  "name": "={Manufacturer Part}",
+  "supplierId": "C406203",
+  "nets": {
+   "6": "USBLS_P",
+   "5": "VBUS",
+   "4": "USBLS_N",
+   "3": "USBLS_N",
+   "2": "GND",
+   "1": "USBLS_P"
+  }
+ }
+}

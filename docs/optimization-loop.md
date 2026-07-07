@@ -88,6 +88,30 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 - **PCB 侧(本轮新立)**:esp32MiniRequire 全流程 = P0→P10 + 5 轮修复知识;
   验收线:DRC Connection=0 ∧ Clearance=0、`pcb check`=0、`layout-lint`≥95、BOM 全 C 号、已 save。
   Netlist Error≤1 且 `netlist-diff` 判定一致时视为通过(直至 A3 修复)。
+- **抄图训练(新增,2026-07-07)**:oshwhub 官方开源板逐 pin netlist 机械对照,
+  `training/copy-check.py` 判 100% 一致。首个闭环 XDS110下载器(见
+  `skills/easyeda-agent/references/copy-training.md`)。
+
+### F. 抄图训练暴露的 CLI/连接器缺口(2026-07-07,XDS110)
+- [ ] **`lib search` 按 LCSC C 号查询是模糊匹配,不保证精确命中**——`--query "C5665"`
+  命中了运放芯片而非目标排针(footprint 描述里恰好含"c5665"字样撞了关键字)。
+  应加一个精确模式(如 `--lcsc <C号> --exact`)校验返回结果的 `lcsc` 字段严格相等,
+  不等就报错而不是静默返回模糊匹配的第一条。
+- [ ] **`sch autoconnect --spec` 对同一 spec 重跑不是幂等的**——已连接 pin 会再叠一份
+  新 flag+stub wire,而不是跳过/更新。应检测「该 pin 已有同名网络的 flag」时跳过,
+  或提供 `--replace` 语义。当前无提示地静默叠加,容易造成难以定位的重复连线。
+- [ ] **删除 netflag/netport 后,它的 stub wire 变成悬空单 pin 网络($3N…)且
+  `dangling-wire` 规则抓不到**(wire 仍"触碰"pin,只是没有名字)。应新增
+  `pin.disconnect`(flag+wire 一起删,对称于 `connect_pin`)或让 `dangling-wire`
+  规则识别"孤立自动命名网络"。
+- [ ] `schematic.components.list` 不暴露源器件的 device/symbol uuid(只有
+  footprint uuid)——同一 LCSC C 号可能对应库里多个 symbol 变体(如 USB-C 有
+  6pin 简化编号版和 16pin A/B合并编号版),导致「按 C 号重新选型」无法保证选到
+  与原设计**完全相同**的符号变体,pin 编号体系可能不同。暴露 device uuid 能让
+  抄图/BOM 复刻更精确。
+- [ ] 缺 **按坐标区域批量查询/删除图元**的 typed action(训练中用
+  `debug exec` 遍历 `sch_PrimitiveWire.getAll()` 按 xy 过滤应急,生产该有
+  `schematic.primitives.list_by_region` 或类似)。
 
 ## 探针轮次 #3 — esp32MiniRequire 从零重跑(2026-07-07,Board2/PCB2,agent 全程自驱)
 
