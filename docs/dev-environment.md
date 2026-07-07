@@ -194,3 +194,35 @@ lands at IndexedDB key `<uuid>|dist/index.js`. Mind that offset.
   are **not an official, stable API** — treat it as a dev-only convenience and
   re-verify the store names/keys if EasyEDA bumps its schema version
   (`_v6` today).
+
+## Advisory loop: what the implement operator can and cannot do
+
+ClawFlow's implement operator runs `claude -p` in a **headless worktree** — it
+has the repo source but **no live EasyEDA editor, no connected connector, no
+running daemon with an attached window**. That draws a hard line:
+
+| Task type | Operator? | Examples |
+|---|---|---|
+| **Code / doc change** | ✅ yes | new `pcb check` rule, `sch rebind-*`, netlist cross-check |
+| **Runtime acceptance** | ❌ no | end-to-end board bring-up, any `pcb drc passed:true` gate |
+
+**Why runtime acceptance can't go through the operator**: its pass criteria
+(`pcb drc passed`, `pcb check` 0 ERROR, BOM saved) are **runtime products** that
+only exist by driving a live editor through the S0–S6 / P0–P10 flow. No source
+edit produces them, and the headless worktree shows `windows: []` — every flow
+command returns `NO_CONNECTOR`. A correct operator run on such an issue **fails
+and says so** (it must not fabricate a "DRC passed" PR — that violates the
+"never feed a pre-cooked answer" rule).
+
+**The advisory loop, done right:**
+- Code/doc issues → label `ready-for-agent` → operator evaluates, implements,
+  opens a PR, auto-merges → **you re-verify** with the editor loop (build + tests
+  for code correctness, then run the new command against a live board).
+- Runtime-acceptance issues (e.g. the ESP32 end-to-end regressions) → **do NOT**
+  label `ready-for-agent`. Mark them as interactive/manual and run them from a
+  session that has chrome-devtools MCP + a live daemon + a connected editor.
+
+Verified 2026-07-06: issues #44 (rebind actions) and #45 (netlist cross-check)
+went code → operator → PR → auto-merge → re-verified in an editor session; issue
+#42 (ESP32 end-to-end) was correctly `agent-failed` by the operator with a
+precise "no attached editor" explanation.
