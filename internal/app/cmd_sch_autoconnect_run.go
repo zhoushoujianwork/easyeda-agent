@@ -129,12 +129,14 @@ func buildScene(result map[string]any) acScene {
 				scene.Parts = append(scene.Parts, *box)
 			}
 			designator := asString(m["designator"])
+			hasPins := false
 			if pins, ok := m["pins"].([]any); ok {
 				for _, pp := range pins {
 					pm, ok := pp.(map[string]any)
 					if !ok {
 						continue
 					}
+					hasPins = true
 					scene.Pins = append(scene.Pins, acPin{
 						X:          asFloat(pm["x"]),
 						Y:          asFloat(pm["y"]),
@@ -144,6 +146,14 @@ func buildScene(result map[string]any) acScene {
 						OwnerBBox:  box,
 					})
 				}
+			}
+			if designator != "" {
+				scene.Components = append(scene.Components, acComponent{
+					Designator: designator,
+					HasPins:    hasPins,
+					PageUuid:   asString(m["pageUuid"]),
+					PageName:   asString(m["pageName"]),
+				})
 			}
 		case "netflag", "netport", "netlabel":
 			if box != nil {
@@ -194,10 +204,37 @@ func resolvePinCoord(scene acScene, ref string) (acPin, error) {
 	case 1:
 		return matches[0], nil
 	case 0:
+		// The pin isn't on the active page. Before blaming a typo, check whether
+		// the component itself IS known to the scene but has no pins here — that's
+		// the tell for "placed on another page" (mutations only land on the active
+		// page, so its pins never came through). Give an actionable switch hint
+		// instead of the misleading "not placed".
+		for _, comp := range scene.Components {
+			if comp.Designator == desig && !comp.HasPins {
+				return acPin{}, fmt.Errorf("%s", offPageHint(ref, comp))
+			}
+		}
 		return acPin{}, fmt.Errorf("no pin %q found (component %q not placed, or pin number/name mismatch — check `easyeda sch list --include-pins`)", ref, desig)
 	default:
 		return acPin{}, fmt.Errorf("pin reference %q is ambiguous (%d matches); use the pin NUMBER instead of name", ref, len(matches))
 	}
+}
+
+// offPageHint builds the "this component is on another page — switch first"
+// message. When the extension supplies the owning page's uuid/name it points at
+// the exact `doc switch` target; otherwise it degrades to a generic hint (the
+// current EDA API can't attribute a component to a page without switching to it,
+// so pageUuid/pageName may be empty).
+func offPageHint(ref string, comp acComponent) string {
+	base := fmt.Sprintf("no pin %q found on the active page: component %q is placed on ANOTHER schematic page", ref, comp.Designator)
+	if comp.PageUuid != "" {
+		where := comp.PageUuid
+		if comp.PageName != "" {
+			where = fmt.Sprintf("%s (%s)", comp.PageName, comp.PageUuid)
+		}
+		return fmt.Sprintf("%s: %s — switch to it first: `easyeda doc switch %s`. Note: --all-pages only widens candidate scoring, it does NOT build wires across pages.", base, where, comp.PageUuid)
+	}
+	return fmt.Sprintf("%s — switch to that page first with `easyeda doc switch <page>` (see `easyeda doc ls`). Note: --all-pages only widens candidate scoring, it does NOT build wires across pages.", base)
 }
 
 // runAutoconnect is the command core: build the scene once, then plan → (dispatch)
@@ -207,6 +244,10 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 		"includeBBox": true,
 		"includePins": true,
 		"allPages":    allPages,
+		// With --all-pages, parts on non-active pages come through pin-less; tagPages
+		// attributes each to its owning page so an off-page pin ref yields a precise
+		// `doc switch` hint instead of a misleading "not placed".
+		"tagPages": allPages,
 	})
 	if err != nil {
 		return err
@@ -461,7 +502,7 @@ without mutating.`,
 	c.Flags().Float64Var(&offsetMin, "offset-min", 18, "minimum stub offset to consider")
 	c.Flags().Float64Var(&offsetMax, "offset-max", 80, "maximum stub offset to consider")
 	c.Flags().Float64Var(&step, "offset-step", 6, "offset increment")
-	c.Flags().BoolVar(&allPages, "all-pages", false, "build the scene from all schematic pages")
+	c.Flags().BoolVar(&allPages, "all-pages", false, "widen candidate SCORING to all schematic pages (avoids cross-page label conflicts); does NOT build wires across pages — mutations only land on the ACTIVE page, so `doc switch` to the target page first")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "plan and print the selection without mutating")
 	c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
 	return c
