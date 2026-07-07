@@ -16,6 +16,7 @@ import {
 	asPayload,
 	blobToBase64,
 	classifyPinConnectivity,
+	classifyWireConnectivity,
 	newArtifactId,
 	type NamedLibItem,
 	normalizeRegion,
@@ -1809,21 +1810,34 @@ const schematicCheck: Handler = async (payload) => {
 			continue;
 		}
 
-		// Dangling: no vertex touches a pin, a marker, or another wire's segment.
-		const connected = verts.some(v =>
-			allPins.some(p => Math.hypot(v[0] - p.x, v[1] - p.y) <= COINCIDE_TOL)
-			|| connectionMarkers.some(m => Math.hypot(v[0] - m.x, v[1] - m.y) <= COINCIDE_TOL)
-			|| wireSegs.some(ws => ws.wirePrimitiveId !== wirePid
-				&& pointOnSegment(v[0], v[1], ws.seg[0], ws.seg[1], ws.seg[2], ws.seg[3])));
-		if (!connected) {
+		// Classify each of the wire's TWO extreme endpoints separately: does it touch
+		// a pin, and does it touch a marker (netflag/netport/netlabel) or a DIFFERENT
+		// wire? The old rule collapsed all vertices with `verts.some(...)`, so a stub
+		// with one end on a pin always looked "connected" and orphan stubs (flag
+		// deleted, wire残留) slipped through. Per-end classification lets us tell a
+		// genuine terminus from a pin-anchored stub whose far end floats (issue #51).
+		const endpoints: Array<[number, number]> = [verts[0], verts[verts.length - 1]];
+		const touchOf = (v: [number, number]) => ({
+			touchesPin: allPins.some(p => Math.hypot(v[0] - p.x, v[1] - p.y) <= COINCIDE_TOL),
+			touchesMarker: connectionMarkers.some(m => Math.hypot(v[0] - m.x, v[1] - m.y) <= COINCIDE_TOL)
+				|| wireSegs.some(ws => ws.wirePrimitiveId !== wirePid
+					&& pointOnSegment(v[0], v[1], ws.seg[0], ws.seg[1], ws.seg[2], ws.seg[3])),
+		});
+		const ends = endpoints.map(touchOf);
+		const verdict = classifyWireConnectivity(ends, wnet);
+		if (verdict !== 'connected') {
 			danglingWires++;
 			if (findings.filter(f => f.type === 'dangling-wire').length < STRAY_CAP) {
+				const orphan = verdict === 'orphan-stub';
 				findings.push({
 					type: 'dangling-wire',
 					level: 'warn',
 					wirePrimitiveId: wirePid || undefined,
+					wireNet: orphan ? wnet : undefined,
 					at: { x: verts[0][0], y: verts[0][1] },
-					message: `悬挂导线(两端不接任何引脚/标识/导线${wnet ? '' : '、空网名'},孤立残留)`,
+					message: orphan
+						? `疑似孤儿 stub(一端连引脚、另一端游离,网名 ${wnet} 为 EasyEDA 自动生成 — flag/port 疑似已删除,wire 残留;用 sch disconnect 清除)`
+						: `悬挂导线(两端不接任何引脚/标识/导线${wnet ? '' : '、空网名'},孤立残留)`,
 				});
 			}
 		}
@@ -2648,6 +2662,180 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 			offset,
 			rotation,
 			appliedRotation: applied,
+		},
+	};
+};
+
+// ─── schematic.pin.disconnect ────────────────────────────────────────
+// Symmetric inverse of schematic.power.connect_pin. connect_pin builds a
+// "pin → stub wire → netflag/netport" triplet; deleting only the flag (via
+// schematic.primitives.delete) leaves the stub wire dangling with an EasyEDA
+// auto-named single-pin net ($3N…). This action locates that stub — the wire
+// whose one endpoint sits ON the target pin — plus any netflag/netport/netlabel
+// on the wire's OTHER endpoint, and deletes wire + flag together (issue #51).
+//
+// Target the pin by either `designator`+`pin`, or a known `flagPrimitiveId` /
+// `wirePrimitiveId` (whatever connect_pin returned). At least one locator required.
+const schematicPinDisconnect: Handler = async (payload) => {
+	const designator = optionalString(payload, 'designator');
+	const pinNumber = optionalString(payload, 'pin');
+	const flagPrimitiveId = optionalString(payload, 'flagPrimitiveId');
+	const wirePrimitiveId = optionalString(payload, 'wirePrimitiveId');
+	if (!flagPrimitiveId && !wirePrimitiveId && !(designator && pinNumber)) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			'Provide either "designator"+"pin", or a "flagPrimitiveId"/"wirePrimitiveId" to disconnect.',
+		);
+	}
+
+	let components;
+	let wires;
+	try {
+		components = await eda.sch_PrimitiveComponent.getAll();
+		wires = await eda.sch_PrimitiveWire.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read schematic primitives.');
+	}
+
+	// Resolve the target pin coordinate. Prefer explicit designator+pin; else derive
+	// it from the located stub's pin-side endpoint further below.
+	let pinX: number | undefined;
+	let pinY: number | undefined;
+	if (designator && pinNumber) {
+		for (const c of components ?? []) {
+			if ((c.getState_Designator?.() ?? '') !== designator) continue;
+			let pins;
+			try { pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(c.getState_PrimitiveId()); }
+			catch { continue; }
+			for (const p of pins ?? []) {
+				if (String(p.getState_PinNumber?.() ?? '') === pinNumber) {
+					pinX = p.getState_X();
+					pinY = p.getState_Y();
+				}
+			}
+		}
+		if (pinX === undefined || pinY === undefined) {
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`Pin ${designator}:${pinNumber} not found on the current schematic.`,
+			);
+		}
+	}
+
+	// A generous tolerance shared with the check rules (grid-snap slop).
+	const TOL = CHECK_EPS * 8;
+	// Endpoints of a wire as [x,y] pairs (first + last vertex).
+	const endpointsOf = (w: { getState_Line: () => Array<number> | Array<Array<number>> }): Array<[number, number]> => {
+		let line;
+		try { line = w.getState_Line(); }
+		catch { return []; }
+		if (!Array.isArray(line) || line.length === 0) return [];
+		const verts: Array<[number, number]> = [];
+		if (Array.isArray(line[0])) {
+			for (const p of line as Array<Array<number>>) verts.push([p[0], p[1]]);
+		}
+		else {
+			const flat = line as Array<number>;
+			for (let i = 0; i + 1 < flat.length; i += 2) verts.push([flat[i], flat[i + 1]]);
+		}
+		if (verts.length === 0) return [];
+		return [verts[0], verts[verts.length - 1]];
+	};
+
+	// Locate the stub wire.
+	let stubWire: { pid: string; ends: Array<[number, number]> } | undefined;
+	if (wirePrimitiveId) {
+		for (const w of wires ?? []) {
+			if (String(w.getState_PrimitiveId?.() ?? '') === wirePrimitiveId) {
+				stubWire = { pid: wirePrimitiveId, ends: endpointsOf(w) };
+			}
+		}
+	}
+	// Derive pin coordinate from a flag if that's all we were given.
+	if (!stubWire && flagPrimitiveId && (pinX === undefined || pinY === undefined)) {
+		for (const c of components ?? []) {
+			if (String(c.getState_PrimitiveId?.() ?? '') === flagPrimitiveId) {
+				// The wire endpoint that coincides with THIS flag is the free end;
+				// the opposite endpoint is the pin. Find the wire touching the flag.
+				const fx = c.getState_X();
+				const fy = c.getState_Y();
+				for (const w of wires ?? []) {
+					const ends = endpointsOf(w);
+					if (ends.length !== 2) continue;
+					const [a, b] = ends;
+					const aFlag = Math.hypot(a[0] - fx, a[1] - fy) <= TOL;
+					const bFlag = Math.hypot(b[0] - fx, b[1] - fy) <= TOL;
+					if (aFlag || bFlag) {
+						const pinEnd = aFlag ? b : a;
+						pinX = pinEnd[0];
+						pinY = pinEnd[1];
+						stubWire = { pid: String(w.getState_PrimitiveId?.() ?? ''), ends };
+					}
+				}
+			}
+		}
+	}
+	// With a pin coordinate but no wire yet, find the wire with an endpoint on the pin.
+	if (!stubWire && pinX !== undefined && pinY !== undefined) {
+		for (const w of wires ?? []) {
+			const ends = endpointsOf(w);
+			if (ends.length !== 2) continue;
+			const onPin = ends.some(e => Math.hypot(e[0] - pinX!, e[1] - pinY!) <= TOL);
+			if (onPin) {
+				stubWire = { pid: String(w.getState_PrimitiveId?.() ?? ''), ends };
+				break;
+			}
+		}
+	}
+
+	if (!stubWire) {
+		throw new ActionError(
+			ErrorCodes.EDA_CALL_FAILED,
+			'No stub wire found on the target pin — nothing to disconnect (already clean?).',
+		);
+	}
+
+	// Find the flag/port/label sitting on the stub's non-pin endpoint(s).
+	const NET_MARKER_TYPES = new Set(['netflag', 'netport', 'netlabel', 'short_symbol']);
+	const flagIds: Array<string> = [];
+	for (const c of components ?? []) {
+		let type: string;
+		try { type = String(c.getState_ComponentType?.() ?? ''); }
+		catch { continue; }
+		if (!NET_MARKER_TYPES.has(type)) continue;
+		let cx: number;
+		let cy: number;
+		try { cx = c.getState_X(); cy = c.getState_Y(); }
+		catch { continue; }
+		const onEnd = stubWire.ends.some(e => Math.hypot(e[0] - cx, e[1] - cy) <= TOL);
+		if (onEnd) flagIds.push(String(c.getState_PrimitiveId?.() ?? ''));
+	}
+
+	// Delete wire + any flags together via the same routed delete used elsewhere.
+	const deleted: { wires: Array<string>; components: Array<string> } = { wires: [], components: [] };
+	try {
+		if (stubWire.pid) {
+			await deleteSchGroup('wires', [stubWire.pid]);
+			deleted.wires.push(stubWire.pid);
+		}
+		const validFlags = flagIds.filter(Boolean);
+		if (validFlags.length) {
+			await deleteSchGroup('components', validFlags);
+			deleted.components.push(...validFlags);
+		}
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to delete stub wire / flag.');
+	}
+
+	return {
+		result: {
+			disconnected: true,
+			pin: designator && pinNumber ? `${designator}:${pinNumber}` : undefined,
+			at: pinX !== undefined && pinY !== undefined ? { x: pinX, y: pinY } : undefined,
+			deletedWires: deleted.wires,
+			deletedFlags: deleted.components,
 		},
 	};
 };
@@ -5878,6 +6066,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.export.netlist': schematicExportNetlist,
 	'schematic.export.bom': schematicExportBom,
 	'schematic.power.connect_pin': schematicPowerConnectPin,
+	'schematic.pin.disconnect': schematicPinDisconnect,
 	'schematic.library.search': schematicLibrarySearch,
 	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
 	'schematic.rebind.footprint': schematicRebindFootprint,
