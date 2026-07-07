@@ -36,7 +36,8 @@ func newPcbCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	// pcb.* actions target the project's PCB window (domain→documentType), so
 	// `pcb drc` and `sch drc` never cross-fire.
 	{
-		var strict bool
+		var strict, flatJSON bool
+		var timeoutSec int
 		c := &cobra.Command{
 			Use:   "drc",
 			Short: "Run PCB DRC and return normalized violations",
@@ -45,19 +46,45 @@ func newPcbCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 This is the PCB counterpart to ` + "`easyeda sch drc`" + ` (schematic DRC). The two are
 distinct subcommands and route to different documents automatically — pcb.* targets
 the project's PCB window, schematic.* targets the schematic window — so they never
-cross-fire. The PCB must be the active/foreground document.`,
+cross-fire. The PCB must be the active/foreground document.
+
+--json flattens the SDK's nested violation tree into one row per violation
+{rule, objType, ruleName, net, x, y, layer, objs, message} with x/y converted to
+REAL mil (the raw leaves store mil/10). --timeout bounds the wait; a background /
+occluded EasyEDA window never finishes DRC's canvas recompute, so on timeout bring
+the window to the FOREGROUND and run once — do NOT retry in a loop (each retry
+piles another recompute onto the webview and makes it worse).`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb drc
-  easyeda pcb drc --strict`,
+  easyeda pcb drc --strict
+  easyeda pcb drc --json                  # flat rows, coordinates in mil
+  easyeda pcb drc --json --timeout 120    # allow a heavy board 2 minutes`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				var payload map[string]any
 				if strict {
 					payload = map[string]any{"strict": true}
 				}
-				return dispatch(cfg, "pcb.drc.check", window, payload, stdout, stderr)
+				timeout := time.Duration(timeoutSec) * time.Second
+				if !flatJSON {
+					err := dispatchTimed(cfg, "pcb.drc.check", window, payload, timeout, stdout, stderr)
+					return drcTimeoutHint(err, stderr)
+				}
+				res, err := requestActionTimed(cfg, "pcb.drc.check", window, payload, timeout)
+				if err != nil {
+					return drcTimeoutHint(err, stderr)
+				}
+				report := flattenDrcResult(res.Result)
+				out, err := json.MarshalIndent(report, "", "  ")
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(stdout, string(out))
+				return nil
 			},
 		}
 		c.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
+		c.Flags().BoolVar(&flatJSON, "json", false, "flat one-row-per-violation JSON, coordinates in mil")
+		c.Flags().IntVar(&timeoutSec, "timeout", 60, "seconds to wait for the DRC round-trip")
 		pcb.AddCommand(c)
 	}
 
@@ -857,6 +884,121 @@ pours reflow under the new clearance.`,
 			},
 		}
 		c.Flags().StringVar(&typ, "type", "all", "all | net | connection")
+		pcb.AddCommand(c)
+	}
+
+	// ── via-delete / track-delete (surgical, by primitiveId) ───────────────
+	// pcb.route.delete — rip-up's precise sibling: one bad via no longer costs
+	// re-routing the whole net. The `kind` guard makes each subcommand refuse
+	// ids of the other kind (paste protection); removed[] echoes full
+	// before-state so the audit log can recreate what was deleted.
+	for _, spec := range []struct{ use, kind, short, example string }{
+		{
+			use: "via-delete", kind: "via",
+			short: "Delete specific vias by primitiveId (rip-up is net-scoped; this is surgical)",
+			example: `  easyeda pcb via-delete --ids 184fd1d7742ac942
+  easyeda pcb via-delete --ids id1,id2      # ids from 'pcb via-list' or 'pcb drc --json' objs`,
+		},
+		{
+			use: "track-delete", kind: "track",
+			short: "Delete specific copper tracks by primitiveId (rip-up is net-scoped; this is surgical)",
+			example: `  easyeda pcb track-delete --ids 666de996beeb75f4
+  easyeda pcb track-delete --ids id1,id2    # ids from 'pcb track-list' or 'pcb drc --json' objs`,
+		},
+	} {
+		var ids []string
+		c := &cobra.Command{
+			Use:     spec.use,
+			Short:   spec.short,
+			Args:    cobra.NoArgs,
+			Example: spec.example,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if len(ids) == 0 {
+					return fmt.Errorf("--ids is required (pull fresh ids from 'pcb %s-list', they churn after edits)", spec.kind)
+				}
+				payload := map[string]any{"primitiveIds": ids, "kind": spec.kind}
+				return dispatch(cfg, "pcb.route.delete", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringSliceVar(&ids, "ids", nil, "primitiveId(s) to delete; repeat or comma-separate")
+		pcb.AddCommand(c)
+	}
+
+	// ── via-hop (composite layer hop with bonded vias) ─────────────────────
+	// pcb.route.via_hop — one command for "cross on the other layer": stub →
+	// via → hop track → via → stub + bond fills on both layers of both vias.
+	// The fills seal pro-api-sdk#31 (track↔via alone does not register as
+	// connected on 4-layer / ex-PLANE boards).
+	{
+		var net string
+		var layer, hopLayer int
+		var fromX, fromY, toX, toY, width, hole, viaDia, stub, bondSize float64
+		var noBond bool
+		c := &cobra.Command{
+			Use:   "via-hop",
+			Short: "Route a layer hop: stub→via→hop-track→via→stub + bond fills (seals the track↔via no-connect trap)",
+			Long: `Route one net across the other layer and back in a single command:
+entry stub → via → hop-layer track → via → exit stub, plus (default) a small
+net-bound bond FILL on both layers of both vias.
+
+The bond fills are load-bearing, not decoration: on 4-layer / ex-PLANE boards a
+track touching a via does NOT register as connected (pro-api-sdk#31) — an
+overlapping net-bound fill is the only reliable bridge. Vias sit --stub mil
+inside the endpoints so they stay OFF pads (via-on-pad ≠ connected either).
+Everything created is rolled back if any step fails. Verify with 'pcb drc'.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb via-hop --net U0TXD --from-x 1000 --from-y 500 --to-x 1400 --to-y 500
+  easyeda pcb via-hop --net +5V --from-x 900 --from-y 200 --to-x 1200 --to-y 400 --hop-layer 2 --width 10`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if net == "" {
+					return fmt.Errorf("--net is required (the hop must bind to a net)")
+				}
+				for _, f := range []string{"from-x", "from-y", "to-x", "to-y"} {
+					if !cmd.Flags().Changed(f) {
+						return fmt.Errorf("--from-x --from-y --to-x --to-y are all required")
+					}
+				}
+				payload := map[string]any{"net": net, "fromX": fromX, "fromY": fromY, "toX": toX, "toY": toY}
+				if cmd.Flags().Changed("layer") {
+					payload["layer"] = layer
+				}
+				if cmd.Flags().Changed("hop-layer") {
+					payload["hopLayer"] = hopLayer
+				}
+				if cmd.Flags().Changed("width") {
+					payload["lineWidth"] = width
+				}
+				if cmd.Flags().Changed("hole") {
+					payload["holeDiameter"] = hole
+				}
+				if cmd.Flags().Changed("via-diameter") {
+					payload["viaDiameter"] = viaDia
+				}
+				if cmd.Flags().Changed("stub") {
+					payload["stub"] = stub
+				}
+				if cmd.Flags().Changed("bond-size") {
+					payload["bondSize"] = bondSize
+				}
+				if noBond {
+					payload["bondFill"] = false
+				}
+				return dispatch(cfg, "pcb.route.via_hop", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&net, "net", "", "net name to bind everything to (required)")
+		c.Flags().Float64Var(&fromX, "from-x", 0, "hop start X (mil, required)")
+		c.Flags().Float64Var(&fromY, "from-y", 0, "hop start Y (mil, required)")
+		c.Flags().Float64Var(&toX, "to-x", 0, "hop end X (mil, required)")
+		c.Flags().Float64Var(&toY, "to-y", 0, "hop end Y (mil, required)")
+		c.Flags().IntVar(&layer, "layer", 1, "entry/exit copper layer (TOP=1)")
+		c.Flags().IntVar(&hopLayer, "hop-layer", 2, "layer the hop track crosses on (BOTTOM=2)")
+		c.Flags().Float64Var(&width, "width", 0, "track width (mil; default 6)")
+		c.Flags().Float64Var(&hole, "hole", 0, "via hole diameter (mil; default 12)")
+		c.Flags().Float64Var(&viaDia, "via-diameter", 0, "via outer diameter (mil; default 24)")
+		c.Flags().Float64Var(&stub, "stub", 0, "via setback from each endpoint (mil; default 20 — keeps vias off pads)")
+		c.Flags().Float64Var(&bondSize, "bond-size", 0, "bond fill square side (mil; default 20)")
+		c.Flags().BoolVar(&noBond, "no-bond", false, "skip bond fills (hop may then NOT register as connected — pro-api-sdk#31)")
 		pcb.AddCommand(c)
 	}
 

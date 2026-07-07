@@ -109,7 +109,13 @@ type actionResult struct {
 // touching stdout. A non-nil error means the daemon was unreachable or the
 // action returned ok=false (with the connector's error message attached).
 func requestAction(cfg *appConfig, action, window string, payload any) (*actionResult, error) {
-	respBody, err := postAction(cfg, action, window, payload, defaultActionTimeout)
+	return requestActionTimed(cfg, action, window, payload, defaultActionTimeout)
+}
+
+// requestActionTimed is requestAction with a caller-chosen round-trip timeout,
+// for heavy actions (DRC on a real board routinely exceeds the default).
+func requestActionTimed(cfg *appConfig, action, window string, payload any, timeout time.Duration) (*actionResult, error) {
+	respBody, err := postAction(cfg, action, window, payload, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -269,6 +275,11 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	}
 
 	body := map[string]any{"action": action}
+	// Send the round-trip budget: the daemon shortens its connector wait to
+	// (budget - grace) so it answers with a structured DISPATCH_FAILED *before*
+	// this HTTP client times out — instead of both sides hanging to their own
+	// independent deadlines.
+	body["timeoutMs"] = int(timeout / time.Millisecond)
 	if window != "" {
 		body["windowId"] = window
 	}

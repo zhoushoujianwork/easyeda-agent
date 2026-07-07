@@ -38,10 +38,20 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
   capture 自动接线、raw-id 边界警告;真机全环验证(昨日会话 1920 行 → 27 步提取 →
   18 步区间回放,lint 保持 100)。首个样例 `examples/esp32-mini/moves.playbook.json`。
   后续小改进:exporter stamp `meta.doc`;`pcb via-hop` 宏步骤仍待做(见下)。
-- [ ] `pcb drc --timeout <s>` + **忙时防重入**(daemon 侧:上一个 DRC 未返回不再下发;超时报错附「把 EasyEDA 切前台」提示)。
-- [ ] **`pcb via-hop` 复合命令**:stub + via + 对层 track + via + stub + **自动 4 片键合 fill**,一条命令封掉 A1 坑。
-- [ ] `pcb via-delete --ids` / `pcb track-delete --ids`(现只能整网 `rip-up`,单颗错 via 要重铺全网)。
-- [ ] `pcb drc --json`:扁平明细 `{rule,net,x,y}`(坐标 ×10 换算成 mil)。本轮全靠临时 python 解析。
+- [x] `pcb drc --timeout <s>` + **忙时防重入**——**代码已落地(2026-07-07,真机待验)**:
+  CLI `--timeout`(默认 60s)经协议新字段 `timeoutMs` 传导给 daemon,daemon 提前
+  2s 出结构化 DISPATCH_FAILED(不再两头各自傻等);超时提示「切前台单发,勿循环重试」;
+  daemon 对 `pcb/schematic.drc.check` 按 window 防重入(重复下发拒 `ACTION_BUSY` 409)。
+- [x] **`pcb via-hop` 复合命令**——**代码已落地(2026-07-07,真机待验)**:
+  `pcb.route.via_hop` = stub + via + 对层 track + via + stub + **自动 4 片键合 fill**
+  (两 via × 两层,默认 20×20mil,`--no-bond` 关),via 距端点 `--stub`(默认 20mil)
+  防压焊盘,中途失败整体回滚。封 A1 坑。
+- [x] `pcb via-delete --ids` / `pcb track-delete --ids`——**代码已落地(2026-07-07,真机待验)**:
+  `pcb.route.delete` 按 primitiveId 精准删,kind 守卫防贴错 id,`removed[]` 回显完整
+  before-state(audit 可重建)。
+- [x] `pcb drc --json`——**已落地(2026-07-07,单测覆盖真实叶子样本)**:扁平
+  `{rule,objType,ruleName,net,x,y,layer,objs,message}`,坐标 ×10 → mil(用 4mil
+  clearance 规则交叉验证);`objs` 直接喂 `via-delete`/`track-delete`。
 
 **P1**
 - [ ] `pcb netlist-diff`:sch↔pcb 逐网 degree 机械比对(EPAD 1-pin↔N-pads 感知),把 "Netlist Error" 定性成可交付结论。
@@ -59,8 +69,8 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 - [ ] `pcb check` netless-pour 已有;补 **floating-track-island**(整段无 pad 锚的铜,同 dangling 但成组)。
 
 ### D. Skill / references 更新
-- [ ] `references/pcb.md`:新增「连通性键合真值表」小节 + via 桥 SOP(fill 法);PLANE 翻转后禁新建异网 via;后台窗口重计算节流。
-- [ ] `references/design-flow.md` P8:铺铜/内电层步骤加"via 桥必须配 fill"与"DRC 需前台"两条硬注意。
+- [x] `references/pcb.md`:「连通性键合真值表」小节 + via 桥 SOP(fill 法 / `via-hop`)已加(2026-07-07);PLANE 翻转后禁新建异网 via 已在 P8 + via-crosses-plane 规则覆盖;`pcb drc` 条目含前台约束 + `--json`/`--timeout`。
+- [x] `references/design-flow.md`:P7 加 via-hop/精准删;P10 加"via 桥必须配 fill"与"DRC 需前台(daemon 已防重入)"两条硬注意(2026-07-07)。
 - [ ] `references/pcb-layout-conventions.md`:USB-C 16P 双极性 tie 拓扑(DN 对南区 tie 过 A6 焊盘下方 + DP 对东绕;16P 脚下隐藏 NPTH 槽 ≈ (±98, +43) 相对锚点)。
 - [ ] `standard-parts.json` 已入库 CH340C(C84681)、KF301-5.0-2P(C474881)✓(已提交 3eed339)。
 

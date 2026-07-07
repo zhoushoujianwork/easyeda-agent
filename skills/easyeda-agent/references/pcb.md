@@ -65,6 +65,7 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 - `pcb.nets.list` — nets (`net` / `length` / `color`).
 - `pcb.report` — **read-only design report** driven by per-net copper length: every net's routed length, each **net class**'s aggregate length, **differential-pair** P/N lengths + `skew` (`|lenP−lenN|`), and **equal-length-group** per-net lengths + `spread` (`max−min`). No DRC run — the quantitative companion to `pcb.drc.check` for routing-quality gates (diff skew / length matching). Pure read.
 - `easyeda pcb check` — **reconstructed DFM (design-for-manufacture) audit** — the PCB sibling of `sch check`, and the quality checks the native `pcb drc` (rule clearance) does NOT flag. Copper rules compute **purely Go-side** from placed copper (`pcb.line.list` + `pcb.via.list` + `pcb.components.list --include-pads`) and never mutate; the silkscreen rule reads `pcb.silk.list` (text layer + mirror + **reverse + rotation**), the antenna rule reads `pcb.region.list` (region bbox + rule types) + component bboxes. Rules: **dangling-end** (a track end anchored to no pad/via/track → floating copper), **acute-angle** (two same-net same-layer segments bend <90° → acid trap), **non-orthogonal** (a single track off the 0/45/90/135° grid → free-angle routing, WARN — catches lazy pad-to-pad diagonals), **track-over-pad** (a track body crosses a pad center it doesn't terminate on, same layer: cross-net = **ERROR** short, same-net = WARN), **silkscreen-flipped** (a silkscreen text 放反 — three modes: a designator on the opposite silk layer from its component **ERROR**; a top/bottom text whose **mirror OR reverse** flag reads backwards **ERROR**; a reference designator (`key=="Designator"`) not reading **upright** — 180° upside-down / 90°·270° sideways — **WARN**), **overlapping-via** (two vias stacked), **single-layer-via** (a *signal* via that changes no layer — power/GND stitch vias are skipped, they connect to a pour not a track), **width-mismatch** (a 2-pin part with asymmetric neck-down → INFO), **duplicate-segment** (collinear overlapping redundant copper), **antenna-keepout** (an antenna component — ESP WROOM/WROVER module or an `ANT*` part — whose footprint lacks a no-copper keep-out region on **every** copper layer → WARN, naming the missing layer; copper under an antenna detunes it. Requires top (L1) + bottom (L2) no-copper regions, plus the inner planes via `no-inner-electrical` on 4+-layer boards — a top-only keep-out still lets the bottom pour fill under the antenna), **netless-pour** (a copper pour bound to **no net** — dead copper that occupies board area but connects nothing, issue #34; arises from `pcb pour` without `--net`, or pouring directly on a flipped PLANE layer → WARN, remove with `pcb pour-clean --netless`), **via-crosses-plane** (a via whose net differs from an inner **PLANE/内电层**'s net, issue #30 — official bug [easyeda/pro-api-sdk#32](https://github.com/easyeda/pro-api-sdk/issues/32): a via created **after** the plane exists gets **no anti-pad** cut into the negative plane, DRC reports Plane Zone to Via / Hole to Plane Zone and `pour-rebuild` alone doesn't repair it → WARN with fix guidance: prefer removing the via and routing on outer layers, or `easyeda doc reload` then `pcb pour-rebuild`, then confirm with `pcb drc`. Reads the stackup via `pcb.layers.list` (`type=="PLANE"`) + plane nets from `pcb.pour.list`. **Best-effort**: the API exposes no anti-pad/creation-order data, so a via placed *before* the plane flip — proper anti-pad, clean DRC — is flagged too; treat `pcb drc` as the arbiter of which flagged vias are actually broken. A PLANE layer with **no net-bound pour** gets its own WARN — its net is unknown; pour while the layer is SIGNAL, then flip). `--json` for the full list; `--strict` exits non-zero on any WARN/ERROR (gate-able). Complements `pcb layout-lint` (placement/routability) + `pcb drc` (rule clearance). Arcs are out of scope for v1 (line/via/pad only; auto/short-routed copper is line segments); through-hole cross-layer track-over-pad shorts are a known blind spot (pad layer reported per side). Core + tests in `internal/app/pcb_check.go`.
+- `easyeda pcb drc` (`pcb.drc.check`) — native rule-clearance DRC, normalized to `{passed, violations}`. **`--json` flattens** the panel's nested tree into one row per violation `{rule, objType, ruleName, net, x, y, layer, objs, message}` with **x/y in real mil** (raw leaves store mil/10 — the flattener owns the ×10) — pipe to `jq`, feed `objs` ids straight into `pcb via-delete`/`track-delete`. **`--timeout <s>`** (default 60) bounds the wait AND is forwarded to the daemon, which answers with a structured error *before* the HTTP client gives up. ⚠️ **Foreground constraint**: a background/occluded EasyEDA window **never finishes** the DRC canvas recompute — on timeout, bring the window to the FOREGROUND and run **once**; do **not** retry in a loop (each retry piles another recompute onto the webview). The daemon enforces this: a second `pcb drc` on a window whose first hasn't settled is rejected immediately (`ACTION_BUSY`).
 - `pcb.drc.rules` — read the active PCB's **DRC rule configuration** (clearances, track widths, via sizes, …) **without running a check**. Use to feed real rule values into layout reasoning / gates, or to see what `pcb.drc.check` enforces. The daemon parses the (deeply-nested, untyped) result into `{clearance, trackWidth, trackWidthMin, viaDrill, viaDiameter}` in mil (`internal/app/pcb_rules.go`); `route-short`/`auto-place` consume it so they conform to the board's spec.
 - `easyeda pcb drc-rules-set --pour-clearance <mil>` — the **write side** of `drc-rules` (v1 knob: pour/plane copper clearance, **raise-only** — never loosens a stricter board). Patches `Plane` `lineClearance` in `copperRegion` (both pad models) + `innerPlane` of the current rule configuration, writes it back, verifies by re-read; follow with `pcb pour-rebuild` so existing pours reflow. A write on an immutable system preset (`JLCPCB Capability(...)`) turns it into a per-board `自定义配置` copy — expected. **Part of the solidified fix for the fresh-PCB pour-reflow divergence**: a newly created PCB reflows ~3% under the configured clearance (10mil → ~9.7mil) AND skips thermal spokes; `--pour-clearance 12` restores margin over the 10mil DRC floor.
   > **Fresh-PCB trap — the rules snapshot**: a PCB document **created in the current session and never reloaded** computes pour reflow from a **creation-time rules snapshot** — rule writes (readback shows them!), `pour-rebuild`, and tab-switching away/back all have NO effect on the reflow. Only a real close+reopen (`easyeda doc reload` — saves first, no edits lost) refreshes it; after the reload, `pcb pour-rebuild` reflows under the live rules (clearance AND thermal spokes). Already-reloaded documents (e.g. any board that survived an EasyEDA restart) honor rule writes immediately. The esp32-mini playbook encodes the full recipe: `rules-pour-margin` → pours → `reload-pcb` (`doc reload`) → `pour-rebuild-2`; verified on a fresh board: DRC 55 → **1** (remainder = the known add-component netlist false positive).
@@ -96,8 +97,47 @@ segment-by-segment, or use the file-exchange autoroute flow.
   outline, silkscreen/assembly/mechanical artwork, or **locked** primitives. The
   iteration primitive: `rip_up → re-route`. (Reports `{requested, ok}` per type, since
   `delete()` is a batch boolean.)
+- `easyeda pcb via-delete --ids …` / `pcb track-delete --ids …` (`pcb.route.delete`) —
+  **surgical delete by primitiveId**: one bad via no longer costs re-routing the whole
+  net (rip-up is net-scoped). Ids come from `pcb via-list` / `pcb track-list` / `pcb drc
+  --json` `objs`; **pull them fresh — ids churn after edits**. Each subcommand guards its
+  kind (pasting track ids into `via-delete` errors out); locked primitives are skipped,
+  stale ids reported as `notFound`. The result's `removed[]` echoes each primitive's full
+  before-state (net/layer/geometry) so the audit log can recreate it.
+- `easyeda pcb via-hop --net N --from-x … --from-y … --to-x … --to-y …`
+  (`pcb.route.via_hop`) — **composite layer hop**: entry stub → via → hop-layer track →
+  via → exit stub, **plus (default) a small net-bound bond FILL on both layers of both
+  vias**. The fills are load-bearing — see the bond truth table below: on 4-layer /
+  ex-PLANE boards a track touching a via does **NOT** register as connected
+  ([pro-api-sdk#31](https://github.com/easyeda/pro-api-sdk/issues/31)); the overlapping
+  fill is the only reliable bridge. Vias sit `--stub` (default 20mil) inside the
+  endpoints so they stay **off pads** (via-on-pad ≠ connected either). `--layer`
+  (default 1=TOP) / `--hop-layer` (default 2=BOTTOM), `--width`, `--no-bond` to skip
+  fills (then verify connectivity yourself). Rolls back everything it created on
+  mid-sequence failure. Verify with `pcb drc`.
 - `pcb.clear_routing` — native `clearRouting` (`@alpha`, may be undefined on this build,
   and does NOT protect unlocked outline) — prefer `pcb.route.rip_up`.
+
+#### 连通性键合真值表 (what actually registers as CONNECTED)
+
+On 4-layer boards / boards that **ever had a PLANE layer** (the esp32MiniRequire
+probe class), EasyEDA's connectivity engine does NOT register some geometrically
+perfect junctions ([pro-api-sdk#31](https://github.com/easyeda/pro-api-sdk/issues/31)):
+
+| junction | registers? |
+|---|---|
+| track endpoint exactly ON a via center | ❌ (DRC keeps reporting the net floating) |
+| via ON a track's body (mid-segment) | ❌ |
+| via ON a pad | ❌ (offset + stub instead) |
+| pad ↔ track endpoint at pad center | ✅ |
+| **net-bound FILL overlapping via + track** | ✅ — the only reliable via bridge |
+| pour (same net) flowing over via | ✅ (but pour reflow has its own traps — see pour section) |
+
+**Via-bridge SOP**: never leave a bare track↔via junction on this board class — use
+`pcb via-hop` (bonds automatically), or patch an existing junction with a ~20×20mil
+net-bound `pcb fill create --rect` covering via + track end on each affected layer.
+Verified in probe round #1: +5V/U0TXD re-poured 3× at 20/12/10mil all stayed
+floating; 4 bond fills cleared DRC immediately.
 
 ### Copper pour (铺铜)
 

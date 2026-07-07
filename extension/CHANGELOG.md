@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-07-07
+
+闭环优化 B/P0 收尾:布线手术刀 + 换层跳线复合动作(封 pro-api-sdk#31 track↔via
+不导通坑)。配套 daemon 侧 DRC 防重入 + 超时预算传导(CLI `pcb drc --json/--timeout`)。
+
+### Added
+- `pcb.route.delete` — 按 primitiveId 精准删 track/arc/via(rip_up 是整网粒度,
+  一颗错 via 不再重铺全网)。`kind` 守卫拒绝贴错类别的 id;锁定跳过、陈旧 id 报
+  `notFound`;`removed[]` 回显每个被删图元的完整 before-state(net/layer/几何),
+  audit log 足以重建。
+- `pcb.route.via_hop` — 复合换层跳线:入口 stub → via → 对层 track → via → 出口
+  stub,**默认在两颗 via 的两层各放一片同网键合 fill**(4 层/曾有 PLANE 板上裸
+  track↔via 结点不注册导通,fill 面重叠是唯一可靠桥接)。via 距端点 `stub`(默认
+  20mil)防压焊盘;中途失败整体回滚。
+
 ## [0.8.8] - 2026-07-07
 
 插件市场审核修复（承接 0.8.4–0.8.7 的图片系列问题，最终定案）。逐个把关卡打通：

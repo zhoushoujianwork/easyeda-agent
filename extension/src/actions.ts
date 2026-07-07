@@ -5343,6 +5343,186 @@ const pcbClearRouting: Handler = async (payload) => {
 	return { result: { cleared, type } };
 };
 
+// ─── PCB routing: surgical delete by primitiveId ─────────────────────
+// rip_up is net-scoped (all-or-nothing per net); this deletes EXACTLY the
+// tracks/arcs/vias named by id — the fix for "one bad via forces re-routing the
+// whole net". Every removed primitive's full before-state is echoed in the
+// result so the audit log holds enough to recreate it (recovery/replay).
+
+const pcbRouteDelete: Handler = async (payload) => {
+	const raw = payload.primitiveIds ?? payload.ids;
+	let ids: Array<string>;
+	if (typeof raw === 'string') ids = [raw];
+	else if (Array.isArray(raw) && raw.every(id => typeof id === 'string') && raw.length > 0) ids = raw as Array<string>;
+	else throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "primitiveIds" (string or non-empty string[]).');
+	const kindGuard = optionalString(payload, 'kind'); // 'via' | 'track' — refuse ids of another kind
+
+	let lines, arcs, vias;
+	try {
+		lines = await eda.pcb_PrimitiveLine.getAll();
+		arcs = await eda.pcb_PrimitiveArc.getAll();
+		vias = await eda.pcb_PrimitiveVia.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read routing primitives for delete.');
+	}
+
+	// id → {kind, locked, before} over ALL routing primitives on the board.
+	type RouteEntry = { kind: 'track' | 'arc' | 'via'; locked: boolean; before: Record<string, unknown> };
+	const byId = new Map<string, RouteEntry>();
+	for (const l of lines ?? []) {
+		byId.set(l.getState_PrimitiveId(), {
+			kind: 'track', locked: l.getState_PrimitiveLock(),
+			before: { net: l.getState_Net(), layer: Number(l.getState_Layer()), startX: l.getState_StartX(), startY: l.getState_StartY(), endX: l.getState_EndX(), endY: l.getState_EndY(), lineWidth: l.getState_LineWidth() },
+		});
+	}
+	for (const a of arcs ?? []) {
+		byId.set(a.getState_PrimitiveId(), {
+			kind: 'arc', locked: a.getState_PrimitiveLock(),
+			before: { net: a.getState_Net(), layer: Number(a.getState_Layer()) },
+		});
+	}
+	for (const v of vias ?? []) {
+		byId.set(v.getState_PrimitiveId(), {
+			kind: 'via', locked: v.getState_PrimitiveLock(),
+			before: { net: v.getState_Net(), x: v.getState_X(), y: v.getState_Y(), holeDiameter: v.getState_HoleDiameter(), diameter: v.getState_Diameter() },
+		});
+	}
+
+	const toDelete: Record<'track' | 'arc' | 'via', Array<string>> = { track: [], arc: [], via: [] };
+	const removed: Array<Record<string, unknown>> = [];
+	const skippedLocked: Array<string> = [];
+	const notFound: Array<string> = [];
+	const wrongKind: Array<string> = [];
+	for (const id of ids) {
+		const entry = byId.get(id);
+		if (!entry) { notFound.push(id); continue; }
+		if (kindGuard && entry.kind !== kindGuard) { wrongKind.push(`${id} is a ${entry.kind}`); continue; }
+		if (entry.locked) { skippedLocked.push(id); continue; }
+		toDelete[entry.kind].push(id);
+		removed.push({ primitiveId: id, kind: entry.kind, ...entry.before });
+	}
+	if (wrongKind.length) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `kind=${kindGuard} refused mismatched ids: ${wrongKind.join('; ')}. Drop the kind guard or fix the id list.`);
+	}
+	if (!removed.length) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing to delete: ${notFound.length} id(s) not found among routing primitives${skippedLocked.length ? `, ${skippedLocked.length} locked` : ''}. Pull fresh ids from pcb.line.list / pcb.via.list.`);
+	}
+
+	const results: Record<string, { requested: number; ok: boolean }> = {};
+	const deleters: Record<'track' | 'arc' | 'via', (ids: Array<string>) => Promise<boolean>> = {
+		track: batch => eda.pcb_PrimitiveLine.delete(batch),
+		arc: batch => eda.pcb_PrimitiveArc.delete(batch),
+		via: batch => eda.pcb_PrimitiveVia.delete(batch),
+	};
+	for (const kind of ['track', 'arc', 'via'] as const) {
+		const batch = toDelete[kind];
+		if (!batch.length) continue;
+		try { results[`${kind}s`] = { requested: batch.length, ok: await deleters[kind](batch) }; }
+		catch (err) { throw edaError(err, `Failed to delete ${kind}s.`); }
+	}
+	return { result: { deleted: results, removed, count: removed.length, skippedLocked, notFound } };
+};
+
+// ─── PCB routing: via-hop (layer hop with bonded vias) ───────────────
+// One command for "cross to the other layer and come back": stub → via → hop
+// track → via → stub, PLUS a small net-bound bond fill on BOTH layers of BOTH
+// vias. The fills are load-bearing, not decoration: on this platform a track
+// touching a via does NOT register as connected on 4-layer / ex-PLANE boards
+// (pro-api-sdk#31) — a net-bound fill overlapping via+track is the only
+// reliable bridge. Rolls back everything it created on mid-sequence failure.
+
+const pcbRouteViaHop: Handler = async (payload) => {
+	const net = requireString(payload, 'net');
+	const fromX = requireNumber(payload, 'fromX');
+	const fromY = requireNumber(payload, 'fromY');
+	const toX = requireNumber(payload, 'toX');
+	const toY = requireNumber(payload, 'toY');
+	const layer = (optionalNumber(payload, 'layer') ?? 1) as unknown as TPCB_LayersOfLine;
+	const hopLayer = (optionalNumber(payload, 'hopLayer') ?? 2) as unknown as TPCB_LayersOfLine;
+	const lineWidth = optionalNumber(payload, 'lineWidth') ?? 6;
+	const holeDiameter = optionalNumber(payload, 'holeDiameter') ?? 12;
+	const viaDiameter = optionalNumber(payload, 'viaDiameter') ?? 24;
+	const stub = optionalNumber(payload, 'stub') ?? 20;      // via setback from each endpoint (keeps vias OFF pads — via-on-pad ≠ connected)
+	const bondFill = optionalBoolean(payload, 'bondFill') !== false;
+	const bondSize = optionalNumber(payload, 'bondSize') ?? 20; // square side, centered on each via
+
+	if (Number(layer) === Number(hopLayer)) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'layer and hopLayer must differ (a hop changes layers).');
+	}
+	const dx = toX - fromX, dy = toY - fromY;
+	const dist = Math.hypot(dx, dy);
+	if (dist <= 2 * stub + viaDiameter) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `from→to distance ${dist.toFixed(1)}mil is too short for a hop (needs > 2×stub + viaDiameter = ${2 * stub + viaDiameter}mil) — route it directly on one layer instead.`);
+	}
+	const ux = dx / dist, uy = dy / dist;
+	const v1 = { x: fromX + ux * stub, y: fromY + uy * stub };
+	const v2 = { x: toX - ux * stub, y: toY - uy * stub };
+
+	// Track everything created so a mid-sequence failure rolls back cleanly.
+	const created: { tracks: Array<string>; vias: Array<string>; fills: Array<string> } = { tracks: [], vias: [], fills: [] };
+	const rollback = async () => {
+		try {
+			if (created.fills.length) await eda.pcb_PrimitiveFill.delete(created.fills);
+			if (created.vias.length) await eda.pcb_PrimitiveVia.delete(created.vias);
+			if (created.tracks.length) await eda.pcb_PrimitiveLine.delete(created.tracks);
+		}
+		catch { /* best-effort rollback */ }
+	};
+
+	const mkTrack = async (lyr: TPCB_LayersOfLine, x1: number, y1: number, x2: number, y2: number, what: string) => {
+		const line = await eda.pcb_PrimitiveLine.create(net, lyr, x1, y1, x2, y2, lineWidth);
+		if (!line) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `via-hop: ${what} track creation returned no primitive (check layer ids).`);
+		created.tracks.push(line.getState_PrimitiveId());
+	};
+	const mkVia = async (p: { x: number; y: number }, what: string) => {
+		const via = await eda.pcb_PrimitiveVia.create(net, p.x, p.y, holeDiameter, viaDiameter);
+		if (!via) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `via-hop: ${what} creation returned no primitive.`);
+		created.vias.push(via.getState_PrimitiveId());
+	};
+	const mkBond = async (p: { x: number; y: number }, lyr: TPCB_LayersOfLine) => {
+		const h = bondSize / 2;
+		const poly = closedPolygonFromPoints([[p.x - h, p.y - h], [p.x + h, p.y - h], [p.x + h, p.y + h], [p.x - h, p.y + h]]);
+		const fill = await eda.pcb_PrimitiveFill.create(lyr as unknown as TPCB_LayersOfFill, poly, net, 0 as unknown as EPCB_PrimitiveFillMode, undefined, false);
+		if (!fill) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'via-hop: bond fill creation returned no primitive.');
+		created.fills.push(fill.getState_PrimitiveId());
+	};
+
+	try {
+		await mkTrack(layer, fromX, fromY, v1.x, v1.y, 'entry stub');
+		await mkVia(v1, 'via 1');
+		await mkTrack(hopLayer, v1.x, v1.y, v2.x, v2.y, 'hop');
+		await mkVia(v2, 'via 2');
+		await mkTrack(layer, v2.x, v2.y, toX, toY, 'exit stub');
+		if (bondFill) {
+			for (const p of [v1, v2]) {
+				await mkBond(p, layer);
+				await mkBond(p, hopLayer);
+			}
+		}
+	}
+	catch (err) {
+		await rollback();
+		throw err instanceof ActionError ? err : edaError(err, 'via-hop failed mid-sequence; created primitives were rolled back.');
+	}
+
+	return {
+		result: {
+			net,
+			layer: Number(layer),
+			hopLayer: Number(hopLayer),
+			vias: [{ ...v1 }, { ...v2 }],
+			trackIds: created.tracks,
+			viaIds: created.vias,
+			fillIds: created.fills,
+			bonded: bondFill,
+			note: bondFill
+				? 'bond fills placed on both layers of both vias (track↔via alone does not register as connected on 4-layer / ex-PLANE boards — pro-api-sdk#31)'
+				: 'bondFill=false: on 4-layer / ex-PLANE boards this hop may NOT register as connected (pro-api-sdk#31) — verify with pcb.drc.check',
+		},
+	};
+};
+
 // ─── Board outline (板框) ──────────────────────────────────────────────
 // The board outline is a closed loop of lines on the BOARD_OUTLINE layer (11).
 // Native arcs do not commit on the current build, so curves are line-segment
@@ -5707,6 +5887,8 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.line.list': pcbLineList,
 	'pcb.via.list': pcbViaList,
 	'pcb.route.rip_up': pcbRouteRipUp,
+	'pcb.route.delete': pcbRouteDelete,
+	'pcb.route.via_hop': pcbRouteViaHop,
 	'pcb.clear_routing': pcbClearRouting,
 	'pcb.pour.create': pcbPourCreate,
 	'pcb.pour.list': pcbPourList,

@@ -23,6 +23,42 @@ import (
 // callers can layer their own shorter timeouts on top.
 const dispatchTimeout = 60 * time.Second
 
+// dispatchTimeoutBounds clamp a caller-supplied Request.TimeoutMs. The daemon
+// answers slightly BEFORE the caller's own deadline (see requestTimeout) so the
+// caller gets a structured DISPATCH_FAILED, not a raw HTTP timeout.
+const (
+	minDispatchTimeout = 3 * time.Second
+	maxDispatchTimeout = 10 * time.Minute
+	dispatchGrace      = 2 * time.Second
+)
+
+// requestTimeout resolves the connector-wait budget for one request: the
+// caller's TimeoutMs minus a grace window, clamped to sane bounds; the daemon
+// default when the caller sent none.
+func requestTimeout(req *protocol.Request) time.Duration {
+	if req.TimeoutMs <= 0 {
+		return dispatchTimeout
+	}
+	d := time.Duration(req.TimeoutMs)*time.Millisecond - dispatchGrace
+	if d < minDispatchTimeout {
+		return minDispatchTimeout
+	}
+	if d > maxDispatchTimeout {
+		return maxDispatchTimeout
+	}
+	return d
+}
+
+// nonReentrant lists actions the daemon refuses to run concurrently per window.
+// A DRC re-check piles a second full-canvas recompute onto the webview while
+// the first is still grinding (worst on a background window, where it NEVER
+// finishes — optimization-loop.md A4); retries therefore make the hang worse,
+// not better. The guard turns that into an immediate, explainable rejection.
+var nonReentrant = map[string]bool{
+	"pcb.drc.check":       true,
+	"schematic.drc.check": true,
+}
+
 // knownActions is the set of Phase 1 action names the daemon will accept.
 var knownActions = func() map[string]bool {
 	set := map[string]bool{}
@@ -136,7 +172,23 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	req.CreatedAt = time.Now().UTC()
 	req.WindowID = target.id()
 
-	ctx, cancel := context.WithTimeout(r.Context(), dispatchTimeout)
+	// Re-entrancy guard: refuse to stack a second DRC onto a window whose first
+	// one hasn't settled — retrying piles recompute tasks onto the webview.
+	if nonReentrant[req.Action] {
+		release, acquired := s.acquireExclusive(req.Action, req.WindowID)
+		if !acquired {
+			started := time.Now().UTC()
+			errResp := errorResponse(req.ID, "ACTION_BUSY",
+				fmt.Sprintf("%s is already running on this window", req.Action),
+				"wait for the in-flight check to settle; if it never does, EasyEDA is in the background — bring the window to the FOREGROUND and run once (do not retry in a loop)")
+			s.audit.Append(fromResponse(started, &req, &errResp))
+			writeJSON(w, http.StatusConflict, errResp)
+			return
+		}
+		defer release()
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), requestTimeout(&req))
 	defer cancel()
 
 	started := time.Now().UTC()

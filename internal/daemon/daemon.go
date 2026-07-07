@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -51,9 +52,24 @@ type Server struct {
 	audit    *auditWriter
 	autosave *autosaver // nil when Options.AutosaveDebounce <= 0
 
+	// inflight tracks non-reentrant actions currently forwarded, keyed
+	// "<action>|<windowId>" — see acquireExclusive / nonReentrant.
+	inflight sync.Map
+
 	// connCtx is cancelled on shutdown so connector read loops unblock.
 	connCtx    context.Context
 	connCancel context.CancelFunc
+}
+
+// acquireExclusive claims the per-window slot for a non-reentrant action.
+// The second return is false while another request holds the slot; on true,
+// call release() when the action settles.
+func (s *Server) acquireExclusive(action, windowID string) (release func(), acquired bool) {
+	key := action + "|" + windowID
+	if _, loaded := s.inflight.LoadOrStore(key, struct{}{}); loaded {
+		return nil, false
+	}
+	return func() { s.inflight.Delete(key) }, true
 }
 
 // logf writes a diagnostic line to the server log, if one is set.
