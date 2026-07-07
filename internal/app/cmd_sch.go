@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -743,6 +744,46 @@ pull fresh ids before any follow-up mutation on it.`,
 		c.Flags().StringVar(&direction, "direction", "", "visual stub direction (up=higher on canvas, down=lower): up, down, left, right")
 		c.Flags().Float64Var(&offset, "offset", 0, "wire length in schematic units")
 		c.Flags().Float64Var(&rotation, "rotation", 0, "flag rotation override in degrees")
+		sch.AddCommand(c)
+	}
+
+	// ── disconnect ────────────────────────────────────────────────────────
+	// schematic.pin.disconnect — inverse of connect: removes a pin's stub wire
+	// AND its netflag/netport together (issue #51).
+	{
+		var pin, flagID, wireID string
+		c := &cobra.Command{
+			Use:   "disconnect",
+			Short: "Remove a pin's stub wire and its netflag/netport together (inverse of connect)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda sch disconnect --pin U1:5
+  easyeda sch disconnect --flag-id <flagPrimitiveId>
+  easyeda sch disconnect --wire-id <wirePrimitiveId>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				if pin != "" {
+					parts := strings.SplitN(pin, ":", 2)
+					if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+						return fmt.Errorf("--pin must be DESIGNATOR:PIN (e.g. U1:5)")
+					}
+					payload["designator"] = parts[0]
+					payload["pin"] = parts[1]
+				}
+				if flagID != "" {
+					payload["flagPrimitiveId"] = flagID
+				}
+				if wireID != "" {
+					payload["wirePrimitiveId"] = wireID
+				}
+				if len(payload) == 0 {
+					return fmt.Errorf("provide --pin U1:5, or --flag-id / --wire-id")
+				}
+				return dispatch(cfg, "schematic.pin.disconnect", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&pin, "pin", "", "target pin as DESIGNATOR:PIN (e.g. U1:5)")
+		c.Flags().StringVar(&flagID, "flag-id", "", "netflag/netport primitiveId (from connect output)")
+		c.Flags().StringVar(&wireID, "wire-id", "", "stub wire primitiveId (from connect output)")
 		sch.AddCommand(c)
 	}
 
