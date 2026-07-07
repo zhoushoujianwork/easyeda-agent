@@ -164,9 +164,9 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Rename a schematic page.",
+			Description: "Rename a schematic page. Verifies the new name landed in the page list (issue #55 platform-async cache); returns verified=false + warning if it hasn't synced yet.",
 			Inputs:      []string{"pageUuid", "name"},
-			Outputs:     []string{"ok"},
+			Outputs:     []string{"ok", "verified", "warning"},
 		},
 		{
 			Name:         "schematic.page.delete",
@@ -207,7 +207,7 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			NeedsWindow: true,
 			Description: "List components on the active schematic page. includeBBox attaches each component's rendered extent {minX,minY,maxX,maxY} (used by `easyeda sch layout-lint` for overlap/spacing checks). NOTE: the component/symbol/footprint/uniqueId fields are placed-INSTANCE ids — they are NOT device-library uuids and cannot be replayed into `schematic.component.place`. To re-place the same part, get a fresh device uuid from `schematic.library.search`.",
-			Inputs:      []string{"allPages optional", "includePins optional", "includeBBox optional"},
+			Inputs:      []string{"allPages optional (WARNING: non-active pages return shallow data — pins/bbox may be empty even when wired; switch to the page via document.switch for accurate data)", "includePins optional", "includeBBox optional"},
 			Outputs:     []string{"component primitives", "designator", "name", "pins", "bbox"},
 		},
 		{

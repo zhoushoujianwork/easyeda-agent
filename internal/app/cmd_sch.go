@@ -326,7 +326,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				return dispatch(cfg, "schematic.components.list", window, payload, stdout, stderr)
 			},
 		}
-		c.Flags().BoolVar(&allPages, "all-pages", false, "list components across all schematic pages")
+		c.Flags().BoolVar(&allPages, "all-pages", false, "list components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
 		c.Flags().BoolVar(&includeBBox, "include-bbox", false, "attach each component's rendered extent {minX,minY,maxX,maxY}")
 		c.Flags().BoolVar(&includePins, "include-pins", false, "attach each pin's {pinName,pinNumber,x,y,noConnected} — the data plane for routing/connectivity checks (output grows, esp. with --all-pages)")
 		sch.AddCommand(c)
@@ -930,7 +930,7 @@ exits non-zero when there are any findings, to use it as a gate.`,
 				return runSchCheck(cfg, window, allPages, strict, asJSON, stdout, stderr)
 			},
 		}
-		c.Flags().BoolVar(&allPages, "all-pages", false, "check components across all schematic pages")
+		c.Flags().BoolVar(&allPages, "all-pages", false, "check components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
 		c.Flags().BoolVar(&strict, "strict", false, "exit non-zero when there are findings (gate mode)")
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
 		sch.AddCommand(c)
@@ -967,7 +967,7 @@ check for a faster read.`,
 				return dispatch(cfg, "schematic.read", window, payload, stdout, stderr)
 			},
 		}
-		c.Flags().BoolVar(&allPages, "all-pages", false, "read components across all schematic pages")
+		c.Flags().BoolVar(&allPages, "all-pages", false, "read components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
 		c.Flags().BoolVar(&noCheck, "no-check", false, "skip the geometric design check for a faster read")
 		sch.AddCommand(c)
 	}
@@ -1021,7 +1021,7 @@ Exits non-zero when any overlap is found, so it can gate a workflow.`,
 		}
 		c.Flags().Float64Var(&minGap, "min-gap", 2.54, "minimum gap between component bboxes in mm (closer = WARN)")
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
-		c.Flags().BoolVar(&allPages, "all-pages", false, "lint components across all schematic pages")
+		c.Flags().BoolVar(&allPages, "all-pages", false, "lint components across all schematic pages (WARNING: non-active pages return shallow data — components with no bbox are SKIPPED from overlap checks, not confirmed clear; use `doc switch` to that page for accurate linting)")
 		c.Flags().BoolVar(&includeNonParts, "include-non-parts", false, "also lint non-part primitives (sheet/title-frame, netflag/netport/…); excluded by default")
 		sch.AddCommand(c)
 	}

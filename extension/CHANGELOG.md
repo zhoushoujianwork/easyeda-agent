@@ -17,6 +17,18 @@ follow [SemVer](https://semver.org/).
   保留,id 变)。id 解析走 `getAll()` 本地过滤(刚创建的图元直接 `.get(id)` 会瞬时
   404,同批 `getAll()` 能看到——实测踩过,已修）。
 
+### Fixed
+- `schematic.page.rename` 改完立即 `doc ls` 读到旧页名(issue #55):
+  `modifySchematicPageName` 返回 `ok:true` 后,新名不会立刻进
+  `getAllSchematicPagesInfo()` 的元数据缓存,要等后续某个写操作才刷新。现在
+  `page.rename` 成功后做写后自校验——短间隔重试读回页面列表确认新名生效,命中返回
+  `verified:true`;重试耗尽仍未同步返回 `verified:false` + `warning`,把平台异步性
+  如实报给调用方,而不是盲目 echo `ok`。
+- `sch read`/`sch list`/`sch check`/`sch layout-lint` 的 `--all-pages` 对非激活页
+  只给壳数据(issue #54):现在如实警告 pins/bbox 对非激活页可能为空;
+  `layout-lint` 把 "no bbox (skipped)" 从脚注升级成醒目 WARN,并在结论里补一句
+  「skipped ≠ 确认无重叠」,避免空重叠结果被误读成全部过关。
+
 ## [0.8.11] - 2026-07-07
 
 探针轮次 #3(esp32MiniRequire 回归)实测暴露的两处修复。
