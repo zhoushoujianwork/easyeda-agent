@@ -197,7 +197,7 @@ func applyAutolayout(cfg *appConfig, window string, rep *alReport, stderr io.Wri
 		return
 	}
 	kept, _ := filterLayoutComps(comps, false)
-	lrep := analyzeLayout(kept, 0)
+	lrep := analyzeLayout(kept, 0, -1)
 	rep.Validation.PartOverlaps = len(lrep.Overlaps)
 	if len(lrep.Overlaps) > 0 {
 		rep.OK = false

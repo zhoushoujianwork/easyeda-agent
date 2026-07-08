@@ -117,7 +117,7 @@ func applyFreePlace(cfg *appConfig, window string, rep *freePlaceReport, stderr 
 		return
 	}
 	kept, _ := filterLayoutComps(comps, false)
-	if lrep := analyzeLayout(kept, 0); len(lrep.Overlaps) > 0 {
+	if lrep := analyzeLayout(kept, 0, -1); len(lrep.Overlaps) > 0 {
 		rep.OK = false
 		rep.Note = strings.TrimSpace(rep.Note + fmt.Sprintf(" ⚠ post-apply layout-lint still sees %d overlap(s).", len(lrep.Overlaps)))
 	}

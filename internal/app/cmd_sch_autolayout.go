@@ -467,7 +467,7 @@ func planAutolayout(modules []alModuleSpec, parts []alPart, sheet *layoutBBox, r
 	}
 
 	// ── validation summary ──────────────────────────────────────────────────
-	overlapRep := analyzeLayout(placedComps, 0) // minGap 0 → count true overlaps only
+	overlapRep := analyzeLayout(placedComps, 0, -1) // minGap 0 → count true overlaps only
 	rep.Validation.PartOverlaps = len(overlapRep.Overlaps)
 	if rules.AvoidTitleBlock && tb != nil {
 		for _, b := range placed {
