@@ -235,3 +235,9 @@ Built on / inspired by these open projects — thank you:
 - [**spf13/cobra**](https://github.com/spf13/cobra) (CLI framework) · [**coder/websocket**](https://github.com/coder/websocket) (daemon ↔ connector) · [**esbuild**](https://github.com/evanw/esbuild) (connector bundling).
 - **Official EasyEDA extensions** ([github.com/easyeda](https://github.com/easyeda)) — we study their `eda.*` API usage + algorithms (not their UI) as prior art; the absorb-list lives in [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md). Notably [`eext-run-api-gateway`](https://github.com/easyeda/eext-run-api-gateway) proved the in-editor code channel, and [`eext-export-design-report`](https://github.com/easyeda/eext-export-design-report) informed our design-report reads.
 - Candidate not yet absorbed: [**polyclip-ts**](https://github.com/luizbarboza/polyclip-ts) (polygon boolean) — for a future silkscreen-fill-with-obstacle-avoidance (`docs/ecosystem-survey.md` A10).
+
+## Star History
+
+Thanks for every star — we just passed 30 ⭐ 🎉
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zhoushoujianwork/easyeda-agent&type=Date)](https://star-history.com/#zhoushoujianwork/easyeda-agent&Date)
