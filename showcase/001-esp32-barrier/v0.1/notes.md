@@ -59,6 +59,29 @@
 - P2(91)/P3(72)未重布,直接用修好的求解器跑(先 dry-run 生成 plans)。
 - 布线器脚本位置:见本轮会话 scratchpad;固化 TODO:成熟后进 skills/scripts/。
 
+
+## 2026-07-09 凌晨三轮(原理图收官)
+
+**三页电气干净达成**(以 EasyEDA 几何 check 为准):P1/P2/P3 跨网混线 0、dangling 0、
+悬空=备用脚白名单完全吻合(U1×19 备用 GPIO / J2 B6-B8 单取向+SBU / U3 modem 7 脚)。
+
+关键新根因(全部实证,按发现顺序):
+1. **列蛇线**:求解器方向回退在引脚列上画垂直桩 → auto-merge 熔成穿多 pin 的科学怪线
+   (QFN 两条、U3 两条)——pin 障碍模型(±4)补丁后不再产生。
+2. **pin-to-pin 放置级短路**:autolayout 帽阵零间隙排列使相邻电容引脚物理重合
+   (P1 两对 3V3↔GND、P2 一对 GND↔RS485_A)——即放置本身就短路,与布线无关!
+   修法=挪件重接;autolayout 需要 pin 间隙约束(CLI 票)。
+3. **引脚网络戳陈旧**:线删了 pin 上的 net 戳还在 → autoconnect 幂等检查误报
+   "already connected"(CLI 票)。
+4. autoconnect 兜底=桥接制造机(6/6 复现)——兜底必须走避碰求解器,铁律。
+
+**上游重磅**:getNetlistFile 文档级死亡二次复现(prim-delete 重手术后引擎静默返 0,
+wipe+浏览器重载不可恢复;check 几何引擎不受影响)——两引擎权威性分家。
+成员级网表验证移交 PCB 阶段(add-component 手喂 spec + DRC 连通把关)。
+
+**下一步(确认点②之后)**:P0-P10 PCB 阶段,pinmap 用 spec.json + netlist-plan.md,
+add-component --nets 手喂;确认点②证据=check 三页终态 + 本笔记根因链。
+
 ## 关键文件
 - 连线蓝图:netlist-plan.md;autoconnect spec:scratchpad/barrier-p{1,2}-connect.json
 - 引脚字典:scratchpad/barrier-p{1,2}-read.json(U1 QFN56:GPIO15/16=pin21/22,GPIO48=pin36,
