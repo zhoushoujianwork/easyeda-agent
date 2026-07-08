@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
@@ -95,6 +96,29 @@ func TestConnectorVersionOK(t *testing.T) {
 		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
 			t.Errorf("connectorVersionOK(%q,%q,%q)=%v, want %v", c.conn, c.daemon, c.newestPeer, fmtBoolp(got), fmtBoolp(c.want))
 		}
+	}
+}
+
+func TestStaleConnectorNotice(t *testing.T) {
+	// Behind the daemon on a clean release → actionable notice.
+	if note := staleConnectorNotice("0.8.3", "v0.9.0"); note == "" {
+		t.Error("0.8.3 < daemon 0.9.0 should yield a re-import notice")
+	} else if !strings.Contains(note, "0.8.3") || !strings.Contains(note, "0.9.0") {
+		t.Errorf("notice should name both versions: %q", note)
+	}
+	// Up to date / ahead → no notice.
+	for _, c := range [][2]string{{"0.9.0", "v0.9.0"}, {"0.10.0", "v0.9.0"}} {
+		if note := staleConnectorNotice(c[0], c[1]); note != "" {
+			t.Errorf("staleConnectorNotice(%q,%q) should be empty, got %q", c[0], c[1], note)
+		}
+	}
+	// Dev daemon (non-clean) → never a hard verdict, even if connector "looks" behind.
+	if note := staleConnectorNotice("0.8.3", "v0.9.0-3-gabc-dirty"); note != "" {
+		t.Errorf("dev daemon should not emit a stale notice, got %q", note)
+	}
+	// Non-semver connector → no notice.
+	if note := staleConnectorNotice("dev", "v0.9.0"); note != "" {
+		t.Errorf("non-semver connector should not emit a notice, got %q", note)
 	}
 }
 

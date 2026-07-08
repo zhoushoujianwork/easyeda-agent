@@ -107,26 +107,34 @@ install_skill_to() {
   mkdir -p "$_base"
   _dest="${_base}/${SKILL_NAME}"
 
+  # Records the installed version so the daemon's startup skill-sync knows this
+  # dir is already current and skips a needless re-download (see `easyeda skill`).
+  _write_marker() { printf '%s\n' "${VERSION#v}" > "${_dest}/.version"; }
+
   if [ ! -d "$_dest" ]; then
     cp -r "$_src" "$_dest"
+    _write_marker
     ok "${_client} skill installed → ${_dest}"
     return 0
   fi
 
   if [ "$SKILL_PRESERVE" = "1" ]; then
     cp -rn "$_src"/. "$_dest"/ 2>/dev/null || cp -r "$_src"/. "$_dest"/
+    _write_marker
     ok "${_client} skill updated (preserve mode, existing files kept) → ${_dest}"
     return 0
   fi
 
   # Detect local modifications vs the release; back up before replacing.
   if diff -r "$_src" "$_dest" >/dev/null 2>&1; then
+    _write_marker
     ok "${_client} skill already up to date → ${_dest}"
     return 0
   fi
   _bak="${_dest}.bak.$(date +%Y%m%d%H%M%S)"
   mv "$_dest" "$_bak"
   cp -r "$_src" "$_dest"
+  _write_marker
   ok "${_client} skill updated → ${_dest} (old backed up → ${_bak})"
 }
 

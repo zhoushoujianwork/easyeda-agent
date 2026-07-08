@@ -92,6 +92,22 @@ easyeda daemon health
 > 大多数改动其实不需要重导 `.eext`(daemon 侧的 typed action / CLI 更新无需碰连接器);
 > 只有连接器 manifest / handler 变了才需要重新导入。是否需要,看 Release 说明。
 
+### 自动帮你做的部分(省去手动)
+
+- **Skill 目录自动同步**:`daemon start` 默认带 `--auto-update-skill`,启动时会**后台**
+  把已存在的 skill 目录(`~/.claude`、`~/.codex`)拉齐到最新 release,并把每一步打进
+  daemon 日志。所以升级 CLI 后即便 skill 没手动更新,daemon 也会补上。尊重
+  `EASYEDA_SKILL_PRESERVE=1`(保留本地改动);关掉用 `daemon start --auto-update-skill=false`。
+  手动触发/查看:
+  ```bash
+  easyeda skill status      # 各 skill 目录版本 vs 最新 release
+  easyeda skill sync        # 立即同步到最新(--version 锁版本,--preserve 保留本地改动)
+  ```
+- **连接器落后自动提示**:连接器一注册,daemon 就比对版本;落后时打一条**可操作日志**
+  (「stale connector: vX < daemon vY — 重导 .eext + 彻底重启 EasyEDA」)。
+  连接器 `.eext` **无法**被 daemon 静默替换(sideload 无原地自动更新,是插件市场专属能力),
+  所以这里只**检测+提示**,重导那步仍需你手动做(见上)。
+
 ---
 
 ## 常见卡点速查

@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/daemon"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/selfupdate"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/version"
 )
 
@@ -35,6 +36,7 @@ func newDaemonCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 
 func newDaemonStartCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	var autosaveDebounce time.Duration
+	var autoUpdateSkill bool
 	c := &cobra.Command{
 		Use:   "start",
 		Short: "Start the daemon (blocks until SIGINT/SIGTERM)",
@@ -44,11 +46,19 @@ Daemon-level autosave (--autosave-debounce) is a safety net for in-memory edits:
 place/wire/modify only change the EasyEDA document in memory, so a window reload,
 daemon restart, or crash loses unsaved work. With autosave on, the daemon saves a
 window once its edits quiesce for the debounce window (a burst coalesces into one
-save). Set to 0 to disable.`,
+save). Set to 0 to disable.
+
+Skill auto-update (--auto-update-skill, on by default) keeps your installed
+easyeda-agent skill dirs (~/.claude, ~/.codex) in sync with the latest release on
+startup, so you never hand-copy the skill after a CLI upgrade. It touches only
+dirs that already exist, honors EASYEDA_SKILL_PRESERVE=1, and logs each change.
+The EasyEDA connector .eext has no sideload auto-update (marketplace-only), so a
+stale connector is only DETECTED and logged with a re-import notice — not swapped.`,
 		Args: cobra.NoArgs,
 		Example: `  easyeda daemon start
   easyeda daemon start --autosave-debounce 5s
-  easyeda daemon start --autosave-debounce 0   # disable autosave`,
+  easyeda daemon start --autosave-debounce 0   # disable autosave
+  easyeda daemon start --auto-update-skill=false # don't sync skill on startup`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			portStart, portEnd, err := cfg.portRange()
 			if err != nil {
@@ -61,6 +71,11 @@ save). Set to 0 to disable.`,
 
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
+
+			// Best-effort background skill sync — never blocks or fails the daemon.
+			if autoUpdateSkill {
+				go runStartupSkillSync(ctx, stdout)
+			}
 
 			srv := daemon.New(daemon.Options{
 				Host:             cfg.host,
@@ -77,7 +92,20 @@ save). Set to 0 to disable.`,
 	}
 	c.Flags().DurationVar(&autosaveDebounce, "autosave-debounce", 3*time.Second,
 		"autosave a window this long after its last mutating action (0 = disable)")
+	c.Flags().BoolVar(&autoUpdateSkill, "auto-update-skill", true,
+		"on startup, sync installed skill dirs to the latest release (best-effort)")
 	return c
+}
+
+// runStartupSkillSync performs the daemon's best-effort skill refresh in the
+// background. It bounds itself with a timeout and logs via the daemon's stdout
+// so the user sees exactly what changed (or why it skipped this cycle).
+func runStartupSkillSync(parent context.Context, log io.Writer) {
+	ctx, cancel := context.WithTimeout(parent, 45*time.Second)
+	defer cancel()
+	selfupdate.StartupSync(ctx, version.Version, func(format string, a ...any) {
+		fmt.Fprintf(log, "%s daemon: %s\n", daemon.Service, fmt.Sprintf(format, a...))
+	})
 }
 
 // ── daemon health ─────────────────────────────────────────────────────────

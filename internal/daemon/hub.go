@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -323,6 +324,26 @@ func connectorVersionOK(connector, daemon, newestPeer string) *bool {
 	}
 	return nil
 }
+
+// staleConnectorNotice returns an actionable one-liner when a just-registered
+// connector is behind the running daemon (both clean semver), or "" otherwise.
+// The connector .eext has no sideload auto-update, so the daemon can only detect
+// the mismatch and tell the user to re-import — it cannot swap it in place.
+func staleConnectorNotice(connector, daemon string) string {
+	cn, dn := semverCore(connector), semverCore(daemon)
+	if cn == "" || dn == "" || !isCleanRelease(daemon) {
+		return "" // dev build or unparseable — no hard verdict
+	}
+	if !semverLess(cn, dn) {
+		return ""
+	}
+	return fmt.Sprintf("stale connector: v%s < daemon v%s — re-import the connector .eext "+
+		"(uninstall old in 已安装 → import new → FULLY quit & relaunch EasyEDA). "+
+		"Latest .eext: https://github.com/%s/releases/latest", cn, dn, releaseRepoSlug)
+}
+
+// releaseRepoSlug is the GitHub owner/repo that ships the connector .eext.
+const releaseRepoSlug = "zhoushoujianwork/easyeda-agent"
 
 // isCleanRelease reports whether v is a bare release tag (vX.Y.Z with no
 // pre-release/build suffix) — i.e. its semver core is the whole string.

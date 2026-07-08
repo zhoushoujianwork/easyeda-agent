@@ -92,7 +92,10 @@ func (s *Server) handleFrame(ctx context.Context, c *conn, data []byte) {
 		}
 		c.applyRegister(msg, now)
 		s.hub.add(c)
-		s.logf("connector registered windowId=%s", msg.WindowID)
+		s.logf("connector registered windowId=%s version=%s", msg.WindowID, msg.ConnectorVersion)
+		if note := staleConnectorNotice(msg.ConnectorVersion, s.opts.Version); note != "" {
+			s.logf("%s", note)
+		}
 
 	case protocol.TypeContext:
 		var msg protocol.ContextMessage

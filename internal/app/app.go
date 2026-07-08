@@ -77,6 +77,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newLibCmd(cfg, stdout, stderr),
 		newApiCmd(stdout, stderr),
 		newDebugCmd(cfg, stdout, stderr),
+		newSkillCmd(stdout, stderr),
 	)
 
 	return root
