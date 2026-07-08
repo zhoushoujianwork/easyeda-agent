@@ -45,6 +45,20 @@
 - CLI 改进票(待开):autoconnect 缺方向提示/批内标签避碰/同件双脚自动分向;
   netlist 引擎对坏原语静默返 0(应报错);flag 无法 modify 只能删建。
 
+
+## 2026-07-08 深夜二轮(重建进行时)
+
+- **旧 schematic1 文档级死亡确诊**:全部线/flag 清空+浏览器 reload+双脚探针后 getNetlistFile 仍返 NULL
+  ——文档不可救,重大 upstream 素材。新建 schematic(barrier-clean,uuid 486692a1b118a25c,
+  页 p1=b62eb903dd4165bf / p2=99ab802416b6ea60 / p3=7b58fee69858ebaf)后引擎立即复活(探针 1 网 ✓)。
+- 新文档:103 件三页重放+位号+autolayout 全绿 ✓。
+- **避碰布线器**(scratchpad 脚本,dry-run 反推 pin 坐标 + 三档冲突模式 + 24 步长阶梯):
+  P1 118/154 求解器落笔;36 个死角回退 autoconnect 单发 → 又引入 8 条混线(3V3×GND 在列)。
+  教训:**回退路径必须也走避碰**;正确续法=对 8 条混线用并查集扫描定位→拆桥→用求解器(而非
+  autoconnect)在放宽阶梯(>306)下重下这 36 个死角 pin。
+- P2(91)/P3(72)未重布,直接用修好的求解器跑(先 dry-run 生成 plans)。
+- 布线器脚本位置:见本轮会话 scratchpad;固化 TODO:成熟后进 skills/scripts/。
+
 ## 关键文件
 - 连线蓝图:netlist-plan.md;autoconnect spec:scratchpad/barrier-p{1,2}-connect.json
 - 引脚字典:scratchpad/barrier-p{1,2}-read.json(U1 QFN56:GPIO15/16=pin21/22,GPIO48=pin36,
