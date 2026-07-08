@@ -1,6 +1,6 @@
 # 设计决策目录 (Design Decisions)
 
-本文是 [ADR-0002](../../../docs/adr/0002-design-proposal-and-interaction-modes.md) 落地的决策点清单，供 [`design-flow.md`](./design-flow.md) 的 **S0 设计方案书**阶段在放第一个元件之前，把这些**真实权衡**摊开给用户拍板，而不是 agent 悄悄选一个默认值再往后走。判据只有一条：**用户的回答会不会改变实际做法**——会才进本文，不会（只有唯一正确答案）就是 guardrail，继续以硬门禁形式内置在 `pcb-layout-conventions.md` / `auto-layout-sop.md` / `design-flow.md` 里（save 纪律、mutation 后 `doc reload`、layout-lint/DRC 硬门、PLANE 生成顺序、天线 keepout 必须覆盖全层等），本文**不重复**这些内容。每个决策点固定给出：决策问题、选项对比（优点/坑）、推荐默认、判据（一句话说清何时答案会变）、来源。
+本文是 [ADR-0002](../../../docs/adr/0002-design-proposal-and-interaction-modes.md) 落地的决策点清单，供 [`design-flow.md`](./design-flow.md) 的 **S0 设计方案书**阶段在放第一个元件之前，把这些**真实权衡**摊开给用户拍板，而不是 agent 悄悄选一个默认值再往后走。判据只有一条：**用户的回答会不会改变实际做法**——会才进本文，不会（只有唯一正确答案）就是 guardrail，继续以硬门禁形式内置在 `pcb-layout-conventions.md` / `auto-layout-sop.md` / `design-flow.md` 里（save 纪律、mutation 后 `doc reload`、layout-lint/DRC 硬门、PLANE 生成顺序、天线 keepout 必须覆盖全层等），本文**不重复**这些内容。每个决策点固定给出：决策问题、选项对比（优点/坑）、推荐默认、判据（一句话说清何时答案会变）、来源。「来源」只引**随 skill 分发**的 references 文件；个别仅存于项目开发机的实测数据以「实测沉淀」标注——其事实已完整写入表格本身，不依赖任何外部文件。
 
 ---
 
@@ -19,7 +19,7 @@
 
 **判据**：板上存在 ≥2 个需要各自铺铜的电源/地网络，或对 EMI、回流完整性、走线密度有明确要求 → 选 4 层；只有单一电源+GND、网络稀疏、成本/尺寸优先于性能 → 2 层可接受，但需接受 No-Connection 残留及后续人工修补的代价。
 
-**来源**：`pcb-power-distribution.md`、`pcb-layout-conventions.md` §7.7
+**来源**：`pcb-layout-conventions.md` §7.7；2 层同层多网互挖岛/残留 No-Connection 数据为实测沉淀
 
 ---
 
@@ -36,7 +36,7 @@
 
 **判据**：电源域数量 = 1 → PLANE；电源域数量 ≥2 且层数被锁定在 4 层 → SIGNAL 分区 pour（若要求每个电源域都各自 PLANE，则层数需求升级到 6+ 层）。
 
-**来源**：`pcb-layout-conventions.md` §7.7/§7.8、`pcb-inner-plane-fill-ui-only.md`、`pcb-power-distribution.md`
+**来源**：`pcb-layout-conventions.md` §7.7/§7.8（含已验证的 PLANE API 配方与顺序禁忌）
 
 ---
 
@@ -55,7 +55,7 @@
 
 **判据**：地域数量 = 1 → GND（及可选 VCC）走内电层 PLANE；地域数量 ≥2（负片无法分域）→ 4 层全 SIGNAL + 逐层分区 pour + region 划界 + 单点桥接元件。
 
-**来源**：`official-board-benchmark-n8r8.md`、`pcb-layout-conventions.md`（§4 割地默认原则、§7.9 三板对标判据表）
+**来源**：`pcb-layout-conventions.md`（§4 割地默认原则、§7.9 三板对标判据表）
 
 ---
 
@@ -72,7 +72,7 @@
 
 **判据**：若板上存在明显的大电流/高密度电源路径（USB 供电、LDO 输出等）→ 局部按网络分区铺铜；电源路径轻负载、板子简单 → 整面 GND 已足够，无需额外分区复杂度。
 
-**来源**：`pcb-layout-conventions.md` §7.8、`official-board-benchmark-n8r8.md`
+**来源**：`pcb-layout-conventions.md` §7.8
 
 ---
 
@@ -89,15 +89,15 @@
 
 **判据**：网络承载电流越大、越关键（主干、大电流路径）→ 线宽越宽；纯低电流信号网 → 用 DRC 默认最小合规宽度即可，无需额外加宽。
 
-**来源**：`pcb-drc-rules-system.md`、`pcb-power-distribution.md`、`pcb-layout-conventions.md` §7.8
+**来源**：`pcb-layout-conventions.md` §7.8/§7.9（线宽分级与公制圆整）；ceshi 删细线 Safe-Spacing 27→9 为实测沉淀
 
 ---
 
 ## RF 与天线禁布区(RF Keepout)——非决策类目，仅 guardrail 锚点
 
-> **本类目不是决策点，S0 不应把它当作"选项+坑+推荐"摊开给用户挑。** `pcb-antenna-keepout.md` 给出的唯一具体判据——"RF/天线器件（WROOM/WROVER/ANT\*）需在**每一层**都有无铜禁布区（含内电层 no-inner-electrical），不能只做顶层"——是有唯一正确答案的 guardrail（与本文档开头「判据只有一条」列出的"天线 keepout 必须覆盖全层"是同一条），已由 `pcb check` 的 `antenna-keepout` 规则强制执行（`pcb-layout-conventions.md` §7.7）。研究中也未发现"更大/更小 margin 在射频性能与板面积之间如何取舍"或"哪些走线可贴近天线区域"这类真实可选方案的记录，因此本节没有、也不需要像上面四类那样的选项/坑/推荐表格。保留本标题只是为了让 S0 方案书 spec 的 `rf.keepoutLayers` 字段有稳定锚点可引用（值固定为"覆盖全层"，不由用户挑选）；若未来实战中沉淀出真实的 margin/位置权衡（例如多天线共存、板边距 vs 有效辐射区取舍），再补充到此处并升级为真正的决策点。
+> **本类目不是决策点，S0 不应把它当作"选项+坑+推荐"摊开给用户挑。** `pcb-layout-conventions.md` §6.2/§7.7 给出的唯一具体判据——"RF/天线器件（WROOM/WROVER/ANT\*）需在**每一层**都有无铜禁布区（含内电层 no-inner-electrical），不能只做顶层"——是有唯一正确答案的 guardrail（与本文档开头「判据只有一条」列出的"天线 keepout 必须覆盖全层"是同一条），已由 `pcb check` 的 `antenna-keepout` 规则强制执行（`pcb-layout-conventions.md` §7.7）。研究中也未发现"更大/更小 margin 在射频性能与板面积之间如何取舍"或"哪些走线可贴近天线区域"这类真实可选方案的记录，因此本节没有、也不需要像上面四类那样的选项/坑/推荐表格。保留本标题只是为了让 S0 方案书 spec 的 `rf.keepoutLayers` 字段有稳定锚点可引用（值固定为"覆盖全层"，不由用户挑选）；若未来实战中沉淀出真实的 margin/位置权衡（例如多天线共存、板边距 vs 有效辐射区取舍），再补充到此处并升级为真正的决策点。
 
-**来源**：`pcb-antenna-keepout.md`
+**来源**：`pcb-layout-conventions.md` §6.2/§7.7 + `pcb check` 的 antenna-keepout 规则
 
 ---
 
@@ -116,7 +116,7 @@
 
 **判据**：终端用户是否会用普通 USB-C 数据线插拔且期望正反插都能通信——是则双取向 tie；否，或当前布线能力/footprint 无法支持双取向干净走线，则可临时用单取向作降级方案。
 
-**来源**：`pcb-via-on-pad-and-usbc-fanout.md`、`official-board-benchmark-n8r8.md`
+**来源**：`pcb-layout-conventions.md` §7.8（USB-C 双取向 tie 行，推翻旧「省 B6/B7」结论）；单取向布线细节为实测沉淀
 
 ---
 
@@ -133,7 +133,7 @@
 
 **判据**：产品是否需要 ESP32-S3 原生 USB 功能与传统串口调试同时在线——需要则加 HUB 做双通道，不需要则单通道 CH340/CH343 足够。
 
-**来源**：`official-board-benchmark-n8r8.md`
+**来源**：`pcb-layout-conventions.md` §7.8（#43 N8R8 芯片级架构参考）
 
 ---
 
@@ -150,7 +150,7 @@
 
 **判据**：目标用户是否需要"一键烧录"体验，以及 BOM 成本敏感度——量产消费级产品倾向加自动下载电路，原型/教学板可省。
 
-**来源**：`official-board-benchmark-n8r8.md`
+**来源**：`pcb-layout-conventions.md` §7.8（#43 N8R8 芯片级架构参考）
 
 ---
 
