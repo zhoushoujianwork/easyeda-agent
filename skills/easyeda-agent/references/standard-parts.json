@@ -471,6 +471,116 @@
 			"class": "conn",
 			"basic": false,
 			"desc": "auto-added from box-v2 realization 2026-06-26"
+		},
+		"mcu.esp32s3_chip": {
+			"value": null,
+			"mpn": "ESP32-S3",
+			"lcsc": "C2913192",
+			"manufacturer": "ESPRESSIF(乐鑫)",
+			"deviceUuid": "9e0ed3f3b23744baaa755898c300ed66",
+			"footprint": "QFN-56_L7.0-W7.0-P0.40-TL-EP4.0",
+			"basic": false,
+			"desc": ""
+		},
+		"ic.w25q64_flash": {
+			"value": null,
+			"mpn": "W25Q64JVSSIQ",
+			"lcsc": "C179171",
+			"manufacturer": "Winbond(华邦)",
+			"deviceUuid": "da24d6cf9cb64b0281929764ad5a4ad8",
+			"footprint": "SOIC-8_L5.3-W5.3-P1.27-LS8.0-BL",
+			"basic": false,
+			"desc": ""
+		},
+		"xtal.40mhz_3225_12pf": {
+			"value": "40MHz",
+			"mpn": "40MHZ/3225/12PF/10PPM",
+			"lcsc": "C47089401",
+			"manufacturer": "CJ(江苏长电/长晶)",
+			"deviceUuid": "623e113eed364ff4b720c853614bbbb0",
+			"footprint": "CRYSTAL-SMD_4P-L3.2-W2.5-BL",
+			"basic": false,
+			"desc": ""
+		},
+		"xtal.26mhz_3225_10pf": {
+			"value": "26MHz",
+			"mpn": "NX3225GA-26MHZ-TI",
+			"lcsc": "C1985752",
+			"manufacturer": "NDK",
+			"deviceUuid": "c28fabaf6b0c416688ded0228ebedfdc",
+			"footprint": "CRYSTAL-SMD_4P-L3.2-W2.5-BL",
+			"basic": false,
+			"desc": ""
+		},
+		"ic.cc1101_qfn20": {
+			"value": null,
+			"mpn": "CC1101RGPT",
+			"lcsc": "C2654650",
+			"manufacturer": "TI(德州仪器)",
+			"deviceUuid": "3f683812a391434c99cde1617a5f4014",
+			"footprint": "QFN-20_L4.0-W4.0-P0.50-BL-EP2.4",
+			"basic": false,
+			"desc": ""
+		},
+		"ic.sp3485_sop8": {
+			"value": null,
+			"mpn": "SP3485EN-L/TR",
+			"lcsc": "C8963",
+			"manufacturer": "MaxLinear(迈凌)",
+			"deviceUuid": "b117181a324c401c8efb877412bc34c2",
+			"footprint": "SOIC-8_L5.0-W4.0-P1.27-LS6.0-BL",
+			"basic": false,
+			"desc": ""
+		},
+		"ic.mp1584en_buck": {
+			"value": null,
+			"mpn": "MP1584EN-LF",
+			"lcsc": "C21999497",
+			"manufacturer": "MPS(芯源)",
+			"deviceUuid": "fdf01fb89a0041b7ac601641e27ada0f",
+			"footprint": "SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL-EP3.3-1",
+			"basic": false,
+			"desc": ""
+		},
+		"conn.ufl_ipex": {
+			"value": "6GHz",
+			"mpn": "U.FL-R-SMT(10)",
+			"lcsc": "C434808",
+			"manufacturer": "HRS(广濑)",
+			"deviceUuid": "baac005597c04811b289654b69dad396",
+			"footprint": "ANT-SMD_U.FL-R-SMT10",
+			"basic": false,
+			"desc": ""
+		},
+		"conn.tf_socket_pushpush": {
+			"value": null,
+			"mpn": "TF-5010-03自弹卡座",
+			"lcsc": "C9900003603",
+			"manufacturer": "",
+			"deviceUuid": "0985e4a7bda549ab95e6455dfb8eabd4",
+			"footprint": "TF-SMD_TF-012",
+			"basic": false,
+			"desc": ""
+		},
+		"conn.terminal_3p_508": {
+			"value": null,
+			"mpn": "LC-3P-S-5.08-W",
+			"lcsc": "C9900019072",
+			"manufacturer": "",
+			"deviceUuid": "d1d3e801c5c6433ea8cbdc9bd2e1b973",
+			"footprint": "CONN-TH_3P-P5.08_2EHDR-03P",
+			"basic": false,
+			"desc": ""
+		},
+		"conn.sip4_254": {
+			"value": null,
+			"mpn": "SIP4",
+			"lcsc": "C9900010184",
+			"manufacturer": "",
+			"deviceUuid": "5b6c1e0431574187983e99df44da4a63",
+			"footprint": "HDR-TH_4P-P2.54-V-M-3",
+			"basic": false,
+			"desc": ""
 		}
 	}
 }
