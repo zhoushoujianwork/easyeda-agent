@@ -1,0 +1,35 @@
+{
+  "count": 3,
+  "pours": [
+    {
+      "fillMethod": "solid",
+      "layer": 2,
+      "lineWidth": 0.2,
+      "locked": false,
+      "net": "GND",
+      "pourName": "POUR4",
+      "primitiveId": "05c9872d2dd39350",
+      "priority": 1
+    },
+    {
+      "fillMethod": "solid",
+      "layer": 16,
+      "lineWidth": 0.2,
+      "locked": false,
+      "net": "3V3",
+      "pourName": "POUR2",
+      "primitiveId": "42a66768b32ae31f",
+      "priority": 1
+    },
+    {
+      "fillMethod": "solid",
+      "layer": 1,
+      "lineWidth": 0.2,
+      "locked": false,
+      "net": "GND",
+      "pourName": "POUR3",
+      "primitiveId": "b050c88d345d8272",
+      "priority": 1
+    }
+  ]
+}

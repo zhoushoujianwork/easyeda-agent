@@ -1,0 +1,59 @@
+{
+  "binding": {
+    "boardName": "Board1",
+    "hint": "Netlist Error is often a stale Board binding — verify the schematic UUID matches the open schematic; if not, run `easyeda board rebind --schematic \u003cuuid\u003e --pcb \u003cuuid\u003e`.",
+    "pcbName": "PCB1",
+    "pcbUuid": "1fa769fdd7cb83ec",
+    "schematicName": "schematic1",
+    "schematicUuid": "4e702fb30e094731"
+  },
+  "passed": false,
+  "violations": [
+    {
+      "count": 1,
+      "list": [
+        {
+          "count": 1,
+          "list": [
+            {
+              "errorObjType": "Netlist Error",
+              "errorType": "Netlist Error",
+              "explanation": {
+                "param": {},
+                "str": "PCB and schematic netlist does not match. You can click on the rule name \"Import Changes\" to view the difference."
+              },
+              "globalIndex": "err0",
+              "obj1": {
+                "suffix": "",
+                "typeName": "Schematic Netlist"
+              },
+              "obj2": {
+                "suffix": "",
+                "typeName": "PCB Netlist"
+              },
+              "objs": [
+                "err0"
+              ],
+              "parentId": "DRCTab|_|Errors|_|Netlist Error|_|Netlist Error",
+              "ruleName": "Import Changes",
+              "ruleTypeName": "Import Changes",
+              "visible": true
+            }
+          ],
+          "name": "Netlist Error",
+          "title": [
+            "Netlist Error",
+            "(1)"
+          ],
+          "visible": true
+        }
+      ],
+      "name": "Netlist Error",
+      "title": [
+        "Netlist Error",
+        "(1)"
+      ],
+      "visible": true
+    }
+  ]
+}

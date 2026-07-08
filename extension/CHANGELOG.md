@@ -6,16 +6,47 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-08
+
+自 0.8.3 以来的整体收口版本:PCB 布线/DRC 从「能放」走到「能连、能查、能救」,
+原理图从零建图闭环幂等化,并沉淀了「抄官方板 → 自主设计」的训练方法论与
+ADR-0002 前置设计交互。以下按主题汇总 0.8.4–0.8.13 各 dev 迭代的用户可见变化
+(逐条明细见下方各历史条目)。
+
 ### Added
-- `schematic.pin.disconnect` 新增 `pinX`+`pinY` 坐标定位:`sch autoconnect
-  --replace`(issue #50)已从场景解析出 pin 坐标,可直接定位 stub 而无需
-  designator 回溯。
+- **PCB 布线手术刀 + 换层跳线**:`pcb.route.delete`(按 primitiveId 精准删
+  track/arc/via,rip_up 不再整网重铺)、`pcb.route.via_hop`(入口 stub→via→对层
+  track→via→出口 stub 的复合换层,默认两层各放同网键合 fill 桥接 track↔via 裸结点)、
+  `pcb.route.route_short` 多层布线(长/跨层 hop 用 via 换层,不再全推迷宫档)。
+- **headless DRC 盲区补齐**:`pcb check` 新增通用间距规则(抓导线短接)、via-bond
+  (ERROR:track↔via 裸结点未被键合 fill 覆盖)、floating-track-island、dangling-end
+  (面积锚定)、缝合过孔间距、挖槽/过孔间距感知;`pcb drc` 支持 `--json`/`--timeout`
+  + daemon 侧防重入。DRC 实测 66→31、Connection 9→0。
+- **单网内电层**:同一 GND 网可独占内电层填充(via-stitch → pour)。
+- **原理图分组与断连**:`sch group-move`(器件+周边 stub 导线/flag 刚性整体平移,
+  无状态虚拟分组)、`schematic.pin.disconnect` 支持 `pinX`+`pinY` 坐标定位。
+- **`sch autoplace-free`**:零区域自动布局,把件塞进纸面空白处。
+- 标准器件库扩充:芯片级设计 11 件 + case001 通用料 24 件(`references/standard-parts.json`)。
 
 ### Changed
-- `schematic.components.list --include-pins`:每个 pin 现在附带 `net` 字段(取自
-  权威网表,与 `schematic.read` 同源;网表不可用时为 `null`)。这是 `sch
-  autoconnect` 做到幂等(issue #50)所需的数据面 —— 用于判定 pin 当前是否已连到
-  目标网络。
+- **`sch autoconnect` 幂等化(issue #50)**:`components.list --include-pins` 的每个
+  pin 附带权威网表来源的 `net` 字段,autoconnect 据此三态判定 pin 是否已连目标网,
+  重跑不再叠加 flag。
+- **Skill 方法论沉淀**:ADR-0002 前置设计方案书(S0)+ 三档交互模式(决策交互化、
+  执行自动化);紧凑布局设为默认 + 手工修线三律;官方板对标 §7.8–7.9 地策略选择判据
+  (单 GND→双 PLANE;多地域→全 SIGNAL 分区 pour);抄图训练闭环(XDS110 174/174 pin
+  一致 + 多页拆分)固化为验收方法。
+
+### Fixed
+- **`sch page.rename` 写后自校验(issue #55)**:改名后 `doc ls` 读到旧页名 → 短间隔
+  重试读回确认,命中 `verified:true`,超时如实返回 `verified:false`+warning。
+- **`--all-pages` 非激活页壳数据告警(issue #54)**:`sch read/list/check/layout-lint`
+  对非激活页如实警告 pins/bbox 可能为空,`layout-lint` 把 skip 升为醒目 WARN。
+- **`sch check` geom-net-mismatch 对 netflag/netport 静音**:designator 为空的原语
+  网表交叉校验静音,几何单独判(64/64 误报→0)。
+- **`sch autolayout` 锚点 snap 到 5 网格**:分区居中产出的分数坐标(206.25)不再致
+  connect_pin 批量失败;`connect_pin` 引脚离网格时快速失败给可行动报错。
+- **lib search 对 LCSC C 号精确匹配**:不再模糊命中错料。
 
 ## [0.8.13] - 2026-07-07
 
