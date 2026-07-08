@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -75,5 +76,53 @@ func TestPlaceUUIDHint(t *testing.T) {
 		if !strings.Contains(strings.ToLower(msg), want) {
 			t.Fatalf("hint missing %q: %s", want, msg)
 		}
+	}
+}
+
+// place with --designator forwards the field so the connector can assign the
+// final designator atomically (issue #68), sparing the place→list→modify
+// round-trip.
+func TestSchPlace_WiresDesignator(t *testing.T) {
+	cfg, cap, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+
+	var stdout, stderr bytes.Buffer
+	cmd := newSchCmd(cfg, &stdout, &stderr)
+	cmd.SetArgs([]string{"place", "--lib", "lib1", "--uuid", "dev1", "--x", "100", "--y", "200", "--designator", "R12"})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v (stderr=%s)", err, stderr.String())
+	}
+
+	cap.mu.Lock()
+	defer cap.mu.Unlock()
+	if cap.action != "schematic.component.place" {
+		t.Fatalf("expected action schematic.component.place, got %q", cap.action)
+	}
+	if cap.payload["designator"] != "R12" {
+		t.Errorf("designator: got %v, want R12", cap.payload["designator"])
+	}
+}
+
+// Without --designator the field is omitted (not sent empty), so old extensions
+// and non-batch flows keep their existing behavior.
+func TestSchPlace_OmitsDesignatorWhenUnset(t *testing.T) {
+	cfg, cap, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+
+	var stdout, stderr bytes.Buffer
+	cmd := newSchCmd(cfg, &stdout, &stderr)
+	cmd.SetArgs([]string{"place", "--lib", "lib1", "--uuid", "dev1", "--x", "100", "--y", "200"})
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v (stderr=%s)", err, stderr.String())
+	}
+
+	cap.mu.Lock()
+	defer cap.mu.Unlock()
+	if _, ok := cap.payload["designator"]; ok {
+		t.Error("designator should be omitted when --designator is unset")
 	}
 }

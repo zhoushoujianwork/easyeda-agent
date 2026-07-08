@@ -83,3 +83,45 @@ test('normalizeDeviceRef: non-string uuid/libraryUuid coerced to empty', () => {
 	const ref = normalizeDeviceRef({ libraryUuid: 123, uuid: null }, 'X');
 	assert.deepEqual(ref, { libraryUuid: '', uuid: '', name: 'X' });
 });
+
+import { schematicComponentPlace } from './actions';
+
+/** Install a fake `eda.sch_PrimitiveComponent` on the global for one test.
+ *  create() returns a placeholder-designator component; modify() records its
+ *  args and returns the post-assignment component. Returns the call log. */
+function installEdaStub(placeholderDesignator = 'R?') {
+	const calls: { modify: Array<{ id: string; patch: any }> } = { modify: [] };
+	(globalThis as any).eda = {
+		sch_PrimitiveComponent: {
+			create: async () => mockComponent({ Designator: placeholderDesignator, PrimitiveId: 'p1' }),
+			modify: async (id: string, patch: any) => {
+				calls.modify.push({ id, patch });
+				return mockComponent({ Designator: patch.designator, PrimitiveId: id });
+			},
+		},
+	};
+	return calls;
+}
+
+test('place with designator: assigns atomically and returns final designator (issue #68)', async () => {
+	const calls = installEdaStub('R?');
+	const res: any = await schematicComponentPlace({
+		libraryUuid: 'LIB-A', uuid: 'DEV-A', x: 100, y: 200, designator: 'R12',
+	});
+	assert.equal(calls.modify.length, 1);
+	assert.equal(calls.modify[0].id, 'p1');
+	assert.deepEqual(calls.modify[0].patch, { designator: 'R12' });
+	assert.equal(res.result.primitiveId, 'p1');
+	assert.equal((res.result.component as any).designator, 'R12');
+	delete (globalThis as any).eda;
+});
+
+test('place without designator: no modify call, keeps placeholder (issue #68)', async () => {
+	const calls = installEdaStub('C?');
+	const res: any = await schematicComponentPlace({
+		libraryUuid: 'LIB-A', uuid: 'DEV-A', x: 100, y: 200,
+	});
+	assert.equal(calls.modify.length, 0);
+	assert.equal((res.result.component as any).designator, 'C?');
+	delete (globalThis as any).eda;
+});

@@ -349,7 +349,7 @@ before feeding it back into ` + "`sch place --uuid`" + `.`,
 	// ── place ─────────────────────────────────────────────────────────────
 	// schematic.component.place
 	{
-		var lib, uuid string
+		var lib, uuid, designator string
 		var x, y, rotation float64
 		var mirror bool
 		c := &cobra.Command{
@@ -362,9 +362,16 @@ before feeding it back into ` + "`sch place --uuid`" + `.`,
 the uuid-looking fields ` + "`component`/`symbol`/`footprint`/`uniqueId`" + ` that
 ` + "`easyeda sch list`" + ` reports — those are placed-INSTANCE ids and are not valid
 ` + "`sch place`" + ` inputs. Passing an instance uuid makes the EasyEDA API hang; this
-command fails fast after a short timeout with a hint instead of stalling.`,
+command fails fast after a short timeout with a hint instead of stalling.
+
+Pass --designator to atomically assign the final designator on the connector
+side right after create, so you skip the place→` + "`sch list`" + `→` + "`sch modify`" + ` round-trip
+and the coordinate-based primitiveId re-matching that batch placement otherwise
+needs. The response's ` + "`primitiveId`" + ` and ` + "`component.designator`" + ` reflect the
+final placed state.`,
 			Example: `  easyeda sch place --lib <libraryUuid> --uuid <deviceUuid> --x 100 --y 200
-  easyeda sch place --lib <l> --uuid <u> --x 100 --y 200 --rotation 90 --mirror`,
+  easyeda sch place --lib <l> --uuid <u> --x 100 --y 200 --rotation 90 --mirror
+  easyeda sch place --lib <l> --uuid <u> --x 100 --y 200 --designator R12`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if lib == "" {
 					return fmt.Errorf("--lib is required")
@@ -384,6 +391,9 @@ command fails fast after a short timeout with a hint instead of stalling.`,
 				if cmd.Flags().Changed("mirror") {
 					payload["mirror"] = mirror
 				}
+				if cmd.Flags().Changed("designator") {
+					payload["designator"] = designator
+				}
 				err := dispatchTimed(cfg, "schematic.component.place", window, payload, placeTimeout, stdout, stderr)
 				if err != nil && errors.Is(err, context.DeadlineExceeded) {
 					return placeUUIDHint(placeTimeout)
@@ -397,6 +407,7 @@ command fails fast after a short timeout with a hint instead of stalling.`,
 		c.Flags().Float64Var(&y, "y", 0, "Y coordinate")
 		c.Flags().Float64Var(&rotation, "rotation", 0, "rotation in degrees (0/90/180/270)")
 		c.Flags().BoolVar(&mirror, "mirror", false, "mirror the component")
+		c.Flags().StringVar(&designator, "designator", "", "final designator to assign atomically after placement, e.g. R12 (avoids the place→list→modify round-trip; the response's component.designator reflects the assigned value)")
 		sch.AddCommand(c)
 	}
 

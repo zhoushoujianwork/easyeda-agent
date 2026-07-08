@@ -576,7 +576,7 @@ const schematicComponentsList: Handler = async (payload) => {
 	return { result: { components: serialized, count: serialized.length } };
 };
 
-const schematicComponentPlace: Handler = async (payload) => {
+export const schematicComponentPlace: Handler = async (payload) => {
 	const libraryUuid = requireString(payload, 'libraryUuid');
 	const uuid = requireString(payload, 'uuid');
 	const x = requireNumber(payload, 'x');
@@ -586,6 +586,7 @@ const schematicComponentPlace: Handler = async (payload) => {
 	const mirror = optionalBoolean(payload, 'mirror');
 	const addIntoBom = optionalBoolean(payload, 'addIntoBom');
 	const addIntoPcb = optionalBoolean(payload, 'addIntoPcb');
+	const designator = optionalString(payload, 'designator');
 
 	let component;
 	try {
@@ -606,6 +607,30 @@ const schematicComponentPlace: Handler = async (payload) => {
 	if (!component) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Component placement returned no primitive.');
 	}
+
+	// Atomically assign the final designator on the connector side so batch
+	// placement skips the place→list→modify round-trip (issue #68). The freshly
+	// placed component keeps a placeholder designator (e.g. U?/C?); the modify
+	// return is the authoritative post-assignment state, so overwrite the local
+	// reference with it before serializing.
+	if (designator) {
+		const primitiveId = component.getState_PrimitiveId();
+		let modified;
+		try {
+			modified = await eda.sch_PrimitiveComponent.modify(primitiveId, { designator });
+		}
+		catch (err) {
+			throw edaError(err, `Placed component "${primitiveId}" but failed to assign designator "${designator}".`);
+		}
+		if (!modified) {
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`Placed component "${primitiveId}" but designator assignment "${designator}" returned no primitive.`,
+			);
+		}
+		component = modified;
+	}
+
 	return {
 		result: {
 			primitiveId: component.getState_PrimitiveId(),
