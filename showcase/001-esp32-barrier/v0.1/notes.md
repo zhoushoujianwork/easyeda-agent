@@ -79,6 +79,10 @@
 wipe+浏览器重载不可恢复;check 几何引擎不受影响)——两引擎权威性分家。
 成员级网表验证移交 PCB 阶段(add-component 手喂 spec + DRC 连通把关)。
 
+**工程清理(2026-07-09,用户指示)**:死文档 schematic1(38e47f0a)与 Board1 已删,
+新建 Board2 绑定现役 schematic2(486692a1)+ PCB1(1ea9a0fe)。工程现只剩干净三页+空 PCB。
+(死亡复现配方已在本笔记记录,物证文档不留。)
+
 **下一步(确认点②之后)**:P0-P10 PCB 阶段,pinmap 用 spec.json + netlist-plan.md,
 add-component --nets 手喂;确认点②证据=check 三页终态 + 本笔记根因链。
 
