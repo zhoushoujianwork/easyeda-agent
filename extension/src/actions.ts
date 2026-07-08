@@ -309,7 +309,10 @@ const schematicPageOpen: Handler = async (payload) => {
 	if (tabId === undefined) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to open schematic page "${schematicPageUuid}".`);
 	}
-	return { result: { tabId } };
+	// openDocument returns before the page's primitives finish loading; wait for
+	// the data to settle so a read fired right after isn't empty/stale (#67).
+	const ready = await waitSchematicPageSettle();
+	return { result: { tabId, ready } };
 };
 
 // ─── Schematic / page管理 + 明细表 (title block) ───────────────────────
@@ -446,6 +449,44 @@ async function verifySchematicPageName(pageUuid: string, expected: string): Prom
 		catch {
 			/* best-effort — treat as not-yet-settled and keep polling */
 		}
+	}
+	return false;
+}
+
+/**
+ * Wait for a just-opened schematic page's data to settle. `openDocument`
+ * resolves as soon as the tab exists — BEFORE the page's primitives finish
+ * (re)loading — so a read fired right after would sample a half-loaded page
+ * (empty findings, stale mixed-page data — issue #67). The SDK exposes no
+ * load-complete signal, so we poll the active page's component count and treat
+ * two identical consecutive reads as settled. A non-empty stable count settles
+ * immediately; a stable 0 only settles after the full delay window, so a page
+ * mid-load (0 → N) is not mistaken for a genuinely empty page. Returns true if
+ * it settled, false on timeout — best-effort, read errors keep polling.
+ */
+async function waitSchematicPageSettle(): Promise<boolean> {
+	const delays = [0, 200, 300, 400, 500, 600]; // ~2s worst case
+	let last: number | undefined;
+	let sawStableEmpty = 0;
+	for (const wait of delays) {
+		if (wait > 0) {
+			await new Promise<void>(resolve => setTimeout(resolve, wait));
+		}
+		let count: number | undefined;
+		try {
+			const comps = await eda.sch_PrimitiveComponent.getAll();
+			count = Array.isArray(comps) ? comps.length : undefined;
+		}
+		catch {
+			count = undefined; // treat as not-yet-settled, keep polling
+		}
+		if (count === undefined) continue;
+		if (last !== undefined && last === count) {
+			if (count > 0) return true;
+			sawStableEmpty++;
+			if (sawStableEmpty >= 2) return true; // stable-empty confirmed
+		}
+		last = count;
 	}
 	return false;
 }
@@ -3289,7 +3330,21 @@ const documentOpen: Handler = async (payload) => {
 	if (tabId === undefined) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to open document "${uuid}".`);
 	}
-	return { result: { tabId } };
+	// openDocument returns before the document finishes loading. For schematic
+	// pages, wait for the primitive data to settle so a read fired right after
+	// isn't empty/stale (#67). A PCB has no components.list to poll, so we skip
+	// the wait and report ready:true optimistically.
+	let ready = true;
+	try {
+		const doc = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+		if (doc && documentTypeLabel(doc.documentType) === 'schematic') {
+			ready = await waitSchematicPageSettle();
+		}
+	}
+	catch {
+		/* type probe is best-effort — leave ready:true */
+	}
+	return { result: { tabId, ready } };
 };
 
 // ─── PCB (Phase 2 — read-only skeleton) ──────────────────────────────

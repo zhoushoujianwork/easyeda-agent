@@ -301,7 +301,8 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	// ── list ─────────────────────────────────────────────────────────────
 	// schematic.components.list
 	{
-		var allPages, includeBBox, includePins bool
+		var allPages, includeBBox, includePins, stay bool
+		var page string
 		c := &cobra.Command{
 			Use:   "list",
 			Short: "List components on the active (or all) schematic page(s)",
@@ -324,6 +325,19 @@ before feeding it back into ` + "`sch place --uuid`" + `.`,
   easyeda sch list --include-bbox
   easyeda sch list --include-pins`,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if page != "" && allPages {
+					return fmt.Errorf("--page and --all-pages are mutually exclusive")
+				}
+				if page != "" {
+					scope, err := switchToPage(cfg, window, page)
+					if err != nil {
+						return err
+					}
+					if !stay {
+						defer func() { _ = scope.restore(cfg) }()
+					}
+					window = scope.window
+				}
 				payload := map[string]any{}
 				if allPages {
 					payload["allPages"] = true
@@ -341,6 +355,8 @@ before feeding it back into ` + "`sch place --uuid`" + `.`,
 			},
 		}
 		c.Flags().BoolVar(&allPages, "all-pages", false, "list components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
+		c.Flags().StringVar(&page, "page", "", "switch to this page (name|uuid), wait for it to settle, then list — makes the page an explicit parameter instead of relying on the active tab (issue #67)")
+		c.Flags().BoolVar(&stay, "stay", false, "with --page, stay on the target page after listing instead of switching back")
 		c.Flags().BoolVar(&includeBBox, "include-bbox", false, "attach each component's rendered extent {minX,minY,maxX,maxY}")
 		c.Flags().BoolVar(&includePins, "include-pins", false, "attach each pin's {pinName,pinNumber,x,y,noConnected,net} — the data plane for routing/connectivity checks (net is the pin's current authoritative net, null when the netlist is unavailable; output grows, esp. with --all-pages)")
 		sch.AddCommand(c)
@@ -968,7 +984,8 @@ still surfacing warnings for review.`,
 	// only an aggregate, so the itemized findings the UI panel shows are computed
 	// here from primitives. Output (designator + pin numbers) feeds `sch no-connect`.
 	{
-		var allPages, strict, asJSON bool
+		var allPages, strict, asJSON, stay bool
+		var page string
 		c := &cobra.Command{
 			Use:   "check",
 			Short: "Reconstructed per-item design check the SDK DRC can't itemize",
@@ -996,10 +1013,25 @@ prior versions emitted a bare {passed,summary,findings}).`,
   easyeda sch check --json
   easyeda sch check --strict      # non-zero exit if any findings`,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if page != "" && allPages {
+					return fmt.Errorf("--page and --all-pages are mutually exclusive")
+				}
+				if page != "" {
+					scope, err := switchToPage(cfg, window, page)
+					if err != nil {
+						return err
+					}
+					if !stay {
+						defer func() { _ = scope.restore(cfg) }()
+					}
+					window = scope.window
+				}
 				return runSchCheck(cfg, window, allPages, strict, asJSON, stdout, stderr)
 			},
 		}
 		c.Flags().BoolVar(&allPages, "all-pages", false, "check components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
+		c.Flags().StringVar(&page, "page", "", "switch to this page (name|uuid), wait for it to settle, then check — makes the page an explicit parameter instead of relying on the active tab (issue #67)")
+		c.Flags().BoolVar(&stay, "stay", false, "with --page, stay on the target page after checking instead of switching back")
 		c.Flags().BoolVar(&strict, "strict", false, "exit non-zero when there are findings (gate mode)")
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the report in the {id,type,version,ok,result} envelope (findings under result.findings)")
 		sch.AddCommand(c)
@@ -1062,7 +1094,8 @@ to a page for authoritative results.`,
 	// schematic.read — one-call semantic snapshot (components + pin nets + nets +
 	// check), so the agent reads the whole circuit at once.
 	{
-		var allPages, noCheck bool
+		var allPages, noCheck, stay bool
+		var page string
 		c := &cobra.Command{
 			Use:   "read",
 			Short: "One-call semantic snapshot of the circuit (components + nets + check)",
@@ -1079,6 +1112,19 @@ check for a faster read.`,
   easyeda sch read --all-pages
   easyeda sch read --no-check`,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if page != "" && allPages {
+					return fmt.Errorf("--page and --all-pages are mutually exclusive")
+				}
+				if page != "" {
+					scope, err := switchToPage(cfg, window, page)
+					if err != nil {
+						return err
+					}
+					if !stay {
+						defer func() { _ = scope.restore(cfg) }()
+					}
+					window = scope.window
+				}
 				payload := map[string]any{}
 				if allPages {
 					payload["allPages"] = true
@@ -1090,6 +1136,8 @@ check for a faster read.`,
 			},
 		}
 		c.Flags().BoolVar(&allPages, "all-pages", false, "read components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
+		c.Flags().StringVar(&page, "page", "", "switch to this page (name|uuid), wait for it to settle, then read — makes the page an explicit parameter instead of relying on the active tab (issue #67)")
+		c.Flags().BoolVar(&stay, "stay", false, "with --page, stay on the target page after reading instead of switching back")
 		c.Flags().BoolVar(&noCheck, "no-check", false, "skip the geometric design check for a faster read")
 		sch.AddCommand(c)
 	}

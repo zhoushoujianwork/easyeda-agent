@@ -89,8 +89,17 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// document.open returns as soon as the tab exists — BEFORE the page's
+			// primitives/netlist finish loading. Wait for the page data to settle
+			// (schematic pages only; a PCB has no components.list) so a read fired
+			// right after the switch doesn't sample a half-loaded page (issue #67).
+			ready := true
+			if match.Type == "schematic" {
+				ready = waitDocSettle(cfg, win)
+			}
 			out := map[string]any{
 				"switchedTo": match,
+				"ready":      ready,
 			}
 			if cur.Context != nil {
 				out["active"] = cur.Context
@@ -99,6 +108,9 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 				return writeJSON(stdout, out)
 			}
 			fmt.Fprintf(stdout, "✓ switched to %s %q (%s)\n", match.Type, match.Name, match.UUID)
+			if !ready {
+				fmt.Fprintln(stdout, "⚠ page did not settle within the wait window — data may still be loading; re-read if results look empty")
+			}
 			return nil
 		},
 	}
@@ -124,7 +136,12 @@ thermal-spoke generation). Run "pcb pour-rebuild" after reloading a PCB.
 
 The target document is saved first (schematic.save / pcb.save by type), so no
 edits are lost. Defaults to the active document; pass a name/uuid to reload
-another (it is brought to the front first).`,
+another (it is brought to the front first).
+
+The reopen leaves the reloaded document foreground, so reloading a NON-active
+page would move the active tab. This command restores the pre-reload active
+document afterward and reports it as "activeRestored", so the ★ does not drift
+(issue #67).`,
 		Args: cobra.MaximumNArgs(1),
 		Example: `  easyeda doc reload                      # reload the active document
   easyeda doc reload PCB3 --project ceshi # reload a specific PCB
@@ -188,11 +205,35 @@ another (it is brought to the front first).`,
 				}
 				time.Sleep(500 * time.Millisecond)
 			}
-			out := map[string]any{"reloaded": target, "documentType": docType, "saved": true}
+			// Restore the pre-reload active document. reopen leaves the target
+			// foreground even when the caller reloaded a NON-active page, so
+			// without this the ★ silently drifts and later commands land on the
+			// wrong page (issue #67). Best-effort: a restore failure is reported
+			// but the reload itself already succeeded.
+			restored := activeUUID
+			if activeUUID != "" && activeUUID != target {
+				if _, rerr := requestAction(cfg, "document.open", win,
+					map[string]any{"uuid": activeUUID}); rerr != nil {
+					restored = ""
+				}
+			}
+			out := map[string]any{
+				"reloaded":       target,
+				"documentType":   docType,
+				"saved":          true,
+				"activeRestored": restored,
+			}
 			if jsonOut {
 				return writeJSON(stdout, out)
 			}
 			fmt.Fprintf(stdout, "✓ reloaded %s %s (saved → closed → reopened)\n", docType, target)
+			if activeUUID != "" && activeUUID != target {
+				if restored != "" {
+					fmt.Fprintf(stdout, "  ↩ restored active document to %s\n", restored)
+				} else {
+					fmt.Fprintf(stdout, "  ⚠ could not restore active document %s — active is now %s\n", activeUUID, target)
+				}
+			}
 			return nil
 		},
 	}

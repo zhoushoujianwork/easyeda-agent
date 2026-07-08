@@ -16,6 +16,13 @@ follow [SemVer](https://semver.org/).
   自动更新(市场专属能力),故只检测+提示、不静默替换。install.sh 装完 skill 写
   `.version` 标记与 daemon 对齐避免重复下载。**连接器代码未变,升级无需重导 `.eext`。**
 
+### Fixed
+- **切页竞态收口(#67)**:`document.open` / `schematic.page.open` 现在在返回前
+  轮询活动页器件数直到 settle(连续两次相同即视为装载完成,`0 → N` 的装载中态
+  不会被误判为空页),并在 result 中带 `ready:true/false`。修复「`doc switch`
+  返回成功后立即 `sch check` 拿到空 findings、隔 2-4 秒才完整」的问题。PCB 无
+  components 可轮询,乐观返回 `ready:true`。
+
 ## [0.9.0] - 2026-07-08
 
 自 0.8.3 以来的整体收口版本:PCB 布线/DRC 从「能放」走到「能连、能查、能救」,
