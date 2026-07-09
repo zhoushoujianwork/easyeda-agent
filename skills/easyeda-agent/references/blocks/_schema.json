@@ -1,0 +1,92 @@
+{
+  "_doc": [
+    "STANDARD CIRCUIT BLOCKS (电路块库) — the topology tier above standard-parts.json.",
+    "A block is a KNOWN-GOOD peripheral subcircuit (CH340 USB-serial, ESP32 auto-download,",
+    "ESP32-S3 module, button, USB-hub, buck) whose INTERNAL wiring is fixed and can be copied",
+    "verbatim; only the boundary nets (ports) get rebound to the host design and RefDes get",
+    "reallocated.",
+    "",
+    "Three-tier library model:",
+    "  standard-parts.json    → 器件级 (which part / LCSC C-number)",
+    "  references/blocks/*.json → 电路块级 (how those parts connect + layout constraints)  ← HERE",
+    "  design-flow.md         → 流程级 (S0–S6 / P0–P10)",
+    "",
+    "FILE LAYOUT — one block per file (references/blocks/<id-without-block-prefix>.json).",
+    "The filename is the block id minus the `block.` prefix (ch340c_usb_serial.json →",
+    "block.ch340c_usb_serial). This file (`_schema.json`, underscore-prefixed) holds the",
+    "shared _doc/_schema/libraryUuid and is NOT a block. `scripts/blocks.py` globs this dir,",
+    "skips `_`-prefixed files, and assembles the library — it is the single loader seam, so",
+    "consumers (agent, sch block apply) never care that the library is many files. Why per",
+    "block: the community model is one-block-per-PR, so a file boundary per block means zero",
+    "merge conflicts + clean per-file git-blame attribution. `category` stays a FIELD (filter",
+    "with `blocks.py ls --category`), never a directory boundary.",
+    "",
+    "HARD RULE — a block only enters the library as READY after ONE full-flow validation",
+    "(place → wire → sch check → DRC = 0) on a real project. Until then `validated: null`",
+    "(draft). NEVER hand-write a topology from memory — harvest it from a validated oshwhub",
+    "board or an official reference design (see oshwhub training loop). A draft block MAY carry",
+    "a proposed `internal_nets` sourced from an official ref, but stays draft until proven; use",
+    "the string `pending` when the topology itself is not yet settled.",
+    "",
+    "Pin references use FUNCTIONAL PIN NAMES (\"CH340.TXD\"), never pin numbers — names are",
+    "symbol-stable, so reuse needs zero pin-renumbering. VERIFY names with `sch read` at",
+    "validation time (guessed names bite: CH340 is D+/D-/DTR#/RTS#, not UDP/UDM/DTR). `parts`",
+    "values point back into standard-parts.json by role key so BOM/LCSC stays single-sourced.",
+    "",
+    "COMMUNITY-BUILT & CREDITED — this is an open, co-built asset. Every block carries its",
+    "`author` / `contributors` (GitHub @handles, never removed) so a one-time contribution",
+    "earns permanent, traceable credit. Contribution standard, PR checklist, split trigger, and",
+    "the validation gate live in references/standard-blocks-contributing.md. Blocks are",
+    "versioned (`added`/`updated`) and evolve as parts/footprints change."
+  ],
+
+  "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+
+  "_schema": {
+    "<id-without-block-prefix>.json": {
+      "id": "block.<id> — MUST match the filename (minus block.) — blocks.py checks this",
+      "desc": "one-line 中文 what-it-is",
+      "category": "usb-serial | power | mcu-support | button | protection | rf | comms",
+      "author": "original contributor — GitHub @handle;署名不删,让贡献可追、有归属",
+      "contributors": ["@handle of anyone who later fixed/updated this block"],
+      "added": "version this block first entered the library, e.g. v0.6.0",
+      "updated": "version of the last change (bump when parts/topology/rules change)",
+      "source": "provenance — oshwhub:<url> | datasheet:<mpn> | official-ref:<vendor>",
+      "validated": "null until proven, else 'project@date by @handle: place→wire→check→DRC=0 + netlist proof'",
+      "parts": {
+        "<ROLE>": {
+          "part": "<key into standard-parts.json>",
+          "alt": ["<alternative standard-parts keys, functionally interchangeable>"],
+          "qty": 1,
+          "value_override": "optional — override the part's default value for this role",
+          "note": "选型注意 / why this part / substitution caveat"
+        }
+      },
+      "internal_nets": [
+        ["<ROLE>.<pinName>", "<ROLE>.<pinName>", "PORT:<PORTNAME>", "..."]
+      ],
+      "ports": {
+        "<PORTNAME>": {
+          "dir": "in | out | bidir",
+          "at": "<ROLE>.<pinName>  — the internal pin exposed",
+          "desc": "what the host binds here",
+          "default_net": "suggested net name if host has no preference"
+        }
+      },
+      "schematic_notes": [
+        "原理图链接注意 — netflag-needs-real-wire, decoupling adjacency in-sheet, net-label",
+        "conventions, pins that MUST be tied/pulled, do-not-float pins, etc."
+      ],
+      "pcb_layout": [
+        {
+          "rule": "short slug e.g. usb-diff-pair | decap-adjacency | keepout | trace-width",
+          "target": "<ROLE>.<pin> | <net> | <PORT>",
+          "constraint": "human-readable electrical constraint",
+          "value": "quantified spec if any (90ohm / <=2mm / >=0.5mm width / etc)",
+          "severity": "must | should"
+        }
+      ],
+      "bom_note": "quantity/cost note across the block (e.g. all 0402, 1 extended part)"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "id": "block.esp32_autodownload",
+  "desc": "ESP32 双三极管自动下载(DTR/RTS → EN/IO0 时序),配 CH340 使用",
+  "category": "mcu-support",
+  "author": null,
+  "contributors": [],
+  "added": null,
+  "updated": null,
+  "source": "official-ref:Espressif auto-program + NodeMCU 经典电路 —— 待从验证过的官方板抄取",
+  "validated": null,
+  "parts": {
+    "Q1": {
+      "part": "bjt.s8050_sot23",
+      "qty": 1,
+      "note": "NPN,EN 侧;S8050 常用,亦可 MMBT3904"
+    },
+    "Q2": {
+      "part": "bjt.s8050_sot23",
+      "qty": 1,
+      "note": "NPN,IO0 侧"
+    },
+    "R_EN": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "EN 上拉 10k"
+    },
+    "R_IO0": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "IO0 上拉 10k"
+    }
+  },
+  "internal_nets": "pending — 交叉耦合拓扑不凭记忆写;抄官方板验证后补(见 oshwhub 训练闭环 + copy-training 纪律)",
+  "ports": {
+    "DTR": { "dir": "in", "at": "Q?.B", "desc": "来自 CH340.DTR", "default_net": "USB_DTR" },
+    "RTS": { "dir": "in", "at": "Q?.B", "desc": "来自 CH340.RTS", "default_net": "USB_RTS" },
+    "EN": { "dir": "out", "at": "R_EN.1", "desc": "→ 主控 EN/CHIP_PU", "default_net": "EN" },
+    "IO0": { "dir": "out", "at": "R_IO0.1", "desc": "→ 主控 GPIO0/BOOT", "default_net": "IO0" },
+    "V3V3": { "dir": "in", "at": "R_EN.2", "desc": "上拉电源 3V3", "default_net": "3V3" },
+    "GND": { "dir": "bidir", "at": "Q?.E", "desc": "地", "default_net": "GND" }
+  },
+  "schematic_notes": [
+    "交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常;(1,0)→(1,0) 进下载(IO0 拉低);(0,1)→(0,1) 复位。抄板时按此真值表校验拓扑对不对。",
+    "EN 常配一颗对地电容(100nF~1uF)做上电延时/去抖,视主控要求补——ESP32-S3 建议有。",
+    "此块必须和 block.ch340c_usb_serial 的 DTR/RTS 两个 port 对接;并把 EN/IO0 接到 block.esp32s3_wroom1_module 的同名 port。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "keep-near-mcu",
+      "target": "EN / IO0",
+      "constraint": "两三极管靠近主控 EN/IO0 引脚,短走线",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "2× SOT-23 NPN + 2× 10k 0402(+可选 EN 电容);约 3 种料"
+}

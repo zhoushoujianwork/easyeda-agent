@@ -38,7 +38,7 @@ EasyEDA tooling.
 4b. **Block-first for standard peripherals (电路块库).** Before hand-selecting and
     hand-wiring a well-known peripheral subcircuit (CH340 USB-serial, ESP32
     auto-download, button de-bounce, USB-hub, buck …), check
-    `references/standard-blocks.json` — a community-built library of KNOWN-GOOD,
+    `references/blocks/*.json` (one block per file) — a community-built library of KNOWN-GOOD,
     validated subcircuits you copy verbatim and only rebind the boundary nets
     (ports) + reallocate RefDes. Pins are referenced by FUNCTIONAL NAME, so reuse
     needs zero pin-renumbering; each block's `parts` point into `standard-parts.json`.
@@ -96,7 +96,7 @@ EasyEDA tooling.
 - Part selection, JLC/LCSC ranking, and standardization: read
   `references/part-selection.md` and use `references/standard-parts.json`.
 - **Standard peripheral circuits (电路块库):** before hand-wiring a known peripheral,
-  use `references/standard-blocks.json` (browse via `scripts/blocks.py ls/show`) —
+  use the block library `references/blocks/*.json` (browse via `scripts/blocks.py ls/show`) —
   copy-verbatim topology + rebind ports. Contributing a new block:
   `references/standard-blocks-contributing.md`.
 - Netflag/netport rotation truth: use `references/orientation.json`; never hand-edit
@@ -115,7 +115,7 @@ Scripts live in `scripts/` and are intended to be run directly when useful:
 - `scripts/parts-add.py`: append resolved library parts into `standard-parts.json`.
 - `scripts/parts-select.py`: deterministic part-selection helper.
 - `scripts/blocks.py`: standard circuit-block library — `ls` / `show <id>` /
-  `validate`. Browse reusable peripheral subcircuits and lint `standard-blocks.json`
+  `validate`. Browse reusable peripheral subcircuits and lint `references/blocks/*.json`
   against the schema + contribution rules (the PR gate).
 - `scripts/calibrate.js`: live bbox calibration for netflag/netport orientation after
   importing a new connector build.

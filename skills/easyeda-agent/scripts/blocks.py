@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Standard circuit-block library tool (电路块库 ls / show / validate).
 
-`standard-blocks.json` is the community-built, credited library of KNOWN-GOOD
-peripheral subcircuits (CH340 USB-serial, ESP32 auto-download, buttons, USB-hub,
-buck …). Their INTERNAL topology is fixed and copy-verbatim; only the boundary
-nets (ports) get rebound to the host design, and pins are referenced by FUNCTIONAL
-NAME so reuse needs zero pin-renumbering.
+The circuit-block library (`references/blocks/*.json`, one block per file) is the
+community-built, credited set of KNOWN-GOOD peripheral subcircuits (CH340 USB-serial,
+ESP32 auto-download, ESP32-S3 module, buttons, USB-hub, buck …). Their INTERNAL
+topology is fixed and copy-verbatim; only the boundary nets (ports) get rebound to
+the host design, and pins are referenced by FUNCTIONAL NAME so reuse needs zero
+pin-renumbering. This tool globs the dir and assembles them (the single loader seam).
 
 This tool is the local, network-free companion to the JSON (like parts-select.py
 is for standard-parts.json). It does NOT touch EasyEDA — schematic instantiation is
@@ -22,16 +23,18 @@ references/standard-blocks-contributing.md). --strict also fails on unvalidated
 Exit codes: 0 ok, 1 validation errors, 2 usage error.
 """
 import argparse
+import glob
 import json
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REF = os.path.normpath(os.path.join(HERE, "..", "references"))
-BLOCKS_JSON = os.path.join(REF, "standard-blocks.json")
+BLOCKS_DIR = os.path.join(REF, "blocks")           # one block per file
+SCHEMA_JSON = os.path.join(BLOCKS_DIR, "_schema.json")
 PARTS_JSON = os.path.join(REF, "standard-parts.json")
 
-CATEGORIES = {"usb-serial", "power", "mcu-support", "button", "protection", "rf", "comms"}
+CATEGORIES = {"usb-serial", "power", "mcu", "mcu-support", "button", "protection", "rf", "comms"}
 SEVERITIES = {"must", "should"}
 BLOCK_SECTIONS = ("parts", "internal_nets", "ports", "schematic_notes", "pcb_layout")
 
@@ -47,12 +50,34 @@ def die(msg, code=2):
 
 
 def load_blocks():
-    if not os.path.exists(BLOCKS_JSON):
-        die(f"not found: {BLOCKS_JSON}")
-    try:
-        return load(BLOCKS_JSON)
-    except json.JSONDecodeError as e:
-        die(f"standard-blocks.json is not valid JSON: {e}", 1)
+    """Assemble the library from references/blocks/*.json — one block per file.
+
+    This is the single loader seam: consumers never see that the library is many
+    files. Files whose basename starts with '_' (e.g. _schema.json) are metadata,
+    not blocks. Each block file's `id` is authoritative; the basename should equal
+    `id` minus the `block.` prefix (validate enforces this). Returns a dict shaped
+    like the old aggregate — {"blocks": {id: obj}} — plus `_paths` (id→file) so
+    validate can check the filename↔id contract.
+    """
+    if not os.path.isdir(BLOCKS_DIR):
+        die(f"not found: {BLOCKS_DIR}")
+    blocks, paths = {}, {}
+    for path in sorted(glob.glob(os.path.join(BLOCKS_DIR, "*.json"))):
+        base = os.path.basename(path)
+        if base.startswith("_"):
+            continue  # _schema.json and friends are metadata, not blocks
+        try:
+            b = load(path)
+        except json.JSONDecodeError as e:
+            die(f"{base} is not valid JSON: {e}", 1)
+        bid = b.get("id")
+        if not bid:
+            die(f"{base} has no 'id' field", 1)
+        if bid in blocks:
+            die(f"duplicate block id '{bid}' ({base} and {os.path.basename(paths[bid])})", 1)
+        blocks[bid] = b
+        paths[bid] = path
+    return {"blocks": blocks, "_paths": paths}
 
 
 def part_keys():
@@ -161,8 +186,11 @@ def cmd_validate(args):
     errs, warns = [], []
     pkeys = part_keys()
     blocks = doc.get("blocks", {})
+    paths = doc.get("_paths", {})
     if not blocks:
         errs.append("no blocks defined")
+    if not os.path.exists(SCHEMA_JSON):
+        errs.append(f"missing {os.path.basename(SCHEMA_JSON)} (shared _doc/_schema/libraryUuid)")
 
     for bid, b in blocks.items():
         def e(m): errs.append(f"[{bid}] {m}")
@@ -170,6 +198,11 @@ def cmd_validate(args):
 
         if not bid.startswith("block."):
             e("id must start with 'block.'")
+        # filename↔id contract: <id minus block.>.json
+        expect_base = bid[len("block."):] + ".json" if bid.startswith("block.") else None
+        actual_base = os.path.basename(paths.get(bid, ""))
+        if expect_base and actual_base and actual_base != expect_base:
+            e(f"filename '{actual_base}' should be '{expect_base}' (id minus block.)")
         for f in ("desc", "category", "source"):
             if not b.get(f):
                 e(f"missing required field '{f}'")

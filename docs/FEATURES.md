@@ -249,7 +249,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
     show only NEW / FIXED / PRE-EXISTING findings plus the changed primitives.
 - **🧩 Standard circuit-block library (电路块库) — flagship capability.** A
   community-built, credited library of KNOWN-GOOD peripheral subcircuits
-  (`skills/easyeda-agent/references/standard-blocks.json`): CH340 USB-serial, ESP32
+  (`skills/easyeda-agent/references/blocks/*.json`, one block per file): CH340 USB-serial, ESP32
   auto-download, button de-bounce, USB-hub, buck… Their internal topology is fixed
   and copy-verbatim; reuse only rebinds the boundary nets (`ports`) and reallocates
   RefDes. It is the **topology tier** above `standard-parts.json` (part tier) and
@@ -304,7 +304,7 @@ not just hand-drawn custom symbols.
 These are planned and **not implemented** today.
 
 - **🧩 `easyeda sch block apply` — one-shot circuit-block instantiation (phase-2 write path).**
-  The block library's read/browse layer ships today (`standard-blocks.json` +
+  The block library's read/browse layer ships today (`references/blocks/*.json` +
   `scripts/blocks.py`); the **write path** — materializing a block into the live
   schematic — is the next milestone. Interface designed first (per the CLI-design
   首要准则), implementation to follow:

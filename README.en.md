@@ -77,7 +77,7 @@ parts point back into the standard-parts library (BOM-ready).
 - **Three dimensions** — parts (with alternatives) + schematic-wiring notes + PCB layout electrical constraints, all in one block;
 - **AI-consumable** — the agent checks the library before hand-wiring a peripheral; on a hit it copies, skipping a whole module's selection + wiring.
 
-> 📖 Library [`standard-blocks.json`](skills/easyeda-agent/references/standard-blocks.json) ·
+> 📖 Library dir [`references/blocks/`](skills/easyeda-agent/references/blocks) (one block per file) ·
 > browse with `blocks.py ls/show` · contribution guide
 > [`standard-blocks-contributing.md`](skills/easyeda-agent/references/standard-blocks-contributing.md)
 
