@@ -95,6 +95,66 @@ func classifyCP(c cpComp, mainPins int) cpClass {
 	return cpSatellite
 }
 
+// edgeInteriorDir is the unit vector pointing from a board edge toward the board
+// interior. An edge connector should sit with its PADS on the interior side (traces
+// route inward) and its OPENING facing out — so we orient it to maximize the
+// pad-centroid projection along this direction.
+func edgeInteriorDir(e apEdge) (float64, float64) {
+	switch e {
+	case edgeLeft:
+		return 1, 0
+	case edgeRight:
+		return -1, 0
+	case edgeBottom:
+		return 0, 1
+	default: // edgeTop
+		return 0, -1
+	}
+}
+
+// connGeom returns, for component c rotated by deltaDeg about its anchor, the pad
+// centroid and rotated bbox (all absolute). Used to pick the orientation whose
+// opening faces off-board.
+func connGeom(c cpComp, deltaDeg float64) (pcx, pcy, bx0, by0, bx1, by1 float64) {
+	var sx, sy float64
+	n := 0
+	for _, p := range c.pads {
+		rx, ry := rotateVec(p.x-c.x, p.y-c.y, deltaDeg)
+		sx, sy = sx+c.x+rx, sy+c.y+ry
+		n++
+	}
+	if n > 0 {
+		pcx, pcy = sx/float64(n), sy/float64(n)
+	} else {
+		pcx, pcy = c.x, c.y
+	}
+	bx0, by0 = math.Inf(1), math.Inf(1)
+	bx1, by1 = math.Inf(-1), math.Inf(-1)
+	for _, cn := range [4][2]float64{{c.minX, c.minY}, {c.maxX, c.minY}, {c.maxX, c.maxY}, {c.minX, c.maxY}} {
+		rx, ry := rotateVec(cn[0]-c.x, cn[1]-c.y, deltaDeg)
+		ax, ay := c.x+rx, c.y+ry
+		bx0, by0 = math.Min(bx0, ax), math.Min(by0, ay)
+		bx1, by1 = math.Max(bx1, ax), math.Max(by1, ay)
+	}
+	return
+}
+
+// bestConnDelta picks the rotation (0/90/180/270 relative to current) whose opening
+// faces off the assigned edge — i.e. maximizes the pad-centroid projection toward
+// the board interior — returning the delta and that projection score.
+func bestConnDelta(c cpComp, edge apEdge) (delta, score float64) {
+	ix, iy := edgeInteriorDir(edge)
+	score = math.Inf(-1)
+	for _, dd := range []float64{0, 90, 180, 270} {
+		pcx, pcy, gx0, gy0, gx1, gy1 := connGeom(c, dd)
+		s := (pcx-(gx0+gx1)/2)*ix + (pcy-(gy0+gy1)/2)*iy
+		if s > score {
+			score, delta = s, dd
+		}
+	}
+	return
+}
+
 type cpHole struct{ x, y, r float64 }
 
 type cpOptions struct {
@@ -185,25 +245,54 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 		if dT < best {
 			best, edge = dT, edgeTop
 		}
-		var nx, ny float64 = c.x, c.y
+		// Orientation: pick the rotation whose OPENING faces off the edge (pads face
+		// the interior). Recognizes a part the user already oriented correctly and
+		// leaves it — only rotates when the current opening points the wrong way.
+		delta, score := bestConnDelta(c, edge)
+		curScore := (func() float64 {
+			pcx, pcy, gx0, gy0, gx1, gy1 := connGeom(c, 0)
+			ix, iy := edgeInteriorDir(edge)
+			return (pcx-(gx0+gx1)/2)*ix + (pcy-(gy0+gy1)/2)*iy
+		})()
+		// Orientation is only auto-corrected for ASYMMETRIC connectors where the pad
+		// geometry actually reveals the opening direction (USB, SD, IPEX). Only rotate
+		// when the CURRENT opening clearly faces the interior (wrong) AND a rotation
+		// clearly fixes it. A symmetric 2-pin terminal / header has near-zero score
+		// either way → the opening direction isn't in the pads, so PRESERVE the
+		// current (user-set) rotation rather than guess. Also recognize an already
+		// edge-flush, outward-facing part and leave it untouched.
+		alreadyGood := best <= opt.edgeMargin+30 && curScore > 15
+		clearlyWrong := curScore < -30 && score > 30
+		if alreadyGood || !clearlyWrong {
+			delta = 0
+		}
+		// Geometry after the chosen rotation (about the anchor).
+		_, _, gx0, gy0, gx1, gy1 := connGeom(c, delta)
+		var shiftX, shiftY float64
 		switch edge {
 		case edgeLeft:
-			nx = c.x + (bx0 + opt.edgeMargin - c.minX)
+			shiftX = (bx0 + opt.edgeMargin) - gx0
 		case edgeRight:
-			nx = c.x + (bx1 - opt.edgeMargin - c.maxX)
+			shiftX = (bx1 - opt.edgeMargin) - gx1
 		case edgeBottom:
-			ny = c.y + (by0 + opt.edgeMargin - c.minY)
+			shiftY = (by0 + opt.edgeMargin) - gy0
 		case edgeTop:
-			ny = c.y + (by1 - opt.edgeMargin - c.maxY)
+			shiftY = (by1 - opt.edgeMargin) - gy1
 		}
-		// New bbox after the snap.
-		dx, dy := nx-c.x, ny-c.y
-		nr := cpRect{c.minX + dx - m, c.minY + dy - m, c.maxX + dx + m, c.maxY + dy + m}
+		nx, ny := c.x+shiftX, c.y+shiftY
+		nr := cpRect{gx0 + shiftX - m, gy0 + shiftY - m, gx1 + shiftX + m, gy1 + shiftY + m}
 		addFixed(nr, c.layer)
-		if math.Abs(dx) > 1 || math.Abs(dy) > 1 {
-			moves = append(moves, apMove{ID: c.id, Designator: c.designator, NewX: round1(nx), NewY: round1(ny), Edge: edge.String()})
+		if math.Abs(shiftX) > 1 || math.Abs(shiftY) > 1 || delta != 0 {
+			moves = append(moves, apMove{ID: c.id, Designator: c.designator,
+				NewX: round1(nx), NewY: round1(ny), NewRot: c.rotation + delta, SetRot: delta != 0, Edge: edge.String()})
 		}
-		diags = append(diags, apDiag{Designator: c.designator, Reason: "edge:" + edge.String()})
+		reason := "edge:" + edge.String()
+		if alreadyGood {
+			reason += ":recognized"
+		} else if delta != 0 {
+			reason += ":oriented"
+		}
+		diags = append(diags, apDiag{Designator: c.designator, Reason: reason})
 	}
 
 	// ── Tier 3: main chips + crystals → keep where they are, fix. ─────────────

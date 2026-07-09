@@ -84,3 +84,24 @@ func TestConstrainedPlaceEdgeSnapAndNoOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestConnOrientation(t *testing.T) {
+	// A terminal on the RIGHT edge whose pads point RIGHT (toward the edge = opening
+	// faces interior = WRONG) must be rotated so pads face LEFT (interior).
+	c := mkCP("J1", "conn.terminal", 1, 1700, 900, 200, 300, 2)
+	// put pads to the RIGHT of bbox center (wrong: opening faces interior on a right edge)
+	c.pads = []apPad{{num: "1", x: 1780, y: 850}, {num: "2", x: 1780, y: 950}}
+	// board so J1 is near the right edge
+	others := []cpComp{
+		mkCP("U1", "esp32-wroom", 1, 400, 900, 400, 400, 41),
+		c,
+	}
+	delta, score := bestConnDelta(others[1], edgeRight)
+	if delta == 0 && score < 0 {
+		t.Errorf("right-edge terminal with pads facing OUT should get a non-zero orient delta; got delta=%v score=%v", delta, score)
+	}
+	// After the best delta, pads should face interior (left, -x): score > 0.
+	if score <= 0 {
+		t.Errorf("best orientation should put pads on the interior side (score>0), got %v", score)
+	}
+}

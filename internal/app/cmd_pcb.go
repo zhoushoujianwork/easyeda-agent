@@ -1812,8 +1812,12 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 				var failures []map[string]any
 				if !dryRun {
 					for _, mv := range moves {
+						patch := map[string]any{"x": mv.NewX, "y": mv.NewY}
+						if mv.SetRot {
+							patch["rotation"] = mv.NewRot
+						}
 						if _, err := requestAction(cfg, "pcb.component.modify", window,
-							map[string]any{"primitiveId": mv.ID, "patch": map[string]any{"x": mv.NewX, "y": mv.NewY}}); err != nil {
+							map[string]any{"primitiveId": mv.ID, "patch": patch}); err != nil {
 							failures = append(failures, map[string]any{"designator": mv.Designator, "error": err.Error()})
 							continue
 						}
