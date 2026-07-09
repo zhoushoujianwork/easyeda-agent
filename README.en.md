@@ -57,13 +57,13 @@ On top of those three, easyeda-agent adds the engineering middle layer: a self-h
 
 | Domain | What it does |
 |---|---|
-| 🧩 **Circuit-block library (flagship)** | Community-built, credited library of **proven peripheral subcircuits** (CH340 USB-serial, ESP32 auto-download, button de-bounce, USB-hub, buck…). **Copy the topology, only rebind boundary nets** to reuse |
-| 📐 Schematic | Library-first placement (real LCSC/JLC parts), grouping, wiring, netflags, `sch check`/`layout-lint` real-bbox validation |
-| 🔲 PCB | Auto-layout, board outline, keep-outs, rule-aware short-route, 4-layer power planes, copper pour, silkscreen avoidance, DRC/`pcb check` |
-| 🔁 Design flow | Gated spine from a **customer-voice requirement** to a finished board (S0–S6 + P0–P10), milestone confirmation, save checkpoints |
-| 📦 Artifacts | BOM (LCSC C-number enrichment), netlist, export, native screenshots, audit log, record→replay |
+| **Circuit-block library (flagship)** | Community-built, credited library of **proven peripheral subcircuits** (CH340 USB-serial, ESP32 auto-download, button de-bounce, USB-hub, buck…). **Copy the topology, only rebind boundary nets** to reuse |
+| Schematic | Library-first placement (real LCSC/JLC parts), grouping, wiring, netflags, `sch check`/`layout-lint` real-bbox validation |
+| PCB | Auto-layout, board outline, keep-outs, rule-aware short-route, 4-layer power planes, copper pour, silkscreen avoidance, DRC/`pcb check` |
+| Design flow | Gated spine from a **customer-voice requirement** to a finished board (S0–S6 + P0–P10), milestone confirmation, save checkpoints |
+| Artifacts | BOM (LCSC C-number enrichment), netlist, export, native screenshots, audit log, record→replay |
 
-### 🧩 Highlight: the circuit-block library (contribute once, benefit forever)
+### Highlight: the circuit-block library (contribute once, benefit forever)
 
 **Fixed peripheral circuits can be copied verbatim.** The ESP32 auto-download circuit,
 CH340 USB flashing, button de-bounce, USB-hub… their **internal topology is fixed** —
@@ -77,13 +77,13 @@ parts point back into the standard-parts library (BOM-ready).
 - **Three dimensions** — parts (with alternatives) + schematic-wiring notes + PCB layout electrical constraints, all in one block;
 - **AI-consumable** — the agent checks the library before hand-wiring a peripheral; on a hit it copies, skipping a whole module's selection + wiring.
 
-> 📖 Library dir [`references/blocks/`](skills/easyeda-agent/references/blocks) (one block per file) ·
+> Library dir [`references/blocks/`](skills/easyeda-agent/references/blocks) (one block per file) ·
 > browse with `blocks.py ls/show` · contribution guide
 > [`standard-blocks-contributing.md`](skills/easyeda-agent/references/standard-blocks-contributing.md)
 
 ## Install Skills
 
-> 📖 **Full setup & usage notes: [Quick Start →](docs/quick-start.md)** — the
+> **Full setup & usage notes: [Quick Start →](docs/quick-start.md)** — the
 > four-part suite (CLI / connector `.eext` / Skill / EasyEDA), version alignment,
 > starting the daemon, upgrade discipline, and a troubleshooting table. **On
 > upgrade, bump all three (CLI + connector + Skill) to the same version**, or
@@ -268,7 +268,7 @@ plugin channel and the official `eda.*` API. This entire automation layer is bui
 **on top of that open plugin platform** — it simply would not exist without it.
 `easyeda-agent` stays a thin, well-behaved community citizen of the official plugin
 system, and every capability here ultimately dispatches to JLC's own `eda.*` calls.
-感谢嘉立创开放的 EDA 插件通道,让我们能做出这样一个好用的自动化插件。 🙏
+感谢嘉立创开放的 EDA 插件通道,让我们能做出这样一个好用的自动化插件。
 
 ### Referenced projects & prior art
 
@@ -282,6 +282,6 @@ Built on / inspired by these open projects — thank you:
 
 ## Star History
 
-Thanks for every star — we're at 39 ⭐ 🎉
+Thanks for every star.
 
 [![Star History Chart](docs/assets/star-history.svg)](https://www.star-history.com/#zhoushoujianwork/easyeda-agent&Date)

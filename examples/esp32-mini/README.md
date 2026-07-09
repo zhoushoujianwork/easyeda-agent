@@ -38,7 +38,7 @@ rebuild)→ **`doc reload` + 二次 rebuild**(`reload-pcb`/`pour-rebuild-2` 步,
 丝印 → **lint≥95 门 + `pcb check --strict` 门**。末步官方 DRC 需 EasyEDA 前台;剩 1 条 Netlist Error 为平台
 [#33](https://github.com/easyeda/pro-api-sdk/issues/33),预期内。
 
-⚠️ **uniqueId 对齐**:sch↔PCB 关联键。全新工程按放置顺序即 `gge1..gge19`(默认值);
+注意:**uniqueId 对齐**:sch↔PCB 关联键。全新工程按放置顺序即 `gge1..gge19`(默认值);
 复用过的工程先 `easyeda sch read` 看真实 uniqueId,再 `--var UID_U1=ggeNN` 逐个覆写。
 
 ## 其他玩法
@@ -67,7 +67,7 @@ make demo-replay                            # 挪乱4件→观察→回放归位
 > - **阶段二**:182/182 步执行成功;铜几何与金板逐条一致(89 tracks / 37 vias / 5 pours),
 >   `layout-lint` 100/100、`pcb check` 0。
 
-## ⚠️ 已知问题:新 PCB 上铺铜 reflow 行为不一致(已固化 workaround)
+## 已知问题:新 PCB 上铺铜 reflow 行为不一致(已固化 workaround)
 
 在新建 PCB 上回放后,官方 DRC 报 GND 热焊盘未生成(No Connection)+ 铺铜到焊盘
 ~9.7mil(<10 规则)。**已排除**:DRC 规则(与金板逐键一致,仅浮点尾数差)、叠层
