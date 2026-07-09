@@ -1,0 +1,75 @@
+{
+  "id": "block.tactile_boot_reset",
+  "desc": "ESP32 BOOT + RESET 轻触按键:BOOT 按下拉 IO0 到地(进下载),RESET 按下拉 EN 到地(复位);上拉/电容在模组块",
+  "category": "button",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "official-ref:Espressif ESP32-S3-DevKitC 原理图(BOOT→IO0、EN 按键)+ examples/esp32-mini(验证回归板 SW1/SW2)。ESP32 boot strapping:上电时 IO0=0 进下载、IO0=1 正常启动。",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 核实 SW1.1=BOOT(IO0)/SW1.2=GND、SW2.1=EN/SW2.2=GND;同拓扑 examples/esp32-mini 回归板 DRC 归零。诚实:随整板布线验证,非孤立块单放。",
+  "parts": {
+    "SW_BOOT": {
+      "part": "sw.tact_smd",
+      "alt": [],
+      "qty": 1,
+      "note": "BOOT 键(进下载模式)。轻触贴片, 2 脚。按下把 IO0 短到 GND。"
+    },
+    "SW_RST": {
+      "part": "sw.tact_smd",
+      "alt": [],
+      "qty": 1,
+      "note": "RESET 键(复位)。按下把 EN/CHIP_PU 短到 GND 触发复位。"
+    }
+  },
+  "internal_nets": [
+    ["SW_BOOT.1", "PORT:IO0"],
+    ["SW_BOOT.2", "PORT:GND"],
+    ["SW_RST.1", "PORT:EN"],
+    ["SW_RST.2", "PORT:GND"]
+  ],
+  "ports": {
+    "IO0": {
+      "dir": "in",
+      "at": "SW_BOOT.1",
+      "desc": "→ 主控 GPIO0/BOOT(接 block.esp32s3_wroom1_module 的 IO0 port)。IO0 上拉在模组块(默认高=正常启动),此键按下拉低=进下载",
+      "default_net": "IO0"
+    },
+    "EN": {
+      "dir": "in",
+      "at": "SW_RST.1",
+      "desc": "→ 主控 EN/CHIP_PU(接 block.esp32s3_wroom1_module 的 EN port)。EN 上拉+RC 在模组块,此键按下拉低=复位",
+      "default_net": "EN"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "SW_BOOT.2",
+      "desc": "系统地(两键的另一端)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "本块只含两个开关,不含上拉/滤波电容 —— IO0 上拉、EN 上拉+RC 复位电容都在 block.esp32s3_wroom1_module(避免重复)。三块合起来 = 完整最小系统的按键+复位。",
+    "BOOT 键接 IO0、RESET 键接 EN,别接反:按 IO0 键在上电瞬间拉低才进下载;按 EN 键任何时候拉低都复位。",
+    "自动下载电路(block.esp32_autodownload)在时,这两个键是手动兜底 —— 大多数烧录靠 CH340 的 DTR/RTS 自动进下载,不用手按。",
+    "轻触键去抖:EN 键的去抖由模组块的 EN RC(10k+1µF)提供;IO0 键短按无需去抖(仅上电采样)。若要硬件去抖可在 IO0 加 0.1µF 到地(可选,本块不含)。",
+    "netflag 必须经真实导线连到引脚(坐标重叠不算连接)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "edge-accessible",
+      "target": "SW_BOOT / SW_RST",
+      "constraint": "两键放板边或开阔区, 按压方向及周边留净空, 手指/镊子可达",
+      "value": ">=200mil 周边净空",
+      "severity": "should"
+    },
+    {
+      "rule": "silk-label",
+      "target": "SW_BOOT / SW_RST",
+      "constraint": "丝印标注 BOOT / RST(或 RESET)功能名, 便于装配与调试",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "2 件:2× 轻触贴片按键(sw.tact_smd)。极简 —— 上拉/复位电容在模组块, 本块只有开关。"
+}

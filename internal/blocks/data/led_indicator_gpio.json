@@ -1,0 +1,68 @@
+{
+  "id": "block.led_indicator_gpio",
+  "desc": "GPIO 驱动 LED 指示灯(高边:GPIO 高=亮)+ 限流电阻;需在 LED 旁丝印标 +/- 极性",
+  "category": "indicator",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "common-practice + examples/esp32-mini(验证回归板 LED1/R1:GPIO→R→LED 阳极→GND)。限流 R = (Vgpio − Vf) / I_led。",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 核实 R.1=CTRL(GPIO)/R.2=LED.+(阳极)/LED.−(阴极)=GND;同拓扑 examples/esp32-mini 回归板 DRC 归零,并按 esp32MiniRequire 在 LED 旁加 +/- 极性丝印。诚实:随整板布线验证,非孤立块单放。",
+  "parts": {
+    "LED": {
+      "part": "led.red_0805",
+      "alt": ["led.red_0805"],
+      "qty": 1,
+      "note": "指示 LED, 0805。脚:1='+'(阳极), 2='−'(阴极)。红色 Vf≈1.8-2.0V;换绿/蓝 Vf 更高(≈2.8-3.2V), 需重算限流 R。"
+    },
+    "R": {
+      "part": "res.1k_0402",
+      "alt": ["res.10k_0402"],
+      "qty": 1,
+      "note": "限流电阻。3.3V GPIO 高边驱动红灯:R=1k → I≈(3.3−1.8)/1000≈1.5mA(够亮省电);要更亮减到 470R/330R,要更暗加到 4.7k/10k。"
+    }
+  },
+  "internal_nets": [
+    ["R.1", "PORT:CTRL"],
+    ["R.2", "LED.+"],
+    ["LED.-", "PORT:GND"]
+  ],
+  "ports": {
+    "CTRL": {
+      "dir": "in",
+      "at": "R.1",
+      "desc": "→ 主控 GPIO(高边驱动:GPIO 输出高=LED 亮, 低=灭)。接任意可用 GPIO",
+      "default_net": "LED_CTRL"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "LED.-",
+      "desc": "系统地(LED 阴极侧)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "高边驱动(本块):GPIO → R → LED 阳极(+), 阴极(−)→ GND;GPIO 高电平点亮, 直觉一致(输出 1 = 亮)。",
+    "低边驱动是另一种接法(阳极→电源轨, 阴极→R→GPIO, GPIO 低=亮)—— 灌电流常比拉电流强, 亮度更足, 但逻辑反相;ESP32 两种都行, 本块用高边。",
+    "限流 R 不可省:LED 直连 GPIO 会过流烧 IO 或 LED。R 值按 (Vgpio−Vf)/目标电流 算。",
+    "LED 有极性:'+' 是阳极接 R/电源侧, '−' 是阴极接地侧。接反不亮。",
+    "netflag 必须经真实导线连到引脚(坐标重叠不算连接)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "polarity-silk",
+      "target": "LED",
+      "constraint": "LED 旁必须丝印标注 +/− 极性(esp32MiniRequire 明确要求), 阴极侧常加一道粗丝印线或色块, 装配防呆",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "visible-placement",
+      "target": "LED",
+      "constraint": "LED 放板面可见处(不被高件遮挡), 指示才有意义",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "2 件:1× LED(0805) + 1× 限流电阻(0402)。最省的指示灯方案。换灯色要按新 Vf 重算 R。"
+}

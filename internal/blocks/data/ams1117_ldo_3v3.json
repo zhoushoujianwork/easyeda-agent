@@ -1,0 +1,84 @@
+{
+  "id": "block.ams1117_ldo_3v3",
+  "desc": "AMS1117-3.3 线性稳压 5V→3.3V(最小系统主控供电);输入/输出去耦 + 旁路电容",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "datasheet:AMS1117 (Advanced Monolithic Systems, http://www.advanced-monolithic.com/pdf/ds1117.pdf — 1A 低压差线性稳压, SOT-223, 固定 3.3V 版, 典型应用 10µF 输入/输出) ; 拓扑抄自 examples/esp32-mini(验证回归板 U2)+ esp32-barrier-v02 P2 POWER 模块",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 逐网核实(P2 91/91 对账达标:U2.VIN=+5V / U2.VOUT=3V3 / U2.GND=GND,C201/C202/C203 去耦);同拓扑在 examples/esp32-mini 回归板通过 pcb drc Connection/Clearance 双归零。诚实:随整板布线验证,非孤立块单放。",
+  "parts": {
+    "U": {
+      "part": "ldo.ams1117_3v3",
+      "alt": ["ldo.ams1117_3v3"],
+      "qty": 1,
+      "note": "AMS1117-3.3 固定 3.3V 线性稳压, SOT-223, 1A(实际受散热限制)。脚:1=GND, 2=VOUT, 3=VIN, 4=VOUT(SOT-223 散热片, 与 pin2 同网)。压差约 1.1V@1A → 输入 5V 足够稳出 3.3V。若要更低压差/更高效率用 buck(见 block.xl1509_buck_12v_5v 的思路,但那是 12→5)。"
+    },
+    "C_IN": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "输入去耦, 贴 U.VIN。datasheet 建议 ≥10µF 保证稳定。"
+    },
+    "C_OUT": {
+      "part": "cap.22uf_0805",
+      "alt": ["cap.10uf_0805"],
+      "qty": 1,
+      "note": "输出去耦, 贴 U.VOUT。AMS1117 需要输出电容维持环路稳定(≥10µF 钽/陶瓷);barrier 用 22µF。"
+    },
+    "C_BYP": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "高频旁路, 与 C_OUT 并联贴 VOUT, 滤高频噪声。"
+    }
+  },
+  "internal_nets": [
+    ["U.VIN", "C_IN.1", "PORT:VIN_5V"],
+    ["U.VOUT", "C_OUT.1", "C_BYP.1", "PORT:3V3"],
+    ["U.GND", "C_IN.2", "C_OUT.2", "C_BYP.2", "PORT:GND"]
+  ],
+  "ports": {
+    "VIN_5V": {
+      "dir": "in",
+      "at": "U.VIN",
+      "desc": "5V 输入(来自 USB 5V / 5V 端子 / 上游 buck 的 +5V 轨)",
+      "default_net": "+5V"
+    },
+    "3V3": {
+      "dir": "out",
+      "at": "U.VOUT",
+      "desc": "稳压 3.3V 输出, 供 MCU 模组及 3V3 外设(接 block.esp32s3_wroom1_module 的 3V3 port)",
+      "default_net": "+3V3"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND",
+      "desc": "参考地(汇集输入/输出电容负端)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "AMS1117 是线性稳压:输入输出压差 × 电流 = 功耗全部发热。5V→3.3V @ 300mA ≈ 0.5W,SOT-223 铺散热铜可接受;大电流(>500mA)或电池供电优先用 buck。",
+    "VOUT 在 pin2 与 pin4(散热片)两处同网 —— 接线时两脚都要落到 3V3。",
+    "输出电容不可省:AMS1117 靠输出电容补偿环路,裸输出会振荡。C_OUT ≥10µF。",
+    "netflag 必须经真实导线连到引脚(坐标重叠不算连接,DRC 不认)。",
+    "只做主控供电(轻载)时 C_OUT 22µF + C_BYP 100nF 足够;带大负载再加体电容。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "thermal-copper",
+      "target": "U.GND / U.VOUT(pin4)",
+      "constraint": "SOT-223 散热片(pin2/4 VOUT 侧)铺散热铜箔 + 过孔阵列下沉到内层/底层地,散掉线性损耗",
+      "value": ">=100mm² 铜箔",
+      "severity": "should"
+    },
+    {
+      "rule": "cap-adjacency",
+      "target": "C_IN / C_OUT / C_BYP",
+      "constraint": "输入电容贴 VIN、输出电容+旁路贴 VOUT, 短回路",
+      "value": "<=2mm",
+      "severity": "must"
+    }
+  ],
+  "bom_note": "4 件:1×AMS1117-3.3(SOT-223) + 1×10µF 输入 + 1×22µF 输出 + 1×100nF 旁路。全 basic 料, 极低成本。线性方案元件最少、布局最简, 是最小系统 5V→3.3V 的默认选择。"
+}
