@@ -83,7 +83,7 @@
       "added": "v0.6.0",
       "updated": "v0.6.0",
       "source": "datasheet:CH340C (南京沁恒) + 立创常见参考电路",
-      "validated": null,
+      "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(7件)→wire(34 netflag/netport)→sch check(0 geom-net/0 net-marker mismatch, 仅未用脚 WARN)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)。netlist 逐网核实:5V=4 / GND=12 / V3=2 / USB_DP=4 / USB_DM=4 / CC1=CC2=2 / MCU_RX=MCU_TX=DTR=RTS=1,合并全对。",
       "parts": {
         "U": {
           "part": "ic.ch340c",
@@ -115,24 +115,23 @@
           "part": "tvs.sm712_sot23",
           "alt": [],
           "qty": 1,
-          "note": "D+/D- ESD 保护,靠近 USB-C 端子;非关键可省但推荐"
+          "note": "⚠️ 选型待修(验证发现):SM712 是 RS-485 专用非对称 TVS(7V/12V 钳位),用在 USB D+/D- 上电气不对(应用对称低容 ESD,如 USBLC6-2SC6 或 0.5pF ESD 阵列;需先补进 standard-parts.json)。当前块拓扑已验证,但请优先替换此件再投产。SM712 真实脚:1/2=两路 line(符号名都显示 A1),3=K(接地)。"
         },
         "J_USB": {
           "part": "conn.usb_c_16p",
           "qty": 1,
-          "note": "USB-C 16P 母座;VBUS 作为 5V 输入源"
+          "note": "USB-C 16P 母座;VBUS(A4B9+B4A9 两脚)作 5V 输入源。D+/D- 为 DP1/DP2 + DN1/DN2 四脚(双取向,tie DP1+DP2、DN1+DN2)。EP 四脚(8/9/10/11)= 外壳/屏蔽,接 GND。SBU1/SBU2 USB2 不用,悬空。"
         }
       },
+      "_internal_nets_note": "引脚用真实符号功能名(验证过)。USB-C 的 VBUS/GND/EP 各是多物理脚:tie 该名下所有脚(VBUS=A4B9+B4A9,GND=A1B12+B1A12,EP=8/9/10/11)。D_ESD 脚名符号里冲突(两 line 都叫 A1),故用脚号 1/2/3 引用。",
       "internal_nets": [
         ["J_USB.VBUS", "U.VCC", "C_VCC.1", "PORT:VBUS_5V"],
-        ["J_USB.GND", "U.GND", "C_VCC.2", "C_V3.2", "D_ESD.GND", "PORT:GND"],
+        ["J_USB.GND", "J_USB.EP", "U.GND", "C_VCC.2", "C_V3.2", "D_ESD.3", "R_CC1.2", "R_CC2.2", "PORT:GND"],
         ["U.V3", "C_V3.1"],
-        ["J_USB.DP", "U.UDP", "D_ESD.DP"],
-        ["J_USB.DM", "U.UDM", "D_ESD.DM"],
+        ["U.D+", "J_USB.DP1", "J_USB.DP2", "D_ESD.1"],
+        ["U.D-", "J_USB.DN1", "J_USB.DN2", "D_ESD.2"],
         ["J_USB.CC1", "R_CC1.1"],
-        ["J_USB.CC2", "R_CC2.1"],
-        ["R_CC1.2", "J_USB.GND"],
-        ["R_CC2.2", "J_USB.GND"]
+        ["J_USB.CC2", "R_CC2.1"]
       ],
       "ports": {
         "VBUS_5V": {
@@ -161,13 +160,13 @@
         },
         "DTR": {
           "dir": "out",
-          "at": "U.DTR",
+          "at": "U.DTR#",
           "desc": "给自动下载电路(block.esp32_autodownload)的 DTR;不做自动下载则悬空",
           "default_net": "USB_DTR"
         },
         "RTS": {
           "dir": "out",
-          "at": "U.RTS",
+          "at": "U.RTS#",
           "desc": "给自动下载电路的 RTS;不做自动下载则悬空",
           "default_net": "USB_RTS"
         }
@@ -175,13 +174,15 @@
       "schematic_notes": [
         "每个对外 port 落 netflag 必须带真实 wire(重叠坐标不算连接,DRC 看不到)——见 easyeda-wire-required 记忆。",
         "TXD/RXD 是交叉的:CH340.TXD→MCU.RX,CH340.RXD→MCU.TX,别直连同名。",
-        "V3 电容(C_V3)在原理图上要画在 U.V3 旁,别混进 VCC 去耦网络。",
-        "TXD/RXD 空闲电平由 CH340 内部上拉,无需额外 pull。"
+        "V3 电容(C_V3)在原理图上要画在 U.V3 旁,别混进 VCC 去耦网络(验证:V3 网独立成 2 脚,未与 VCC 短)。",
+        "TXD/RXD 空闲电平由 CH340 内部上拉,无需额外 pull。",
+        "CH340C 真实脚名(验证过):D+/D-(不是 UDP/UDM)、DTR#/RTS#(带 # 号)。未用脚 NC./OUT#/CTS#/DSR#/RI#/DCD#/R232 合法悬空(sch check 出 WARN 属正常,非 fatal)。",
+        "USB-C D+/D- 双取向:必须 tie DP1+DP2、DN1+DN2(各接一根到 CH340 的 D+/D-),否则反插失效(见 official-board-benchmark 记忆)。EP 四脚接 GND 做屏蔽,SBU1/SBU2 悬空。"
       ],
       "pcb_layout": [
         {
           "rule": "usb-diff-pair",
-          "target": "J_USB.DP / J_USB.DM",
+          "target": "USB_DP (DP1/DP2) / USB_DM (DN1/DN2)",
           "constraint": "D+/D- 差分走线,等长、尽量短、少打过孔,靠近走",
           "value": "~90ohm 差分阻抗(4 层可控);长度差 < 5mil",
           "severity": "should"
