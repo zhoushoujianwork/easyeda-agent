@@ -399,6 +399,15 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"passed", "summary", "findings"},
 		},
 		{
+			Name:        "schematic.bridgeCheck",
+			Domain:      DomainSchematic,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Tree-granularity net-vs-copper consistency gate (read-only). Groups every page wire into trees by shared vertices (union-find, connector side), then aggregates the netflag/netport net names anchored on each tree: >1 distinct net → BRIDGE (共线合并短路 — the blind spot of schematic.check's per-wire multi-net rule, which misses shorts spread across several merged wire primitives); 0 nets and no pin touch → ORPHAN stub. Complements schematic.check; run after bulk wiring or surgical edits.",
+			Inputs:      []string{"allPages optional"},
+			Outputs:     []string{"passed", "bridges", "orphans", "trees"},
+		},
+		{
 			Name:        "schematic.read",
 			Domain:      DomainSchematic,
 			Phase:       1,
