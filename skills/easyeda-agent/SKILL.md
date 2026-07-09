@@ -35,6 +35,18 @@ EasyEDA tooling.
     won't stack duplicate flags/wires. The lower-level `sch connect` is still NOT
     idempotent — for single ad-hoc stubs, verify with a read (`sch read`/`sch list`)
     rather than re-issuing the same call.
+4b. **Block-first for standard peripherals (电路块库).** Before hand-selecting and
+    hand-wiring a well-known peripheral subcircuit (CH340 USB-serial, ESP32
+    auto-download, button de-bounce, USB-hub, buck …), check
+    `references/standard-blocks.json` — a community-built library of KNOWN-GOOD,
+    validated subcircuits you copy verbatim and only rebind the boundary nets
+    (ports) + reallocate RefDes. Pins are referenced by FUNCTIONAL NAME, so reuse
+    needs zero pin-renumbering; each block's `parts` point into `standard-parts.json`.
+    Run `scripts/blocks.py ls` to browse and `scripts/blocks.py show <id>` for the
+    full topology + `schematic_notes` (wiring gotchas) + `pcb_layout` (electrical
+    constraints). Only fall back to hand-wiring when no block covers the need — and
+    when you validate a new peripheral end-to-end, contribute it back per
+    `references/standard-blocks-contributing.md` (署名 + `validated` gate).
 5. For non-trivial boards, follow the gated flow: pre-analysis, sheet/page plan,
    module grouping, group placement, channel routing, DRC/check/layout-lint, adjust,
    save checkpoints. Interaction defaults to milestone-confirmation (three tiers:
@@ -83,6 +95,10 @@ EasyEDA tooling.
   `references/auto-layout-sop.md`.
 - Part selection, JLC/LCSC ranking, and standardization: read
   `references/part-selection.md` and use `references/standard-parts.json`.
+- **Standard peripheral circuits (电路块库):** before hand-wiring a known peripheral,
+  use `references/standard-blocks.json` (browse via `scripts/blocks.py ls/show`) —
+  copy-verbatim topology + rebind ports. Contributing a new block:
+  `references/standard-blocks-contributing.md`.
 - Netflag/netport rotation truth: use `references/orientation.json`; never hand-edit
   derived rotation tables.
 - Sheet/title-block geometry conventions: read `references/sheet-templates.json`.
@@ -98,6 +114,9 @@ Scripts live in `scripts/` and are intended to be run directly when useful:
   `standard-parts.json`.
 - `scripts/parts-add.py`: append resolved library parts into `standard-parts.json`.
 - `scripts/parts-select.py`: deterministic part-selection helper.
+- `scripts/blocks.py`: standard circuit-block library — `ls` / `show <id>` /
+  `validate`. Browse reusable peripheral subcircuits and lint `standard-blocks.json`
+  against the schema + contribution rules (the PR gate).
 - `scripts/calibrate.js`: live bbox calibration for netflag/netport orientation after
   importing a new connector build.
 

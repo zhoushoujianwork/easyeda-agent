@@ -247,6 +247,33 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
     `connect_pin`, so they can't drift) + fixture goldens;
   - a **diff baseline** — `lint.sh <project> --save` records a snapshot, later runs
     show only NEW / FIXED / PRE-EXISTING findings plus the changed primitives.
+- **🧩 Standard circuit-block library (电路块库) — flagship capability.** A
+  community-built, credited library of KNOWN-GOOD peripheral subcircuits
+  (`skills/easyeda-agent/references/standard-blocks.json`): CH340 USB-serial, ESP32
+  auto-download, button de-bounce, USB-hub, buck… Their internal topology is fixed
+  and copy-verbatim; reuse only rebinds the boundary nets (`ports`) and reallocates
+  RefDes. It is the **topology tier** above `standard-parts.json` (part tier) and
+  below `design-flow.md` (flow tier). Design invariants:
+  - **Pins referenced by FUNCTIONAL NAME** (`CH340.TXD`), never pin numbers → reuse
+    needs zero pin-renumbering.
+  - **`parts` point back into `standard-parts.json`** by role key → BOM/LCSC stays
+    single-sourced; `alt[]` gives interchangeable substitutes.
+  - **Three knowledge dimensions per block**: parts (with alternatives) +
+    `schematic_notes` (wiring gotchas) + `pcb_layout` (structured electrical
+    constraints with `severity`, future-feedable to `pcb check`).
+  - **Validation gate**: a block only enters the library after one full-flow proof
+    (`place → wire → sch check → DRC=0`); until then `validated:null` +
+    `internal_nets:"pending"`. Topologies are harvested from validated oshwhub
+    boards / official reference designs, never hand-written from memory.
+  - **Attribution**: `author`/`contributors` (GitHub @handles, never removed) +
+    `added`/`updated` versions — *contribute once, benefit forever*. Contribution
+    standard + PR gate: `references/standard-blocks-contributing.md`.
+  - **Tooling**: `scripts/blocks.py ls | show <id> | validate [--strict]` — browse
+    blocks and lint the JSON against the schema + contribution rules (the PR gate;
+    cross-checks every `parts` key against `standard-parts.json`). Network-free,
+    daemon-free — the local companion to the JSON, like `parts-select.py` is for
+    parts. Schematic instantiation is the phase-2 write path (see Roadmap →
+    `sch block apply`).
 - **Connector self-healing reconnect** — the connector port-scans 49620-49629,
   validates a handshake, and reconnects on liveness loss. It **never permanently
   gives up**: after 5 fast retries it drops to a quiet 10s background poll, so a
@@ -276,6 +303,30 @@ not just hand-drawn custom symbols.
 
 These are planned and **not implemented** today.
 
+- **🧩 `easyeda sch block apply` — one-shot circuit-block instantiation (phase-2 write path).**
+  The block library's read/browse layer ships today (`standard-blocks.json` +
+  `scripts/blocks.py`); the **write path** — materializing a block into the live
+  schematic — is the next milestone. Interface designed first (per the CLI-design
+  首要准则), implementation to follow:
+
+  ```
+  easyeda sch block apply --id block.ch340c_usb_serial \
+      --bind TXD=MCU_RX,RXD=MCU_TX,VBUS_5V=5V,GND=GND \
+      [--prefix U2,R7,...] [--at X,Y] [--page <uuid>] [--dry-run]
+  ```
+
+  Semantics: (1) resolve the block's `parts` → place each role from
+  `standard-parts.json` (`schematic.component.place`), allocating fresh RefDes
+  (respecting `--prefix`/next-free); (2) wire every `internal_nets` entry with
+  real wires (`connect_pin` — honoring the netflag-needs-real-wire rule); (3) for
+  each `ports` entry, either bind to the `--bind`-supplied host net or emit the
+  `default_net`; (4) refuse to apply a **draft** block (`validated:null` /
+  `internal_nets:"pending"`) unless `--force`; (5) `--dry-run` prints the place +
+  wire plan (like `sch autolayout --dry-run`) without mutating. This is a typed
+  action (mutation) → a Cobra subcommand, not a script. It reuses the existing
+  `place` + `connect_pin` engines, so the new logic is just topology expansion +
+  RefDes/port binding. Ships the block library from "agent reads & hand-copies" to
+  "agent instantiates in one call".
 - **器件标准化 / standard parts library** — a curated `skills/easyeda-agent/references/standard-parts.json`
   mapping category → `{MPN, LCSC C-number, libraryUuid, deviceUuid}` that the
   agent places from **first**, with `schematic.library.search` as the fallback. The

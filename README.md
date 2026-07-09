@@ -39,6 +39,44 @@
 
 动作目录已覆盖原理图、PCB、文档导航、板级绑定、产物导出、诊断。完整清单与路线图见 [docs/FEATURES.md](docs/FEATURES.md)。
 
+## 站在巨人的肩膀上
+
+我们不重造轮子,而是把**成熟的一层层能力叠起来**,让 AI agent 直接可用:
+
+- **官方 `eda.*` API** —— 嘉立创 EDA 专业版自己暴露的 86 个命名空间,是真正的能力底座;
+- **上游 `run-api-gateway`** —— 证明了「代码能跑在 EasyEDA 内、访问 `eda` 对象」这条关键入口;
+- **成熟的 AI Agent Skill 范式** —— 用 Skill 描述专家工作流 + 护栏,用 typed action 让每一步**可观测、可验收、可回放**,而不是把「裸 JS 执行」丢给模型硬扛。
+
+在这三层之上,easyeda-agent 补齐了工程化的中间层:自愈连接器、有类型的动作目录、真实 bbox 校验、门控设计流程,以及下面这个**核心特色**——电路块库。
+
+## 核心能力 & 特色
+
+**能力总览**(完整清单见 [docs/FEATURES.md](docs/FEATURES.md)):
+
+| 能力域 | 做什么 |
+|---|---|
+| 🧩 **电路块库(旗舰特色)** | 社区共建、署名可追的**成熟外设电路库**:CH340 USB 串口、ESP32 自动下载、按键去抖、USB-HUB、降压…**照抄拓扑、只重绑引脚网络**即可复用 |
+| 📐 原理图 | 库优先放件(真实 LCSC/JLC 器件)、编组、布线、netflag/netport、`sch check`/`layout-lint` 真实 bbox 校验 |
+| 🔲 PCB | 自动布局、板框、禁布区、规则感知短线布线、4 层电源平面、铺铜、丝印避让、DRC/`pcb check` |
+| 🔁 设计流程 | 从**客户口吻需求**到成品的门控主脊(S0–S6 + P0–P10),里程碑确认,存盘检查点 |
+| 📦 产物 | BOM(补 LCSC C 号)、网表、导出、原生截图、审计日志、录制→回放 |
+
+### 🧩 特色:电路块库(一次贡献,永久收益)
+
+**固定模块的外设电路可以直接照抄。** ESP32 自动下载电路、CH340 USB 烧录、按键去抖、
+USB-HUB…这些电路的**内部拓扑是死的**,每次重画等于重趟坑。电路块库把它们
+沉淀成**验证过的、可复用的电路块**——你只需重绑对外的几根线(ports)到主控网络,
+引脚用**功能名**引用所以**零改号**,器件直接指回标准器件库(BOM 就绪)。
+
+- **社区共建 + 署名可追**:每个块带 `author`/`contributors`,**一次学习贡献、永久收益**;
+- **验证门禁**:块必须跑过 `place → wire → check → DRC=0` 才入库,不是「看着对」的散文堆;
+- **三维知识**:器件(可替换选择)+ 原理图链接注意 + PCB 布局电气特性,一块讲全;
+- **AI 直接消费**:agent 放外设前先查块库,命中即抄,省掉一整个模块的选型与接线。
+
+> 📖 库文件 [`standard-blocks.json`](skills/easyeda-agent/references/standard-blocks.json) ·
+> 浏览 `blocks.py ls/show` · 贡献指南
+> [`standard-blocks-contributing.md`](skills/easyeda-agent/references/standard-blocks-contributing.md)
+
 ## 安装
 
 > 📖 **完整上手 & 使用注意事项见 [快速开始 →](docs/quick-start.md)** —— 四件套

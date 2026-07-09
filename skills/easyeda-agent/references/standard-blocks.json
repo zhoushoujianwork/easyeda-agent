@@ -1,0 +1,272 @@
+{
+  "_doc": [
+    "STANDARD CIRCUIT BLOCKS (电路块库) — the topology tier above standard-parts.json.",
+    "A block is a KNOWN-GOOD peripheral subcircuit (CH340 USB-serial, ESP32 auto-download,",
+    "button, USB-hub, buck) whose INTERNAL wiring is fixed and can be copied verbatim; only",
+    "the boundary nets (ports) get rebound to the host design and RefDes get reallocated.",
+    "",
+    "Three-tier library model:",
+    "  standard-parts.json  → 器件级 (which part / LCSC C-number)",
+    "  standard-blocks.json → 电路块级 (how those parts connect + layout constraints)  ← THIS FILE",
+    "  design-flow.md       → 流程级 (S0–S6 / P0–P10)",
+    "",
+    "HARD RULE — a block only enters the library after ONE full-flow validation",
+    "(place → wire → sch check → DRC = 0) on a real project. Until then `validated: null`",
+    "and `internal_nets: \"pending\"`. NEVER hand-write a topology from memory — harvest it",
+    "from a validated oshwhub board or an official reference design (see oshwhub training loop).",
+    "",
+    "Pin references use FUNCTIONAL PIN NAMES (\"CH340.TXD\"), never pin numbers — names are",
+    "symbol-stable, so reuse needs zero pin-renumbering. `parts` values point back into",
+    "standard-parts.json by role key so BOM/LCSC stays single-sourced.",
+    "",
+    "COMMUNITY-BUILT & CREDITED — this is an open, co-built asset. Every block carries its",
+    "`author` / `contributors` (GitHub @handles, never removed) so a one-time contribution",
+    "earns permanent, traceable credit. Contribution standard, PR checklist, and the",
+    "validation gate live in references/standard-blocks-contributing.md. Blocks are versioned",
+    "(`added`/`updated`) and evolve as parts/footprints change."
+  ],
+
+  "_schema": {
+    "block.<id>": {
+      "desc": "one-line 中文 what-it-is",
+      "category": "usb-serial | power | mcu-support | button | protection | rf | comms",
+      "author": "original contributor — GitHub @handle;署名不删,让贡献可追、有归属",
+      "contributors": ["@handle of anyone who later fixed/updated this block"],
+      "added": "version this block first entered the library, e.g. v0.6.0",
+      "updated": "version of the last change (bump when parts/topology/rules change)",
+      "source": "provenance — oshwhub:<url> | datasheet:<mpn> | official-ref:<vendor>",
+      "validated": "null until proven, else 'project@commit by @handle: place→wire→check→DRC=0'",
+      "parts": {
+        "<ROLE>": {
+          "part": "<key into standard-parts.json>",
+          "alt": ["<alternative standard-parts keys, functionally interchangeable>"],
+          "qty": 1,
+          "value_override": "optional — override the part's default value for this role",
+          "note": "选型注意 / why this part / substitution caveat"
+        }
+      },
+      "internal_nets": [
+        ["<ROLE>.<pinName>", "<ROLE>.<pinName>", "..."]
+      ],
+      "ports": {
+        "<PORTNAME>": {
+          "dir": "in | out | bidir",
+          "at": "<ROLE>.<pinName>  — the internal pin exposed",
+          "desc": "what the host binds here",
+          "default_net": "suggested net name if host has no preference"
+        }
+      },
+      "schematic_notes": [
+        "原理图链接注意 — netflag-needs-real-wire, decoupling adjacency in-sheet, net-label",
+        "conventions, pins that MUST be tied/pulled, do-not-float pins, etc."
+      ],
+      "pcb_layout": [
+        {
+          "rule": "short slug e.g. usb-diff-pair | decap-adjacency | keepout | trace-width",
+          "target": "<ROLE>.<pin> | <net> | <PORT>",
+          "constraint": "human-readable electrical constraint",
+          "value": "quantified spec if any (90ohm / <=2mm / >=0.5mm width / etc)",
+          "severity": "must | should"
+        }
+      ],
+      "bom_note": "quantity/cost note across the block (e.g. all 0402, 1 extended part)"
+    }
+  },
+
+  "blocks": {
+
+    "block.ch340c_usb_serial": {
+      "desc": "CH340C 单路 USB 转串口(内置振荡器,无需晶振)+ USB-C + ESD",
+      "category": "usb-serial",
+      "author": "@zhoushoujianwork",
+      "contributors": [],
+      "added": "v0.6.0",
+      "updated": "v0.6.0",
+      "source": "datasheet:CH340C (南京沁恒) + 立创常见参考电路",
+      "validated": null,
+      "parts": {
+        "U": {
+          "part": "ic.ch340c",
+          "alt": [],
+          "qty": 1,
+          "note": "CH340C 内置晶振,比 CH340G 少一个 12MHz 晶体 + 2×22pF;直接用 C 版"
+        },
+        "C_VCC": {
+          "part": "cap.100nf_0402",
+          "qty": 1,
+          "note": "VCC 去耦,紧贴 VCC 脚"
+        },
+        "C_V3": {
+          "part": "cap.100nf_0402",
+          "qty": 1,
+          "note": "V3 脚对地 100nF —— VCC=5V 供电时 V3 必须接此电容;若整芯片 3V3 供电则 V3 直接并到 VCC(此电容删除)"
+        },
+        "R_CC1": {
+          "part": "res.5k1_0402",
+          "qty": 1,
+          "note": "USB-C CC1 下拉 5.1k,声明 device 取 5V"
+        },
+        "R_CC2": {
+          "part": "res.5k1_0402",
+          "qty": 1,
+          "note": "USB-C CC2 下拉 5.1k"
+        },
+        "D_ESD": {
+          "part": "tvs.sm712_sot23",
+          "alt": [],
+          "qty": 1,
+          "note": "D+/D- ESD 保护,靠近 USB-C 端子;非关键可省但推荐"
+        },
+        "J_USB": {
+          "part": "conn.usb_c_16p",
+          "qty": 1,
+          "note": "USB-C 16P 母座;VBUS 作为 5V 输入源"
+        }
+      },
+      "internal_nets": [
+        ["J_USB.VBUS", "U.VCC", "C_VCC.1", "PORT:VBUS_5V"],
+        ["J_USB.GND", "U.GND", "C_VCC.2", "C_V3.2", "D_ESD.GND", "PORT:GND"],
+        ["U.V3", "C_V3.1"],
+        ["J_USB.DP", "U.UDP", "D_ESD.DP"],
+        ["J_USB.DM", "U.UDM", "D_ESD.DM"],
+        ["J_USB.CC1", "R_CC1.1"],
+        ["J_USB.CC2", "R_CC2.1"],
+        ["R_CC1.2", "J_USB.GND"],
+        ["R_CC2.2", "J_USB.GND"]
+      ],
+      "ports": {
+        "VBUS_5V": {
+          "dir": "out",
+          "at": "J_USB.VBUS",
+          "desc": "USB 取到的 5V,喂给板上电源树(降压/LDO 输入)",
+          "default_net": "5V"
+        },
+        "GND": {
+          "dir": "bidir",
+          "at": "U.GND",
+          "desc": "系统地",
+          "default_net": "GND"
+        },
+        "TXD": {
+          "dir": "out",
+          "at": "U.TXD",
+          "desc": "CH340 TXD → 接主控 RX",
+          "default_net": "MCU_RX"
+        },
+        "RXD": {
+          "dir": "in",
+          "at": "U.RXD",
+          "desc": "CH340 RXD ← 接主控 TX",
+          "default_net": "MCU_TX"
+        },
+        "DTR": {
+          "dir": "out",
+          "at": "U.DTR",
+          "desc": "给自动下载电路(block.esp32_autodownload)的 DTR;不做自动下载则悬空",
+          "default_net": "USB_DTR"
+        },
+        "RTS": {
+          "dir": "out",
+          "at": "U.RTS",
+          "desc": "给自动下载电路的 RTS;不做自动下载则悬空",
+          "default_net": "USB_RTS"
+        }
+      },
+      "schematic_notes": [
+        "每个对外 port 落 netflag 必须带真实 wire(重叠坐标不算连接,DRC 看不到)——见 easyeda-wire-required 记忆。",
+        "TXD/RXD 是交叉的:CH340.TXD→MCU.RX,CH340.RXD→MCU.TX,别直连同名。",
+        "V3 电容(C_V3)在原理图上要画在 U.V3 旁,别混进 VCC 去耦网络。",
+        "TXD/RXD 空闲电平由 CH340 内部上拉,无需额外 pull。"
+      ],
+      "pcb_layout": [
+        {
+          "rule": "usb-diff-pair",
+          "target": "J_USB.DP / J_USB.DM",
+          "constraint": "D+/D- 差分走线,等长、尽量短、少打过孔,靠近走",
+          "value": "~90ohm 差分阻抗(4 层可控);长度差 < 5mil",
+          "severity": "should"
+        },
+        {
+          "rule": "esd-placement",
+          "target": "D_ESD",
+          "constraint": "ESD 器件放在 USB-C 端子和 CH340 之间、尽量贴近端子",
+          "value": "",
+          "severity": "should"
+        },
+        {
+          "rule": "decap-adjacency",
+          "target": "C_VCC",
+          "constraint": "VCC 去耦电容紧贴 U.VCC 引脚",
+          "value": "<= 2mm",
+          "severity": "must"
+        },
+        {
+          "rule": "connector-edge",
+          "target": "J_USB",
+          "constraint": "USB-C 端子置于板边,CC 下拉电阻靠近端子",
+          "value": "",
+          "severity": "must"
+        }
+      ],
+      "bom_note": "全 0402 无源 + 1× CH340C(扩展料)+ 1× USB-C + 1× SM712 ESD;约 7 种料"
+    },
+
+    "block.esp32_autodownload": {
+      "desc": "ESP32 双三极管自动下载(DTR/RTS → EN/IO0 时序),配 CH340 使用",
+      "category": "mcu-support",
+      "author": null,
+      "contributors": [],
+      "added": null,
+      "updated": null,
+      "source": "official-ref:Espressif auto-program + NodeMCU 经典电路 —— 待从验证过的官方板抄取",
+      "validated": null,
+      "parts": {
+        "Q1": {
+          "part": "bjt.s8050_sot23",
+          "qty": 1,
+          "note": "NPN,EN 侧;S8050 常用,亦可 MMBT3904"
+        },
+        "Q2": {
+          "part": "bjt.s8050_sot23",
+          "qty": 1,
+          "note": "NPN,IO0 侧"
+        },
+        "R_EN": {
+          "part": "res.10k_0402",
+          "qty": 1,
+          "note": "EN 上拉 10k"
+        },
+        "R_IO0": {
+          "part": "res.10k_0402",
+          "qty": 1,
+          "note": "IO0 上拉 10k"
+        }
+      },
+      "internal_nets": "pending — 交叉耦合拓扑不凭记忆写;抄官方板验证后补(见 oshwhub 训练闭环 + copy-training 纪律)",
+      "ports": {
+        "DTR": { "dir": "in", "at": "Q?.B", "desc": "来自 CH340.DTR", "default_net": "USB_DTR" },
+        "RTS": { "dir": "in", "at": "Q?.B", "desc": "来自 CH340.RTS", "default_net": "USB_RTS" },
+        "EN": { "dir": "out", "at": "R_EN.1", "desc": "→ 主控 EN/CHIP_PU", "default_net": "EN" },
+        "IO0": { "dir": "out", "at": "R_IO0.1", "desc": "→ 主控 GPIO0/BOOT", "default_net": "IO0" },
+        "V3V3": { "dir": "in", "at": "R_EN.2", "desc": "上拉电源 3V3", "default_net": "3V3" },
+        "GND": { "dir": "bidir", "at": "Q?.E", "desc": "地", "default_net": "GND" }
+      },
+      "schematic_notes": [
+        "交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常;(1,0)→(1,0) 进下载(IO0 拉低);(0,1)→(0,1) 复位。抄板时按此真值表校验拓扑对不对。",
+        "EN 常配一颗对地电容(100nF~1uF)做上电延时/去抖,视主控要求补——ESP32-S3 建议有。",
+        "此块必须和 block.ch340c_usb_serial 的 DTR/RTS 两个 port 对接。"
+      ],
+      "pcb_layout": [
+        {
+          "rule": "keep-near-mcu",
+          "target": "EN / IO0",
+          "constraint": "两三极管靠近主控 EN/IO0 引脚,短走线",
+          "value": "",
+          "severity": "should"
+        }
+      ],
+      "bom_note": "2× SOT-23 NPN + 2× 10k 0402(+可选 EN 电容);约 3 种料"
+    }
+
+  }
+}

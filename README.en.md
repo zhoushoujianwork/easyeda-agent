@@ -43,6 +43,44 @@ This project moves the system into a better shape:
 
 The action catalog now spans schematic, PCB, document navigation, board binding, artifacts, and diagnostics. The current inventory and roadmap live in [docs/FEATURES.md](docs/FEATURES.md).
 
+## Standing on the Shoulders of Giants
+
+We don't reinvent the wheel — we stack proven layers so an AI agent can use them directly:
+
+- **Official `eda.*` API** — the 86 namespaces EasyEDA Pro exposes are the real capability substrate;
+- **Upstream `run-api-gateway`** — proved the key entry point (code runs inside EasyEDA, reaching the `eda` object);
+- **A mature AI-Agent Skill pattern** — a Skill describes the expert workflow + guardrails, and typed actions make every step **observable, verifiable, and replayable** instead of handing raw JS to the model.
+
+On top of those three, easyeda-agent adds the engineering middle layer: a self-healing connector, a typed action catalog, real-bbox validation, a gated design flow, and the **flagship capability** below — the circuit-block library.
+
+## Core Capabilities & Highlights
+
+| Domain | What it does |
+|---|---|
+| 🧩 **Circuit-block library (flagship)** | Community-built, credited library of **proven peripheral subcircuits** (CH340 USB-serial, ESP32 auto-download, button de-bounce, USB-hub, buck…). **Copy the topology, only rebind boundary nets** to reuse |
+| 📐 Schematic | Library-first placement (real LCSC/JLC parts), grouping, wiring, netflags, `sch check`/`layout-lint` real-bbox validation |
+| 🔲 PCB | Auto-layout, board outline, keep-outs, rule-aware short-route, 4-layer power planes, copper pour, silkscreen avoidance, DRC/`pcb check` |
+| 🔁 Design flow | Gated spine from a **customer-voice requirement** to a finished board (S0–S6 + P0–P10), milestone confirmation, save checkpoints |
+| 📦 Artifacts | BOM (LCSC C-number enrichment), netlist, export, native screenshots, audit log, record→replay |
+
+### 🧩 Highlight: the circuit-block library (contribute once, benefit forever)
+
+**Fixed peripheral circuits can be copied verbatim.** The ESP32 auto-download circuit,
+CH340 USB flashing, button de-bounce, USB-hub… their **internal topology is fixed** —
+re-drawing them each time means re-walking the same pitfalls. The library distills them
+into **validated, reusable blocks**: you only rebind the few boundary nets (ports) to the
+host MCU, pins are referenced by **functional name** (so **zero pin-renumbering**), and
+parts point back into the standard-parts library (BOM-ready).
+
+- **Community-built + credited** — every block carries `author`/`contributors`; **contribute once, benefit forever**;
+- **Validation gate** — a block only enters after passing `place → wire → check → DRC=0`, not "looks-right" prose;
+- **Three dimensions** — parts (with alternatives) + schematic-wiring notes + PCB layout electrical constraints, all in one block;
+- **AI-consumable** — the agent checks the library before hand-wiring a peripheral; on a hit it copies, skipping a whole module's selection + wiring.
+
+> 📖 Library [`standard-blocks.json`](skills/easyeda-agent/references/standard-blocks.json) ·
+> browse with `blocks.py ls/show` · contribution guide
+> [`standard-blocks-contributing.md`](skills/easyeda-agent/references/standard-blocks-contributing.md)
+
 ## Install Skills
 
 > 📖 **Full setup & usage notes: [Quick Start →](docs/quick-start.md)** — the
