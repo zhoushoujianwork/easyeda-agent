@@ -1,0 +1,184 @@
+{
+  "id": "block.xl1509_buck_12v_5v",
+  "desc": "XL1509 12V→5V/1A 非同步降压(固定5V版:FEEDBACK 直连输出、内部分压,无外部反馈电阻);含输入反接保护 + 续流管 + 输入/输出铝电解",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "datasheet:XL1509 Rev 2.0 — Fig.4「12V→5V/2A 典型应用电路」+ Fig.5 布局指南;https://datasheet.lcsc.com/datasheet/pdf/6764d4cba2504b189b593202c77b9bd6.pdf?productCode=C61063 (LCSC C61063 XL1509-5.0E1)。拓扑抄自 showcase/001-esp32-barrier/reference-circuits.json 的 circuits.buck12v(authoritative)。",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 逐网核实(v0.2 该电路在 P2 91/91 对账达标)。诚实说明:随整板布线一并验证,非孤立块单独放置测试。",
+  "parts": {
+    "U5": {
+      "part": "ic.xl1509_5v_buck",
+      "alt": [],
+      "qty": 1,
+      "note": "XLSEMI XL1509-5.0E1 固定5V非同步降压,2A/150kHz,4.5-40V 输入(LCSC C61063,SOIC-8)。脚:1=VIN,2=OUTPUT(开关节点),3=FEEDBACK(固定5V版直连+5V输出,勿加分压),4=ON/OFF(低有效使能,接GND常开),5-8=GND。MP1584(ic.mp1584en_buck)是更高频可调替代但引脚/拓扑不同、需外部分压,非drop-in。"
+    },
+    "D501": {
+      "part": "diode.ss34_sma",
+      "alt": [
+        "diode.b340ass34_sma"
+      ],
+      "qty": 1,
+      "note": "续流/catch 肖特基:阴极(K)接开关节点 SW_5V、阳极(A)接 GND。datasheet Fig.4 原用 1N5820(直插 3A/20V),SS34(SMA 40V/3A,LCSC C8678)为标准SMD等效。紧贴IC放置。"
+    },
+    "D502": {
+      "part": "diode.ss34_sma",
+      "alt": [
+        "diode.b340ass34_sma"
+      ],
+      "qty": 1,
+      "note": "12V 输入串联反接保护肖特基:阳极(A)接端子 +12V_RAW、阴极(K)接 CIN/U5.VIN。~0.5V压降@1A,余~11.5V 远高于5V输出所需7V下限。近零损耗方案改高边P-FET(见 schematic_notes)。"
+    },
+    "L501": {
+      "part": "ind.68uh_3a",
+      "alt": [],
+      "qty": 1,
+      "note": "功率电感 68uH(datasheet Fig.4 规定 68uH/2A)。SHOU HAN CYH125-68UH,3A额定,64.8mΩ DCR(LCSC C7431083,12.5×12.5mm)。pin1 接开关节点 SW_5V,pin2 出 +5V。"
+    },
+    "C501": {
+      "part": "cap.470uf35v_smd",
+      "alt": [],
+      "qty": 1,
+      "note": "输入体电容 CIN 470uF/35V 铝电解,极性件:+接+12V轨、-接GND。贴 U5 pin1(VIN)与 pin5-8(GND)放(datasheet Fig.5)。"
+    },
+    "C502": {
+      "part": "cap.220uf35v_smd",
+      "alt": [],
+      "qty": 1,
+      "note": "输出体电容 COUT。datasheet Fig.4 标 180uF/35V(非标值),就近替 220uF(库件 cap.220uf35v_smd 实为 220uF/16V);因在5V输出轨,16V耐压已足。极性件:+接+5V、-接GND。"
+    },
+    "C503": {
+      "part": "cap.1uf_0402",
+      "alt": [],
+      "qty": 1,
+      "note": "输入陶瓷旁路 1uF(datasheet Fig.4 标 '105'=1uF),与 CIN 并联贴 U5 pin1。在12V轨上宜≥25V耐压;0402 勉强、0603 更稳,此处按任务默认沿用0402。"
+    },
+    "J1": {
+      "part": "conn.screw_terminal_2p",
+      "alt": [],
+      "qty": 1,
+      "note": "12V 输入 2P 螺钉端子 KF301-5.0-2P(LCSC C474881,250V/17A)。pin1=+12V,pin2=GND。"
+    }
+  },
+  "internal_nets": [
+    [
+      "J1.1",
+      "D502.A",
+      "PORT:VIN_12V"
+    ],
+    [
+      "D502.K",
+      "C501.+",
+      "C503.1",
+      "U5.VIN"
+    ],
+    [
+      "U5.OUTPUT",
+      "D501.K",
+      "L501.1"
+    ],
+    [
+      "L501.2",
+      "C502.+",
+      "U5.FEEDBACK",
+      "PORT:+5V"
+    ],
+    [
+      "J1.2",
+      "C501.-",
+      "C503.2",
+      "D501.A",
+      "C502.-",
+      "U5.GND",
+      "PORT:GND"
+    ],
+    [
+      "U5.ON_OFF",
+      "PORT:ONOFF"
+    ]
+  ],
+  "ports": {
+    "VIN_12V": {
+      "dir": "in",
+      "at": "J1.1",
+      "desc": "外部 12V 电源经 KF301 2P 螺钉端子输入(反接保护 D502 之前的 +12V_RAW)",
+      "default_net": "+12V_RAW"
+    },
+    "+5V": {
+      "dir": "out",
+      "at": "L501.2",
+      "desc": "稳压 5V/1A 输出(电感 L501 出口,并联 C502 与 U5.FEEDBACK),供下游 3V3 LDO/负载",
+      "default_net": "+5V"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U5.GND",
+      "desc": "功率地/参考地(汇集输入输出电容负端、续流管阳极、端子 GND)",
+      "default_net": "GND"
+    },
+    "ONOFF": {
+      "dir": "in",
+      "at": "U5.ON_OFF",
+      "desc": "低有效使能:常态直连 GND=常开(default_net=GND);拉高>1.4V 关断,悬空默认开。切勿接 VIN(会关断变换器)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "固定5V版关键:U5.FEEDBACK 直连 +5V 输出(芯片内部已含 R1=2.5K/R2=7.6K 分压),外部严禁再加反馈分压电阻,否则输出电压跑偏。",
+    "ON/OFF(pin4)低有效:接 GND=常开(本块 default_net=GND),悬空也默认ON,拉高>1.4V 才关断。切勿把 ON/OFF 接到 VIN——那样会关断变换器。",
+    "SW_5V(U5.OUTPUT→D501.K→L501.1)是内部开关节点,高 dv/dt,只在块内走线,不外引作端口;对外输出端口是 +5V(电感出口)。",
+    "续流管 D501:阴极(K)接开关节点 SW_5V、阳极(A)接 GND,方向别接反;紧贴 IC 缩短续流回路。",
+    "反接保护 D502 串在 12V 输入路径,~0.5V/0.5W@1A 压降;要近零损耗可改高边 P-FET(源→输入+,栅→GND,漏→负载,Vgs≥20V 或 12V 处加栅极齐纳钳位),本块保守用肖特基。",
+    "二极管代换:datasheet Fig.4 原用 1N5820(直插 3A/20V),本块用 SS34(SMA 40V/3A)标准 SMD 等效,可替 B340A。",
+    "C502 输出电容:datasheet 标 180uF/35V(非标值),就近替 220uF;在 5V 输出轨 16V 耐压已足够。",
+    "C503 '105'=1uF 陶瓷旁路在 12V 轨,建议≥25V 耐压(0603 更稳),本块按任务默认用 0402。",
+    "netflag 必须经真实导线连到引脚(坐标重叠不算连接,DRC 不认)。GND 汇集:J1.2 / C501.- / C503.2 / D501.A / C502.- / U5.GND。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "input-cap-adjacency",
+      "target": "C501/C503",
+      "constraint": "输入体电容 CIN(C501)+陶瓷旁路 C503 紧贴 U5 pin1(VIN)与 pin5-8(GND),缩短输入高频回路(datasheet Fig.5)",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "catch-diode-adjacency",
+      "target": "D501",
+      "constraint": "续流肖特基紧贴 U5 OUTPUT(pin2)与 GND,阴极接开关节点,最短续流回路",
+      "value": "引线<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "switch-loop-short",
+      "target": "SW_5V",
+      "constraint": "开关电流回路(CIN→U5→L501/D501→GND)走短并配地平面,压低 EMI 与纹波",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "feedback-away-from-inductor",
+      "target": "U5.FEEDBACK / +5V",
+      "constraint": "反馈走线远离电感 L501 磁通,防开关噪声耦入反馈;在输出电容处取样(datasheet Fig.5)",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "ground-path-separation",
+      "target": "U5.GND",
+      "constraint": "GND 引脚回流路径与'肖特基→输出电容'的地路径分开(datasheet Fig.5/Table1 pin5-8 note),避免地弹污染反馈",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "revpolarity-diode-in-input",
+      "target": "D502",
+      "constraint": "反接保护 D502 放在 12V 输入端(螺钉端子与 CIN 之间),留散热铜箔",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "8 件:1×XL1509-5.0E1(SOIC-8) + 2×SS34 肖特基(SMA,续流 D501 + 反接 D502) + 1×68uH/3A 功率电感(12.5×12.5) + 2×铝电解(470uF/35V 输入 C501、220uF 输出 C502) + 1×1uF/0402 陶瓷 C503 + 1×KF301 2P 螺钉端子 J1。全部立创可下单、库存充足,无扩展料瓶颈;主要成本在功率电感与电解电容。C502 以库件 220uF 就近替 datasheet 的 180uF(5V 轨 16V 耐压足够)。"
+}

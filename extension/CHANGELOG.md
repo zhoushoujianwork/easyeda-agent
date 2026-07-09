@@ -7,6 +7,14 @@ follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **`easyeda blocks` — 离线电路块库查询(embedded)**:`ls` / `show <id>` /
+  `search <query>`,块库 JSON 用 `go:embed` 编进二进制,**零 daemon / 零窗口 /
+  零 skill 文件**——异地/裸机 `easyeda` 安装即可查已验证外设电路(CH340/自动下载/
+  buck/RS485/CC1101/microSD…),不必下载 GitHub 库。skill 的 `references/blocks/*.json`
+  仍是社区源(PR 进这里),`make sync-blocks` 构建前拷进 `internal/blocks/data/`
+  再 embed;`internal/blocks` 带漂移守卫测试(embed 副本 ≠ skill 源即 CI 失败)。
+  本次同时从 case001 提炼 4 新块入库(XL1509 buck / SP3485 RS485 / CC1101 巴伦 /
+  microSD),块库达 7 ready。
 - **Skill 目录自动同步 + 连接器落后提示**(免手动升级):`daemon start` 默认带
   `--auto-update-skill`,启动时后台把已存在的 skill 目录(`~/.claude`、`~/.codex`)
   拉齐到最新 release 并逐步打日志(尊重 `EASYEDA_SKILL_PRESERVE`)。新增

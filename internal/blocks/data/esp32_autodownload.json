@@ -1,0 +1,86 @@
+{
+  "id": "block.esp32_autodownload",
+  "desc": "ESP32 双三极管自动下载(交叉耦合:DTR/RTS → EN/IO0 时序),配 CH340 使用",
+  "category": "mcu-support",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.6.0",
+  "updated": "v0.6.0",
+  "source": "official-ref:立创·ESP32S3R8N8开发板(嘉立创官方开源,core 原理图 Q1/Q2/R16/R17)——sch read 抄取真实拓扑与用值",
+  "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(4件)→wire(10 netport)→sch check(0 findings,全脚连上零悬空)→bridge-check(0/0)→sch drc(0 fatal/0 error)。netlist 逐网核实交叉耦合:DTR=Q1.E+R_DTR / RTS=Q2.E+R_RTS / Q1B=Q1.B+R_RTS / Q2B=Q2.B+R_DTR / IO0=Q1.C / EN=Q2.C,与立创官方板一致。",
+  "parts": {
+    "Q1": {
+      "part": "bjt.mmbt3904_sot23",
+      "alt": ["bjt.s8050_sot23"],
+      "qty": 1,
+      "note": "IO0 侧 NPN;官方板用 MMBT3904,S8050 等效可替"
+    },
+    "Q2": {
+      "part": "bjt.mmbt3904_sot23",
+      "alt": ["bjt.s8050_sot23"],
+      "qty": 1,
+      "note": "EN 侧 NPN"
+    },
+    "R_RTS": {
+      "part": "res.4k7_0402",
+      "qty": 1,
+      "note": "RTS → Q1 基极的串阻(官方板 R17=4.7k)"
+    },
+    "R_DTR": {
+      "part": "res.4k7_0402",
+      "qty": 1,
+      "note": "DTR → Q2 基极的串阻(官方板 R16=4.7k)"
+    }
+  },
+  "_topology_note": "交叉耦合是精髓:Q1 发射极接 DTR 但基极由 RTS 经 R_RTS 驱动;Q2 发射极接 RTS 但基极由 DTR 经 R_DTR 驱动。本块内部无 GND、无上拉——三极管发射极参考的是 DTR/RTS 而非地;EN 上拉+电容属复位电路/模组块(见 block.esp32s3_wroom1_module 的 R_EN/C_EN),IO0 上拉是模组内部。",
+  "internal_nets": [
+    ["Q1.E", "R_DTR.1", "PORT:DTR"],
+    ["Q2.E", "R_RTS.1", "PORT:RTS"],
+    ["Q1.B", "R_RTS.2"],
+    ["Q2.B", "R_DTR.2"],
+    ["Q1.C", "PORT:IO0"],
+    ["Q2.C", "PORT:EN"]
+  ],
+  "ports": {
+    "DTR": {
+      "dir": "in",
+      "at": "Q1.E",
+      "desc": "来自 CH340 的 DTR(block.ch340c_usb_serial 的 DTR port)",
+      "default_net": "USB_DTR"
+    },
+    "RTS": {
+      "dir": "in",
+      "at": "Q2.E",
+      "desc": "来自 CH340 的 RTS(block.ch340c_usb_serial 的 RTS port)",
+      "default_net": "USB_RTS"
+    },
+    "EN": {
+      "dir": "out",
+      "at": "Q2.C",
+      "desc": "→ 主控 EN/CHIP_PU(block.esp32s3_wroom1_module 的 EN port)",
+      "default_net": "EN"
+    },
+    "IO0": {
+      "dir": "out",
+      "at": "Q1.C",
+      "desc": "→ 主控 GPIO0/BOOT(block.esp32s3_wroom1_module 的 IO0 port)",
+      "default_net": "IO0"
+    }
+  },
+  "schematic_notes": [
+    "交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(1,0)→(1,0) 进下载(IO0 拉低、EN 高);(0,1)→(0,1) 复位(EN 拉低)。单独拉某一根不会误复位,靠两根时序差实现自动进下载。",
+    "接线要点(从立创官方板抄):Q1.E=DTR、Q1.B←R_RTS←RTS、Q1.C=IO0;Q2.E=RTS、Q2.B←R_DTR←DTR、Q2.C=EN。DTR/RTS 交叉到对面管子的基极,别接成同侧。",
+    "本块必须和 block.ch340c_usb_serial 的 DTR/RTS 对接,并把 EN/IO0 接到 block.esp32s3_wroom1_module 的同名 port。三块合起来 = 完整 USB 烧录+自动下载+模组系统。",
+    "真实符号脚名(官方板核实):三极管 E/C/B;基极中间节点在官方板是 $1N4145/$1N4146 内部网,本块用 Q.B=R.2 表达。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "keep-near-mcu",
+      "target": "EN / IO0",
+      "constraint": "两三极管靠近主控 EN/IO0 引脚,短走线",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "2× MMBT3904 SOT-23 + 2× 4.7k 0402;约 2 种料。极简,无上拉无电容(那些在模组/复位块)。"
+}

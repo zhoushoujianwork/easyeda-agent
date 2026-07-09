@@ -1,0 +1,384 @@
+{
+  "id": "block.cc1101_433m_balun_ipex",
+  "desc": "CC1101 433MHz 收发前端:分立 LC 巴伦 + 两级 LC 滤波/匹配 → IPEX 天线;26MHz 晶振 + RBIAS + 全脚去耦,SPI/GDO 接 MCU",
+  "category": "rf",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "datasheet:CC1101 (TI SWRS061I, Figure 10 315/433MHz 应用电路 + Table 20/21 BOM + §7.2-7.8) + official-ref:TI CC1101EM 434MHz reference design (CC1101EM_434MHz_SCHEMATIC_2_0_0.pdf rev 2.0.0) —— https://www.ti.com/lit/ds/symlink/cc1101.pdf ; https://www.ti.com/lit/zip/swrr046 ;拓扑抄自 showcase/001-esp32-barrier/reference-circuits.json circuits.cc1101_rf",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 逐网核实(v0.2 该电路在 P3 72/72 对账达标)。诚实标注:是在整板布线流程中随全板一起验证,非本块孤立单独放置(isolated block place)的验证。",
+  "parts": {
+    "U": {
+      "part": "ic.cc1101_qfn20",
+      "qty": 1,
+      "note": "CC1101 QFN-20 Sub-1GHz 收发器,387-464MHz;外露焊盘 EP=GND,需多颗过孔缝合到地平面(TI SWRS061I)。数字脚 SI/SO/SCLK/CSn/GDO0/GDO2 直连 MCU(见 ports)"
+    },
+    "C621": {
+      "part": "cap.3p9_0402",
+      "qty": 1,
+      "note": "巴伦 RF_P 串联电容 3.9pF NP0(TI ref C121)"
+    },
+    "C631": {
+      "part": "cap.3p9_0402",
+      "qty": 1,
+      "note": "巴伦 RF_N 对地并联电容 3.9pF NP0(TI ref C131);与 C621 镜像"
+    },
+    "L621": {
+      "part": "ind.27nh_0402",
+      "qty": 1,
+      "note": "巴伦 RF_P 电感 27nH,经 C624 DC-block 接地(TI ref L121)"
+    },
+    "L631": {
+      "part": "ind.27nh_0402",
+      "qty": 1,
+      "note": "巴伦 RF_N→单端汇合节点串联电感 27nH(TI ref L131);与 L621 镜像"
+    },
+    "C624": {
+      "part": "cap.220p_0402",
+      "qty": 1,
+      "note": "巴伦 DC-block 220pF:射频把 L621 接地、阻直流(TI ref C124);C624.1 接 GND"
+    },
+    "L622": {
+      "part": "ind.22nh_0402",
+      "qty": 1,
+      "note": "两级 LC 滤波/匹配 第1级串联电感 22nH(TI ref L122)"
+    },
+    "C622": {
+      "part": "cap.8p2_0402",
+      "qty": 1,
+      "note": "LC 滤波 第1级对地并联电容 8.2pF(TI ref C122)"
+    },
+    "L623": {
+      "part": "ind.27nh_0402",
+      "qty": 1,
+      "note": "LC 滤波/匹配 第2级串联电感 27nH(TI ref L123)"
+    },
+    "C623": {
+      "part": "cap.5p6_0402",
+      "qty": 1,
+      "note": "LC 滤波 第2级对地并联电容 5.6pF(TI ref C123)"
+    },
+    "C625": {
+      "part": "cap.220p_0402",
+      "qty": 1,
+      "note": "到天线的串联 DC-block 220pF(TI ref C125);参考设计恒装,馈线保持 50Ω"
+    },
+    "J_ANT2": {
+      "part": "conn.ufl_ipex",
+      "alt": [
+        "conn.4gantenna_ipex",
+        "conn.activegnssantennaufl_ipex"
+      ],
+      "qty": 1,
+      "note": "U.FL/IPEX 50Ω 射频座(替代参考设计的 SMA)。SIG=射频信号,SHIELD=GND"
+    },
+    "X2": {
+      "part": "xtal.26mhz_3225_10pf",
+      "qty": 1,
+      "note": "26.000MHz 晶振 NX3225GA CL=10pF(3225 4脚);壳脚 X2.2/X2.4 接地"
+    },
+    "C681": {
+      "part": "cap.12p_0402",
+      "qty": 1,
+      "note": "XOSC_Q1 晶振负载帽 12pF。本块 X2 是 10pF-CL NX3225GA→取 12pF,不是数据手册 Table21 的 27pF(那对应 ~16pF-CL 晶振)"
+    },
+    "C682": {
+      "part": "cap.15p_0402",
+      "qty": 1,
+      "note": "XOSC_Q2 晶振负载帽 15pF(EM 434MHz 实建非对称 12/15pF);规则 §7.3:串联(C681,C682)+~2.5pF 寄生 = 晶振 CL"
+    },
+    "C641": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "DVDD(pin4)去耦 100nF(TI ref C41)"
+    },
+    "C651": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "DCOUPL(pin5)片内数字稳压器输出电容 100nF(TI ref C51)。DCOUPL 是输出,只对地,严禁接 VDD"
+    },
+    "C661": {
+      "part": "cap.220p_0402",
+      "qty": 1,
+      "note": "DGUARD(pin18)去耦 220pF(TI ref C181)"
+    },
+    "C691": {
+      "part": "cap.10n_0402",
+      "qty": 1,
+      "note": "AVDD pin9 去耦 10nF(TI ref C91)"
+    },
+    "C692": {
+      "part": "cap.220p_0402",
+      "qty": 1,
+      "note": "AVDD pin11 去耦 220pF(TI ref C111)"
+    },
+    "C693": {
+      "part": "cap.10n_0402",
+      "qty": 1,
+      "note": "AVDD pin14 去耦 10nF(TI ref C141)"
+    },
+    "C694": {
+      "part": "cap.220p_0402",
+      "qty": 1,
+      "note": "AVDD pin15 去耦 220pF(TI ref C151);每颗 AVDD 帽贴各自引脚,勿合并"
+    },
+    "R601": {
+      "part": "res.56k_0402",
+      "qty": 1,
+      "note": "RBIAS(pin17)片内偏置基准电阻 56k 1%,只对地——不接 VDD(TI ref R171)"
+    },
+    "L601": {
+      "part": "fb.blm15hg102",
+      "qty": 1,
+      "note": "供电入口 EMI 磁珠 BLM15HG102(1kΩ@100MHz,TI ref L1);模组级滤波,VDD_CC 经它进芯片"
+    },
+    "C601": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "射频 VDD 体电容 1µF,磁珠芯片侧(TI ref C1);参考设计为 0805,本库统一用 0402 键 cap.1uf_0402"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.RF_P",
+      "C621.1",
+      "L621.1"
+    ],
+    [
+      "U.RF_N",
+      "L631.2",
+      "C631.1"
+    ],
+    [
+      "L621.2",
+      "C624.2"
+    ],
+    [
+      "C621.2",
+      "L631.1",
+      "L622.2"
+    ],
+    [
+      "L622.1",
+      "C622.1",
+      "L623.2"
+    ],
+    [
+      "L623.1",
+      "C623.1",
+      "C625.1"
+    ],
+    [
+      "C625.2",
+      "J_ANT2.SIG",
+      "PORT:ANT"
+    ],
+    [
+      "U.XOSC_Q1",
+      "X2.1",
+      "C681.1"
+    ],
+    [
+      "U.XOSC_Q2",
+      "X2.3",
+      "C682.1"
+    ],
+    [
+      "U.DCOUPL",
+      "C651.1"
+    ],
+    [
+      "U.RBIAS",
+      "R601.1"
+    ],
+    [
+      "L601.1",
+      "PORT:VDD_CC"
+    ],
+    [
+      "L601.2",
+      "C601.1",
+      "U.DVDD",
+      "U.DGUARD",
+      "U.AVDD_9",
+      "U.AVDD_11",
+      "U.AVDD_14",
+      "U.AVDD_15",
+      "C641.1",
+      "C661.1",
+      "C691.1",
+      "C692.1",
+      "C693.1",
+      "C694.1"
+    ],
+    [
+      "U.GND_16",
+      "U.GND_19",
+      "U.EP",
+      "C601.2",
+      "C641.2",
+      "C651.2",
+      "C661.2",
+      "C691.2",
+      "C692.2",
+      "C693.2",
+      "C694.2",
+      "R601.2",
+      "C681.2",
+      "C682.2",
+      "X2.2",
+      "X2.4",
+      "C631.2",
+      "C624.1",
+      "C622.2",
+      "C623.2",
+      "J_ANT2.SHIELD",
+      "PORT:GND"
+    ],
+    [
+      "U.CSn",
+      "PORT:CSN"
+    ],
+    [
+      "U.SCLK",
+      "PORT:SCK"
+    ],
+    [
+      "U.SI",
+      "PORT:MOSI"
+    ],
+    [
+      "U.SO",
+      "PORT:MISO"
+    ],
+    [
+      "U.GDO0",
+      "PORT:GDO0"
+    ],
+    [
+      "U.GDO2",
+      "PORT:GDO2"
+    ]
+  ],
+  "ports": {
+    "CSN": {
+      "dir": "in",
+      "at": "U.CSn",
+      "desc": "SPI 片选(低有效),来自 MCU",
+      "default_net": "CC_CSN"
+    },
+    "SCK": {
+      "dir": "in",
+      "at": "U.SCLK",
+      "desc": "SPI 时钟,来自 MCU",
+      "default_net": "CC_SCK"
+    },
+    "MOSI": {
+      "dir": "in",
+      "at": "U.SI",
+      "desc": "SPI 主出从入(CC1101 SI 串行数据入),来自 MCU",
+      "default_net": "CC_MOSI"
+    },
+    "MISO": {
+      "dir": "out",
+      "at": "U.SO",
+      "desc": "SPI 主入从出(CC1101 SO 串行数据出,与 GDO1 复用),到 MCU",
+      "default_net": "CC_MISO"
+    },
+    "GDO0": {
+      "dir": "out",
+      "at": "U.GDO0",
+      "desc": "通用数字输出/中断(收发状态/包就绪),到 MCU GPIO",
+      "default_net": "CC_GDO0"
+    },
+    "GDO2": {
+      "dir": "out",
+      "at": "U.GDO2",
+      "desc": "通用数字输出/中断,到 MCU GPIO",
+      "default_net": "CC_GDO2"
+    },
+    "VDD_CC": {
+      "dir": "in",
+      "at": "L601.1",
+      "desc": "射频供电入口,经磁珠 L601 进芯片 VDD(3.3V,范围 1.8-3.6V)",
+      "default_net": "VDD3V3"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND_16",
+      "desc": "地(GND_16/GND_19/外露焊盘 EP + 全部去耦/滤波下极),接地平面",
+      "default_net": "GND"
+    },
+    "ANT": {
+      "dir": "out",
+      "at": "J_ANT2.SIG",
+      "desc": "50Ω 射频输出到 U.FL/IPEX 天线座",
+      "default_net": "ANT_433"
+    }
+  },
+  "schematic_notes": [
+    "晶振负载帽用值取决于晶振 CL:本块 X2=NX3225GA(xtal.26mhz_3225_10pf,CL=10pF)→ C681=12pF(XOSC_Q1)、C682=15pF(XOSC_Q2),不是数据手册 Table21 的 27pF(那对应 ~16pF-CL 晶振)。规则(SWRS061I §7.3):串联(C681,C682)+~2.5pF 寄生 = 晶振 CL。EM 434MHz 实建即非对称 12/15pF。",
+    "DCOUPL(pin5)是片内数字稳压器的输出,只由 C651 100nF 对地去耦,严禁接到 VDD——接 VDD 等于短掉内部稳压器。",
+    "RBIAS(pin17)接 R601 56k 1% 只到 GND,不接 VDD;此电阻设定片内偏置电流基准。",
+    "巴伦镜像对称:RF_P 侧 = C621(串)+ L621(经 C624 220pF DC-block 接地);RF_N 侧 = L631(串)+ C631(对地并联)。两侧在单端汇合节点 RF_SE(C621.2 + L631.1)合并后进两级 LC 滤波(L622/C622 → L623/C623),再经 C625 DC-block 到 IPEX。别把 RF_P/RF_N 两侧接反。",
+    "每个电源脚就近单独去耦:DVDD=C641 100nF、DGUARD=C661 220pF、AVDD9=C691 10nF、AVDD11=C692 220pF、AVDD14=C693 10nF、AVDD15=C694 220pF——每颗帽贴各自引脚,勿合并到一颗。",
+    "接地:GND_16、GND_19、外露焊盘 EP 全接地平面;C624.1、C631.2、C622.2、C623.2 及所有去耦帽下极接 GND;晶振壳脚 X2.2/X2.4 接地(NX3225GA 标准做法)。",
+    "SPI/GDO 接口(CSn/SCLK/SI/SO/GDO0/GDO2)是直连 MCU 的数字线,不在 RF 参考网表内(reference-circuits.cc1101_rf 只研究了射频/模拟/供电部分),整板设计里直接从 CC1101 引脚拉到主控。脚名映射:MOSI=U.SI、MISO=U.SO、SCK=U.SCLK、CSN=U.CSn。",
+    "C625 天线 DC-block 参考设计恒装(SWRS061I §7.2 仅在天线有直流通路时严格必需,但参考版图始终贴);馈线保持 50Ω。",
+    "868/915MHz 参考设计里的 C126/L124/L125/L132(TX 谐波滤波 + 4元件巴伦)本 433MHz 电路故意不装。",
+    "netflag 必须经真实导线连接(坐标重叠不算连通,DRC 看不到)——本项目通用约束。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "rf-50ohm",
+      "target": "RF_P / RF_N / RF_SE / RF_FLT1 / RF_FLT2 / ANT_433",
+      "constraint": "射频链路(巴伦→两级 LC 滤波→天线馈线)全走顶层 L1,50Ω 受控阻抗,严格照 CC1101EM 433MHz 参考版图(gerbers in swrr046)布局",
+      "value": "50ohm, all on L1",
+      "severity": "must"
+    },
+    {
+      "rule": "balun-mirror",
+      "target": "C621/L621/C624 vs L631/C631",
+      "constraint": "巴伦 RF_P 侧与 RF_N 侧镜像对称布局,元件位置照参考版图,勿随意改动值/间距",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "ep-ground-stitch",
+      "target": "U.EP",
+      "constraint": "外露焊盘用多颗过孔缝合到地平面(热 + 射频回流路径)",
+      "value": ">=4 vias",
+      "severity": "must"
+    },
+    {
+      "rule": "rf-keepout",
+      "target": "巴伦-滤波-天线区 / J_ANT2 / ANT_433",
+      "constraint": "巴伦/滤波/天线馈线周边射频 keepout,勿让铺铜或其它走线侵入;IPEX 座周边留净空",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "decap-adjacency",
+      "target": "C641/C661/C691/C692/C693/C694",
+      "constraint": "每个 VDD 去耦帽紧贴其对应电源脚(DVDD/DGUARD/AVDD×4),最短回地",
+      "value": "<=1mm",
+      "severity": "should"
+    },
+    {
+      "rule": "xtal-adjacency",
+      "target": "X2/C681/C682",
+      "constraint": "晶振及负载帽贴近 XOSC_Q1/Q2 脚,短且对称走线,远离射频链路避免耦合",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "supply-filter-placement",
+      "target": "L601/C601",
+      "constraint": "磁珠 L601 串在上游供电与射频 VDD 之间,体电容 C601 贴磁珠芯片侧",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "共 25 件:1× CC1101 QFN-20 + 1× NX3225GA 26MHz 晶振 + 1× U.FL/IPEX 座 + 1× BLM15HG102 磁珠 + 1× 56k 0402 + 20× 0402 电容/电感。全部 0402(含 1µF 体电容也用 0402 键 cap.1uf_0402)。分立巴伦 + 两级滤波共 5× 电感(4×27nH + 1×22nH)+ 精密射频电容(3.9/8.2/5.6pF、220pF×5、10nF×2、100nF×2、12/15pF 晶振帽)。这些射频料多为扩展料(非 JLC 基础料),打样注意上料费。"
+}

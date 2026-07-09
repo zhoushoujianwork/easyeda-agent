@@ -1,0 +1,136 @@
+{
+  "id": "block.esp32s3_wroom1_module",
+  "desc": "ESP32-S3-WROOM-1 模组最小系统(3V3 去耦 + EN 上电复位 RC + IO0 boot strapping);模组内置 flash，无需外挂",
+  "category": "mcu",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.6.0",
+  "updated": "v0.6.0",
+  "source": "official-ref:Espressif ESP32-S3-WROOM-1 硬件设计指南 (Hardware Design Guidelines) + 官方最小系统参考",
+  "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(6件)→wire(18 netflag/netport)→sch check(0 geom-net/0 net-marker mismatch, 仅未用 GPIO WARN)→bridge-check(0/0)→sch drc(0 fatal/0 error)。netlist 逐网核实:3V3=5 / GND=6(含 EPAD)/ EN=3(RC 成型)/ IO0=2 / MCU_TX=MCU_RX=1,合并全对。脚名 sch read 核实:3V3/EN/IO0/TXD0/RXD0/GND 命中,唯热焊盘真实名 EPAD(非 EP)已修正。",
+  "parts": {
+    "U": {
+      "part": "mcu.esp32s3_wroom1",
+      "alt": ["mcu.esp32s3_wroom1u_n8"],
+      "qty": 1,
+      "note": "ESP32-S3-WROOM-1 模组:内置 flash(N4/N8/N16 视型号)+ PCB 天线;WROOM-1U 为外接 IPEX 天线版(alt)。用模组而非裸芯片:省晶振/flash/RF matching/天线设计，最省心。"
+    },
+    "C_BULK": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "3V3 大电容,压 WiFi 发射瞬态电流(峰值可到 ~500mA);靠近模组供电脚"
+    },
+    "C_VDD": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "3V3 高频去耦,紧贴模组 3V3 脚"
+    },
+    "R_EN": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "EN 上拉 10k"
+    },
+    "C_EN": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "value_override": "1uF",
+      "note": "EN 对地电容,与 R_EN 组成上电延时 RC(官方推荐 R=10k / C=1uF),保证 3V3 稳定后再释放复位;也吸收 EN 抖动"
+    },
+    "R_IO0": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "IO0(boot strapping)上拉 10k → 默认从 flash 启动;下载时由 BOOT 按键/自动下载电路拉低"
+    }
+  },
+  "_internal_nets_note": "引脚用模组真实符号功能名(已 sch read 核实)。GND 是多物理脚:pin1 + pin40 + 热焊盘 EPAD(pin41,真实名 EPAD 非 EP),tie 全部。",
+  "internal_nets": [
+    ["U.3V3", "C_BULK.1", "C_VDD.1", "R_EN.2", "R_IO0.2", "PORT:3V3"],
+    ["U.GND", "U.EPAD", "C_BULK.2", "C_VDD.2", "C_EN.2", "PORT:GND"],
+    ["U.EN", "R_EN.1", "C_EN.1", "PORT:EN"],
+    ["U.IO0", "R_IO0.1", "PORT:IO0"]
+  ],
+  "ports": {
+    "3V3": {
+      "dir": "in",
+      "at": "U.3V3",
+      "desc": "模组供电 3V3(来自 LDO/buck;不要直接 5V)",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND",
+      "desc": "系统地(含 EP 散热焊盘)",
+      "default_net": "GND"
+    },
+    "EN": {
+      "dir": "bidir",
+      "at": "U.EN",
+      "desc": "复位/使能:接 RESET 按键 + 自动下载电路(block.esp32_autodownload 的 EN port)",
+      "default_net": "EN"
+    },
+    "IO0": {
+      "dir": "bidir",
+      "at": "U.IO0",
+      "desc": "boot strapping:接 BOOT 按键 + 自动下载电路(block.esp32_autodownload 的 IO0 port)",
+      "default_net": "IO0"
+    },
+    "U0TXD": {
+      "dir": "out",
+      "at": "U.TXD0",
+      "desc": "调试/烧录串口 TX(IO43)→ 接 CH340 的 RXD(block.ch340c_usb_serial 的 RXD port)",
+      "default_net": "MCU_TX"
+    },
+    "U0RXD": {
+      "dir": "in",
+      "at": "U.RXD0",
+      "desc": "调试/烧录串口 RX(IO44)← 接 CH340 的 TXD(block.ch340c_usb_serial 的 TXD port)",
+      "default_net": "MCU_RX"
+    }
+  },
+  "schematic_notes": [
+    "真实符号脚名(已核实):3V3(2)/EN(3)/IO0(27)/TXD0(37)/RXD0(36)/GND(1,40)/EPAD(41,热焊盘)。未用 GPIO(IO1~IO48)合法悬空,sch check 出 WARN 属正常。",
+    "EN 上电复位 RC:R_EN(10k 上拉)+ C_EN(1uF 对地),保证 3V3 稳定后再释放复位。这是模组稳定启动的关键,别省 C_EN(验证:EN 网正确成 3 脚 U.EN+R_EN+C_EN)。",
+    "IO0 = strapping 脚:10k 上拉 → 从 flash 正常启动;下载时拉低(交给 BOOT 按键/自动下载电路,不要在本块里硬接死)。",
+    "WROOM-1 内置 flash,不要再外挂 SPI flash;裸芯片方案才需要(见 mcu.esp32s3_chip)。",
+    "GND 多脚(pin1 + pin40 + 大 EP 焊盘)全部接地,EP 是主散热+回流路径,必接。",
+    "本块只覆盖模组最小系统(供电/复位/boot);UART 接 CH340 块、EN/IO0 接自动下载块、用户 GPIO 按需引出,都走 ports,不写死在块里。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "antenna-keepout",
+      "target": "U (模组天线端)",
+      "constraint": "模组天线端必须置于板边、伸出板外或下方全层禁铜(顶/底 no-pour + 内层 no-inner-electrical);天线区下方任何层有铜都会失谐",
+      "value": "all-layers keep-out;天线区顶到板边",
+      "severity": "must"
+    },
+    {
+      "rule": "decap-adjacency",
+      "target": "C_VDD",
+      "constraint": "100nF 高频去耦紧贴模组 3V3 供电脚",
+      "value": "<= 2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "bulk-cap",
+      "target": "C_BULK",
+      "constraint": "10uF 大电容靠近模组供电入口,压 WiFi 发射瞬态",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "en-rc-near",
+      "target": "R_EN / C_EN",
+      "constraint": "EN 的 RC 靠近模组 EN 脚,短走线",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "ep-thermal-vias",
+      "target": "U.EPAD",
+      "constraint": "EP 散热焊盘下打散热过孔阵列接内层/底层 GND",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "1× ESP32-S3-WROOM-1 模组(扩展料,含 flash)+ 10uF/1uF/100nF + 2× 10k 0402;约 5 种料。模组把晶振/flash/RF 全省了。"
+}

@@ -1,0 +1,203 @@
+{
+  "id": "block.sp3485_rs485_halfduplex",
+  "desc": "SP3485 半双工 RS-485 Modbus RTU 现场接口(DE//RE 单 GPIO 收发切换 + 680R 失效安全偏置[默认DNF] + 120R 跳线终端 + SM712 TVS + 3P 端子)",
+  "category": "comms",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "datasheet:SP3485 (MaxLinear Rev 2.0.2, https://www.maxlinear.com/ds/sp3485.pdf — 引脚/真值表/封装,75176 pinout) + spec:MODBUS-over-Serial-Line V1.02 (https://www.modbus.org/file/secure/modbusoverserial.pdf — §3.4.5 线路终端 / §3.4.6 极化偏置 / §3.6 电缆与 Common) + datasheet:SM712 (Semtech, https://www.semtech.com/products/circuit-protection/esd-protection/sm712 ; https://docs.rs-online.com/b70c/0900766b81385d5f.pdf) + field-practice:680Ω 偏置常见值 (https://know.innon.com/bias-termination-rs485-network) —— 权威拓扑抄自 showcase/001-esp32-barrier/reference-circuits.json circuits.rs485",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 逐网核实(v0.2 该电路在 P2 91/91 对账达标)。诚实:是在整板布线中验证的,非孤立块单独放置跑通。",
+  "parts": {
+    "U7": {
+      "part": "ic.sp3485_sop8",
+      "alt": [],
+      "qty": 1,
+      "note": "3.3V 半双工 RS-485 收发器,SOIC-8,75176 pinout:1=RO 2=/RE 3=DE 4=DI 5=GND 6=A(非反相) 7=B(反相) 8=VCC(datasheet Rev 2.0.2)。内部失效安全:总线开路/短路时 RO=1(Table 2)。MAX3485 同 pinout 3.3V 可直接替换(标准库暂无该 key)。"
+    },
+    "C701": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VCC 就近去耦。SP3485 datasheet 无应用电路/电容值,100nF 为通用实践。"
+    },
+    "R701": {
+      "part": "res.680r_0402",
+      "qty": 1,
+      "note": "失效安全偏置上拉 3V3->A。Modbus §3.4.6 每条总线段仅一处极化(通常主站);从站现场设备默认 DNF。与 R702 成对装/成对不装。"
+    },
+    "R702": {
+      "part": "res.680r_0402",
+      "qty": 1,
+      "note": "失效安全偏置下拉 B->GND。同 R701 的装配规则(成对、默认 DNF)。"
+    },
+    "R703": {
+      "part": "res.120r_1206",
+      "qty": 1,
+      "note": "A-B 线路终端电阻,经 JP701 接入。Modbus §3.4.5:仅在总线两个物理末端闭合;1206 取 0.25W 额定。"
+    },
+    "JP701": {
+      "part": "conn.sip2_254",
+      "qty": 1,
+      "note": "终端使能跳线,串在 R703 上;或用焊接短接跳线。仅总线两个物理末端闭合。"
+    },
+    "D701": {
+      "part": "tvs.sm712_sot23",
+      "qty": 1,
+      "note": "RS-485 专用不对称 TVS(+12V/-7V,匹配 SP3485 共模范围)。引脚 1/2=数据线 A/B,引脚 3=GND。紧贴 J4 放置、地回路短。标准库件为 PSM712(SM712 等效)。"
+    },
+    "J4": {
+      "part": "conn.terminal_3p_508",
+      "qty": 1,
+      "note": "3P 5.08mm 螺钉端子 A/B/GND。Modbus §3.6:总线除差分对外须带第三根 Common;§3.4.4:整条总线单点接地。"
+    },
+    "R706": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "RS485_DE 下拉到 GND(~10k),上电/GPIO 高阻时默认进接收模式,避免误占总线。参考电路 warning 的常见实践补件。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U7.DI",
+      "PORT:DI"
+    ],
+    [
+      "U7.RO",
+      "PORT:RO"
+    ],
+    [
+      "U7.DE",
+      "U7.RE",
+      "R706.1",
+      "PORT:DE_RE"
+    ],
+    [
+      "U7.A",
+      "R701.2",
+      "D701.1",
+      "JP701.1",
+      "J4.1",
+      "PORT:A"
+    ],
+    [
+      "JP701.2",
+      "R703.1"
+    ],
+    [
+      "U7.B",
+      "R702.1",
+      "R703.2",
+      "D701.2",
+      "J4.2",
+      "PORT:B"
+    ],
+    [
+      "U7.VCC",
+      "C701.1",
+      "R701.1",
+      "PORT:3V3"
+    ],
+    [
+      "U7.GND",
+      "C701.2",
+      "R702.2",
+      "D701.3",
+      "R706.2",
+      "J4.3",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "DI": {
+      "dir": "in",
+      "at": "U7.DI",
+      "desc": "MCU UART TX -> RS-485 驱动输入(DI)",
+      "default_net": "RS485_TX"
+    },
+    "RO": {
+      "dir": "out",
+      "at": "U7.RO",
+      "desc": "RS-485 接收输出 -> MCU UART RX(发送时三态,MCU RX 需内部上拉或外加 ~10k)",
+      "default_net": "RS485_RX"
+    },
+    "DE_RE": {
+      "dir": "in",
+      "at": "U7.DE",
+      "desc": "MCU GPIO 收发方向控制;DE 与 /RE 并联(高=发送,低=接收),R706 10k 下拉默认上电进接收",
+      "default_net": "RS485_DE"
+    },
+    "A": {
+      "dir": "bidir",
+      "at": "U7.A",
+      "desc": "RS-485 总线 A(非反相,芯片惯例);经 JP701 可选 120R 终端 + SM712 保护,落到 J4 端子。丝印警示:与 Modbus/TIA 规范的 A/B 定义相反",
+      "default_net": "RS485_A"
+    },
+    "B": {
+      "dir": "bidir",
+      "at": "U7.B",
+      "desc": "RS-485 总线 B(反相,芯片惯例);同 A 路径。丝印警示:与 Modbus/TIA 规范相反",
+      "default_net": "RS485_B"
+    },
+    "3V3": {
+      "dir": "in",
+      "at": "U7.VCC",
+      "desc": "3.3V 供电(SP3485 原生 3V3;C701 就近去耦;若装偏置 R701 上拉也接此)",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "U7.GND",
+      "desc": "系统地,与总线 Common(J4 第三线)、偏置下拉、TVS、DE 下拉共地",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "A/B 命名陷阱(丝印必须警示):本设计按 SP3485/MaxLinear 芯片惯例标注——芯片 A 脚(非反相)空闲为高,对应 Modbus/TIA-485 规范的 D1(规范称 B/B');芯片 B 脚(反相)=规范 D0(规范称 A/A')。即本板 A/B 与按 Modbus/TIA 规范标注的设备正好相反。务必在丝印/手册注明映射,避免现场接反。",
+    "偏置(失效安全)只在总线一处装:R701(3V3->A 上拉)与 R702(B->GND 下拉)按 Modbus §3.4.6 每条总线段仅一处极化(通常在主站)。从站现场设备默认 R701/R702 DNF(或跳线断开);必须成对装或成对不装,禁止只装一只。",
+    "120R 终端只在总线两个物理末端装:R703 经 JP701 跨接 A-B。Modbus §3.4.5——仅两个物理末端闭合 JP701,中间节点保持开路。若保持永久极化,可在 R703 串 1nF(≥10V)降低空闲直流。",
+    "DE 与 /RE 并联到一个 GPIO(RS485_DE:高=发送,低=接收)。R706 10k 下拉到 GND,保证上电/GPIO 高阻时默认进接收,避免误占总线。",
+    "RO 在发送时(DE 与 /RE 均为高)呈三态:请在 MCU 的 UART RX 脚打开内部上拉,或外加 ~10k 上拉,避免 RX 悬空。",
+    "680R@3V3 偏置裕度提示:两端各 120R 终端并联下,680R 偏置对只给约 140mV,低于 TIA-485 的 200mV 门限——靠 SP3485 内部失效安全(开路/短路时 RO=1,datasheet Table 2)兜底可接受;若要足额 200mV 外部裕度改用 ≤470R。",
+    "SM712(D701)紧贴 J4 放置、地回路尽量短;引脚 1/2 接数据线 A/B(±12V 方向),引脚 3 接 GND(−7V 方向),与 SP3485 共模范围匹配。",
+    "Modbus §3.6/§3.4.4:总线除差分对外必须带第三根 Common 线(J4 第 3 脚 GND),整条总线单点接地。",
+    "netflag 必须经真实导线连接(坐标重叠不算连通);块内网标遵循本仓约定,C701 100nF 就近 U7.VCC。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "decap-adjacency",
+      "target": "C701 / U7.VCC",
+      "constraint": "100nF 去耦贴 SP3485 VCC 脚,供电环路短",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "tvs-at-connector",
+      "target": "D701 / J4",
+      "constraint": "SM712 紧贴 3P 端子入口,地回路短、直接回流 GND 平面",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "bus-pair",
+      "target": "A / B",
+      "constraint": "A/B 差分对等长并行短走线,远离数字/开关噪声源",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "term-at-end",
+      "target": "R703 / JP701",
+      "constraint": "120R 终端 + 跳线放在总线物理末端、靠近 J4;非末端节点不闭合跳线",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "single-point-gnd",
+      "target": "J4.3 / GND",
+      "constraint": "端子 Common(第三线)单点接地,避免地环路",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "SP3485 SOIC-8(扩展料 C8963)+ SM712/PSM712 TVS(C32677)+ 3P 5.08 端子 + 2P 跳线;R701/R702 680R 偏置默认 DNF(整条总线仅一处装)、R703 120R 终端仅在两端装(经 JP701)、R706 10k DE 下拉常装;C701 100nF 0402。多数为可选/位置相关贴装,单节点实装料通常仅 U7+C701+R706+D701+J4(+按位置的偏置/终端)。"
+}

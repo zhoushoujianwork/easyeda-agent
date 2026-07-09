@@ -42,9 +42,13 @@ EasyEDA tooling.
     validated subcircuits you copy verbatim and only rebind the boundary nets
     (ports) + reallocate RefDes. Pins are referenced by FUNCTIONAL NAME, so reuse
     needs zero pin-renumbering; each block's `parts` point into `standard-parts.json`.
-    Run `scripts/blocks.py ls` to browse and `scripts/blocks.py show <id>` for the
+    Run **`easyeda blocks ls`** to browse, **`easyeda blocks show <id>`** for the
     full topology + `schematic_notes` (wiring gotchas) + `pcb_layout` (electrical
-    constraints). Only fall back to hand-wiring when no block covers the need — and
+    constraints), and **`easyeda blocks search <query>`** to find one by keyword.
+    These are **offline** — the library is embedded in the binary, so they need no
+    daemon, no open window, and no skill files (works on a bare `easyeda` install;
+    `scripts/blocks.py` remains for `validate` + contributor linting). Only fall
+    back to hand-wiring when no block covers the need — and
     when you validate a new peripheral end-to-end, contribute it back per
     `references/standard-blocks-contributing.md` (署名 + `validated` gate).
 5. For non-trivial boards, follow the gated flow: pre-analysis, sheet/page plan,
@@ -100,9 +104,10 @@ EasyEDA tooling.
 - Part selection, JLC/LCSC ranking, and standardization: read
   `references/part-selection.md` and use `references/standard-parts.json`.
 - **Standard peripheral circuits (电路块库):** before hand-wiring a known peripheral,
-  use the block library `references/blocks/*.json` (browse via `scripts/blocks.py ls/show`) —
-  copy-verbatim topology + rebind ports. Contributing a new block:
-  `references/standard-blocks-contributing.md`.
+  query the block library via **`easyeda blocks ls` / `show <id>` / `search <query>`**
+  (offline — embedded in the binary, no daemon/window/skill-files needed) — copy-verbatim
+  topology + rebind ports. Source files live at `references/blocks/*.json`; contributing a
+  new block: `references/standard-blocks-contributing.md`.
 - Netflag/netport rotation truth: use `references/orientation.json`; never hand-edit
   derived rotation tables.
 - Sheet/title-block geometry conventions: read `references/sheet-templates.json`.
@@ -118,7 +123,8 @@ Scripts live in `scripts/` and are intended to be run directly when useful:
   `standard-parts.json`.
 - `scripts/parts-add.py`: append resolved library parts into `standard-parts.json`.
 - `scripts/parts-select.py`: deterministic part-selection helper.
-- `scripts/blocks.py`: standard circuit-block library — `ls` / `show <id>` /
+- `scripts/blocks.py`: block-library `validate` + contributor linting (browsing/lookup
+  is now the offline `easyeda blocks ls/show/search`) — `ls` / `show <id>` /
   `validate`. Browse reusable peripheral subcircuits and lint `references/blocks/*.json`
   against the schema + contribution rules (the PR gate).
 - `scripts/calibrate.js`: live bbox calibration for netflag/netport orientation after

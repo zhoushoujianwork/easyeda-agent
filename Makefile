@@ -1,4 +1,4 @@
-.PHONY: help test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test release publish-skill replay demo-replay replay-sch replay-pcb
+.PHONY: help test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test release publish-skill replay demo-replay replay-sch replay-pcb sync-blocks
 
 DIST := dist
 
@@ -58,7 +58,13 @@ DEV_LDFLAGS := -X 'github.com/zhoushoujianwork/easyeda-agent/internal/version.Ve
 # Where `make install` drops the binary (matches install.sh's default).
 PREFIX ?= /usr/local
 
-build: ## build bin/easyeda (version-stamped via git describe)
+sync-blocks: ## sync circuit-block library (skill = source of truth) into the go:embed dir
+	@mkdir -p internal/blocks/data
+	@rm -f internal/blocks/data/*.json
+	@cp skills/easyeda-agent/references/blocks/*.json internal/blocks/data/
+	@printf '  ↻ synced %s block file(s) → internal/blocks/data (go:embed)\n' "$$(ls internal/blocks/data/*.json | wc -l | tr -d ' ')"
+
+build: sync-blocks ## build bin/easyeda (version-stamped via git describe; embeds block library)
 	go build -ldflags "$(DEV_LDFLAGS)" -o bin/easyeda ./cmd/easyeda
 
 install: build ## build + install to $(PREFIX)/bin (default /usr/local/bin; may need sudo)
@@ -71,7 +77,7 @@ install: build ## build + install to $(PREFIX)/bin (default /usr/local/bin; may 
 		printf '✅ installed → %s/bin/easyeda  (%s)\n' "$(PREFIX)" "$(DEV_VERSION)"; \
 	fi
 
-dev-build: ## (air hook) version-stamped build to bin + best-effort refresh of the PATH CLI
+dev-build: sync-blocks ## (air hook) version-stamped build to bin + best-effort refresh of the PATH CLI
 	@go build -ldflags "$(DEV_LDFLAGS)" -o bin/easyeda ./cmd/easyeda
 	@install -m 0755 bin/easyeda "$(PREFIX)/bin/easyeda" 2>/dev/null \
 		&& printf '  ↻ PATH CLI refreshed → %s/bin/easyeda (%s)\n' "$(PREFIX)" "$(DEV_VERSION)" \

@@ -1,0 +1,178 @@
+{
+  "id": "block.microsd_spi_pushpush",
+  "desc": "microSD 自弹(push-push)卡座 SPI 模式接口:CMD/DAT0-3 全 10k 上拉(含未用 DAT1/DAT2)+ 10uF/0.1uF 卡供电去耦,3.3V 主机",
+  "category": "comms",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.9.0",
+  "updated": "v0.9.0",
+  "source": "official-ref:Espressif ESP-IDF —— SD 上拉要求 https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/sd_pullup_requirements.html + sdspi 例程 README https://github.com/espressif/esp-idf/tree/master/examples/storage/sd_card/sdspi(CMD/DAT0-3 全上拉、CD 可不接);去耦值取自 Adafruit #4682 microSD SPI/SDIO breakout 原理图 https://github.com/adafruit/Adafruit-MicroSD-SPI-or-SDIO-card-breakout-PCB(C1=10uF/C2=0.1uF)。拓扑权威来源见 showcase/001-esp32-barrier/reference-circuits.json circuits.microsd(confidence: authoritative)",
+  "validated": "esp32-barrier-v02 2026-07-09 by @zhoushoujianwork: 整板布线 place→wire→sch check(0 findings)→bridge-check(0/0)→sch drc(0 fatal),netlist 逐网核实(v0.2 该电路在 P2 91/91 对账达标)。诚实说明:是在整板设计中随全板一起验证,非孤立块单放。",
+  "parts": {
+    "J_SD": {
+      "part": "conn.tf_socket_pushpush",
+      "qty": 1,
+      "note": "microSD 自弹(push-push)卡座,8 触点 + 卡检测开关。SPI 模式映射:DAT3=CS、CMD=MOSI(DI)、CLK=SCK、DAT0=MISO(DO);外壳/屏蔽/固定脚接 GND。footprint=TF-SMD_TF-012,实际 pad 名随座子变,放置前用 sch read 核对映射。"
+    },
+    "R_CS": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "SD_CS(DAT3)上拉到 3V3 —— Espressif 要求 CMD/DAT0-3 每根都上拉"
+    },
+    "R_MISO": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "SD_MISO(DAT0)上拉到 3V3;卡初始化前保持 DO 电平确定"
+    },
+    "R_MOSI": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "SD_MOSI(CMD)上拉到 3V3;ESP-IDF sdspi 例程明确要求 CMD 10k"
+    },
+    "R_DAT1": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "未用 DAT1 上拉到 3V3;即使不接 host 也必须拉(Espressif 官方要求)"
+    },
+    "R_DAT2": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "未用 DAT2 上拉到 3V3;即使不接 host 也必须拉(Espressif 官方要求)"
+    },
+    "C_BULK": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "卡 VDD 体电容,贴近 J_SD.VDD(Adafruit #4682 C1=10uF/0805;10uF 未确认 0402 可靠料,保留 0805)"
+    },
+    "C_HF": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "卡 VDD 高频去耦,最靠卡电源脚(Adafruit #4682 C2=0.1uF,原板 0603,本库降到 0402 默认,电气无碍)"
+    }
+  },
+  "internal_nets": [
+    [
+      "J_SD.DAT3",
+      "R_CS.1",
+      "PORT:SD_CS"
+    ],
+    [
+      "J_SD.CLK",
+      "PORT:SD_SCK"
+    ],
+    [
+      "J_SD.CMD",
+      "R_MOSI.1",
+      "PORT:SD_MOSI"
+    ],
+    [
+      "J_SD.DAT0",
+      "R_MISO.1",
+      "PORT:SD_MISO"
+    ],
+    [
+      "J_SD.DAT1",
+      "R_DAT1.1"
+    ],
+    [
+      "J_SD.DAT2",
+      "R_DAT2.1"
+    ],
+    [
+      "J_SD.VDD",
+      "R_CS.2",
+      "R_MISO.2",
+      "R_MOSI.2",
+      "R_DAT1.2",
+      "R_DAT2.2",
+      "C_BULK.1",
+      "C_HF.1",
+      "PORT:3V3"
+    ],
+    [
+      "J_SD.VSS",
+      "C_BULK.2",
+      "C_HF.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "SD_CS": {
+      "dir": "in",
+      "at": "J_SD.DAT3",
+      "desc": "主机 SPI 片选 (CS/SS) → 卡 DAT3;块内已 10k 上拉到 3V3",
+      "default_net": "SD_CS"
+    },
+    "SD_SCK": {
+      "dir": "in",
+      "at": "J_SD.CLK",
+      "desc": "主机 SPI 时钟 → 卡 CLK;Espressif 不要求 SCK 上拉,本块未装(要对齐 Adafruit 再补 10k)",
+      "default_net": "SD_SCK"
+    },
+    "SD_MOSI": {
+      "dir": "in",
+      "at": "J_SD.CMD",
+      "desc": "主机 SPI MOSI (DI) → 卡 CMD;块内已 10k 上拉到 3V3",
+      "default_net": "SD_MOSI"
+    },
+    "SD_MISO": {
+      "dir": "out",
+      "at": "J_SD.DAT0",
+      "desc": "卡 DAT0 (DO) → 主机 SPI MISO;块内已 10k 上拉到 3V3",
+      "default_net": "SD_MISO"
+    },
+    "3V3": {
+      "dir": "in",
+      "at": "J_SD.VDD",
+      "desc": "3.3V 卡供电轨;5 个上拉的公共端 + 10uF/0.1uF 去耦入口",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "J_SD.VSS",
+      "desc": "地;卡 VSS + 去耦回流,外壳/屏蔽脚也接此",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "上拉必须全装(接线核心陷阱):CMD + DAT0/DAT1/DAT2/DAT3 每根都要 10k 上拉到 3V3,包括未接 host 的 DAT1/DAT2 —— Espressif sd_pullup_requirements 明确要求,悬空会让 SPI 模式下卡内部脚误动。本块 R_CS/R_MISO/R_MOSI/R_DAT1/R_DAT2 五颗一个都不能省。",
+    "SCK 不装上拉:Espressif 只要求 CMD 与 DAT0-3 上拉,SCK 由主机常驱动无需拉;Adafruit 板额外给 SCLK 加了 47k,本块按 Espressif 省掉。想完全对齐 Adafruit 再补一颗 10k 到 SD_SCK。",
+    "上拉值取 10k(Espressif 官方要求),不是 Adafruit 板的 47k —— 47k 在高速下 MISO 可能偏弱,Espressif 的调试说明特意点过这一点。",
+    "去耦:10uF(C_BULK)+ 0.1uF(C_HF)并联挂在 J_SD.VDD,0.1uF 最靠卡电源脚。热插拔场景另需上游更大 bulk(见 pcb_layout)。",
+    "卡检测(CD/DET)开关脚本块悬空 —— ESP-IDF sdspi 例程默认不用 CD。要用时:开关公共脚接 GND、检测脚接一个 MCU GPIO 并加上拉,插卡读高(本块 ports 未引出,按需另接)。",
+    "卡座金属外壳/屏蔽/固定脚(SHIELD 或 G1-G4,pad 名随 footprint 变)必须接 GND —— 因 pad 命名与具体 footprint 相关,未列进 internal_nets,放置后手工连到 GND 并缝合地平面。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "引脚名核对:internal_nets 用 SD 触点功能名(DAT3/CLK/CMD/DAT0/DAT1/DAT2/VDD/VSS);实际 TF-SMD_TF-012 座子 pad 名可能是 1-8/触点号,放置前先 sch read 拉真实脚名再绑定,别照抄脚号。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "decap-adjacency",
+      "target": "J_SD.VDD",
+      "constraint": "0.1uF(C_HF)紧贴卡供电脚 VDD、其次 10uF(C_BULK),去耦回路走短,先过 HF 帽再进卡",
+      "value": "C_HF <=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "shield-to-gnd",
+      "target": "J_SD shell/mount pads",
+      "constraint": "卡座金属外壳/屏蔽/固定脚接 GND,多点缝合到地平面,抗插拔机械应力与 ESD",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "keep-short",
+      "target": "SD_CS / SD_SCK / SD_MOSI / SD_MISO",
+      "constraint": "SPI 四线保持短、走线整齐,远离开关电源/RF;高速(>25MHz)时四线尽量等长",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "hot-swap-bulk",
+      "target": "3V3",
+      "constraint": "若卡支持热插拔,上游补 >45uF bulk 抗插入浪涌(Altium 建议);本块内只含 10uF+0.1uF,未含该 bulk",
+      "value": ">=45uF",
+      "severity": "should"
+    }
+  ],
+  "bom_note": "8 件:1× microSD push-push 卡座(conn.tf_socket_pushpush)+ 5× 10k 0402(全上拉,含未用 DAT1/DAT2)+ 1× 10uF 0805 + 1× 0.1uF 0402。其中 10k×5 与 0.1uF 为 JLC basic 料;10uF 0805 与卡座为扩展/常规料。5 颗上拉一个都不能省(Espressif 硬要求)。"
+}
