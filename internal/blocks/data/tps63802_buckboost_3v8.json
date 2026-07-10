@@ -1,0 +1,147 @@
+{
+  "id": "block.tps63802_buckboost_3v8",
+  "desc": "TPS63802 buck-boost →3.8V(锂电全程稳压):电池 3.0-4.2V 升降压给 4G 模组(Air780 类 VBAT 3.3-4.3V);纯 buck 在电池态 <3.9V 就保不住 3.8V——这就是要 buck-boost 的原因",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:TPS63802 (TI SLVSEZ8 — 2A buck-boost 典型应用: 单电感跨 L1/L2、FB 分压 Vfb=0.5V、MODE 电平选 PFM/强制PWM) ; 3.8V 分压与『电池态 4G 续报必须 buck-boost 而非纯 buck』的决策经 motobox 车机V2 设计评审定案后在 车机V2-fable P1 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up;boost 态输出能力曲线(VIN=3.0V)与 L Isat 标终核。",
+  "parts": {
+    "U": {
+      "part": "buckboost.tps63802_vson10",
+      "qty": 1,
+      "note": "TPS63802 VSON-10。功能脚(sch read 实测): EN(1)/MODE(2)/AGND(3)/FB(4)/PG(5)/VOUT(6)/L2(7)/GND(8)/L1(9)/VIN(10)。电感跨 L1↔L2。PG 本块 NC。"
+    },
+    "L": {
+      "part": "ind.1uh_1210",
+      "qty": 1,
+      "note": "1µH buck-boost 电感。⚠默认件 NLCV32T-1R0M-EF(1210) Isat≈1.5A,是**原型占位,不满足本块 must 规格**——电池态 VIN 3.0-3.3V 升 3.8V 带 2A 级突发时电感平均电流 ≈2.6A+纹波,量产前必须换 Isat≥4A 的 1µH 功率电感(SWPA5040S1R0NT/SRP4020 类),换型后把新料入 standard-parts 并更新本块。"
+    },
+    "R_FBT": {
+      "part": "res.665k_0402",
+      "qty": 1,
+      "note": "FB 上分压(3.8V: 0.5×(1+665/100)=3.83V)。"
+    },
+    "R_FBB": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "FB 下分压。"
+    },
+    "C_IN": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "VIN 体电容。"
+    },
+    "C_OUT": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "VOUT 体电容。大突发负载(4G TX)在负载端另加 ≥100µF bulk——不在本块内。"
+    },
+    "C_HF": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VOUT 高频。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.VIN",
+      "C_IN.1",
+      "PORT:VIN"
+    ],
+    [
+      "U.EN",
+      "PORT:EN"
+    ],
+    [
+      "U.L1",
+      "L.1"
+    ],
+    [
+      "U.L2",
+      "L.2"
+    ],
+    [
+      "U.VOUT",
+      "C_OUT.1",
+      "C_HF.1",
+      "R_FBT.1",
+      "PORT:3V8"
+    ],
+    [
+      "U.FB",
+      "R_FBT.2",
+      "R_FBB.1"
+    ],
+    [
+      "U.MODE",
+      "U.AGND",
+      "U.GND",
+      "R_FBB.2",
+      "C_IN.2",
+      "C_OUT.2",
+      "C_HF.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "VIN": {
+      "dir": "in",
+      "at": "U.VIN",
+      "desc": "输入(典型: power-path 的 VSYS——车电在≈4.4-5V/电池态 3.0-4.2V,升降压全程覆盖)",
+      "default_net": "VSYS"
+    },
+    "3V8": {
+      "dir": "out",
+      "at": "U.VOUT",
+      "desc": "3.8V 输出(4G 模组 VBAT;近模组端 bulk 电容属模组接口块)",
+      "default_net": "+3V8"
+    },
+    "EN": {
+      "dir": "in",
+      "at": "U.EN",
+      "desc": "使能。常开就接 VIN 同网;需要门控 4G 域时接 GPIO(注意模组自身 EN/PWRKEY 语义另核)",
+      "default_net": "VSYS"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND",
+      "desc": "地(MODE 已内联接地=自动 PFM 省电;要强制 PWM 低纹波把 MODE 改高——见 notes)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "选型因果链(评审 §0 决策): 电池态轨=3.0-4.2V,目标 3.8V 横跨其间——纯 buck(输入<3.9V 失守)与纯 boost(输入 4.2V 失守)都不行,必须 buck-boost。",
+    "MODE 已内联到 GND=自动 PFM(轻载省电,待机友好);对纹波敏感的负载改接高电平强制 PWM——改内联前评估待机功耗。",
+    "boost 态输出能力随 VIN 降低而下降: VIN=3.0V 时对 2A 级突发的裕度按 datasheet 输出电流-VIN 曲线终核;电芯内阻压降同样要算进(500mAh 小电芯带 4G 突发是系统级风险点,评审 §2 有完整预算)。",
+    "PG 开漏输出本块 NC;需要上电时序监督时外拉使用。",
+    "FB 分压高阻(665k/100k)——FB 走线短、远离电感。",
+    "⚠BOM 必换项: parts.L 的默认件 Isat≈1.5A 仅原型可用,量产前必须换 ≥4A 件(见 L note)——这是本块自身 must 规格,不是可选优化。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "loop-area",
+      "target": "C_IN→U.VIN / U.L1-L2→L",
+      "constraint": "输入回路与电感回路面积最小",
+      "value": "电感贴 L1/L2 <=3mm",
+      "severity": "must"
+    },
+    {
+      "rule": "sensitive-route",
+      "target": "U.FB 网络",
+      "constraint": "反馈远离电感/开关节点",
+      "value": ">=3mm",
+      "severity": "must"
+    },
+    {
+      "rule": "trace-width",
+      "target": "VIN/3V8/电感回路",
+      "constraint": "功率路径按 ≥3A 加宽",
+      "value": ">=1mm",
+      "severity": "must"
+    }
+  ],
+  "bom_note": "7 件: TPS63802 + 1µH(Isat≥4A) + FB 分压×2 + 电容×3。锂电池供电的 4G/大电流域标准轨;上游配 block.bq24074_powerpath_charger 的 VSYS。"
+}
