@@ -1799,7 +1799,11 @@ nothing overlaps:
   • decoupling caps land by their power pin (3V3/VCC), resistors by their signal pin
   • an LED chains next to its series resistor (shared signal net)
 With 2+ main chips, any that overlap / sit closer than --multi-gap are spread into a
-row (leftmost stays put) before satellites are placed; --multi-gap 0 disables that.
+row (leftmost stays put) before satellites are placed. Use --multi-gap 0 to PRESERVE
+a pre-anchored layout untouched; spreading is also auto-skipped when the chips already
+form a 2D floorplan (≥2 columns with vertical stacking) so a hand-anchored grid is not
+flattened into a row. Board-edge connectors (J*/CN*/USB*/… designators, low pin count,
+large footprint) are skipped and left for 'pcb place-constrained'.
 This is a SEED, not a final layout — verify with 'pcb drc'.
 
   easyeda pcb auto-place --project ceshi --dry-run   # print the plan, move nothing

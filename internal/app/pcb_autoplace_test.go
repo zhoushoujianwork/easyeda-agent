@@ -248,3 +248,88 @@ func TestPlanAutoPlace_MultiChipSpacing(t *testing.T) {
 		}
 	}
 }
+
+// A pre-anchored 2D floorplan (#91): two columns of 8-pin chips, each column
+// stacked vertically. spaceMains would judge the columns' X-projections as
+// "overlapping / too close" and flatten them into a row; the 2D guard must
+// preserve the anchors so no chip-spacing move is emitted.
+func floorplan2DBoard() []apComp {
+	mk8 := func(id, des string, cx, cy float64) apComp {
+		pads := []apPad{
+			p("1", "", cx, cy), p("2", "", cx, cy), p("3", "", cx, cy), p("4", "", cx, cy),
+			p("5", "", cx, cy), p("6", "", cx, cy), p("7", "", cx, cy), p("8", "", cx, cy),
+		}
+		return mkComp(id, des, cx, cy, 400, 400, pads)
+	}
+	// Column A at x≈0, column B at x≈100 (X-projections overlap → 1D would spread),
+	// but each column has two vertically stacked chips (Y-projections disjoint).
+	return []apComp{
+		mk8("u1", "U1", 0, 0),      // col A, lower
+		mk8("u2", "U2", 0, 600),    // col A, upper (stacked over U1)
+		mk8("u3", "U3", 100, 0),    // col B, lower
+		mk8("u4", "U4", 100, 600),  // col B, upper
+	}
+}
+
+func TestPlanAutoPlace_Preserve2DFloorplan(t *testing.T) {
+	opt := defaultApOptions() // multiGap = 150
+	moves, _ := planAutoPlace(floorplan2DBoard(), opt)
+	for _, m := range moves {
+		if m.Via == "chip-spacing" {
+			t.Errorf("2D floorplan must be preserved, got chip-spacing move: %+v", m)
+		}
+	}
+}
+
+// A low-pin, large-bbox connector on the board edge (#91): J_VEH shares GND with
+// the chip but must NOT be dragged toward it — it's skipped with a diag so
+// place-constrained can seat it on the edge.
+func TestPlanAutoPlace_SkipsEdgeConnector(t *testing.T) {
+	comps := ceshiBoard()
+	// 3-pin power terminal on the left edge, GND tied to the global net.
+	jveh := mkComp("jveh", "J1", -500, -1855, 300, 250, []apPad{
+		p("1", "VEH_12V", 0, 0), p("2", "GND", 0, 0), p("3", "GND", 0, 0),
+	})
+	comps = append(comps, jveh)
+
+	moves, diags := planAutoPlace(comps, defaultApOptions())
+	for _, m := range moves {
+		if m.Designator == "J1" {
+			t.Errorf("edge connector J1 should not be moved, got %+v", m)
+		}
+	}
+	found := false
+	for _, d := range diags {
+		if d.Designator == "J1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a skip diag for edge connector J1, got diags: %+v", diags)
+	}
+}
+
+// isEdgeConnector guards on all three signals: designator prefix, low pin count,
+// and a relatively large footprint. A small J* (a 2-pin test point) or a chip-like
+// connector must not be treated as a board-edge connector.
+func TestIsEdgeConnector(t *testing.T) {
+	big := mkComp("j", "J1", 0, 0, 300, 250, []apPad{p("1", "A", 0, 0), p("2", "GND", 0, 0)})
+	if !isEdgeConnector(big, 8) {
+		t.Error("large low-pin J1 should be an edge connector")
+	}
+	small := mkComp("j", "J2", 0, 0, 80, 45, []apPad{p("1", "A", 0, 0), p("2", "GND", 0, 0)})
+	if isEdgeConnector(small, 8) {
+		t.Error("small J2 (below size floor) should NOT be an edge connector")
+	}
+	notConn := mkComp("r", "R9", 0, 0, 300, 250, []apPad{p("1", "A", 0, 0), p("2", "GND", 0, 0)})
+	if isEdgeConnector(notConn, 8) {
+		t.Error("R9 (non-connector designator) should NOT be an edge connector")
+	}
+	bigChip := mkComp("j", "J3", 0, 0, 300, 250, []apPad{
+		p("1", "", 0, 0), p("2", "", 0, 0), p("3", "", 0, 0), p("4", "", 0, 0),
+		p("5", "", 0, 0), p("6", "", 0, 0), p("7", "", 0, 0), p("8", "", 0, 0),
+	})
+	if isEdgeConnector(bigChip, 8) {
+		t.Error("8-pin J3 (chip-like) should NOT be classed as an edge connector")
+	}
+}

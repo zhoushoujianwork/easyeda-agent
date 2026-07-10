@@ -121,6 +121,52 @@ func isGlobalNet(net string) bool {
 	return reGlobalNet1.MatchString(n) || reGlobalNet2.MatchString(n)
 }
 
+// connectorDesRe matches board-edge connector designators (J1, CN2, CON3, USB1,
+// SIM1, BAT1…) so the planner can leave them for `place-constrained` instead of
+// dragging them toward a chip by their global GND pad. Prefixes are the EDA-wide
+// convention for connectors/plugs; USB/SIM/BAT cover the common edge parts.
+var connectorDesRe = regexp.MustCompile(`(?i)^(?:J|CN|CON|USB|SIM|BAT)\d`)
+
+// edgeConnectorMinDim is the min bbox extent (mil) for the "relatively large
+// footprint" half of the connector heuristic — real board-edge connectors dwarf a
+// decoupling cap/resistor (which top out ~180mil), so 200mil safely separates them.
+const edgeConnectorMinDim = 200.0
+
+// isEdgeConnector flags a low-pin, connector-designated, relatively large part
+// (e.g. a 3P J_VEH power terminal) that belongs on the board edge — auto-place
+// must NOT pull it toward a chip by its global GND pad; `place-constrained` owns
+// it. mainPins-or-more-pin parts are chips (handled elsewhere) and never match.
+func isEdgeConnector(c apComp, mainPins int) bool {
+	if !connectorDesRe.MatchString(strings.TrimSpace(c.designator)) {
+		return false
+	}
+	if c.distinctPins() >= mainPins {
+		return false
+	}
+	return math.Max(c.width(), c.height()) >= edgeConnectorMinDim
+}
+
+// mainsAre2D reports whether the anchored main chips already form an intentional
+// 2D floorplan (≥2 columns with vertical stacking) rather than a single row. It
+// looks for a pair whose X-projections overlap (spaceMains would judge them "too
+// close" and push one right) yet whose Y-projections do NOT overlap (they are
+// stacked, not colliding). Flattening such a layout into a row is exactly the bug
+// in #91, so when detected the caller preserves the anchors.
+func mainsAre2D(comps []apComp, mains []int) bool {
+	for i := 0; i < len(mains); i++ {
+		a := comps[mains[i]]
+		for j := i + 1; j < len(mains); j++ {
+			b := comps[mains[j]]
+			xOverlap := a.minX < b.maxX && b.minX < a.maxX
+			yOverlap := a.minY < b.maxY && b.minY < a.maxY
+			if xOverlap && !yOverlap {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type apEdge int
 
 const (
@@ -195,18 +241,24 @@ type assignment struct {
 // Returns the moves plus diagnostics for anything left unplaced.
 func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 	var mains, sats []int
+	var diags []apDiag
 	for i, c := range comps {
 		if !c.hasBBox {
 			continue
 		}
 		if c.distinctPins() >= opt.mainPins {
 			mains = append(mains, i)
-		} else if !c.locked {
+		} else if c.locked {
+			continue
+		} else if isEdgeConnector(c, opt.mainPins) {
+			// Board-edge connector (J*/CN*/…): leave it where the user (or
+			// place-constrained) put it — don't drag it toward a chip by its GND pad.
+			diags = append(diags, apDiag{c.designator, "board-edge connector — skipped, use `place-constrained` to seat it on the edge"})
+		} else {
 			sats = append(sats, i)
 		}
 	}
 
-	var diags []apDiag
 	if len(mains) == 0 {
 		for _, s := range sats {
 			diags = append(diags, apDiag{comps[s].designator, "no main chip on board (>= mainPins distinct pins) to anchor against"})
@@ -221,7 +273,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 	// then placed against the chips' NEW positions, so we run the rest of the
 	// planner on a working copy whose mains are shifted, and emit a move per shifted
 	// main. Single-chip boards (and multiGap=0) skip this entirely → unchanged v1.1.
-	if opt.multiGap > 0 && len(mains) > 1 {
+	if opt.multiGap > 0 && len(mains) > 1 && !mainsAre2D(comps, mains) {
 		shifts := spaceMains(comps, mains, opt.multiGap)
 		work := make([]apComp, len(comps))
 		copy(work, comps)
