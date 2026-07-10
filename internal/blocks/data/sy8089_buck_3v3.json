@@ -1,0 +1,131 @@
+{
+  "id": "block.sy8089_buck_3v3",
+  "desc": "SY8089 同步 buck →3.3V/2A(数字主轨:MCU/传感器/存储);电池尾段(VIN→3.45V)会掉出调节——固件要设 3.5-3.6V 安全关机线",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:SY8089A (Silergy — 2A 同步 buck 典型应用: Vref 0.6V FB 分压、2.2µH、输入/输出陶瓷电容) ; 3.3V 分压与电池尾段 dropout 行为注记经 motobox 车机V2 设计评审后在 车机V2-fable P1 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up;100% 占空/最小关断行为按 datasheet 终核。",
+  "parts": {
+    "U": {
+      "part": "buck.sy8089_tsot23",
+      "qty": 1,
+      "note": "SY8089A1AAC TSOT-23-5。功能脚(sch read 实测): EN(1)/GND(2)/LX(3)/IN(4)/FB(5)。"
+    },
+    "L": {
+      "part": "ind.22uh_1210",
+      "qty": 1,
+      "note": "2.2µH,Isat≥2A(终核)。"
+    },
+    "R_FBT": {
+      "part": "res.453k_0402__2",
+      "qty": 1,
+      "note": "FB 上分压 45.3k(3.3V: 0.6×(1+45.3/10)=3.32V)。"
+    },
+    "R_FBB": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "FB 下分压。"
+    },
+    "C_IN": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "IN 体电容。"
+    },
+    "C_OUT": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "输出体电容。"
+    },
+    "C_HF": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "输出高频。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.IN",
+      "C_IN.1",
+      "PORT:VIN"
+    ],
+    [
+      "U.EN",
+      "PORT:EN"
+    ],
+    [
+      "U.LX",
+      "L.1"
+    ],
+    [
+      "L.2",
+      "C_OUT.1",
+      "C_HF.1",
+      "R_FBT.1",
+      "PORT:3V3"
+    ],
+    [
+      "U.FB",
+      "R_FBT.2",
+      "R_FBB.1"
+    ],
+    [
+      "U.GND",
+      "R_FBB.2",
+      "C_IN.2",
+      "C_OUT.2",
+      "C_HF.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "VIN": {
+      "dir": "in",
+      "at": "U.IN",
+      "desc": "输入(5V 母线或 power-path VSYS——电池态可低至 3.0V,见 dropout 注记)",
+      "default_net": "VSYS"
+    },
+    "3V3": {
+      "dir": "out",
+      "at": "L.2",
+      "desc": "3.3V 数字主轨",
+      "default_net": "+3V3"
+    },
+    "EN": {
+      "dir": "in",
+      "at": "U.EN",
+      "desc": "使能,常开接 VIN 同网",
+      "default_net": "VSYS"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND",
+      "desc": "地",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "电池尾段行为(评审 §0/§2): buck 100% 占空时 Vout≈VIN−I×(Rdson+DCR)——VIN 低于 ~3.45V 起 3.3V 掉出调节,主控在电池最后 15-20% 容量段会不受控掉电。对策是固件按电池采样设 3.5-3.6V 安全关机线,不是换更大的电容。全程稳压需求换 buck-boost(block.tps63802_buckboost_3v8 同拓扑改分压)。",
+    "SY8089A 的 100% 占空/最小关断时间行为按 datasheet 终核(部分批次强制几百 mV 压差)。",
+    "FB 走线短、远离 LX/电感。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "loop-area",
+      "target": "C_IN→U.IN→U.LX→L→C_OUT",
+      "constraint": "开关回路最小化",
+      "value": "回路对角 <=8mm",
+      "severity": "must"
+    },
+    {
+      "rule": "sensitive-route",
+      "target": "U.FB 网络",
+      "constraint": "远离 LX 节点",
+      "value": ">=2mm",
+      "severity": "must"
+    }
+  ],
+  "bom_note": "7 件: SY8089 + 2.2µH + FB 分压×2 + 电容×3。数字域标准轨;与 block.tps63802_buckboost_3v8 组成『电池设备双轨』(3V3 数字 + 3V8 大电流域)。"
+}
