@@ -2659,6 +2659,140 @@ document reload shows the OLD orientation (stale render) — judge success by 'p
 		pcb.AddCommand(c)
 	}
 
+	// ── silk-netnames (网络名自动标注) ──────────────────────────────────────────
+	// pcb.silk.netnames — auto-generate silkscreen labels for net names in a zone.
+	{
+		var zoneLeft, zoneTop, zoneRight, zoneBottom float64
+		var layer int
+		var align string
+		var fontSize, lineWidth float64
+		var excludeNets []string
+
+		c := &cobra.Command{
+			Use:   "silk-netnames",
+			Short: "Auto-generate network-name silkscreen labels in a zone",
+			Long: `Auto-generate network-name silkscreen labels for nets with pads in a rectangular zone.
+Reads all nets on the PCB, filters those with pads in the zone (--zone-left/top/right/bottom),
+computes collision-free positions (avoiding pads + other silk), and creates free silkscreen
+STRINGs. Useful for debugging: label each net to correlate with probing/analysis.
+
+COORDINATES: in mil, y-up (positive y = upward). Silk layer defaults to TOP_SILKSCREEN (3).
+ALIGNMENT: --align left (left-to-right order, default) or right (right-to-left order).
+
+Pair with 'pcb silk-list' to verify positions and 'pcb snapshot' for visual QA.`,
+			Example: `  easyeda pcb silk-netnames \
+  --zone-left 0 --zone-top 3000 --zone-right 2000 --zone-bottom 1000
+  easyeda pcb silk-netnames \
+  --zone-left 100 --zone-top 2800 --zone-right 1900 --zone-bottom 1200 \
+  --layer 4 --align right --exclude-nets GND --exclude-nets +5V`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{
+					"zone_rect": map[string]float64{
+						"left":   zoneLeft,
+						"top":    zoneTop,
+						"right":  zoneRight,
+						"bottom": zoneBottom,
+					},
+				}
+				if layer > 0 {
+					payload["layer"] = layer
+				}
+				if align != "" && align != "left" {
+					payload["align"] = align
+				}
+				if cmd.Flags().Changed("font-size") && fontSize > 0 {
+					payload["fontSize"] = fontSize
+				}
+				if cmd.Flags().Changed("line-width") && lineWidth > 0 {
+					payload["lineWidth"] = lineWidth
+				}
+				if len(excludeNets) > 0 {
+					payload["exclude_nets"] = excludeNets
+				}
+				return dispatch(cfg, "pcb.silk.netnames", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().Float64Var(&zoneLeft, "zone-left", 0, "zone rectangle left (mil, required)")
+		c.Flags().Float64Var(&zoneTop, "zone-top", 0, "zone rectangle top (mil, required)")
+		c.Flags().Float64Var(&zoneRight, "zone-right", 0, "zone rectangle right (mil, required)")
+		c.Flags().Float64Var(&zoneBottom, "zone-bottom", 0, "zone rectangle bottom (mil, required)")
+		c.Flags().IntVar(&layer, "layer", 3, "silk layer: 3=TOP_SILKSCREEN, 4=BOTTOM_SILKSCREEN (default 3)")
+		c.Flags().StringVar(&align, "align", "left", "sort order: left (left-to-right, default) or right (right-to-left)")
+		c.Flags().Float64Var(&fontSize, "font-size", 40, "label font height (mil, default 40)")
+		c.Flags().Float64Var(&lineWidth, "line-width", 6, "label stroke width (mil, default 6)")
+		c.Flags().StringSliceVar(&excludeNets, "exclude-nets", nil, "net names to skip (e.g., --exclude-nets GND --exclude-nets +5V)")
+		pcb.AddCommand(c)
+	}
+
+	// ── silk-label-pads (器件端子标注) ──────────────────────────────────────────
+	// pcb.silk.label_pads — label component pads with pin numbers and/or net names.
+	{
+		var refs []string
+		var layer int
+		var content, side, alignAxis string
+		var fontSize, lineWidth float64
+		var excludeNets []string
+
+		c := &cobra.Command{
+			Use:   "silk-label-pads",
+			Short: "Label component pads with pin numbers / net names",
+			Long: `Label component pads with pin numbers and/or net names. Flexible placement:
+- X-axis align (--align-axis x): all labels same X, Y=pin-Y (vertical pin array)
+- Y-axis align (--align-axis y): all labels same Y, X=pin-X (horizontal pin array)
+- Auto-detect (default): analyzes component shape
+
+CONTENT: --content pin-number|net-name|both (default both).
+SIDE: --side auto|right|below|above|left (default auto).
+ALIGN_AXIS: --align-axis auto|x|y (default auto — x for vertical pins, y for horizontal).
+LAYER: --layer 3=TOP_SILKSCREEN (default), 4=BOTTOM_SILKSCREEN.
+
+Pair with 'pcb snapshot' for visual QA. Agent Skill can analyze pins and choose optimal layout.`,
+			Example: `  easyeda pcb silk-label-pads --refs J2
+  easyeda pcb silk-label-pads --refs J2 --align-axis x --side right
+  easyeda pcb silk-label-pads --refs J2 --align-axis y --side below
+  easyeda pcb silk-label-pads --refs J2 --content both --side auto`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if len(refs) == 0 {
+					return fmt.Errorf("--refs required (component designators, e.g., --refs J2)")
+				}
+				payload := map[string]any{
+					"refs": refs,
+				}
+				if content != "" && content != "both" {
+					payload["content"] = content
+				}
+				if side != "" && side != "auto" {
+					payload["side"] = side
+				}
+				if alignAxis != "" && alignAxis != "auto" {
+					payload["align_axis"] = alignAxis
+				}
+				if layer > 0 {
+					payload["layer"] = layer
+				}
+				if cmd.Flags().Changed("font-size") && fontSize > 0 {
+					payload["fontSize"] = fontSize
+				}
+				if cmd.Flags().Changed("line-width") && lineWidth > 0 {
+					payload["lineWidth"] = lineWidth
+				}
+				if len(excludeNets) > 0 {
+					payload["exclude_nets"] = excludeNets
+				}
+				return dispatch(cfg, "pcb.silk.label_pads", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringSliceVar(&refs, "refs", nil, "component designators to label (required, e.g., --refs J2 --refs U1)")
+		c.Flags().IntVar(&layer, "layer", 3, "silk layer: 3=TOP_SILKSCREEN, 4=BOTTOM_SILKSCREEN (default 3)")
+		c.Flags().StringVar(&content, "content", "both", "label content: pin-number|net-name|both (default both)")
+		c.Flags().StringVar(&side, "side", "auto", "label placement side: auto|right|below|above|left (default auto)")
+		c.Flags().StringVar(&alignAxis, "align-axis", "auto", "pin alignment: auto|x (vertical)|y (horizontal) (default auto)")
+		c.Flags().Float64Var(&fontSize, "font-size", 30, "label font height (mil, default 30)")
+		c.Flags().Float64Var(&lineWidth, "line-width", 4, "label stroke width (mil, default 4)")
+		c.Flags().StringSliceVar(&excludeNets, "exclude-nets", nil, "net names to skip (e.g., --exclude-nets GND)")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
 }
 

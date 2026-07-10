@@ -112,11 +112,12 @@ No one-call PCB autorouter exists on this build (A4 blocked — see survey §6).
 | `schematic.components.list` | Components on the active page (optional `allPages`, `includePins`) with designator, name, coords, and `getState_*` fields. Each carries a structured `device:{libraryUuid,uuid,name}` — the device-library identity of the placed part (from `getState_Component()`, the same identity rebind resolves) — distinct from the placed-INSTANCE `component/symbol/footprint/uniqueId` ids. Use `device.uuid` to lock onto a golden design's exact symbol variant instead of re-searching by LCSC C-number; imported devices may report an empty `device.libraryUuid` (resolve via `lib search`/`lib by-lcsc` before `sch place`). |
 | `schematic.select` | Select primitives by id, return the active selection. |
 
-**Discover + switch loop (CLI, no new actions):** `easyeda doc ls [--project X]`
+**Discover + switch/open loop (CLI, no new actions):** `easyeda doc ls [--project X]`
 aggregates `schematic.pages.list` + `pcb.documents.list` + `document.current`
 into one ★-active document list; `easyeda doc switch <name|uuid> [--project X]`
-resolves a page/PCB name → `document.open` → readback (cross-type PCB↔schematic).
-With 2+ windows connected, `--project`/`--window` is required.
+(or `easyeda doc open <name|uuid>` for more intuitive naming) resolves a page/PCB name
+→ `document.open` → readback (cross-type PCB↔schematic). With 2+ windows connected,
+`--project`/`--window` is required.
 
 **Live window context:** each window's context in `system.health` stays fresh two
 ways — the daemon refreshes it from every action response, and the connector
