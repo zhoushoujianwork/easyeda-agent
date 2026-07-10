@@ -1,0 +1,90 @@
+{
+  "id": "block.pmos_highside_softstart",
+  "desc": "P-MOS 高侧负载开关(GPIO 高有效)+ RC 软启动:门控 GNSS/传感器/外设电源域,防硬开机冲垮主轨 brownout;深睡 hold 低=断电省电",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:SI2301 (Vishay — P 沟道 -20V/-2.3A 低 Vgs(th) 高侧开关典型用法) ; 软启动 RC 参数经 motobox 车机V2 二轮复核推导(硬开机冲 10µF 下游电容会把 3.3V 主轨拉垮 ~0.7V 触发 ESP32 brownout,τ=R_SLEW×C_GS≈1ms 斜坡消除)后在 车机V2-fable P3 整板落网(LC29H GNSS 电源域门控)",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up(软启动斜坡为计算值,实测波形待 bring-up)。",
+  "parts": {
+    "Q_P": {
+      "part": "pmos.si2301_sot23",
+      "qty": 1,
+      "note": "高侧 P-MOS: S=输入轨, D=被门控输出, G=控制。功能脚(sch read 实测): G/S/D。选低 Vgs(th) 件保证 3.3V 轨全导通(Vgs≈-3.0V)。"
+    },
+    "Q_N": {
+      "part": "bjt.s8050_sot23",
+      "qty": 1,
+      "note": "NPN 拉低 P-MOS 栅极,使控制为『GPIO 高=开』(直连 GPIO 则为低有效且深睡默认态危险)。"
+    },
+    "R_GS": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "栅-源上拉: 默认关断(上电/复位/深睡 GPIO 悬空时输出无电)。"
+    },
+    "R_SLEW": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "软启动串阻(Q_N.C→Q_P.G): 与 C_GS 组成 τ≈1ms 栅极斜坡。导通态 V_G≈VIN×R_SLEW/(R_SLEW+R_GS)≈0.3V→Vgs≈-3.0V 充分导通。"
+    },
+    "R_B": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "Q_N 基极限流。"
+    },
+    "C_GS": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "软启动电容(栅-源): 100nF×10k≈1ms 斜坡,限制下游电容充电涌流。"
+    }
+  },
+  "internal_nets": [
+    ["Q_P.S", "R_GS.1", "C_GS.1", "PORT:VIN"],
+    ["Q_P.G", "R_GS.2", "C_GS.2", "R_SLEW.1"],
+    ["R_SLEW.2", "Q_N.C"],
+    ["Q_N.B", "R_B.1"],
+    ["R_B.2", "PORT:EN"],
+    ["Q_N.E", "PORT:GND"],
+    ["Q_P.D", "PORT:VOUT"]
+  ],
+  "ports": {
+    "VIN": {
+      "dir": "in",
+      "at": "Q_P.S",
+      "desc": "输入电源轨(3.3V/5V 均可;Vgs 导通深度随轨压变化,低于 2.5V 轨需换更低 Vgs(th) 件)",
+      "default_net": "+3V3"
+    },
+    "VOUT": {
+      "dir": "out",
+      "at": "Q_P.D",
+      "desc": "被门控电源域(如 +3V3_GNSS)。下游去耦电容属于负载块,不在本块内",
+      "default_net": "+3V3_SW"
+    },
+    "EN": {
+      "dir": "in",
+      "at": "R_B.2",
+      "desc": "GPIO 控制,高=开。深睡场景: gpio_hold 低电平 = 域断电省电(输出脚不需要 RTC 能力)",
+      "default_net": "PWR_EN"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "Q_N.E",
+      "desc": "参考地",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "为什么要软启动: 硬开栅(<1µs)时下游 10µF+ 电容从主轨电荷共享充电,实测推导会把 3.3V 主轨瞬间拉低 ~0.7V——足以复位主控。R_SLEW+C_GS 把开启拉长到 ~1ms,buck 环路来得及响应。",
+    "为什么加 Q_N 而不是 GPIO 直驱栅极: ① 极性变为高有效(直驱是低有效);② 上电/复位/深睡 GPIO 三态时 R_GS 保证默认关断;③ GPIO 电平与轨压解耦。",
+    "被门控域重新上电≠状态保留: 下游芯片(如 GNSS)断电丢 RAM/星历——需要保持的部分(V_BCKP 类)必须走常开轨,不进本块 VOUT。",
+    "关断后主控侧不得继续驱动通往被门控域的信号线(UART TX/复位等要三态),否则经芯片 IO 钳位二极管反灌供电。",
+    "大电流域(>1A)换更低 Rdson 的 P-MOS 或专用负载开关 IC,拓扑不变。"
+  ],
+  "pcb_layout": [
+    { "rule": "cap-adjacency", "target": "C_GS/R_GS", "constraint": "栅极网络贴 Q_P 栅-源脚,回路最短", "value": "<=3mm", "severity": "should" },
+    { "rule": "trace-width", "target": "VIN→Q_P.S→Q_P.D→VOUT", "constraint": "功率路径按域电流加宽", "value": ">=0.5mm(≤1A)", "severity": "must" }
+  ],
+  "bom_note": "6 件: SI2301 + S8050 + 0402 阻容×4。极低成本的电源域门控标准单元;每个『待机要断电』的外设域(GNSS/传感器/RF)各放一份,配 MCU 一个普通输出脚。"
+}
