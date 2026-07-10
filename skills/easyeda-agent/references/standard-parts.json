@@ -234,13 +234,13 @@
     },
     "res.453k_0402": {
       "value": "453k",
-      "mpn": "GR0402F453KTAG00",
-      "lcsc": "C49653416",
-      "deviceUuid": "e3c1e8857b4549ddac2bd93217c56ff0",
+      "mpn": "0402WGF4533TCE",
+      "lcsc": "C27009",
+      "deviceUuid": "377dd2e0e6c44ab88e424bc8f75e5197",
       "package": "0402",
       "class": "res",
       "basic": false,
-      "desc": "auto-added from box-v2 realization 2026-06-26"
+      "desc": "auto-added from box-v2 realization 2026-06-26；lcsc C49653416→C27009(原 C 号 lib by-lcsc 无法解析,2026-07-09 实测)"
     },
     "res.887k_0402": {
       "value": "88.7k",
@@ -254,13 +254,13 @@
     },
     "res.162k_0402": {
       "value": "162k",
-      "mpn": "GR0402F162KTAG00",
-      "lcsc": "C49654427",
-      "deviceUuid": "8280856062f84a9aac732e3406d34fc9",
+      "mpn": "0402WGF1623TCE",
+      "lcsc": "C54068",
+      "deviceUuid": "5709f71aea7e463ba1c8bd6b17afc82f",
       "package": "0402",
       "class": "res",
       "basic": false,
-      "desc": "auto-added from box-v2 realization 2026-06-26"
+      "desc": "auto-added from box-v2 realization 2026-06-26；lcsc C49654427→C54068(原 C 号 lib by-lcsc 无法解析,2026-07-09 实测)"
     },
     "res.47k_0402": {
       "value": "4.7k",
@@ -849,6 +849,126 @@
       "name": "ESP32-S3-WROOM-1U-N8",
       "package": "WIRELM-SMD_ESP32-S3-WROOM-1U",
       "note": "IPEX 外引天线模组;v0.2 case001 主控;2026-07-09"
+    },
+    "charger.bq24074_qfn16": {
+      "value": "BQ24074",
+      "mpn": "BQ24074RGTR",
+      "lcsc": "C54313",
+      "deviceUuid": "545dcdc0f45c4d469fd830849b0edb06",
+      "package": "QFN-16 3x3 EP",
+      "class": "charger",
+      "basic": false,
+      "desc": "锂电充电+power-path(车电↔电池无缝切换);TS 接电芯 NTC,ILIM/ISET 外阻编程。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "buck.tps54360_so8": {
+      "value": "TPS54360B",
+      "mpn": "TPS54360BQDDARQ1",
+      "lcsc": "C2687968",
+      "deviceUuid": "a8b859b29703466aa9edb1fbede5e5d0",
+      "package": "SO-8 EP",
+      "class": "buck",
+      "basic": false,
+      "desc": "60V/3.5A 车规宽压 buck(65V load-dump);非同步需外置续流管。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "pmos.si2301_sot23": {
+      "value": "SI2301",
+      "mpn": "SI2301CDS-T1-GE3",
+      "lcsc": "C10487",
+      "deviceUuid": "f04890a5733d46f3af20c86c64fc9097",
+      "package": "SOT-23",
+      "class": "pmos",
+      "basic": false,
+      "desc": "小信号 P-MOS 高侧开关(-20V/-2.3A,低 Vgs(th));配 NPN 驱动做 GPIO 高有效门控。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "diode.b360a_sma": {
+      "value": "B360A 60V/3A",
+      "mpn": "B360A 60V/3A",
+      "lcsc": "C94193",
+      "deviceUuid": null,
+      "package": "SMA",
+      "class": "diode",
+      "basic": false,
+      "desc": "60V 肖特基续流/OR(符号带 A/K 名);40V 件在 33V TVS 钳位系统会击穿——选它。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "zener.bzt52c12_sod123": {
+      "value": "BZT52C12 12V",
+      "mpn": "BZT52C12-E3-08",
+      "lcsc": "C467524",
+      "deviceUuid": "f92f86f5b0f847aa8d274cf3ca5d0087",
+      "package": "SOD-123",
+      "class": "zener",
+      "basic": false,
+      "desc": "12V 稳压;反接保护 P-MOS 的栅-源钳位标配。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "opto.ltv817s_smd4": {
+      "value": "LTV-817S",
+      "mpn": "LTV-817S-TA1-C",
+      "lcsc": "C109227",
+      "deviceUuid": "94b92fd4314c44a989f28fa11fba3d03",
+      "package": "OPTO-SMD-4",
+      "class": "opto",
+      "basic": false,
+      "desc": "光耦(PC817 兼容,SMD);符号脚为数字 1=A/2=K/3=E/4=C。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "fuse.ptc_1206_500ma": {
+      "value": "0.5A PTC",
+      "mpn": "MF-MSMF050-2500MA",
+      "lcsc": "C3040235",
+      "deviceUuid": "53eb2806e6b54783b60a819d4f1c3e69",
+      "package": "F1206",
+      "class": "fuse",
+      "basic": false,
+      "desc": "自恢复保险(信号/ACC 线过流)。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "conn.ph2_3p_ra": {
+      "value": "PH-3AW",
+      "mpn": "PH-3AW",
+      "lcsc": "C2904959",
+      "deviceUuid": "65400ffaec834789b2a4a29411b0e433",
+      "package": "PH2.0-3P 弯针",
+      "class": "conn",
+      "basic": false,
+      "desc": "带 NTC 第三线的电池座(低温禁充必需)。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "res.1k07_0402": {
+      "value": "1.07k",
+      "mpn": "0402WGF1071TCE",
+      "lcsc": "C26260",
+      "deviceUuid": "9a3dd8c47ab4474084a736e30745138a",
+      "package": "0402",
+      "class": "res",
+      "basic": false,
+      "desc": "E96;BQ24074 ILIM≈1.45A(KILIM=1550)。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "res.10k_0805": {
+      "value": "10k",
+      "mpn": "0805W8F1002T5E",
+      "lcsc": "C17414",
+      "deviceUuid": "e9c34dedae26495c91dced1a655b8614",
+      "package": "0805",
+      "class": "res",
+      "basic": false,
+      "desc": "功耗档 10k(24V 光耦限流 52mW 在额定内)。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "res.470r_0402": {
+      "value": "470Ω",
+      "mpn": "0402WGF4700TCE",
+      "lcsc": "C25117",
+      "deviceUuid": "c404d253ad9e4b6483067cf76635c0e8",
+      "package": "0402",
+      "class": "res",
+      "basic": false,
+      "desc": "GPIO 串阻/滤波。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "res.1m_0402": {
+      "value": "1M",
+      "mpn": "0402WGF1004TCE",
+      "lcsc": "C26083",
+      "deviceUuid": "512988296f6244ad86a0777e419ee0f1",
+      "package": "0402",
+      "class": "res",
+      "basic": false,
+      "desc": "低漏电分压(电池采样 1M/1M=1.9µA)。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
     }
   }
 }
