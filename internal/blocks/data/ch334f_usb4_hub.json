@@ -1,0 +1,293 @@
+{
+  "id": "block.ch334f_usb4_hub",
+  "desc": "CH334F USB2.0 四口 hub(自供电):12MHz 晶振(⚠24MHz 不枚举)+ V5 单轨供电(VDD33=内部 LDO 输出勿外接)+ OVCUR# 上拉;一个 USB-C 同时喂原生 USB + CH340 串口的调试底座",
+  "category": "usb",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:CH334 (WCH CH334/335 DS V2.5 — 外部 12MHz 晶振内置 PLL/负载电容;自供电 PSELF;参考电路 Fig6.1-6.3 与 p.30 OVCUR 91k 上拉) ; 供电与 strap 方案经 motobox 车机V2 两轮设计评审修正(评审 P0 实证: 24MHz 晶振 hub 完全不枚举;VDD33 双轨供电非法且电池态经 LDO 输出脚反向漏电)后在 车机V2-fable P2 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异(P2 58 rails + 102 ports)。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up。",
+  "parts": {
+    "U": {
+      "part": "ic.ch334f_qfn24",
+      "qty": 1,
+      "note": "CH334F QFN-24(GANG 模式)。功能脚(sch read 实测): OVCUR#(1)/XO(3)/XI(4)/DM4-DP4(5,6)/DM3-DP3(7,8)/DM2-DP2(9,10)/DM1-DP1(11,12)/DMU-DPU(14,15)/RESET#/CDP(16)/PSELF(18)/V5(19)/VDD33(20)/GND(25,EP)。PSELF 内置上拉悬空=自供电;LED1-4/PWREN# 本块 NC。"
+    },
+    "X": {
+      "part": "xtal.12mhz_3225",
+      "qty": 1,
+      "note": "⚠必须 12MHz——datasheet 内置 PLL 至 480MHz,所有参考电路均 12MHz;24MHz 时 hub 不枚举,两条下游调试路径全灭(评审 P0 实证)。脚: OSC1(1)/OSC2(3)/GND(2,4)。"
+    },
+    "C_X1": {
+      "part": "cap.18pf_0402",
+      "qty": 1,
+      "note": "DNP: CH334 内置晶振负载电容,默认不贴;bring-up 起振裕度不足再按 2·(CL−Cstray) 补。"
+    },
+    "C_X2": {
+      "part": "cap.18pf_0402",
+      "qty": 1,
+      "note": "DNP,同 C_X1。"
+    },
+    "C_V5": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "V5 体电容(datasheet 要求 ≥1µF)。"
+    },
+    "C_V5HF": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "V5 高频,贴 U.V5。"
+    },
+    "C_33": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VDD33 去耦——VDD33 是内部 LDO 的**输出**,只挂去耦。"
+    },
+    "C_33B": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "VDD33 LDO 输出体电容(datasheet 0.1µF+10µF)。"
+    },
+    "R_OVC": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "OVCUR# 上拉到 VDD33——该脚**无内置上拉**(datasheet p.30 参考用 91k),悬空会误报过流关闭下游端口。"
+    },
+    "R_RST": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "RESET# 上拉(内置上拉,冗余保险,可 DNP)。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.V5",
+      "C_V5.1",
+      "C_V5HF.1",
+      "PORT:VBUS_5V"
+    ],
+    [
+      "U.VDD33",
+      "C_33.1",
+      "C_33B.1",
+      "R_OVC.1",
+      "R_RST.1"
+    ],
+    [
+      "U.OVCUR#",
+      "R_OVC.2"
+    ],
+    [
+      "U.RESET#/CDP",
+      "R_RST.2"
+    ],
+    [
+      "U.XI",
+      "X.OSC1",
+      "C_X1.1"
+    ],
+    [
+      "U.XO",
+      "X.OSC2",
+      "C_X2.1"
+    ],
+    [
+      "U.DPU",
+      "PORT:HOST_DP"
+    ],
+    [
+      "U.DMU",
+      "PORT:HOST_DM"
+    ],
+    [
+      "U.DP1",
+      "PORT:DN1_DP"
+    ],
+    [
+      "U.DM1",
+      "PORT:DN1_DM"
+    ],
+    [
+      "U.DP2",
+      "PORT:DN2_DP"
+    ],
+    [
+      "U.DM2",
+      "PORT:DN2_DM"
+    ],
+    [
+      "U.DP3",
+      "PORT:DN3_DP"
+    ],
+    [
+      "U.DM3",
+      "PORT:DN3_DM"
+    ],
+    [
+      "U.DP4",
+      "PORT:DN4_DP"
+    ],
+    [
+      "U.DM4",
+      "PORT:DN4_DM"
+    ],
+    [
+      "U.GND",
+      "X.GND",
+      "C_V5.2",
+      "C_V5HF.2",
+      "C_33.2",
+      "C_33B.2",
+      "C_X1.2",
+      "C_X2.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "VBUS_5V": {
+      "dir": "in",
+      "at": "U.V5",
+      "desc": "5V 供电(来自 USB VBUS 经 OR 的 +5V 母线;电池态该轨断电 hub 干净下电,不偷备份电池)",
+      "default_net": "+5V"
+    },
+    "HOST_DP": {
+      "dir": "bidir",
+      "at": "U.DPU",
+      "desc": "上行 D+(接 USB-C 座,配 block.usbc_ufp_power_or)",
+      "default_net": "USB_HOST_DP"
+    },
+    "HOST_DM": {
+      "dir": "bidir",
+      "at": "U.DMU",
+      "desc": "上行 D-",
+      "default_net": "USB_HOST_DM"
+    },
+    "DN1_DP": {
+      "dir": "bidir",
+      "at": "U.DP1",
+      "desc": "下行口1 D+(典型: MCU 原生 USB)",
+      "default_net": "USB_ESP_DP"
+    },
+    "DN1_DM": {
+      "dir": "bidir",
+      "at": "U.DM1",
+      "desc": "下行口1 D-",
+      "default_net": "USB_ESP_DM"
+    },
+    "DN2_DP": {
+      "dir": "bidir",
+      "at": "U.DP2",
+      "desc": "下行口2 D+(典型: CH340 串口桥)",
+      "default_net": "USB_UART_DP"
+    },
+    "DN2_DM": {
+      "dir": "bidir",
+      "at": "U.DM2",
+      "desc": "下行口2 D-",
+      "default_net": "USB_UART_DM"
+    },
+    "DN3_DP": {
+      "dir": "bidir",
+      "at": "U.DP3",
+      "desc": "下行口3 D+(备用/模组 USB)",
+      "default_net": "USB_AUX_DP"
+    },
+    "DN3_DM": {
+      "dir": "bidir",
+      "at": "U.DM3",
+      "desc": "下行口3 D-",
+      "default_net": "USB_AUX_DM"
+    },
+    "DN4_DP": {
+      "dir": "bidir",
+      "at": "U.DP4",
+      "desc": "下行口4 D+(不用则 NC)",
+      "default_net": ""
+    },
+    "DN4_DM": {
+      "dir": "bidir",
+      "at": "U.DM4",
+      "desc": "下行口4 D-(不用则 NC)",
+      "default_net": ""
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND",
+      "desc": "地(EP 一并)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "供电只走 V5 单轨: VDD33 是内部 LDO 输出,**禁止接外部 3V3**。双轨接法(V5=5V 且 VDD33=常开 3V3)不是 datasheet 支持的方案,且在『5V 断/3V3 活』的电池态会经 LDO 输出脚反向供电,持续偷电池(评审高危实证)。工业温度档需 3.3V 方案时,V5 与 VDD33 同接 5V 域派生的 3.3V,绝不接常开轨。",
+    "OVCUR# 无内置上拉——必须外拉(本块 100k→VDD33),悬空漂低=hub 报永久过流。PSELF/RESET# 有内置上拉可悬空;PWREN#/LED1-4 NC。",
+    "12MHz 是硬约束;C_X1/C_X2 默认 DNP(内置负载电容),起振问题时再贴。",
+    "不用的下行口(DP4/DM4)悬空即可,default_net 留空。",
+    "上/下行 D± 是 90Ω 差分对(布局约束见 signals)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "cap-adjacency",
+      "target": "C_V5HF/C_33/C_X1/C_X2",
+      "constraint": "去耦与晶振负载电容贴对应引脚",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "xtal-adjacency",
+      "target": "X",
+      "constraint": "晶振贴 XI/XO,走线短且不跨分割",
+      "value": "<=5mm",
+      "severity": "must"
+    },
+    {
+      "rule": "thermal-copper",
+      "target": "U.EP",
+      "constraint": "EP 接地过孔",
+      "value": ">=4 过孔",
+      "severity": "should"
+    }
+  ],
+  "signals": {
+    "USB_HOST_D": {
+      "nets": [
+        "HOST_DP",
+        "HOST_DM"
+      ],
+      "type": "diff_pair",
+      "impedance_ohm": 90,
+      "impedance_kind": "differential",
+      "route": "上行差分对紧耦合等长",
+      "severity": "must",
+      "reason": "USB2.0 差分完整性"
+    },
+    "USB_DN_D": {
+      "nets": [
+        "DN1_DP",
+        "DN1_DM",
+        "DN2_DP",
+        "DN2_DM",
+        "DN3_DP",
+        "DN3_DM",
+        "DN4_DP",
+        "DN4_DM"
+      ],
+      "type": "diff_pair",
+      "impedance_ohm": 90,
+      "impedance_kind": "differential",
+      "route": "各下行对分别紧耦合等长(对内匹配,对间无要求)",
+      "severity": "must",
+      "reason": "USB2.0 差分完整性"
+    }
+  },
+  "bom_note": "10 件: CH334F + 12MHz + DNP 负载电容×2 + 去耦×4 + 上拉×2。『一个 USB-C 同时给原生 USB + 稳定串口』的调试底座核心——治 ESP32 单口 CDC 卡死;上游配 block.usbc_ufp_power_or,下行口2 配 CH340 块。",
+  "placement": {
+    "X": {
+      "board_edge": false,
+      "side": "top",
+      "orientation": "12MHz 晶振紧贴 U.XI/XO",
+      "severity": "should",
+      "reason": "时钟走线短、下方完整地"
+    }
+  }
+}
