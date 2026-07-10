@@ -53,6 +53,7 @@
 |---|---|---|---|---|
 | 1 | PCB自动化工具 | ✅ **DFM 审查补全 (task #33, DONE — ~10 条,追平官方)** — `pcb check` 已实现:悬空线头、锐角走线、非正交走线、走线压焊盘(短路)、叠孔、悬空单层过孔、两脚线宽一致、冗余共线段、**3W 平行耦合**、丝印正反(纯 Go 读 line/via/pad + `pcb.silk.list`,mirror `sch check`,7-agent 对抗验证过、6 个几何 bug 已修,真机 ceshi 验证)。**剩余候选**:电源网铜层覆盖、阻焊窗、fanout-with-vias——下一轮 | `pcb_Primitive{Line,Via,Pad,Component,String}.getAll` (全只读) | 中 (读几何易) |
 | 1b | PCB自动化工具 | **pin/module fanout-with-vias** (密集引脚逃逸到过孔),证明可用启发式路径 | `pcb_PrimitiveLine.create` + `pcb_PrimitiveVia.create` | 中 |
+| 1c | Easy_EDA_PCB_Beautify (社区, m-RNA, Apache-2.0) | ✅ **走线美化 (DONE)** — `pcb beautify`：拐角圆弧化 + 差分/等长同心圆弧 + DRC 二分修复 + 重铺覆铜；`--dry-run` 预览。纯几何 verbatim 移植进 `extension/src/beautify/`，署名见 NOTICE。**剩余**：线宽贝塞尔平滑 (widthTransition) 未移植 | `pcb_PrimitiveLine/Arc.{getAll,create,delete}` + `pcb_Drc.{check,getAllDifferentialPairs,getAllEqualLengthNetGroups}` + `pcb_PrimitivePour.rebuildCopperRegion` | 中 (几何已现成) |
 | 2 | eext-balance-copper | **net-less 均衡铺铜/thieving** (`pcb balance`/`pcb thieving`):障碍收集器+每类型 DRC clearance 引擎+FILL source-injection;**同路径顺带破 teardrop 墙** | `sys_FileManager.getDocumentSource/setDocumentSource` (载重), `pcb_Drc.check` | 中-高 (tiling+注入) |
 
 ### Medium (按性价比排序)

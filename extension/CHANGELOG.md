@@ -6,6 +6,51 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-10
+
+功能版本(minor):**PCB 走线美化 `easyeda pcb beautify` 上线**——吸收自开源扩展
+[`m-RNA/Easy_EDA_PCB_Beautify`](https://github.com/m-RNA/Easy_EDA_PCB_Beautify)
+(Apache-2.0),补齐布线定稿后的美化后处理档,接在 design-flow **P7.9**(P7 布线之后、
+P8 铺铜/出 Gerber 之前)。
+
+### Added
+- **`easyeda pcb beautify` — 走线美化(拐角圆弧化)**:新 typed action `pcb.beautify`。
+  把已布好的直角/锐角铜走线圆滑成圆弧(改善美观 + 可制造性,减少尖角蚀刻风险)。
+  - `--scope all|selected`(默认 all)/ `--net` / `--layer` 过滤;`--selected` 只处理
+    EasyEDA 里框选的走线。
+  - **拐角圆弧化**:把同网同层相接的线段串成多段线,每个内拐角按 `--radius-ratio`
+    (默认 3,半径=最大线宽×3)生成 fillet 圆弧,替换原线段为「截断直线 + 圆弧」。
+  - **差分/等长同心圆弧**:成对/等长网的拐角走同心圆弧保护——feature-detect
+    `pcb_Drc.getAllDifferentialPairs` / `getAllEqualLengthNetGroups`,该 build 无此 API
+    时**降级为保直角**(不阻断)。`--no-protect` 关闭。
+  - **自带安全网**:美化会 delete 原线段 + create line/arc,故内建 **DRC 二分修复**
+    (`--drc-retry`,默认 4:缩半径或退回直角修违规拐角)+ **自动重铺覆铜**(同网 GND
+    键合会 stale,复用 `pour-rebuild`)。`--no-drc` / `--no-pour-rebuild` 可关。
+  - **`--dry-run`**:只计算规划(paths / lines / arcs)、**不动板**——可在任意真实板上
+    安全预览。**只处理铜层,绝不碰丝印/板框**,跳过锁定铜。
+  - 其它:`--force-arc`(线段太短也生成截断圆弧)、`--merge-u`(紧凑 U 型弯合并为
+    单个大圆弧)。
+- **几何库移植**:`extension/src/beautify/{math,arcGeometry,drc}.ts` 从上游纯几何
+  verbatim 移植(无 eda.* 依赖),`index.ts` 为 headless 编排(去掉上游自研快照/撤销
+  与 iframe 设置面板,改 payload 驱动、结果结构化返回)。
+- **接入两个上游 DRC API**:`pcb_Drc.getAllDifferentialPairs` /
+  `getAllEqualLengthNetGroups`(差分对/等长组读取)。
+
+### Docs
+- `references/design-flow.md` 新增 **P7.9 走线美化档**(dry-run 先行 + 上游告警清单:
+  焊盘-走线连接需人工复核、RF/高速网排除全局美化、出 Gerber 前预览);
+  `references/pcb.md` 加 `pcb beautify` 命令条目;`docs/ecosystem-survey.md` /
+  `docs/marketplace-coverage.md` absorb-list 标记已吸收(#1c)。
+- **署名**:新增仓库根 `NOTICE`,记录 Apache-2.0 第三方来源、原作者 m-RNA、逐文件
+  映射与相对上游的改动;几何文件头保留出处注释。
+
+### Known limitations
+- **线宽贝塞尔平滑**(上游 widthTransition)本版未移植——follow-up。
+- 运行时已核:`pcb_PrimitiveArc.create` 在当前 web build **确认落笔提交**(ceshi 真机
+  探针:create→getAll 命中→delete 净零还原,`err:null`);此前 `route-short --corner
+  round` 的「native arc 不提交」笔记指的是 outline 的 MathPolygon 分段弧,与 primitive
+  arc 无关。整链路端到端(路径链接/DRC 二分/重铺)首用建议仍在 ceshi 跑一遍确认。
+
 ## [0.10.0] - 2026-07-10
 
 功能版本(minor):**电路块库 `easyeda blocks` 上线**——从「器件→块→流程」三层

@@ -1177,6 +1177,80 @@ plane. fill = solid (default) | grid | grid45.`,
 		pcb.AddCommand(c)
 	}
 
+	// ── beautify ──────────────────────────────────────────────────────────
+	// Routing-aesthetics post-process: round sharp track corners into arcs.
+	// Absorbed from the open-source Easy_EDA_PCB_Beautify extension (m-RNA,
+	// Apache-2.0). Deletes+recreates tracks, so it self-guards with a DRC
+	// binary-search repair + pour rebuild; --dry-run previews without mutating.
+	{
+		var net string
+		var layer int
+		var radiusRatio float64
+		var drcRetry int
+		var selected, forceArc, mergeU, dryRun bool
+		var noProtect, noDRC, noPour bool
+		c := &cobra.Command{
+			Use:   "beautify",
+			Short: "Round sharp track corners into arcs (走线美化) on the active PCB",
+			Long: `Beautify already-routed copper by filleting sharp corners into arcs — the
+routing-aesthetics post-process (absorbed from Easy_EDA_PCB_Beautify, m-RNA,
+Apache-2.0). Chains connected same-net/same-layer segments into polylines,
+rounds each interior corner (radius = max(width) * --radius-ratio), deletes the
+originals and creates the trimmed lines + arcs.
+
+Because it deletes+recreates tracks it self-guards: a DRC binary-search shrinks
+or straightens any corner that violates clearance, then it rebuilds copper pours
+(same-net bonding goes stale otherwise). Diff-pair / equal-length nets get
+concentric-arc protection when the build exposes that API, else they stay
+straight. Copper layers only — never touches silkscreen/outline.
+
+Run --dry-run first to preview the plan (paths / arcs) WITHOUT mutating — safe on
+any board, including one you don't want to change. Save at a good checkpoint after
+a real run. The PCB must be the active/foreground tab.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb beautify --dry-run                 # preview on the whole board
+  easyeda pcb beautify --project ceshi           # round every corner, DRC-guard, re-pour
+  easyeda pcb beautify --selected                # only the tracks selected in EasyEDA
+  easyeda pcb beautify --net GND --radius-ratio 2`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{
+					"cornerRadiusRatio": radiusRatio,
+					"forceArc":          forceArc,
+					"mergeTransitionSegments": mergeU,
+					"protect":           !noProtect,
+					"drc":               !noDRC,
+					"drcRetryCount":     drcRetry,
+					"rebuildPour":       !noPour,
+					"dryRun":            dryRun,
+				}
+				if selected {
+					payload["scope"] = "selected"
+				} else {
+					payload["scope"] = "all"
+				}
+				if net != "" {
+					payload["net"] = net
+				}
+				if cmd.Flags().Changed("layer") {
+					payload["layer"] = layer
+				}
+				return dispatch(cfg, "pcb.beautify", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().BoolVar(&selected, "selected", false, "only beautify tracks currently selected in EasyEDA (default: whole board)")
+		c.Flags().StringVar(&net, "net", "", "filter to one net")
+		c.Flags().IntVar(&layer, "layer", 0, "filter to one copper layer id (TOP=1, BOTTOM=2, inner=15..44)")
+		c.Flags().Float64Var(&radiusRatio, "radius-ratio", 3.0, "corner radius = max(track width) * this ratio")
+		c.Flags().BoolVar(&forceArc, "force-arc", false, "still round corners on segments too short for the ideal radius (truncated arc)")
+		c.Flags().BoolVar(&mergeU, "merge-u", false, "merge tight U-bends into a single large arc")
+		c.Flags().BoolVar(&noProtect, "no-protect", false, "disable diff-pair/equal-length concentric-arc protection")
+		c.Flags().BoolVar(&noDRC, "no-drc", false, "skip the DRC binary-search repair pass")
+		c.Flags().IntVar(&drcRetry, "drc-retry", 4, "DRC binary-search depth for violating corners")
+		c.Flags().BoolVar(&noPour, "no-pour-rebuild", false, "skip rebuilding copper pours after beautify")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "compute the plan (paths/arcs) WITHOUT mutating the board")
+		pcb.AddCommand(c)
+	}
+
 	// ── pour-fit ──────────────────────────────────────────────────────────
 	// Auto-size a copper pour to the board: read the outline, inset it by a
 	// margin so copper never touches the edge (the Board-Outline-to-Copper

@@ -1,0 +1,32 @@
+easyeda-agent
+Copyright (c) zhoushoujianwork and contributors
+
+This product includes third-party software listed below.
+
+────────────────────────────────────────────────────────────────────────
+Easy_EDA_PCB_Beautify
+────────────────────────────────────────────────────────────────────────
+PCB 走线美化(拐角圆弧化 + 差分/等长同心圆弧 + 线宽平滑)算法。
+
+  Source:  https://github.com/m-RNA/Easy_EDA_PCB_Beautify
+  Author:  m-RNA
+  License: Apache License 2.0
+
+Absorbed into this project as the `pcb.beautify` typed action / `easyeda pcb
+beautify` command. The pure-geometry modules were ported largely verbatim:
+
+  extension/src/beautify/math.ts         ← src/lib/math.ts
+  extension/src/beautify/arcGeometry.ts  ← src/lib/arcGeometry.ts
+  extension/src/beautify/drc.ts          ← src/lib/drc.ts (violated-ID parse)
+  extension/src/beautify/index.ts        ← src/lib/beautify.ts (orchestration)
+
+Changes made vs. upstream (per Apache-2.0 §4b):
+  • Removed the extension's self-built snapshot/undo engine — this project
+    relies on `pcb.save` checkpoints instead.
+  • Removed the iframe settings panel and sys_Message / LoadingBar UI; the
+    routine is headless and driven by the daemon action payload, returning a
+    structured summary.
+  • Added a `dryRun` mode that computes the plan without mutating the board.
+  • Line-width bezier smoothing (widthTransition.ts) is not yet ported.
+
+Both this project and Easy_EDA_PCB_Beautify are licensed under Apache-2.0.

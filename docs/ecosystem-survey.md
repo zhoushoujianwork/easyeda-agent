@@ -187,6 +187,12 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 > **缺 `pcb.save` 且 PCB 不在 autosave 覆盖内**——已补(新增 `pcb.save` action + `saveActionForDocType`
 > 加 `pcb`→`pcb.save`,PCB 编辑现与原理图一样自动落盘)。A4(直调自动布线)本 build 不可用,阻塞中。
 > 详见 [`FEATURES.md`](FEATURES.md)。
+>
+> **进度(2026-07-10)**:**走线美化已吸收**——`pcb beautify`(拐角圆弧化 + 差分/等长同心圆弧 +
+> DRC 二分修复 + 重铺覆铜,`--dry-run` 预览)。源自社区扩展 **Easy_EDA_PCB_Beautify**(m-RNA,
+> Apache-2.0,非官方 eext),纯几何 verbatim 移植进 `extension/src/beautify/`,署名见仓库 `NOTICE`;
+> 完整评估见 [`marketplace-coverage.md`](marketplace-coverage.md) 吸收清单 #1c。顺带接入两个新 DRC
+> API:`pcb_Drc.getAllDifferentialPairs` / `getAllEqualLengthNetGroups`。
 
 | # | 吸收什么 | API | 落到哪 | 难度 |
 |---|---|---|---|---|

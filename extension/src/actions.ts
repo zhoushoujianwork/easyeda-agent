@@ -5,6 +5,7 @@
  * original message preserved in `detail`.
  */
 
+import { type BeautifyOptions, runBeautify } from './beautify';
 import { documentTypeLabel, readResponseContext } from './eda-context';
 import {
 	ActionError,
@@ -6107,6 +6108,40 @@ const pcbPourRebuild: Handler = async (payload) => {
 	return { result: { pours: (pours ?? []).length, rebuilt } };
 };
 
+// ─── PCB 走线美化 (拐角圆弧化) ────────────────────────────────────────
+// 把已布好的直角/锐角走线圆滑成圆弧，改善美观与可制造性。算法移植自开源扩展
+// Easy_EDA_PCB_Beautify (m-RNA, Apache-2.0) —— 见 src/beautify/ 头部与仓库 NOTICE。
+// 会 delete 原线段 + create line/arc，故内建 DRC 二分修复 + 重铺覆铜；`dryRun`
+// 只计算规划、不落笔（可在真实板上安全预览）。仅处理铜层导线，绝不动丝印/板框。
+const pcbBeautify: Handler = async (payload) => {
+	const scope = (optionalString(payload, 'scope') ?? 'all') as BeautifyOptions['scope'];
+	if (scope !== 'all' && scope !== 'selected') {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `scope must be "all" or "selected" (got "${scope}").`);
+	}
+	const opts: BeautifyOptions = {
+		scope,
+		net: optionalString(payload, 'net'),
+		layer: optionalNumber(payload, 'layer'),
+		cornerRadiusRatio: optionalNumber(payload, 'cornerRadiusRatio') ?? 3.0,
+		forceArc: optionalBoolean(payload, 'forceArc') ?? false,
+		mergeTransitionSegments: optionalBoolean(payload, 'mergeTransitionSegments') ?? false,
+		protectDifferentialAndEqualLength: optionalBoolean(payload, 'protect') ?? true,
+		enableDrc: optionalBoolean(payload, 'drc') ?? true,
+		drcIgnoreCopperPour: optionalBoolean(payload, 'drcIgnoreCopperPour') ?? true,
+		drcRetryCount: optionalNumber(payload, 'drcRetryCount') ?? 4,
+		rebuildPour: optionalBoolean(payload, 'rebuildPour') ?? true,
+		dryRun: optionalBoolean(payload, 'dryRun') ?? false,
+	};
+	let summary;
+	try {
+		summary = await runBeautify(opts);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to beautify PCB routing (ensure the PCB document is the active/foreground tab).');
+	}
+	return { result: summary };
+};
+
 // ─── PCB region (禁止区域 / 规则区域 keep-out) ────────────────────────
 // pcb_PrimitiveRegion is a polygon carrying one or more RULE types — keep
 // components / wires / copper / etc. OUT of the area (antenna clearance,
@@ -7035,6 +7070,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.pour.list': pcbPourList,
 	'pcb.pour.delete': pcbPourDelete,
 	'pcb.pour.rebuild': pcbPourRebuild,
+	'pcb.beautify': pcbBeautify,
 	'pcb.region.create': pcbRegionCreate,
 	'pcb.region.list': pcbRegionList,
 	'pcb.region.delete': pcbRegionDelete,
