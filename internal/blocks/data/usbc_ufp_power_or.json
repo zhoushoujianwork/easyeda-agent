@@ -1,0 +1,165 @@
+{
+  "id": "block.usbc_ufp_power_or",
+  "desc": "USB-C 设备口(UFP)+ VBUS 二极管 OR + TVS/ESD:调试口安全并入板上 5V 母线——只进不出(板子有自供电时严禁从 C 口向外灌电)",
+  "category": "usb",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:USBLC6-2SC6 (ST — USB2 低容 ESD 阵列流through接法) + datasheet:CH334 §3.6 Fig3-6-1/3-6-2(WCH 官方在外部供电场景插入理想二极管防 VBUS 倒灌的参考) ; VBUS 直连双硬源的危害与 OR 方案经 motobox 车机V2 设计评审定案(评审 P0: 车电在位时盒子经 C 口向笔记本 VBUS 灌 5V=USB 规范违例)后在 车机V2-fable P2 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up。",
+  "parts": {
+    "J": {
+      "part": "conn.usb_c_16p",
+      "qty": 1,
+      "note": "USB-C 16P 母座。功能脚(sch read 实测): VBUS(A4B9,B4A9 双脚)/GND(A1B12,B1A12)/CC1(A5)/CC2(B5)/DP1(A6)/DN1(A7)/DP2(B6)/DN2(B7)/SBU1,SBU2(NC)/EP(8-11 壳体)。DP1+DP2、DN1+DN2 在连接器焊盘处合并(正反插同一对)。"
+    },
+    "R_CC1": {
+      "part": "res.5k1_0402",
+      "qty": 1,
+      "note": "CC1 Rd 5.1k→GND(UFP 设备角色广告)。"
+    },
+    "R_CC2": {
+      "part": "res.5k1_0402",
+      "qty": 1,
+      "note": "CC2 Rd 5.1k→GND。"
+    },
+    "D_OR": {
+      "part": "diode.ss34_sma",
+      "qty": 1,
+      "note": "VBUS→5V 母线 OR 二极管(A=VBUS 侧, K=母线): 只进不出。压降 ~0.4V 后 ≈4.6V,对下游充电器/hub 足够。台架大电流场景可升 SS54/理想二极管 IC(LM66100/CH213K)。"
+    },
+    "TVS": {
+      "part": "tvs.smaj5v0_sma",
+      "qty": 1,
+      "note": "VBUS 浪涌/ESD 钳位(K=VBUS, A=GND),置 D_OR 之前。"
+    },
+    "ESD": {
+      "part": "esd.usblc6_2sc6",
+      "qty": 1,
+      "note": "D± 低容 ESD 阵列(<1pF): 1/6=通道1(D-), 3/4=通道2(D+), 2=GND, 5=VBUS。流through接法,置连接器旁。"
+    }
+  },
+  "internal_nets": [
+    [
+      "J.VBUS",
+      "D_OR.A",
+      "TVS.K",
+      "ESD.VBUS"
+    ],
+    [
+      "D_OR.K",
+      "PORT:5V_BUS"
+    ],
+    [
+      "J.CC1",
+      "R_CC1.1"
+    ],
+    [
+      "J.CC2",
+      "R_CC2.1"
+    ],
+    [
+      "J.DP1",
+      "J.DP2",
+      "ESD.I/O2",
+      "PORT:USB_DP"
+    ],
+    [
+      "J.DN1",
+      "J.DN2",
+      "ESD.I/O1",
+      "PORT:USB_DM"
+    ],
+    [
+      "J.GND",
+      "J.EP",
+      "TVS.A",
+      "ESD.GND",
+      "R_CC1.2",
+      "R_CC2.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "5V_BUS": {
+      "dir": "out",
+      "at": "D_OR.K",
+      "desc": "OR 之后并入板上 +5V 母线(可与车电/适配器 5V 共存;母线电压高于 VBUS-0.4V 时二极管自然截止)",
+      "default_net": "+5V"
+    },
+    "USB_DP": {
+      "dir": "bidir",
+      "at": "J.DP1",
+      "desc": "D+(接 hub 上行或 MCU 原生 USB)",
+      "default_net": "USB_HOST_DP"
+    },
+    "USB_DM": {
+      "dir": "bidir",
+      "at": "J.DN1",
+      "desc": "D-",
+      "default_net": "USB_HOST_DM"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "J.GND",
+      "desc": "地(壳体 EP 一并;需隔离壳地时改 R/C 落地)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "为什么必须 OR 不能直连: 板上另有 5V 硬源(车电 buck/适配器)时,VBUS 直连=双硬源并联——盒子会经 C 口向主机 VBUS 反向灌电(USB 规范违例,可损坏主机口);仅 USB 供电时主机还要养活整板。D_OR 让 USB 只能供电、不能被灌(评审 P0)。",
+    "供电预算注记: 板载输入限流(如充电器 ILIM 1.45A)+hub 时,纯 USB 台架供电最坏 ~1.5A——超默认 500mA 口,文档标注『调试需 ≥1.5A 能力的口』,或用 CC 分压读 Rp 做固件限流。",
+    "CC1/CC2 只放 Rd(纯 UFP 取电);ESD 钳位 CC 属可选增强(有 5.1k 对地,风险低——有记录的省略)。",
+    "DP1+DP2/DN1+DN2 的合并在连接器焊盘处完成,走线最短 stub;SBU1/SBU2 悬空。",
+    "压降敏感的下游(要求满 5.0V)不适用二极管 OR——换理想二极管 IC。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "edge-placement",
+      "target": "J",
+      "constraint": "USB-C 座靠板边,插口朝外(壳体允许突出板框)",
+      "value": "edge",
+      "severity": "must"
+    },
+    {
+      "rule": "esd-adjacency",
+      "target": "ESD/TVS",
+      "constraint": "ESD 阵列与 TVS 置于连接器焊盘旁、信号先过 ESD 再进板",
+      "value": "<=5mm",
+      "severity": "must"
+    },
+    {
+      "rule": "pair-merge-stub",
+      "target": "J.DP1+DP2 / J.DN1+DN2",
+      "constraint": "正反插对在焊盘处合并,stub 最短",
+      "value": "<=1mm",
+      "severity": "must"
+    }
+  ],
+  "signals": {
+    "USB_D": {
+      "nets": [
+        "USB_DP",
+        "USB_DM"
+      ],
+      "type": "diff_pair",
+      "impedance_ohm": 90,
+      "impedance_kind": "differential",
+      "route": "D+/D- 紧耦合等长,连接器→ESD→出块;正反插对(DP1+DP2/DN1+DN2)在焊盘处合并、stub 最短",
+      "severity": "must",
+      "reason": "USB2.0 差分完整性"
+    }
+  },
+  "bom_note": "6 件: USB-C 座 + Rd×2 + OR 二极管 + VBUS TVS + D± ESD。自供电设备的调试口标准入口;下游接 block.ch334f_usb4_hub 或 MCU 原生 USB。",
+  "placement": {
+    "J": {
+      "board_edge": true,
+      "edge": "user-facing",
+      "side": "top",
+      "orientation": "插口朝板外,壳体允许突出板框",
+      "severity": "must",
+      "reason": "USB-C 需插拔,必须贴板边开口朝外"
+    }
+  }
+}
