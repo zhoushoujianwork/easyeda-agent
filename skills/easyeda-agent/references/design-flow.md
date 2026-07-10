@@ -200,6 +200,12 @@ P0 新板/切板 → P1 导器件 → P2 摆放(留装配位) → P3 板框 → 
 - **P6 可布性门**:`pcb layout-lint`(≥ 目标分、0 overlap、ratsnest 交叉可控)。
 - **P7 布线 — 三档阶梯(2026-07-09 定型)**:按密度选档,密度预算=layout-lint 的 ratsnest 长度/交叉数。
   > **档位铁律**:稀疏板 → ① route-short;**稠密板默认 = ② 人机协作档(停下请用户点原生自动布线),不是 Freerouting**。③ Freerouting 只在**全 headless(无用户可点)**时兜底,**绝不拿它顶替 ② 去图 autonomous**——用户选了 ② 就按 ② 停手交回。(2026-07-09 实测踩过:图省事直接上 Freerouting = 违反本档。)
+  **P7.0 关键网络先行(2026-07-10 定,先于把剩余交人工)** —— 自动布线器最不擅长的两类不丢给它、自己确定性布好并**锁定**,只把剩余普通信号交人工档 ②(是对 ② 的**增强**,不是替代):
+  1. **识别关键网**:读块 `signals` map(`easyeda blocks show <id>` 的 `type:diff_pair` / `length_match_mm` / `impedance`,如 USB_D 90Ω、RS485_AB 120Ω)+ 电源网(5V/3V3/12V/VBUS)。
+  2. **电源先铜(稳供、低阻)**:主干/大电流用**大面积填充块** `pcb fill create --net 5V --layer 1`(net-bound,solid/mesh);4 层用 `power-planes` 内电层;GND 用 `pour`。**别拿细线穿焊盘阵布电源**(route-short 默认就跳过电源=对的;`--width-power` 只是被迫走线时的补偿)。fill(静态硬块、实、后续信号要留 clearance)vs pour(会退让障碍、连通性靠 rebuild)——大电流/参考平面用 fill/plane,一般电源用 pour。
+  3. **差分/等长先布**:USB D±、RS485 A/B 成对布——本板这类很短(连接器→芯片),**成对并行、尽量短、≤5mil skew 即可,不用蛇形调谐**;`route-short` 或手工 `pcb track`。
+  4. **锁定关键铜**:布完把这些 track/via/fill 锁死(`pcb_PrimitiveLine.modify(id,{primitiveLock:true})` 实测可锁;CLI `pcb track-lock` 待建),**否则人工自动布线器 / `pour-rebuild` 会把手布的关键线冲掉**——锁是本流程的地基。
+  5. **交人工档 ②** 布剩余普通信号(避开锁定铜)→ 最后 `pour-rebuild` 让 GND 退让全部已布铜。
   ① **启发式档** `pcb route-short`:稀疏板(esp32-mini 级,交叉 <100)一次布通;
   ② **原生 UI 自动布线(人机协作档,稠密板推荐默认)**:官方 autoRouting API 未放出前(pro-api-sdk #28 卡 web 版本),agent 备好布局/叠层/禁布/规则后**停下来,请用户在 EasyEDA 顶部菜单点「布线 → 自动布线」**,跑完 agent 接手验证(DRC/check)+铺铜+丝印——一次点击换全套官方路由器(推挤/撕绕/规则原生一致),省掉外部 DSN/SES 往返的全部坑;API 放出后此档自动升级为无人值守;
   ③ **外部迷宫档** `pcb autoroute`(Freerouting,需 JDK21):全 headless 场景的兜底。**教训**:rip-up 后必须 save→reload→验证 0 轨再导出 DSN(残留叠布=上一代轨与新轨 0mil 重叠,499 条 ClearanceError 实测);电源网别抢在迷宫档前用 power-planes 缝合(缝合孔会和密轨打架,161 条实测)——顺序=先全网迷宫布通,后 pour-rebuild 让面通过路由过孔接通。
