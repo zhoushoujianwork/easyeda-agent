@@ -344,13 +344,13 @@
     },
     "res.665k_0402": {
       "value": "665k",
-      "mpn": "SCR0402F665K",
-      "lcsc": "C3015995",
-      "deviceUuid": "2c0cec537087487c81f118ee2a719aac",
+      "mpn": "0402WGF6653TCE",
+      "lcsc": "C56583",
+      "deviceUuid": "859801b8fabb41619efc8453126962d8",
       "package": "0402",
       "class": "res",
       "basic": false,
-      "desc": "auto-added from box-v2 realization 2026-06-26"
+      "desc": "auto-added from box-v2 realization 2026-06-26；lcsc C3015995→C56583(原 C 号 lib by-lcsc 解析失败,2026-07-09 实测替换)"
     },
     "res.100k_0402": {
       "value": "100k",
@@ -374,13 +374,13 @@
     },
     "res.453k_0402__2": {
       "value": "45.3k",
-      "mpn": "GR0402F45K3TAG00",
-      "lcsc": "C49653562",
-      "deviceUuid": "7733547db9f24b2b98cb0ab3617f83a9",
+      "mpn": "0402WGF4532TCE",
+      "lcsc": "C26980",
+      "deviceUuid": "0e6f5e403c1640769543df189249ab4d",
       "package": "0402",
       "class": "res",
       "basic": false,
-      "desc": "auto-added from box-v2 realization 2026-06-26"
+      "desc": "auto-added from box-v2 realization 2026-06-26；lcsc C49653562→C26980(原 C 号 lib by-lcsc 解析失败,2026-07-09 实测替换)"
     },
     "conn.activegnssantennaufl_ipex": {
       "value": "Active GNSS antenna (u.FL)",
@@ -969,6 +969,146 @@
       "class": "res",
       "basic": false,
       "desc": "低漏电分压(电池采样 1M/1M=1.9µA)。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+    },
+    "ic.ch334f_qfn24": {
+      "value": "CH334F",
+      "mpn": "CH334F",
+      "lcsc": "C5187527",
+      "deviceUuid": "1de3ba376b6b4576b4b3ed42044f6439",
+      "package": "QFN-24 4x4 EP",
+      "class": "ic",
+      "basic": false,
+      "desc": "USB2.0 4口 hub;⚠晶振必须 12MHz(24MHz 不枚举);VDD33 是内部 LDO 输出勿接外部 3V3。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "xtal.12mhz_3225": {
+      "value": "12MHz",
+      "mpn": "X322512MSB4SI",
+      "lcsc": "C9002",
+      "deviceUuid": "c55a487937c74f7187dad65ee7795fed",
+      "package": "3225",
+      "class": "xtal",
+      "basic": false,
+      "desc": "CH334/常规 USB PHY 时钟;内置负载电容的芯片旁 C 默认 DNP。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "tvs.smaj5v0_sma": {
+      "value": "SMAJ5.0A",
+      "mpn": "SMAJ5.0A",
+      "lcsc": "C143135",
+      "deviceUuid": "fbafe715cf2a4ad58ba384c7d477da09",
+      "package": "SMA",
+      "class": "tvs",
+      "basic": false,
+      "desc": "5V 单向 TVS(VBUS/接口浪涌)。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "esd.usblc6_2sc6": {
+      "value": "USBLC6-2SC6",
+      "mpn": "USBLC6-2SC6",
+      "lcsc": "C2687116",
+      "deviceUuid": "1e5e214711544da8ba71fb2137ae703f",
+      "package": "SOT-23-6",
+      "class": "esd",
+      "basic": false,
+      "desc": "USB2 低容 ESD 阵列(<1pF);脚 1/6=通道1,3/4=通道2,2=GND,5=VBUS。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "buckboost.tps63802_vson10": {
+      "value": "TPS63802",
+      "mpn": "TPS63802DLAR",
+      "lcsc": "C2845237",
+      "deviceUuid": "76ea41aaa52e4e54921f78cd7488d6a1",
+      "package": "VSON-10 3x2",
+      "class": "buckboost",
+      "basic": false,
+      "desc": "2A buck-boost(锂电池态稳压 3.3-3.8V 输出;Vfb 0.5V);电感跨 L1/L2 脚。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "buck.sy8089_tsot23": {
+      "value": "SY8089A1AAC",
+      "mpn": "SY8089A1AAC",
+      "lcsc": "C479074",
+      "deviceUuid": "00111ae499794742b81a699a4ff88fc8",
+      "package": "TSOT-23-5",
+      "class": "buck",
+      "basic": false,
+      "desc": "2A 同步 buck(Vref 0.6V);电池尾段 VIN 逼近 Vout 时掉出调节需固件关机线。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "storage.sdnand_csnp32g_lga8": {
+      "value": "CSNP32GCR01-AOW 4GB",
+      "mpn": "CSNP32GCR01-AOW",
+      "lcsc": "C2841139",
+      "deviceUuid": "00dea192ff404d5aaa432d13c0aba55e",
+      "package": "LGA-8 8x6",
+      "class": "storage",
+      "basic": false,
+      "desc": "雷龙 SD-NAND 32Gbit=4GB;符号带真名 SDD0-3/CMD/SCLK/VCC/VSS;⚠勿买成 4Gbit=482MB 件(C47116998 反例)。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "gnss.lc29h_ba_smd24": {
+      "value": "LC29HBAMD",
+      "mpn": "LC29HBAMD",
+      "lcsc": "C5116497",
+      "deviceUuid": "f4a3c80f2c8646629f0e35346534fff9",
+      "package": "SMD-24 16x12.2",
+      "class": "gnss",
+      "basic": false,
+      "desc": "双频 L1+L5 DR GNSS(BA=RTK+DR);⚠VDD_EXT/VDD_RF 是输出脚禁接 3V3;量产可换 CA 降本。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "conn.ufl_rf_smt1": {
+      "value": "U.FL-R-SMT-1",
+      "mpn": "U.FL-R-SMT-1(01)",
+      "lcsc": "C598199",
+      "deviceUuid": "4159ba7cecd44b679c82ab4ebbbaca3c",
+      "package": "U.FL SMD",
+      "class": "conn",
+      "basic": false,
+      "desc": "RF 天线座(GNSS/BLE);脚 2=SIN,1/3=GND。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "ind.33nh_0402": {
+      "value": "33nH",
+      "mpn": "SDCL1005C33NJTDF",
+      "lcsc": "C32837",
+      "deviceUuid": "dee08859242c410ab0b6be9b9854bfe2",
+      "package": "0402",
+      "class": "ind",
+      "basic": false,
+      "desc": "RF 扼流(GNSS 有源天线 bias-tee 馈电)。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "esd.esd9b5v0_sod923": {
+      "value": "ESD9B5.0ST5G",
+      "mpn": "ESD9B5.0ST5G",
+      "lcsc": "C3021104",
+      "deviceUuid": "354952ecfceb47f2852d90011a8f9f38",
+      "package": "SOD-923",
+      "class": "esd",
+      "basic": false,
+      "desc": "低容双向 ESD(RF/天线线可用)。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "res.22r_0402": {
+      "value": "22Ω",
+      "mpn": "0402WGF220JTCE",
+      "lcsc": "C25092",
+      "deviceUuid": "bd4e67c6befe45b9923cfcb7b71f94b2",
+      "package": "0402",
+      "class": "res",
+      "basic": false,
+      "desc": "时钟/数据串阻(SD_CLK 振铃抑制)。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "res.10r_0402": {
+      "value": "10Ω",
+      "mpn": "0402WGF100JTCE",
+      "lcsc": "C25077",
+      "deviceUuid": "a1002a7aabe242b48a5d01e2d191523a",
+      "package": "0402",
+      "class": "res",
+      "basic": false,
+      "desc": "限流(天线馈电等)。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "cap.100pf_0402": {
+      "value": "100pF",
+      "mpn": "0402CG101J500NT",
+      "lcsc": "C1546",
+      "deviceUuid": "9ce80f4816c34a9989004c8504143fd4",
+      "package": "0402 C0G",
+      "class": "cap",
+      "basic": false,
+      "desc": "RF 隔直/pi 匹配占位。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
     }
   }
 }
