@@ -1,0 +1,115 @@
+{
+  "id": "block.bq24074_powerpath_charger",
+  "desc": "BQ24074 锂电充电 + power-path(输入↔电池无缝切换,断电续报/防盗类设备核心);电芯 NTC 低温禁充 + ILIM/ISET 外阻编程 + PGOOD 断电检测输出",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:BQ24074 (TI SLUS810 — power-path 充电器典型应用电路: IN/OUT/BAT 电容、ISET/ILIM 编程电阻、TS 10k NTC、EN1/EN2 输入限流模式真值表) ; 拓扑经 motobox 车机V2 两轮设计评审修正(评审修正项: TS 由轨分压改电芯 NTC、EN strap 落定 ILIM 模式、ILIM 1.07k=1.45A、PGOOD 100k 上拉)后在 车机V2-fable P1 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接/0 异名合并)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异(P1 85 rails + 52 ports)。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up;U.ITERM strap 仍标 datasheet 待核。",
+  "parts": {
+    "U": {
+      "part": "charger.bq24074_qfn16",
+      "qty": 1,
+      "note": "BQ24074 QFN-16。功能脚(sch read 实测): TS/BAT(2,3)/CE#/EN2/EN1/PGOOD#/VSS/CHG#/OUT(10,11)/ILIM/IN/TMR/ITERM/ISET/EP。BAT 与 OUT 各为双脚同名——两脚都要连(漏一脚=悬空)。"
+    },
+    "J_BAT": {
+      "part": "conn.ph2_3p_ra",
+      "qty": 1,
+      "note": "PH2.0-3P 电池座: 1=VBATT, 2=GND, 3=电芯 NTC(103AT 10k,贴/绑电芯)。第三线是低温禁充的前提——两线座+板上固定电阻会删掉温度保护(评审 P1 高危项)。"
+    },
+    "R_ISET": {
+      "part": "res.178k_0402",
+      "qty": 1,
+      "note": "充电电流 Ich=KISET/R≈890/1.78k≈0.5A(500mAh 电芯 1C)。电芯限 0.5C 则改 3.6k。"
+    },
+    "R_ILIM": {
+      "part": "res.1k07_0402",
+      "qty": 1,
+      "note": "输入限流 KILIM/R=1550/1.07k≈1.45A(KILIM 实测典型 1550,非旧文档的 1600)。1.6k 的 1.0A 档会成为系统+充电的总瓶颈(DPPM 长期抢走充电电流)。"
+    },
+    "R_PG1": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "PGOOD#(开漏)上拉。100k 而非 1M: PGOOD 关断漏电可达 ~1µA,1M 会掉 1V 危及唤醒判读;100k 仅在输入在位时耗 33µA,电池态无电流。"
+    },
+    "R_TS": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "DNP(bring-up 临时件): 无 NTC 时单电阻 TS→GND 按 datasheet 无-NTC 接法。量产必须用电芯 NTC,此件禁贴。"
+    },
+    "C_IN1": { "part": "cap.1uf_0402", "qty": 1, "note": "IN 高频去耦,贴 U.IN。" },
+    "C_IN2": { "part": "cap.10uf_0805", "qty": 1, "note": "IN 体电容。" },
+    "C_BAT": { "part": "cap.10uf_0805", "qty": 1, "note": "BAT 去耦,贴 U.BAT。" },
+    "C_OUT": { "part": "cap.10uf_0805", "qty": 1, "note": "OUT(VSYS) 体电容。" },
+    "C_OUT_HF": { "part": "cap.100nf_0402", "qty": 1, "note": "OUT 高频。" },
+    "C_TMR": { "part": "cap.100nf_0402", "qty": 1, "note": "安全定时。按 K_TMR 对 DPPM 拉长后的充电时间核 ≥4-5h,或按 datasheet 禁用(终核)。" },
+    "C_TS": { "part": "cap.100nf_0402", "qty": 1, "note": "TS 近端滤波: NTC 走电池辫线,滤 RF/瞬态防充电误挂起(核 datasheet 允许容值)。" }
+  },
+  "internal_nets": [
+    ["U.IN", "C_IN1.1", "C_IN2.1", "PORT:VIN"],
+    ["U.OUT", "C_OUT.1", "C_OUT_HF.1", "U.EN2", "PORT:VSYS"],
+    ["U.BAT", "J_BAT.1", "C_BAT.1", "PORT:VBATT"],
+    ["U.TS", "C_TS.1", "R_TS.1", "J_BAT.3"],
+    ["U.ILIM", "R_ILIM.1"],
+    ["U.ISET", "R_ISET.1"],
+    ["U.TMR", "C_TMR.1"],
+    ["U.PGOOD#", "R_PG1.1", "PORT:CHG_PG"],
+    ["R_PG1.2", "PORT:VPULL"],
+    ["U.VSS", "U.EP", "U.CE#", "U.EN1", "J_BAT.2", "R_ILIM.2", "R_ISET.2", "R_TS.2", "C_TS.2", "C_IN1.2", "C_IN2.2", "C_BAT.2", "C_OUT.2", "C_OUT_HF.2", "PORT:GND"]
+  ],
+  "ports": {
+    "VIN": {
+      "dir": "in",
+      "at": "U.IN",
+      "desc": "输入电源(上游 5V 母线/USB经OR后的 +5V)",
+      "default_net": "+5V"
+    },
+    "VSYS": {
+      "dir": "out",
+      "at": "U.OUT",
+      "desc": "power-path 系统轨: 输入在位≈4.4-5V,断电无缝切电池≈VBATT。下游 buck/buck-boost 从这里取电",
+      "default_net": "VSYS"
+    },
+    "VBATT": {
+      "dir": "bidir",
+      "at": "U.BAT",
+      "desc": "单节锂电(经 J_BAT)。可再分压做电池电压采样",
+      "default_net": "VBATT"
+    },
+    "CHG_PG": {
+      "dir": "out",
+      "at": "U.PGOOD#",
+      "desc": "输入电源在位指示(开漏+上拉): 低=输入好,高=输入丢失。接 RTC 脚(ESP32-S3 GPIO0-21)可做深睡 ext0 高电平唤醒→断电即时报警",
+      "default_net": "CHG_PG"
+    },
+    "VPULL": {
+      "dir": "in",
+      "at": "R_PG1.2",
+      "desc": "CHG_PG 上拉电源——必须接断电后仍存活的常开轨(如 VSYS 派生的 +3V3),否则断电瞬间读数无效",
+      "default_net": "+3V3"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.VSS",
+      "desc": "参考地(EP 一并)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "EN strap(已内联): EN1→GND、EN2→VSYS = ILIM 外阻编程模式。悬空/接错默认落 USB100 模式(输入限 100mA)——系统会静默转吃电池,现象像『充电器坏了』。EN2 不得接 +3V3 之类的晚上电轨。",
+    "TS 必须接电芯 NTC(J_BAT.3): 户外/车载设备冬季 0°C 以下充锂电会析锂。R_TS 仅 bring-up 临时(DNP-for-production)。bq2407x TS 由内部电流源偏置——轨分压接法不被 datasheet 支持且可能落窗外禁充。",
+    "U.ITERM(pin15) 本块悬空,strap 按 datasheet 待核(标 no-connect 在部分 EDA build 是 no-op,悬空告警属预期,文档记录即可)。U.CHG# 可选接充电指示 LED,默认 NC。",
+    "U.BAT 与 U.OUT 均为双脚同名——接线时两脚都要落网(同 AMS1117 散热片脚教训)。",
+    "CHG_PG 唤醒用法(ESP32-S3): PGOOD# 断电时变高,与 IMU/IGN 的 ANY_LOW ext1 组极性相反——用 ext0(高电平)与 ext1 并存,免加反相器;CHG_PG 必须落在 RTC 脚(GPIO0-21)。",
+    "输入限流与充电电流的预算关系: 下游负载(经 VSYS)+充电电流 共享 ILIM 上限,负载重时 DPPM 自动压缩充电——短途使用场景要核『电池能否充得回来』。"
+  ],
+  "pcb_layout": [
+    { "rule": "cap-adjacency", "target": "C_IN1/C_BAT/C_OUT_HF", "constraint": "高频去耦贴对应引脚", "value": "<=2mm", "severity": "must" },
+    { "rule": "thermal-copper", "target": "U.EP", "constraint": "EP 过孔阵列下沉内层/底层地(线性充电损耗散热)", "value": ">=4 过孔", "severity": "must" },
+    { "rule": "trace-width", "target": "VIN/VSYS/VBATT", "constraint": "功率路径走线加宽(1.45A 输入限流+突发)", "value": ">=0.8mm", "severity": "must" },
+    { "rule": "signal-isolation", "target": "U.TS 走线", "constraint": "TS 是模拟窗口比较输入且走电池辫线,远离功率开关节点/RF", "value": ">=2mm 间距", "severity": "should" }
+  ],
+  "bom_note": "13 件: BQ24074 + PH2.0-3P 电池座 + 编程电阻×3(含 DNP) + 上拉 + 电容×7。适用: 车载/户外常电供电、断电需电池续报的设备(防盗器/记录仪/网关)。配套下游: VSYS→buck-boost(4G 3.8V 轨)/buck(3.3V 数字轨)。"
+}
