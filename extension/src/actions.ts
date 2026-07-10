@@ -6118,9 +6118,14 @@ const pcbBeautify: Handler = async (payload) => {
 	if (scope !== 'all' && scope !== 'selected') {
 		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `scope must be "all" or "selected" (got "${scope}").`);
 	}
+	const rawNets = payload.nets;
+	const nets = Array.isArray(rawNets)
+		? rawNets.filter((n): n is string => typeof n === 'string' && n.length > 0)
+		: undefined;
 	const opts: BeautifyOptions = {
 		scope,
 		net: optionalString(payload, 'net'),
+		nets,
 		layer: optionalNumber(payload, 'layer'),
 		cornerRadiusRatio: optionalNumber(payload, 'cornerRadiusRatio') ?? 3.0,
 		forceArc: optionalBoolean(payload, 'forceArc') ?? false,

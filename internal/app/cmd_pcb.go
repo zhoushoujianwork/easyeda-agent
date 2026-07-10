@@ -1183,7 +1183,7 @@ plane. fill = solid (default) | grid | grid45.`,
 	// Apache-2.0). Deletes+recreates tracks, so it self-guards with a DRC
 	// binary-search repair + pour rebuild; --dry-run previews without mutating.
 	{
-		var net string
+		var nets []string
 		var layer int
 		var radiusRatio float64
 		var drcRetry int
@@ -1211,7 +1211,8 @@ a real run. The PCB must be the active/foreground tab.`,
 			Example: `  easyeda pcb beautify --dry-run                 # preview on the whole board
   easyeda pcb beautify --project ceshi           # round every corner, DRC-guard, re-pour
   easyeda pcb beautify --selected                # only the tracks selected in EasyEDA
-  easyeda pcb beautify --net GND --radius-ratio 2`,
+  easyeda pcb beautify --net GND --radius-ratio 2
+  easyeda pcb beautify --net USB_DP --net USB_DM # beautify several nets (repeat --net)`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				payload := map[string]any{
 					"cornerRadiusRatio": radiusRatio,
@@ -1228,8 +1229,8 @@ a real run. The PCB must be the active/foreground tab.`,
 				} else {
 					payload["scope"] = "all"
 				}
-				if net != "" {
-					payload["net"] = net
+				if len(nets) > 0 {
+					payload["nets"] = nets
 				}
 				if cmd.Flags().Changed("layer") {
 					payload["layer"] = layer
@@ -1238,7 +1239,7 @@ a real run. The PCB must be the active/foreground tab.`,
 			},
 		}
 		c.Flags().BoolVar(&selected, "selected", false, "only beautify tracks currently selected in EasyEDA (default: whole board)")
-		c.Flags().StringVar(&net, "net", "", "filter to one net")
+		c.Flags().StringArrayVar(&nets, "net", nil, "filter to a net; repeatable (--net A --net B) to beautify several")
 		c.Flags().IntVar(&layer, "layer", 0, "filter to one copper layer id (TOP=1, BOTTOM=2, inner=15..44)")
 		c.Flags().Float64Var(&radiusRatio, "radius-ratio", 3.0, "corner radius = max(track width) * this ratio")
 		c.Flags().BoolVar(&forceArc, "force-arc", false, "still round corners on segments too short for the ideal radius (truncated arc)")

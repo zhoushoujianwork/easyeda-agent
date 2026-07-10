@@ -6,6 +6,26 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-07-10
+
+`pcb beautify` 打磨(补丁):
+
+### Added
+- **多网美化**:`pcb beautify --net` 现在**可重复**——`--net USB_DP --net USB_DM`
+  一次只美化这几个网(连接器新增 `nets: []string` payload)。密板上**首选按网做**
+  而非整板一把梭:blast radius 小、每网可 dry-run + DRC 逐个验收、出问题好定位。
+
+### Fixed
+- **计数虚高**:`arcsCreated`/`linesCreated`/`cornersRounded` 之前在 DRC 二分修复
+  的每一轮都累加,导致 `drcRounds>0` 时 summary 远大于最终几何(实测 4 拐角报 21 弧)。
+  改为按路径记最终态、末尾汇总,数字现与落盘几何一致。
+
+### Verified
+- **连通性不被破坏**(控制实验,ceshi):对已知连通的多拐角网做 beautify,前后均为
+  **单一连通分量、端点不变**(即使 DRC 修复把部分拐角退回直角)。据此判定此前 esp32
+  真实板上 SD_* 的「断连」是那块 v0.2 板**原有**的未布通,非 beautify 切断。
+  教训固化进 `references/pcb.md`:密板/未 DRC-clean 的板优先 `--net` 按网做、先测基线。
+
 ## [0.11.0] - 2026-07-10
 
 功能版本(minor):**PCB 走线美化 `easyeda pcb beautify` 上线**——吸收自开源扩展

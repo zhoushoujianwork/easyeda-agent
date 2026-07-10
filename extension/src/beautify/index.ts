@@ -19,7 +19,8 @@ import { dist, getAngleBetween, getLineIntersection, lerp } from './math';
 
 export interface BeautifyOptions {
 	scope: 'all' | 'selected';
-	net?: string; // 只处理该网络（scope=all 时下推到 getAll）
+	net?: string; // 只处理该网络（单网；与 nets 二选一）
+	nets?: string[]; // 只处理这些网络（多网白名单；空/缺省=全部）
 	layer?: number; // 只处理该铜层
 	cornerRadiusRatio: number; // 圆角半径 = max(线宽) * ratio
 	forceArc: boolean; // 线段较短放不下理想半径时仍生成截断圆弧
@@ -88,6 +89,8 @@ interface PathContext {
 	protectedGroupKeys: string[];
 	protectedCornerKeys: Map<number, string>;
 	cornerOverrides: Map<number, CornerArcOverride | null>;
+	arcN: number; // 本路径最终几何的圆弧数（每次 re-commit 重置，反映最终态而非累计）
+	lineN: number; // 本路径最终几何的直线数
 }
 
 // COPPER layers only: TOP=1, BOTTOM=2, INNER_1..30 = 15..44 —— 与 pcb.route.rip_up 一致，
@@ -459,6 +462,13 @@ async function readRawTracks(opts: BeautifyOptions): Promise<RawTrack[]> {
 		getState_PrimitiveLock: () => boolean;
 	}>;
 
+	// net 白名单：合并单网 opts.net 与多网 opts.nets（空=不过滤）。
+	const wantNets = new Set<string>([
+		...(opts.net ? [opts.net] : []),
+		...(opts.nets ?? []),
+	]);
+	const netFilter = wantNets.size > 0 ? wantNets : null;
+
 	if (opts.scope === 'selected') {
 		const selectedIds = await eda.pcb_SelectControl.getAllSelectedPrimitives_PrimitiveId();
 		if (!selectedIds || selectedIds.length === 0)
@@ -468,8 +478,10 @@ async function readRawTracks(opts: BeautifyOptions): Promise<RawTrack[]> {
 		lines = all.filter(l => want.has(l.getState_PrimitiveId()));
 	}
 	else {
-		// 层过滤在下方按 onCopper/opts.layer 统一做（getAll 的 layer 形参类型收窄，直接传 net 即可）。
-		lines = (await eda.pcb_PrimitiveLine.getAll(opts.net)) ?? [];
+		// 单网时下推到 getAll 加速；多网/全网时取全部，在下方按 netFilter 过滤
+		// （getAll 的 layer 形参类型收窄，层过滤统一在循环里做）。
+		const single = netFilter && netFilter.size === 1 ? [...netFilter][0] : undefined;
+		lines = (await eda.pcb_PrimitiveLine.getAll(single)) ?? [];
 	}
 
 	const out: RawTrack[] = [];
@@ -479,7 +491,7 @@ async function readRawTracks(opts: BeautifyOptions): Promise<RawTrack[]> {
 		const layer = Number(l.getState_Layer());
 		if (!onCopper(layer))
 			continue;
-		if (opts.net && l.getState_Net() !== opts.net)
+		if (netFilter && !netFilter.has(l.getState_Net()))
 			continue;
 		if (opts.layer != null && layer !== opts.layer)
 			continue;
@@ -616,6 +628,8 @@ export async function runBeautify(opts: BeautifyOptions): Promise<BeautifySummar
 					protectedGroupKeys: (netToProtectedGroups.get(net) || []).map(g => g.key),
 					protectedCornerKeys: new Map(),
 					cornerOverrides: new Map(),
+					arcN: 0,
+					lineN: 0,
 				});
 			}
 		}
@@ -656,7 +670,12 @@ export async function runBeautify(opts: BeautifyOptions): Promise<BeautifySummar
 		return null;
 	};
 
+	// Counts are tracked PER PATH and reset on each (re-)commit so the summary
+	// reflects the FINAL geometry, not the cumulative total across DRC-repair
+	// rounds (each repair deletes then recreates a path's primitives).
 	const commitOps = async (ops: PathOp[], ctx: PathContext) => {
+		ctx.arcN = 0;
+		ctx.lineN = 0;
 		for (const item of ops) {
 			if (dist(item.start, item.end) < 0.001)
 				continue;
@@ -667,7 +686,7 @@ export async function runBeautify(opts: BeautifyOptions): Promise<BeautifySummar
 					item.start.x, item.start.y, item.end.x, item.end.y, item.width,
 				);
 				newId = resolveNewId(res);
-				if (newId) summary.linesCreated++;
+				if (newId) ctx.lineN++;
 			}
 			else {
 				const res = await eda.pcb_PrimitiveArc.create(
@@ -675,7 +694,7 @@ export async function runBeautify(opts: BeautifyOptions): Promise<BeautifySummar
 					item.start.x, item.start.y, item.end.x, item.end.y, item.angle!, item.width,
 				);
 				newId = resolveNewId(res);
-				if (newId) { summary.arcsCreated++; summary.cornersRounded++; }
+				if (newId) ctx.arcN++;
 			}
 			if (newId) {
 				ctx.createdIds.push(newId);
@@ -750,6 +769,11 @@ export async function runBeautify(opts: BeautifyOptions): Promise<BeautifySummar
 		}
 		summary.drcRounds = drcAttempt;
 	}
+
+	// 从各路径最终态汇总计数（反映最终几何，避免 DRC 重试的累计虚高）。
+	summary.arcsCreated = activePaths.reduce((n, c) => n + c.arcN, 0);
+	summary.linesCreated = activePaths.reduce((n, c) => n + c.lineN, 0);
+	summary.cornersRounded = summary.arcsCreated;
 
 	// ── 重铺覆铜（美化删/建轨迹会让同网 GND 键合 stale，重铺恢复连通性） ──
 	if (opts.rebuildPour) {
