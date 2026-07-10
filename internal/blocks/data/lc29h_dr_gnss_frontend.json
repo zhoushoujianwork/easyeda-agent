@@ -1,0 +1,254 @@
+{
+  "id": "block.lc29h_dr_gnss_frontend",
+  "desc": "LC29H(BA/CA) 双频 DR GNSS 前端:供电/去耦 + V_BCKP 常开 + 有源天线 bias-tee(⚠馈电源是模组 VDD_RF 输出——VDD_EXT/VDD_RF 都是输出脚,接成 3V3 输入=评审 P0 级错误)+ RF ESD/pi 占位 + UART/PPS/RST 边界",
+  "category": "rf",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:LC29H (Quectel LC29H Series Hardware Design V1.2 — pin7 VDD_EXT=2.8V 电源输出/pin9 VDD_RF=随 VCC 输出供有源天线馈电;有源天线参考电路 限流+RF扼流+隔直+ESD) ; 两处输出脚误接与缺失 bias-tee 由 motobox 车机V2 设计评审(P0,对照官方 HW Design 复核确认)修正后在 车机V2-fable P3 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异(P3 33 rails + 39 ports)。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up;D_SEL strap 方向/隔直必要性/L1+L5 匹配标 datasheet 终核。",
+  "parts": {
+    "U": {
+      "part": "gnss.lc29h_ba_smd24",
+      "qty": 1,
+      "note": "LC29H-BA(开发)/CA(量产降本,引脚协议兼容——采购只认 BA/CA 后缀,AA 无 DR)。功能脚(sch read 实测): WAKEUP(1)/FWD(2)/1PPS(3)/WHEELTICK(4)/D_SEL1(5)/D_SEL2(6)/VDD_EXT(7)/RESET_N(8)/VDD_RF(9)/RF_IN(11)/ANT_ON(14)/TXD2,RXD2(15,16)/WI(17)/I2C(18,19)/TXD1(20)/RXD1(21)/V_BCKP(22)/VCC(23)/GND(10,12,13,24)。"
+    },
+    "C_VCC": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "VCC 体电容。"
+    },
+    "C_VCC_HF": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VCC 高频。"
+    },
+    "C_EXT": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VDD_EXT(2.8V **输出**)去耦——该脚只作 D_SEL 等 strap 的上拉源,⚠禁止接 3V3。"
+    },
+    "C_RF": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VDD_RF(天线馈电 **输出**)去耦——⚠禁止接 3V3(会反灌内部 LDO)。"
+    },
+    "R_ANT": {
+      "part": "res.10r_0402",
+      "qty": 1,
+      "note": "天线馈电限流(VDD_RF→扼流→天线;天线短路时保护模组)。"
+    },
+    "L_ANT": {
+      "part": "ind.33nh_0402",
+      "qty": 1,
+      "note": "宽带 RF 扼流(27-47nH): 直流馈电通过、L1(1575M)/L5(1176M) 射频隔离(双频通过性终核)。"
+    },
+    "C_BLK": {
+      "part": "cap.100pf_0402",
+      "qty": 1,
+      "note": "RF 隔直(模组内置隔直则换 0R——按 HW Design 终核)。"
+    },
+    "R_PI": {
+      "part": "res.0r_0402",
+      "qty": 1,
+      "note": "pi 匹配串联占位(0R 起步,实测天线阻抗后替换)。"
+    },
+    "C_PI1": {
+      "part": "cap.100pf_0402",
+      "qty": 1,
+      "note": "pi 匹配并联占位1,DNP。"
+    },
+    "C_PI2": {
+      "part": "cap.100pf_0402",
+      "qty": 1,
+      "note": "pi 匹配并联占位2,DNP。"
+    },
+    "D_ESD": {
+      "part": "esd.esd9b5v0_sod923",
+      "qty": 1,
+      "note": "天线口 ESD 占位。⚠ESD9B5.0ST5G 结电容为多 pF 级,**不满足网表 <0.5pF 的 RF 规格**(L1 1575M/L5 1176M 下多 pF 对地=馈线低阻抗旁路)——RF 签核前必须换真 <0.5pF 件(TPD1E0B04/PESD0402-140 类),换型后入 standard-parts 并更新本块。双向件方向无关,贴连接器。"
+    },
+    "ANT": {
+      "part": "conn.ufl_rf_smt1",
+      "qty": 1,
+      "note": "U.FL 天线座: SIN(2)=信号, GND(1,3)。配 L1+L5 双频有源天线(偏压与 VDD_RF 电压匹配)。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.VCC",
+      "C_VCC.1",
+      "C_VCC_HF.1",
+      "PORT:VCC"
+    ],
+    [
+      "U.V_BCKP",
+      "PORT:VBCKP"
+    ],
+    [
+      "U.VDD_EXT",
+      "C_EXT.1"
+    ],
+    [
+      "U.VDD_RF",
+      "C_RF.1",
+      "R_ANT.1"
+    ],
+    [
+      "R_ANT.2",
+      "L_ANT.1"
+    ],
+    [
+      "U.RF_IN",
+      "C_BLK.1"
+    ],
+    [
+      "C_BLK.2",
+      "R_PI.1",
+      "C_PI1.1"
+    ],
+    [
+      "R_PI.2",
+      "L_ANT.2",
+      "ANT.SIN",
+      "D_ESD.1",
+      "C_PI2.1"
+    ],
+    [
+      "U.TXD1/SPI_MISO",
+      "PORT:TXD"
+    ],
+    [
+      "U.RXD1/SPI_MOSI",
+      "PORT:RXD"
+    ],
+    [
+      "U.1PPS",
+      "PORT:PPS"
+    ],
+    [
+      "U.RESET_N",
+      "PORT:RESET_N"
+    ],
+    [
+      "U.GND",
+      "ANT.GND",
+      "D_ESD.2",
+      "C_PI1.2",
+      "C_PI2.2",
+      "C_VCC.2",
+      "C_VCC_HF.2",
+      "C_EXT.2",
+      "C_RF.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "VCC": {
+      "dir": "in",
+      "at": "U.VCC",
+      "desc": "主供电 3.3V。待机要断电的设计经 block.pmos_highside_softstart 门控此口(几十 mA 的 GNSS 常开会吃光备份电池)",
+      "default_net": "+3V3_GNSS"
+    },
+    "VBCKP": {
+      "dir": "in",
+      "at": "U.V_BCKP",
+      "desc": "RTC/星历保持——接**常开**轨(不跟 VCC 一起被门控),断电后热启动/DR 状态保持靠它",
+      "default_net": "+3V3"
+    },
+    "TXD": {
+      "dir": "out",
+      "at": "U.TXD1/SPI_MISO",
+      "desc": "UART TX(NMEA/$PQTM DR 报文)→MCU RX",
+      "default_net": "GNSS_TXD"
+    },
+    "RXD": {
+      "dir": "in",
+      "at": "U.RXD1/SPI_MOSI",
+      "desc": "UART RX ←MCU TX。⚠VCC 被门控断电时 MCU 必须三态此线(防经 IO 钳位反灌)",
+      "default_net": "GNSS_RXD"
+    },
+    "PPS": {
+      "dir": "out",
+      "at": "U.1PPS",
+      "desc": "1PPS 时间脉冲→MCU 中断脚(UTC 时间锚/IMU 时间同步)",
+      "default_net": "GNSS_PPS"
+    },
+    "RESET_N": {
+      "dir": "in",
+      "at": "U.RESET_N",
+      "desc": "复位(低有效,内部上拉)——MCU 侧开漏驱动;门控断电时同样三态",
+      "default_net": "GNSS_RST"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "U.GND",
+      "desc": "地(4 脚同名一并;天线座地一并)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "本块最大的坑(评审 P0,官方 HW Design V1.2 确认): pin7 VDD_EXT 是 2.8V 电源**输出**、pin9 VDD_RF 是天线馈电**输出**——把它们当供电脚接 3V3 会反灌内部 LDO,且有源天线因此没有馈电=GNSS 无信号。本块已按输出语义接线。",
+    "有源天线馈电链: VDD_RF→R_ANT(10Ω 限流)→L_ANT(RF 扼流)→天线;信号链: RF_IN→C_BLK(隔直)→R_PI(pi 占位)→天线。两条链在 ANT 侧汇合。",
+    "D_SEL1/D_SEL2 接口选择 strap 本块**未内联**(悬空=待核): UART 模式的上/下拉方向按 HW Design 定,上拉源用 VDD_EXT——落图前必须关闭此项。",
+    "两轮 UDR: WHEELTICK/FWD 悬空(无轮速航位推算);DR 标定需行驶自学习,固件应暴露 未标定/标定中/已标定 状态。TXD2/RXD2/I2C/WI/WAKEUP/ANT_ON 本块悬空(有记录)。",
+    "V_BCKP 与 VCC 分轨是热启动的关键: VCC 被门控断电后 V_BCKP 保 RTC/星历——V_BCKP 也断则每次冷启动(TTFF 30s+,DR 重标定)。",
+    "BA(带 RTK)与 CA(纯 DR)引脚兼容;采购绝不能买成 AA(无 DR)——后缀即能力。",
+    "⚠BOM 必换项: parts.D_ESD 默认件电容多 pF 级,仅原型占位;网表要求 <0.5pF(有量化依据),RF 签核前必换。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "rf-keepout",
+      "target": "U.RF_IN→ANT 走线",
+      "constraint": "50Ω 受控阻抗微带,下方完整地平面,两侧禁布",
+      "value": "全程 50Ω;两侧 >=2×线宽",
+      "severity": "must"
+    },
+    {
+      "rule": "edge-placement",
+      "target": "ANT",
+      "constraint": "天线座靠板边,馈线最短",
+      "value": "edge",
+      "severity": "must"
+    },
+    {
+      "rule": "rf-isolation",
+      "target": "整块",
+      "constraint": "远离开关电源电感与 4G 天线(desense)",
+      "value": ">=10mm(4G 天线尽量 >=30mm)",
+      "severity": "must"
+    },
+    {
+      "rule": "cap-adjacency",
+      "target": "C_VCC_HF/C_EXT/C_RF",
+      "constraint": "去耦贴对应脚",
+      "value": "<=2mm",
+      "severity": "must"
+    }
+  ],
+  "signals": {
+    "GNSS_RF": {
+      "nets": [
+        "ANT_FEED"
+      ],
+      "type": "rf",
+      "impedance_ohm": 50,
+      "impedance_kind": "single-ended",
+      "route": "50Ω 受控阻抗微带(U.RF_IN→C_BLK→R_PI→ANT.SIN 全链),下方完整地平面,馈线最短;远离开关电感与 4G 天线",
+      "severity": "must",
+      "reason": "GNSS L1/L5 射频完整性,失配=灵敏度损失"
+    }
+  },
+  "bom_note": "13 件: LC29H + 去耦×4 + bias-tee 3 件 + pi 占位 3 件 + ESD + U.FL。DR GNSS(隧道/地库续推)标准前端;供电门控配 block.pmos_highside_softstart,V_BCKP 走常开轨。",
+  "placement": {
+    "ANT": {
+      "board_edge": true,
+      "edge": "any",
+      "side": "top",
+      "orientation": "U.FL 座置板边,馈线朝板内最短;远离 4G 天线",
+      "severity": "must",
+      "reason": "RF 天线接口须在板边,缩短馈线;天线跳线需装配插拔"
+    }
+  }
+}
