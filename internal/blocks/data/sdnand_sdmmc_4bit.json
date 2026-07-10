@@ -1,0 +1,60 @@
+{
+  "id": "block.sdnand_sdmmc_4bit",
+  "desc": "贴片 SD-NAND(4GB LGA-8)SDMMC 4-bit 接口:CMD/DAT0-3 全 10k 上拉 + CLK 22R 串阻 + 去耦;焊死存储消除卡座振动/拔卡失效(车载/穿戴黑盒)",
+  "category": "storage",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.11.0",
+  "updated": "v0.11.0",
+  "source": "datasheet:CSNP32GCR01-AOW (雷龙 — LGA-8 SD-NAND, SD 协议 4-bit) + SD 物理层规范(CMD/DAT 上拉要求) ; 容量陷阱(4Gbit≠4GB)与符号脚名实测经 motobox 车机V2 设计评审后在 车机V2-fable P2 整板落网",
+  "validated": "车机V2-fable 2026-07-09 by @zhoushoujianwork: 整板 place→autoconnect→sch check(0 桥接)→bridge-check 收敛→sch drc(0 fatal/0 error),spec↔sch read 逐网对账 0 差异(SD 六线逐网核实)。诚实: 随整板 netport 落网验证,非孤立块单放;未实板 bring-up。",
+  "parts": {
+    "U": {
+      "part": "storage.sdnand_csnp32g_lga8",
+      "qty": 1,
+      "note": "CSNP32GCR01-AOW 32Gbit=4GB。符号脚名(sch read 实测,非通用编号): SDD2(1)/SDD3(2)/SCLK(3)/VSS(4)/CMD(5)/SDD0(6)/SDD1(7)/VCC(8)。⚠容量陷阱: 型号里 04G 常是 4Gbit=482MB(C47116998 反例,评审实证)——按 BYTES 核 datasheet。"
+    },
+    "R_CMD": { "part": "res.10k_0402", "qty": 1, "note": "CMD 上拉(SD 规范必需)。" },
+    "R_D0": { "part": "res.10k_0402", "qty": 1, "note": "DAT0 上拉。" },
+    "R_D1": { "part": "res.10k_0402", "qty": 1, "note": "DAT1 上拉。" },
+    "R_D2": { "part": "res.10k_0402", "qty": 1, "note": "DAT2 上拉。" },
+    "R_D3": { "part": "res.10k_0402", "qty": 1, "note": "DAT3 上拉——4-bit 模式使能前先确认它在位(bring-up 检查项)。" },
+    "R_CLK": { "part": "res.22r_0402", "qty": 1, "note": "CLK 串阻(40MHz+ 最易振铃的线;可 0R 起步留位)。" },
+    "C_HF": { "part": "cap.100nf_0402", "qty": 1, "note": "VCC 高频去耦,贴 U.VCC。" },
+    "C_BULK": { "part": "cap.10uf_0805", "qty": 1, "note": "VCC 体电容(写突发 100mA+;1µF 偏小——评审值变更)。" }
+  },
+  "internal_nets": [
+    ["U.VCC", "C_HF.1", "C_BULK.1", "R_CMD.1", "R_D0.1", "R_D1.1", "R_D2.1", "R_D3.1", "PORT:3V3"],
+    ["U.CMD", "R_CMD.2", "PORT:CMD"],
+    ["U.SDD0", "R_D0.2", "PORT:D0"],
+    ["U.SDD1", "R_D1.2", "PORT:D1"],
+    ["U.SDD2", "R_D2.2", "PORT:D2"],
+    ["U.SDD3", "R_D3.2", "PORT:D3"],
+    ["R_CLK.1", "PORT:CLK"],
+    ["R_CLK.2", "U.SCLK"],
+    ["U.VSS", "C_HF.2", "C_BULK.2", "PORT:GND"]
+  ],
+  "ports": {
+    "3V3": { "dir": "in", "at": "U.VCC", "desc": "3.3V 供电(上拉同源)", "default_net": "+3V3" },
+    "CLK": { "dir": "in", "at": "R_CLK.1", "desc": "SDMMC CLK(主控侧;串阻在块内)", "default_net": "SD_CLK" },
+    "CMD": { "dir": "bidir", "at": "U.CMD", "desc": "SDMMC CMD", "default_net": "SD_CMD" },
+    "D0": { "dir": "bidir", "at": "U.SDD0", "desc": "DAT0", "default_net": "SD_D0" },
+    "D1": { "dir": "bidir", "at": "U.SDD1", "desc": "DAT1", "default_net": "SD_D1" },
+    "D2": { "dir": "bidir", "at": "U.SDD2", "desc": "DAT2", "default_net": "SD_D2" },
+    "D3": { "dir": "bidir", "at": "U.SDD3", "desc": "DAT3(1-bit 模式下也需上拉防误入 SPI)", "default_net": "SD_D3" },
+    "GND": { "dir": "bidir", "at": "U.VSS", "desc": "地", "default_net": "GND" }
+  },
+  "schematic_notes": [
+    "容量单位陷阱是本块最大教训: 『SDG04G』类型号的 04G=4Gbit=482MB,不是 4GB——环形缓冲设计按字节数核 datasheet(评审把 数月缓冲 修正成 120 小时的实例)。",
+    "焊死 NAND 无插拔=无 card-detect;固件按『永远在位』初始化,坏卡即返厂件。",
+    "ESP32-S3 的 SDMMC host 走 GPIO matrix,六线可自由分配引脚;其他主控核对 IOMUX 约束。",
+    "上拉全挂在块内(器件侧): 走线远端上拉利于信号完整性;主控内部弱上拉不可替代(深睡不保持)。",
+    "高速卡速(SDR50+)时六线做组内等长,CLK 串阻按实测眼图调。"
+  ],
+  "pcb_layout": [
+    { "rule": "cap-adjacency", "target": "C_HF/C_BULK", "constraint": "去耦贴 U.VCC", "value": "<=2mm", "severity": "must" },
+    { "rule": "length-match", "target": "CLK/CMD/D0-D3", "constraint": "六线组内等长(高速模式)", "value": "<=5mm 组内差", "severity": "should" },
+    { "rule": "series-r-adjacency", "target": "R_CLK", "constraint": "串阻靠主控端(源端端接)", "value": "近 MCU", "severity": "should" }
+  ],
+  "bom_note": "9 件: 4GB SD-NAND + 上拉×5 + CLK 串阻 + 去耦×2。振动环境(摩托/车载)黑盒存储标准单元——消除卡座接触/脱落/拔卡三类物理失效。"
+}
