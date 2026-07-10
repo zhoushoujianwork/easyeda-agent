@@ -89,5 +89,17 @@
       "reason": "RESET 键需人手按下,须在可操作面"
     }
   },
+  "silk": {
+    "SW_BOOT": {
+      "label": "BOOT",
+      "clearance": "outside-body — 标在按键本体上/下方外侧,按键帽不遮住",
+      "severity": "should"
+    },
+    "SW_RST": {
+      "label": "RST",
+      "clearance": "outside-body — 同 BOOT",
+      "severity": "should"
+    }
+  },
   "bom_note": "2 件:2× 轻触贴片按键(sw.tact_smd)。极简 —— 上拉/复位电容在模组块, 本块只有开关。"
 }

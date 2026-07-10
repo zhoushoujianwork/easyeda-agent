@@ -157,5 +157,13 @@
       "reason": "USB2.0 全速 D+/D- 高速差分"
     }
   },
+  "silk": {
+    "J_USB": {
+      "label": "USB-C",
+      "note": "USB 烧录/供电口",
+      "clearance": "outside-body — 标在 USB-C 本体外侧(非插拔口那面),装配后可见",
+      "severity": "should"
+    }
+  },
   "bom_note": "全 0402 无源 + 1× CH340C(扩展料)+ 1× USB-C + 1× SM712 ESD;约 7 种料"
 }

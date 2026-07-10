@@ -225,3 +225,48 @@ func TestSignalsMap(t *testing.T) {
 		}
 	}
 }
+
+// TestSilkMap: silk is keyed by <ROLE> (which part gets pin-level / polarity silk).
+// Every role must exist in parts; severity is enum-checked; each record must carry at
+// least one of label/pins/note (an empty silk record says nothing); pins (if present)
+// must decode as a pinRef→text string map. The `_doc` key is skipped.
+func TestSilkMap(t *testing.T) {
+	all, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range all {
+		var wrap struct {
+			Silk  map[string]json.RawMessage `json:"silk"`
+			Parts map[string]json.RawMessage `json:"parts"`
+		}
+		if err := json.Unmarshal(b.Raw, &wrap); err != nil {
+			t.Errorf("%s: parse silk: %v", b.ID, err)
+			continue
+		}
+		for role, raw := range wrap.Silk {
+			if role == "_doc" {
+				continue
+			}
+			if _, ok := wrap.Parts[role]; !ok {
+				t.Errorf("%s: silk role %q not in parts", b.ID, role)
+			}
+			var rec struct {
+				Label    string            `json:"label"`
+				Pins     map[string]string `json:"pins"`
+				Note     string            `json:"note"`
+				Severity string            `json:"severity"`
+			}
+			if err := json.Unmarshal(raw, &rec); err != nil {
+				t.Errorf("%s silk %s: %v", b.ID, role, err)
+				continue
+			}
+			if rec.Label == "" && len(rec.Pins) == 0 && rec.Note == "" {
+				t.Errorf("%s silk %s: empty — needs at least one of label/pins/note", b.ID, role)
+			}
+			if !okConstraintSeverity[rec.Severity] {
+				t.Errorf("%s silk %s: bad severity %q", b.ID, role, rec.Severity)
+			}
+		}
+	}
+}

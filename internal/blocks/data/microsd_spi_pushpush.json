@@ -194,5 +194,12 @@
       "reason": "SD SPI 中高速总线,长走线/强干扰会误码"
     }
   },
+  "silk": {
+    "J_SD": {
+      "label": "microSD",
+      "clearance": "outside-body — 卡座本体外侧;卡座在底面则标底层丝印",
+      "severity": "should"
+    }
+  },
   "bom_note": "8 件:1× microSD push-push 卡座(conn.tf_socket_pushpush)+ 5× 10k 0402(全上拉,含未用 DAT1/DAT2)+ 1× 10uF 0805 + 1× 0.1uF 0402。其中 10k×5 与 0.1uF 为 JLC basic 料;10uF 0805 与卡座为扩展/常规料。5 颗上拉一个都不能省(Espressif 硬要求)。"
 }

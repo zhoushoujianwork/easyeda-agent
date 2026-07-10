@@ -48,11 +48,14 @@
     "               and on a chosen copper side. THIS is where '此件要不要靠板边、放哪一面' lives.",
     "  signals    — 信号特性 (MAP <name>→{nets,type,impedance,length_match,route,keepout,severity}):",
     "               diff-pair / high-speed / RF / analog-sensitive net routing needs (USB D±, RS-485 A/B, RF).",
+    "  silk       — 丝印标记 (MAP <ROLE>→{label,pins,note,clearance,severity}): 引脚级/极性丝印——",
+    "               per-pin 标记(电源 +/−、总线 A/B/G、UART RX/TX、极性阴极 K)+ 功能名 label + 警示 note。",
+    "               铁律 clearance=outside-body:每个标记须落在器件本体/courtyard 之外,装配后不被元件或连接器塑料遮住。",
     "Future maps (thermal, emc, clearance-zones…) follow the same shape: a top-level map keyed by",
     "role/net/signal, each record carrying `severity` + `reason`. The go:embed loader keeps the full",
     "JSON (Raw) so unknown maps pass through untouched (forward-compatible) and `easyeda blocks show`",
     "prints them; `go test ./internal/blocks/` validates the known maps (placement roles exist in",
-    "parts; signals carry a type + nets; severity ∈ {must,should})."
+    "parts; signals carry a type + nets; silk roles exist in parts; severity ∈ {must,should})."
   ],
   "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
   "_schema": {
@@ -135,6 +138,18 @@
           "keepout": "隔离/护地/远离开关电源与时钟",
           "severity": "must | should",
           "reason": "为什么(如 USB2.0 高速差分 / RS-485 差分 / RF 50Ω)"
+        }
+      },
+      "silk": {
+        "_doc": "CONSTRAINT MAP『丝印标记』——按 <ROLE> 键。为需现场辨识/防接反的元件声明:label(whole-part 功能名)、pins(引脚级标记:pin 引用→丝印文字,pin 引用与 internal_nets 一致,端子用号 1/2/3、LED 用 +/-)、note(警示)。铁律 clearance=outside-body:每个标记必须落在该件本体/courtyard 之外、对应引脚外侧,装配后不被元件本体或连接器塑料遮住(否则等于没标)。只列需辨识的件(电源端子/总线端子/极性件/按键/接口),普通无源不列。",
+        "<ROLE>": {
+          "label": "whole-part 功能名丝印(可选),如 USB-C / microSD / BOOT / +12V IN",
+          "pins": {
+            "<pin 引用>": "该引脚丝印文字——如 1→\"+\" 2→\"−\" / 1→\"A\" 2→\"B\" 3→\"G\" / -→\"K\"(阴极)。pin 引用同 internal_nets 的写法"
+          },
+          "note": "警示自由文本(可选),如 A/B=IC:芯片定义与 Modbus 规范相反,勿接反",
+          "clearance": "outside-body — 每个标记置于对应 pad 本体外侧,装配后可见(强制不变式,值恒为此串)",
+          "severity": "must | should"
         }
       },
       "bom_note": "quantity/cost note across the block (e.g. all 0402, 1 extended part)"
