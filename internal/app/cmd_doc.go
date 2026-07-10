@@ -31,10 +31,12 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 
 	doc := &cobra.Command{
 		Use:   "doc",
-		Short: "Discover and switch the active EasyEDA document (schematic page / PCB)",
-		Long: "Discover every openable document in a window and switch between them.\n\n" +
-			"  easyeda doc ls --project <name>            list all schematic pages + PCBs, ★=active\n" +
-			"  easyeda doc switch <name|uuid> --project <name>   bring a document to the front\n\n" +
+		Short: "Discover and open/switch EasyEDA documents (schematic pages / PCBs)",
+		Long: "Discover every openable document in a window and open or switch between them.\n\n" +
+			"  easyeda doc ls --project <name>                      list all schematic pages + PCBs, ★=active\n" +
+			"  easyeda doc open <name|uuid> --project <name>        open a document (schematic page or PCB)\n" +
+			"  easyeda doc switch <name|uuid> --project <name>      switch to a document (same as open)\n" +
+			"  easyeda doc reload [name|uuid] --project <name>      save, close, and reopen a document\n\n" +
 			"Context is read live (not the connect-time snapshot), so the active marker\nand `daemon health` reflect the real foreground document.",
 	}
 	doc.PersistentFlags().StringVar(&window, "window", "", "EasyEDA window ID (usually prefer --project)")
@@ -115,6 +117,47 @@ func newDocCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	switchCmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a line")
+
+	// open is a semantically clearer alias for switch — "open a document" vs "switch to a document"
+	openCmd := &cobra.Command{
+		Use:   "open <name|uuid>",
+		Short: "Open a document (schematic page or PCB) by name or uuid",
+		Args:  cobra.ExactArgs(1),
+		Example: "  easyeda doc open PCB1 --project ceshi\n" +
+			"  easyeda doc open P1 --project ceshi\n" +
+			"  easyeda doc open ESP32-mini-v2 --project hardware",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := args[0]
+			docs, _, win, err := discoverDocs(cfg, window)
+			if err != nil {
+				return err
+			}
+			match, err := resolveDoc(docs, target)
+			if err != nil {
+				return err
+			}
+			if _, err := requestAction(cfg, "document.open", win,
+				map[string]any{"uuid": match.UUID}); err != nil {
+				return err
+			}
+			cur, err := requestAction(cfg, "document.current", win, nil)
+			if err != nil {
+				return err
+			}
+			out := map[string]any{
+				"opened": match,
+			}
+			if cur.Context != nil {
+				out["active"] = cur.Context
+			}
+			if jsonOut {
+				return writeJSON(stdout, out)
+			}
+			fmt.Fprintf(stdout, "✓ opened %s %q (%s)\n", match.Type, match.Name, match.UUID)
+			return nil
+		},
+	}
+	openCmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a line")
 
 	// doc reload — save + close + reopen a document. Exists because some
 	// per-document engine state only refreshes on a real close/reopen: a
@@ -239,7 +282,7 @@ document afterward and reports it as "activeRestored", so the ★ does not drift
 	}
 	reloadCmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a line")
 
-	doc.AddCommand(lsCmd, switchCmd, reloadCmd)
+	doc.AddCommand(lsCmd, switchCmd, openCmd, reloadCmd)
 	return doc
 }
 

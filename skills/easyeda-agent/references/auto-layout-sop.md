@@ -38,3 +38,31 @@
 
 ## 抗 churn(>~50 mutation,实测必备)
 显式 `--project`;`debug.exec_js` 批量多图元/次、每批切 <~20s(长调用被心跳杀);每批**重试 + 增量 `sch save`**(无 undo,半落未存=不可恢复);每批开头重拉新 pid。
+
+## 整板批量落图(bulk realize)实测补充(2026-07-09, box-v2 139件)
+
+> 配套脚本:`scripts/bulk-place.py`(manifest→放置+位号) 与
+> `scripts/bulk-connect.py`(连接spec→autoconnect+期望网表验证门+悬空脚修复循环)。
+
+1. **内部信号网也走 netport,不画长导线。** 器件经 autolayout 按行列排布后,
+   引脚大量共行/共列;pin→pin 长线(即使避开引脚、错开通道)与其他线只要
+   **共线相触就被 EasyEDA 合并成一条线** → 大面积隐性短路(实测两次全页
+   GND/+5V 合并)。稳定收敛的做法:电源地=netflag,内部信号网起可读网名
+   (`U2_FB`/`SW1`…)全走 netport 短桩。长导线只用于同器件相邻引脚(如
+   四焊盘电感的同侧双 pin)。相关: issue #64(autoconnect 评分不含 wire 几何)。
+2. **引脚坐标重合是 layout-lint 盲区。** autolayout 可能把 2-pin 小件的引脚
+   放到与大件引脚完全同点(实测 1210 电容 pin 与 0402 电阻 pin 同坐标),
+   bbox 不重叠 → lint 0 overlap,但该点接任何线即短路。放完件先跑一次
+   "引脚坐标去重"自检(同坐标出现 >1 个不同器件引脚 = 先挪件)。issue #63。
+3. **页面是隐式全局状态,切页后必须 settle。** `doc switch` 返回成功 ≠ 页面
+   就绪:立即 check/read 会拿到空/陈旧结果;`doc reload` 还可能改变活动页,
+   长流水线中后续命令会**落错页**(实测一批 connect 落到了别的页)。每个脚本
+   开头显式 switch + 轮询 sch list 稳定,关键 mutation 前再确认一次活动页。
+   issue #67。
+4. **`sch check --json` 是裸对象**(顶层 `{passed,summary,findings}`,无
+   `{result}` 信封,与 sch list/read 不同),按统一信封解析会静默拿空。
+   同名网的 multi-net-wire 告警(`GND、GND`)是共线合并噪音,真短路只看
+   `len(set(nets))>1`。issues #65/#66。
+5. **验证门 = spec 对照 `sch read`。** 每个 rail/port 成员读回真实 net 与
+   期望比对,逐条列差异 —— 这是比 sch check 更强的门(check 只看结构,
+   read 对照的是设计意图)。bulk-connect.py 内置。

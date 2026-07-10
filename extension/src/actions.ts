@@ -4207,6 +4207,414 @@ const pcbSilkSet: Handler = async (payload) => {
 };
 
 /**
+ * Auto-generate network-name silkscreen labels for nets with pads in a zone.
+ * Reads the list of nets and their pads, filters by zone_rect, computes
+ * collision-free positions, and creates free silkscreen STRING primitives.
+ * The core geometric layout is computed in the Go daemon; connector just
+ * fetches raw data and creates the strings.
+ */
+const pcbSilkNetnames: Handler = async (payload) => {
+	const zoneRect = payload.zone_rect as Record<string, number> | undefined;
+	if (!zoneRect || typeof zoneRect.left !== 'number' || typeof zoneRect.top !== 'number' ||
+		typeof zoneRect.right !== 'number' || typeof zoneRect.bottom !== 'number') {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing "zone_rect" ({left, top, right, bottom} in mil).');
+	}
+
+	const layer = optionalNumber(payload, 'layer') ?? 3; // 3=TOP_SILKSCREEN
+	const align = optionalString(payload, 'align') ?? 'left';
+	const fontSize = optionalNumber(payload, 'fontSize') ?? 40;
+	const lineWidth = optionalNumber(payload, 'lineWidth') ?? 6;
+	const excludeNets = (Array.isArray(payload.exclude_nets) ? payload.exclude_nets : []) as string[];
+
+	// Read nets and pads
+	let netNames: string[] = [];
+	let pads: Array<{ primitiveId: string; net: string; x: number; y: number; width: number; height: number }> = [];
+
+	try {
+		netNames = (await eda.pcb_Net.getAllNetsName()) ?? [];
+	} catch (err) {
+		throw edaError(err, 'Failed to read PCB net names.');
+	}
+
+	try {
+		const allPads = (await eda.pcb_PrimitivePad.getAll()) ?? [];
+		for (const pad of allPads) {
+			const net = pad.getState_Net?.() ?? null;
+			const padId = pad.getState_PrimitiveId?.() ?? null;
+			const x = pad.getState_X?.() ?? 0;
+			const y = pad.getState_Y?.() ?? 0;
+			if (net && padId) {
+				// Use fixed pad size for collision detection; refine later if needed
+				const width = 50, height = 50;
+				pads.push({ primitiveId: padId, net, x, y, width, height });
+			}
+		}
+	} catch (err) {
+		throw edaError(err, 'Failed to read PCB pads.');
+	}
+
+	// Filter nets: exclude those with no pads in zone, exclude manually excluded nets
+	const excludeSet = new Set(excludeNets);
+	const activeNets: Array<{ name: string; pads: typeof pads }> = [];
+	for (const netName of netNames) {
+		if (excludeSet.has(netName)) continue;
+		const netPads = pads.filter(p => p.net === netName);
+		const inZone = netPads.some(p => p.x >= zoneRect.left && p.x <= zoneRect.right && p.y >= zoneRect.bottom && p.y <= zoneRect.top);
+		if (inZone && netPads.length > 0) {
+			activeNets.push({ name: netName, pads: netPads });
+		}
+	}
+
+	// Sort nets by alignment (left=left-to-right by min pad x, right=right-to-left by max pad x)
+	activeNets.sort((a, b) => {
+		const minA = Math.min(...a.pads.map(p => p.x));
+		const minB = Math.min(...b.pads.map(p => p.x));
+		return align === 'right' ? minB - minA : minA - minB;
+	});
+
+	// Compute layout: place each net's label in free space around its zone-closest pad
+	const created: Array<Record<string, unknown>> = [];
+	const failed: Array<Record<string, unknown>> = [];
+	const occupied: Array<silkRect> = [];
+
+	// Helper: check if a rectangle overlaps with any occupied space or zone boundary
+	const canPlaceLabel = (labelBbox: silkRect, margin: number = 5): boolean => {
+		// Check zone boundary
+		if (labelBbox.minX < zoneRect.left - margin || labelBbox.maxX > zoneRect.right + margin ||
+			labelBbox.minY < zoneRect.bottom - margin || labelBbox.maxY > zoneRect.top + margin) {
+			return false;
+		}
+		// Check collision with occupied space
+		for (const occ of occupied) {
+			if (silkOverlap(labelBbox, occ, margin)) return false;
+		}
+		return true;
+	};
+
+	// Helper: estimate label bbox (approximate — actual bbox from create is more accurate)
+	const estimateLabelBbox = (x: number, y: number): silkRect => {
+		// Font 40mil, ~60% width (rough estimate for monospace)
+		const textLen = Math.max(5, 2) * fontSize * 0.6; // min 5 chars
+		return { minX: x, minY: y - fontSize, maxX: x + textLen, maxY: y };
+	};
+
+	for (const net of activeNets) {
+		try {
+			// Find closest pad to zone center
+			const zoneCx = (zoneRect.left + zoneRect.right) / 2;
+			const zoneCy = (zoneRect.top + zoneRect.bottom) / 2;
+			const padInZone = net.pads.filter(p =>
+				p.x >= zoneRect.left && p.x <= zoneRect.right &&
+				p.y >= zoneRect.bottom && p.y <= zoneRect.top
+			);
+			const padsToTry = padInZone.length > 0 ? padInZone : net.pads;
+
+			let best: { x: number; y: number } | null = null;
+
+			// Try each pad
+			for (const pad of padsToTry) {
+				if (best) break; // Found a placement, done
+				const margin = 10;
+				const candidates = [
+					{ x: pad.x + pad.width / 2 + margin, y: pad.y + margin, dir: 'right' },
+					{ x: pad.x - pad.width / 2 - margin, y: pad.y + margin, dir: 'left' },
+					{ x: pad.x + margin, y: pad.y + pad.height / 2 + margin, dir: 'top' },
+					{ x: pad.x + margin, y: pad.y - pad.height / 2 - margin, dir: 'bottom' },
+				];
+
+				// Try each direction
+				for (const cand of candidates) {
+					const estBbox = estimateLabelBbox(cand.x, cand.y);
+					if (canPlaceLabel(estBbox)) {
+						best = { x: cand.x, y: cand.y };
+						break;
+					}
+				}
+			}
+
+			if (!best) {
+				failed.push({ net: net.name, reason: 'no free space found (zone fully occupied)' });
+				continue;
+			}
+
+			// Create silkscreen string — 13 params: layer, x, y, text, unknown, fontSize, lineWidth,
+			// alignMode, rotation, isDuplicate, spacing, isMirror, isVertical
+			const created_prim = await eda.pcb_PrimitiveString.create(
+				layer as unknown as TPCB_LayersOfImage,
+				best.x,
+				best.y,
+				net.name,
+				'',
+				fontSize,
+				lineWidth,
+				0 as unknown as EPCB_PrimitiveStringAlignMode,
+				0, // rotation
+				false, // isDuplicate
+				0, // spacing
+				false, // isMirror
+				false, // isVertical
+			);
+
+			if (!created_prim) {
+				failed.push({ net: net.name, reason: 'create returned no primitive' });
+				continue;
+			}
+
+			const bbox = await eda.pcb_Primitive.getPrimitivesBBox([created_prim.getState_PrimitiveId?.() ?? '']) as silkRect | null;
+			if (bbox) occupied.push(bbox);
+
+			created.push({
+				net: net.name,
+				primitiveId: created_prim.getState_PrimitiveId?.() ?? '',
+				x: best.x,
+				y: best.y,
+				fontSize,
+				lineWidth,
+				bbox,
+			});
+		} catch (err) {
+			failed.push({ net: net.name, reason: String(err) });
+		}
+	}
+
+	return {
+		result: {
+			created,
+			total: created.length,
+			failed: failed.length > 0 ? failed : undefined,
+		},
+	};
+};
+
+/**
+ * Label component pads with pin numbers and/or net names. Useful for large
+ * connectors (J2, U1, etc.) to mark each pin's function. Reads pad coordinates
+ * + nets, computes collision-free positions around each pad, creates labels.
+ */
+const pcbSilkLabelPads: Handler = async (payload) => {
+	const refs = (Array.isArray(payload.refs) ? payload.refs : []) as string[];
+	if (refs.length === 0) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing "refs" ([]string of designators, e.g. ["J2", "U1"]).');
+	}
+
+	const layer = optionalNumber(payload, 'layer') ?? 3;
+	const fontSize = optionalNumber(payload, 'fontSize') ?? 30;
+	const lineWidth = optionalNumber(payload, 'lineWidth') ?? 4;
+	const content = optionalString(payload, 'content') ?? 'both'; // pin-number|net-name|both
+	const userSide = optionalString(payload, 'side') ?? 'auto'; // auto|right|below|above|left
+	const userAlignAxis = optionalString(payload, 'align_axis') ?? 'auto'; // auto|x|y
+	const excludeNets = (Array.isArray(payload.exclude_nets) ? payload.exclude_nets : []) as string[];
+	const excludeSet = new Set(excludeNets);
+
+	const created: Array<Record<string, unknown>> = [];
+	const failed: Array<Record<string, unknown>> = [];
+	const occupied: Array<silkRect> = [];
+
+	// Helper: check if label can be placed (no collision, within reasonable distance)
+	const canPlaceLabel = (labelBbox: silkRect, margin: number = 5): boolean => {
+		for (const occ of occupied) {
+			if (silkOverlap(labelBbox, occ, margin)) return false;
+		}
+		return true;
+	};
+
+	// Estimate label bbox
+	const estimateLabelBbox = (x: number, y: number, text: string): silkRect => {
+		const textLen = Math.max(2, text.length) * fontSize * 0.6;
+		return { minX: x, minY: y - fontSize, maxX: x + textLen, maxY: y };
+	};
+
+	// Read all components
+	let components: NonNullable<Awaited<ReturnType<typeof eda.pcb_PrimitiveComponent.getAll>>> = [];
+	try {
+		components = (await eda.pcb_PrimitiveComponent.getAll()) ?? [];
+	} catch (err) {
+		throw edaError(err, 'Failed to read PCB components.');
+	}
+
+	// Filter to specified refs
+	const refSet = new Set(refs);
+	const targetComps = components.filter(c => {
+		const des = c.getState_Designator?.() ?? '';
+		return refSet.has(des);
+	});
+
+	if (targetComps.length === 0) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `No components found with refs: ${refs.join(', ')}`);
+	}
+
+	// Determine side and align-axis ONCE for all components
+	let chosenSide: 'right' | 'below' | 'above' | 'left' = 'right';
+	let chosenAlignAxis: 'x' | 'y' = 'x'; // x=vertical pins (all same X), y=horizontal pins (all same Y)
+
+	if (userSide !== 'auto' && ['right', 'below', 'above', 'left'].includes(userSide)) {
+		chosenSide = userSide as 'right' | 'below' | 'above' | 'left';
+	}
+	if (userAlignAxis !== 'auto' && ['x', 'y'].includes(userAlignAxis)) {
+		chosenAlignAxis = userAlignAxis as 'x' | 'y';
+	}
+
+	// Auto-detect based on first component's bbox if both are 'auto'
+	if ((userSide === 'auto' || userAlignAxis === 'auto') && targetComps.length > 0) {
+		try {
+			const firstCompId = targetComps[0].getState_PrimitiveId?.() ?? '';
+			const firstBbox = (await eda.pcb_Primitive.getPrimitivesBBox?.([firstCompId])) as silkRect | null;
+			if (firstBbox) {
+				const width = firstBbox.maxX - firstBbox.minX;
+				const height = firstBbox.maxY - firstBbox.minY;
+				// Tall component (height > width) → vertical pins → X-axis align, labels on right/left
+				// Wide component (width > height) → horizontal pins → Y-axis align, labels on top/below
+				if (userAlignAxis === 'auto') {
+					chosenAlignAxis = height > width ? 'x' : 'y';
+				}
+				if (userSide === 'auto') {
+					chosenSide = height > width ? 'right' : 'below';
+				}
+			}
+		} catch {
+			// If auto-detect fails, use defaults
+		}
+	}
+
+	// Process each component's pads
+	for (const comp of targetComps) {
+		const compId = comp.getState_PrimitiveId?.() ?? '';
+		const designator = comp.getState_Designator?.() ?? '';
+		let pins: NonNullable<Awaited<ReturnType<typeof eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId>>> = [];
+
+		try {
+			pins = (await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId?.(compId)) ?? [];
+		} catch (err) {
+			failed.push({ ref: designator, pin: 'all', reason: `Failed to read pins: ${String(err)}` });
+			continue;
+		}
+
+		// Get component bbox to place labels outside the component
+		let compBbox: silkRect | null = null;
+		try {
+			compBbox = (await eda.pcb_Primitive.getPrimitivesBBox?.([compId])) as silkRect | null;
+		} catch {
+			// bbox is optional, continue without it
+		}
+
+		// Collect all valid pins (excluding those in exclude_nets)
+		const validPins = pins.filter(pin => {
+			const net = pin.getState_Net?.() ?? '';
+			return !(net && excludeSet.has(net));
+		});
+
+		if (validPins.length === 0) continue;
+
+		// Label each pin, placed PARALLEL at each pin's Y coordinate
+		// All labels aligned on the chosen side, each at its corresponding pin's height
+		let pinIndex = 0;
+
+		for (const pin of validPins) {
+			try {
+				const pinNum = pin.getState_PadNumber?.() ?? '?';
+				const net = pin.getState_Net?.() ?? '';
+				const pinX = pin.getState_X?.() ?? 0;
+				const pinY = pin.getState_Y?.() ?? 0;
+
+				// Generate label text
+				let labelText = '';
+				if (content === 'pin-number') labelText = String(pinNum);
+				else if (content === 'net-name') labelText = net || 'NC';
+				else labelText = `${pinNum}(${net || 'NC'})`;
+
+				// Place label on the chosen side, with alignment based on pin orientation
+				let bestPos: { x: number; y: number } | null = null;
+				const margin = 20;
+
+				if (compBbox) {
+					if (chosenAlignAxis === 'x') {
+						// X-axis align: all labels same X, Y = pin's Y (vertical pin array)
+						if (chosenSide === 'right') {
+							bestPos = { x: compBbox.maxX + margin, y: pinY };
+						} else if ((chosenSide as string) === 'left') {
+							bestPos = { x: compBbox.minX - margin, y: pinY };
+						} else {
+							bestPos = { x: compBbox.maxX + margin, y: pinY }; // fallback to right
+						}
+					} else {
+						// Y-axis align: all labels same Y, X = pin's X (horizontal pin array)
+						if (chosenSide === 'below') {
+							bestPos = { x: pinX, y: compBbox.minY - margin };
+						} else if (chosenSide === 'above') {
+							bestPos = { x: pinX, y: compBbox.maxY + margin };
+						} else {
+							bestPos = { x: pinX, y: compBbox.minY - margin }; // fallback to below
+						}
+					}
+				} else {
+					bestPos = { x: pinX + 30, y: pinY };
+				}
+				pinIndex++;
+
+				if (!bestPos) {
+					failed.push({ ref: designator, pin: String(pinNum), reason: 'no space found' });
+					continue;
+				}
+
+				// Verify placement doesn't collide
+				const estBbox = estimateLabelBbox(bestPos.x, bestPos.y, labelText);
+				if (!canPlaceLabel(estBbox)) {
+					failed.push({ ref: designator, pin: String(pinNum), reason: 'collision detected' });
+					continue;
+				}
+
+				// Create label
+				const label = await eda.pcb_PrimitiveString.create(
+					layer as unknown as TPCB_LayersOfImage,
+					bestPos.x,
+					bestPos.y,
+					labelText,
+					'',
+					fontSize,
+					lineWidth,
+					0 as unknown as EPCB_PrimitiveStringAlignMode,
+					0, // rotation
+					false, // isDuplicate
+					0, // spacing
+					false, // isMirror
+					false, // isVertical
+				);
+
+				if (!label) {
+					failed.push({ ref: designator, pin: String(pinNum), reason: 'create returned no primitive' });
+					continue;
+				}
+
+				const bbox = await eda.pcb_Primitive.getPrimitivesBBox([label.getState_PrimitiveId?.() ?? '']) as silkRect | null;
+				if (bbox) occupied.push(bbox);
+
+				created.push({
+					ref: designator,
+					pin: String(pinNum),
+					net: net || '',
+					primitiveId: label.getState_PrimitiveId?.() ?? '',
+					x: bestPos.x,
+					y: bestPos.y,
+					bbox,
+				});
+			} catch (err) {
+				failed.push({ ref: designator, pin: 'unknown', reason: String(err) });
+			}
+		}
+	}
+
+	return {
+		result: {
+			created,
+			total: created.length,
+			side_chosen: chosenSide,
+			align_axis_chosen: chosenAlignAxis,
+			failed: failed.length > 0 ? failed : undefined,
+		},
+	};
+};
+
+/**
  * List all nets on the active PCB. `IPCB_NetInfo` ({ net, color, length }) is a
  * plain data object and serializes directly.
  */
@@ -6590,6 +6998,8 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.silk.list': pcbSilkList,
 	'pcb.silk.add': pcbSilkAdd,
 	'pcb.silk.set': pcbSilkSet,
+	'pcb.silk.netnames': pcbSilkNetnames,
+	'pcb.silk.label_pads': pcbSilkLabelPads,
 	'pcb.nets.list': pcbNetsList,
 	'pcb.report': pcbReport,
 	'pcb.board.info': pcbBoardInfo,
