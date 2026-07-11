@@ -339,6 +339,27 @@ These are planned and **not implemented** today.
   query relevance, package, JLC-basic-part status, and stock.
 - **立创商城比对选型 / LCSC mall comparison selection** — compare candidate parts by
   price / stock / specs to pick the optimal one. Not built.
+- **🧭 PCB 布局智能补完 — `place-constrained` 的 4 个真缺陷(2026-07-11 复评官方
+  「PCB自动化工具」v2.5.1 后确认).** 官方插件的「整版全自动模块化布局」是 netlist/原理图模块
+  **连通性聚类**,不做角色感知 floorplan,**解决不了**「板框 / 器件类型优先级 / 朝向 / 板边距 /
+  天线」这 5 条——它们是**我们自己代码**要补的。`place-constrained` 结构上已领先插件,但有 4 个
+  内部缺陷,按杠杆排序:
+  1. **`classifyCP`/朝向硬编码正则,MIRROR 而非 CONSUME 块数据**(`pcb_place_constrained.go:71`)——
+     `internal/blocks/data/*.json` 的 `placement.<ROLE>` 提示 go-test 校验过却运行时不读;实锤
+     JP701(RS485 终端跳线)被 JP\* 规则甩到角落,`sp3485_rs485_halfduplex.json:216` 自己就警告却
+     修不了。**违反 [improvements-sink-to-blocks 铁律]**,最高优先。（**架构分叉**待定:planner 直接
+     consume 块数据 vs. 工具只做通用几何、per-part 由 agent 读块驱动 `pcb modify`——见 issue。）
+  2. **planner 的「板边」= 已放件云 union bbox,不读 `pcb.outline.get`**(:185-193)——手设/超大
+     板框 → 边算错。
+  3. **Tier-4 卫星哑螺旋,net-hug 逻辑困在独立 `auto-place` 没并进锁定流**——「贴边锁定」vs「贴芯片」
+     二选一。
+  4. **天线 keepout 只 CHECK/DSN 注入,布局阶段不自动生成禁铜区**——RF 模组坐到边上了,禁铜区要
+     另一步或人手画。
+
+  可从官方插件吸收(仅这几件,其余 route-short/pour/beautify/check 已有):**器件布局导出/导入
+  (布局复用)**(块库 PCB 侧对应物、正是缺陷#1 的运行时消费者)、netlist 聚类喂 Tier-4(补#3)、
+  模块级 fanout-with-vias、几条我们没有的 DFM 检查(REF方向/两脚线宽/时钟3W/冗余过孔·线段)。详见
+  memory `pcb-automatic-tool-v251-reeval-and-layout-defects`。
 
 ### 验收用例 roadmap (acceptance regressions, NOT yet run end-to-end)
 

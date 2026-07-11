@@ -17,7 +17,7 @@
 | Extension | 做什么 | 覆盖 | 备注 |
 |---|---|---|---|
 | **dfm-check** | | | |
-| PCB自动化工具 (PCB Automatic Tool) | 模块化自动布局+短线布线+fanout+局部铺铜+~10 条 DFM 审查 | 🟡partial | 布局/短线/铺铜三腿=我们的 `auto-place`/`route-short`/`pour`;它本就是我们 survey §8.5 的可行性证据。**DFM 检查已补齐 ~10 条**(`pcb check`:悬空线头/锐角/非正交/走线压焊盘/叠孔/单层过孔/两脚线宽/冗余共线段/3W 耦合/丝印正反,task #33 + 对抗验证修 6 bug,真机验证)。仅缺 fanout-with-vias |
+| PCB自动化工具 (PCB Automatic Tool) | 模块化自动布局+短线布线+fanout+局部铺铜+~10 条 DFM 审查 | 🟡partial | 布局/短线/铺铜三腿=我们的 `auto-place`/`route-short`/`pour`;它本就是我们 survey §8.5 的可行性证据。**DFM 检查已补齐 ~10 条**(`pcb check`:悬空线头/锐角/非正交/走线压焊盘/叠孔/单层过孔/两脚线宽/冗余共线段/3W 耦合/丝印正反,task #33 + 对抗验证修 6 bug,真机验证)。仅缺 fanout-with-vias。**【2026-07-11 v2.5.1 复评】** v2.x 只扩 DFM 检查、**布局算法零升级**(仍是 netlist/原理图模块**连通性聚类**,非角色 floorplan)→ **解决不了角色感知布局 5 痛点**(板框/类型优先级/朝向/板边距/天线),那些是**我们自己代码**要补的(见 FEATURES roadmap「PCB 布局智能补完」+ memory `pcb-automatic-tool-v251-reeval-and-layout-defects`)。唯一新增值得吸收=**器件布局导出/导入(布局复用)**——块库的 PCB 侧对应物 |
 | **analysis-report** | | | |
 | eext-export-design-report | 只读 PCB 统计报表 (net 长度/net-class/差分/等长/pad 坐标) CSV | 🟡partial | `pcb report` 已做 4/6 (还多算 skew/spread);缺 pad-pair groups + 逐 pad 坐标 dump。mm/CSV 只是格式 |
 | eext-netlist-explorer | netlist 表格+统计仪表盘+拓扑图+BOM (交互 UI) | ✅full | 数据源 `getNetlistFile()` 与我们 `sch read`/`check`/`netlist` 完全同源;剩下全是 web 可视化,不吸 |
