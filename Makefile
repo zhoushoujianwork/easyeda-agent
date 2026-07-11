@@ -181,5 +181,7 @@ publish-skill: ## publish skills/easyeda-agent to ClawHub  (VERSION=vX.Y.Z requi
 ifndef VERSION
 	$(error VERSION is required — usage: make publish-skill VERSION=v0.8.2)
 endif
+	@find $(CURDIR)/skills/easyeda-agent -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null; \
+		find $(CURDIR)/skills/easyeda-agent -name '*.pyc' -delete 2>/dev/null; true
 	clawhub publish $(CURDIR)/skills/easyeda-agent --slug easyeda-agent --version $(VERSION:v%=%) \
 		--changelog "easyeda-agent $(VERSION) — https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/$(VERSION)"

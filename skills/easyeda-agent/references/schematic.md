@@ -3,6 +3,10 @@
 
 Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a typed action is missing and the user explicitly accepts a debug path.
 
+> **本文导航**:Workflow · Production preflight gates · library-first 绘图 · netlist 批量实现 ·
+> pin-aware autoconnect · module-aware autolayout · zone-less packing · Actions · Bundled Scripts ·
+> Guardrails · Layout Conventions · EasyEDA Electrical Rules(load-bearing)· Missing Actions。
+
 ## Workflow
 
 1. Run `easyeda health`.
@@ -28,7 +32,7 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 > canonical orientation table + standard-parts library). This operational skill
 > **links** to it — single source, never copy the rules here.
 
-> ⚠️ **整板 / 非平凡设计 → 先走 [`easyeda-agent`](./design-flow.md) 流程脊柱。**
+> ⚠️ **整板 / 非平凡设计 → 先走 [`design-flow.md`](./design-flow.md) 流程脊柱。**
 > 那里有分阶段 + 硬门禁(预分析 → 分页 → 模块编组 → 按组摆放 → 通道布线 → DRC + layout-lint → 调整闭环),
 > 专治「随手摆导致覆盖、外围乱飞、线压元件」。本 skill 提供它每一步要调用的**具体动作**。
 >
@@ -38,6 +42,10 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 > 然后照 [`auto-layout-sop.md`](./auto-layout-sop.md)
 > 的 CLI 能力 + 硬坑落坐标,布局**用数据 + 截图自调**(放→读回坐标→`sch layout-lint` 判覆盖/间距→挪→再验)。
 > 小改 / 几个器件直接按下面放置。
+>
+> ⚠️ **标准外围先查块(铁律 8):** `easyeda blocks show <id>` 给 `internal_nets`(照抄拓扑,引脚用
+> 功能名零改号)+ `ports`(重绑边界网络)+ `schematic_notes`(落线注意);命中就别手接。ESP32
+> 自动下载(双三极管交叉耦合时序易接反)这类电路尤其照块抄,别凭记忆手连。
 
 Place **real parts from the EasyEDA / 立创(LCSC) library**, then wire them.
 Hand-drawing a custom component symbol is the **fallback**, used only when the
@@ -326,7 +334,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 
 PCB 操作（切到 PCB、读器件/层/网络/Board、从原理图 `import_changes` 同步、布局摆位
 move/rotate/align/distribute/grid_snap/cluster-arrange）在独立的 operational skill
-**[`easyeda-agent`](./pcb.md)** —— 见那里(单一真源,勿在此复制)。
+**[`pcb.md`](./pcb.md)** —— 见那里(单一真源,勿在此复制)。
 
 ## Bundled Scripts
 
@@ -346,7 +354,9 @@ move/rotate/align/distribute/grid_snap/cluster-arrange）在独立的 operationa
 
 - Confirm before deleting primitives.
 - Confirm before saving unless the user explicitly asked to save.
-- **持久化:`place`/`wire`/`modify` 只改 EasyEDA 内存,不 `schematic.save` 就不落盘** —— 窗口重载 / daemon 重启 / EasyEDA 崩溃会丢掉未保存的改动(实测踩过)。daemon 默认开**防抖 autosave(3s)** 兜底(`daemon start --autosave-debounce`,`0` 关),但防抖窗口内进程挂掉仍会丢最后几笔,所以多步改动仍**分批显式 `sch save`**,别只靠 autosave。整板流程的存盘节奏见 [`easyeda-agent`](./design-flow.md) 的 💾 检查点。
+- **幂等性**:`sch autoconnect` 幂等(重跑同 spec 安全,已连脚 skip,改网加 `--replace`);`sch connect`
+  **非幂等** —— 重发前先 `sch read` 核对,否则在同一脚叠加 flag。
+- **持久化:`place`/`wire`/`modify` 只改 EasyEDA 内存,不 `schematic.save` 就不落盘** —— 窗口重载 / daemon 重启 / EasyEDA 崩溃会丢掉未保存的改动(实测踩过)。daemon 默认开**防抖 autosave(3s)** 兜底(`daemon start --autosave-debounce`,`0` 关),但防抖窗口内进程挂掉仍会丢最后几笔,所以多步改动仍**分批显式 `sch save`**,别只靠 autosave。整板流程的存盘节奏见 [`design-flow.md`](./design-flow.md) 的 💾 检查点。
 - Confirm before running a generated multi-step mutation plan.
 - Do not claim completion after mutation until verification succeeds or the remaining risk is stated.
 - Treat `File` and `Blob` outputs as artifacts.
@@ -362,7 +372,7 @@ When placing components, follow [schematic-layout-conventions.md](./schematic-la
 - Wire stub lengths (20–40 units for power, 20–60 for signals)
 - Right-angle-only routing, decoupling caps within 30 units of VCC pins
 
-> **PCB 布局**约定在 [pcb-layout-conventions.md](./pcb-layout-conventions.md)，操作流程在 [`easyeda-agent`](./pcb.md) skill。
+> **PCB 布局**约定在 [pcb-layout-conventions.md](./pcb-layout-conventions.md)，操作流程在 [`pcb.md`](./pcb.md) skill。
 
 ## EasyEDA Electrical Rules (load-bearing — DRC will fatal if ignored)
 

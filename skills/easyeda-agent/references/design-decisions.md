@@ -4,6 +4,10 @@
 
 ---
 
+> **决策点导航**:叠层与层数(Stackup)· 接地策略(Ground Strategy)· RF/天线禁布区(guardrail 锚点,非决策)·
+> 接口取向(Connector Orientation)· 选型成本档位(Part Cost Tier)· 装配与布局形态(单/双面 + 焊接工艺)。
+> S0 方案书逐条摊给用户拍板。
+
 ## 叠层与层数(Stackup)
 
 ### 2 层 vs 4 层（及以上）层数

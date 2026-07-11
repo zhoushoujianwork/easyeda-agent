@@ -5,6 +5,10 @@ When an AI agent (via `easyeda-agent`) generates or modifies a schematic, it mus
 > **自动批量实现** 一整张网表时,这些规则的执行**次序**见 [`auto-layout-sop.md`](./auto-layout-sop.md)
 > (图纸自适应 → 主器件分区 → 辅助件就近 → 微调)——它把下面的分区/间距/去耦/朝向串成机器可执行的 SOP。
 
+> **本文导航(§)**:0 坐标系/单位 · 1 分区(Zone Map)· 2 模块间距 · 3 Wire 长度/走线约定 ·
+> 4 命名约定 · 5 Designator 前缀 · 6 去耦电容规则 · 7 真实参考 motobox2026 · 8 真实参考 ESP32S3R8N8 ·
+> 9 自动化布局执行步骤 · 10 边界/开放问题 · 11 图纸边界/标题栏 keep-out。
+
 ## 0. 坐标系与单位
 
 - EasyEDA Pro 原理图网格单位 = `0.01 inch`（1 grid step = 10 raw units）。

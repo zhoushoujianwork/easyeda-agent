@@ -4,6 +4,12 @@ Roadmap item ③. Turns "pick a part" from an arbitrary `library.search` first-m
 into a **data-driven choice**: the cheapest, in-stock, JLC-**basic**, spec-matching
 part — so the BOM is manufacturable without surprise feeder fees or stockouts.
 
+## 选型前先查块
+
+**标准外围(RS-485 / buck / USB 串口 / GNSS / 充电 / microSD…)先 `easyeda blocks search <关键词>`** ——
+命中后块的 `parts` map 直接给出 `standard-parts.json` 的 role,**选型这步免做**;只有块里没有、或板级
+专有件才走下面的比对选型/排名流程。
+
 ## Data sources (live, no API key, browser User-Agent)
 
 | Source | Endpoint | Gives |
