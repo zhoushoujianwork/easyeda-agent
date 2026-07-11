@@ -1970,6 +1970,15 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 						applied++
 					}
 				}
+				// Connectors the tool could NOT orient (symmetric terminals/headers —
+				// the opening direction isn't in the pad geometry). Surface them as an
+				// explicit reminder to confirm / hand-place rather than trust a guess.
+				var confirmOrient []string
+				for _, d := range diags {
+					if strings.HasSuffix(d.Reason, ":confirm-orientation") {
+						confirmOrient = append(confirmOrient, d.Designator)
+					}
+				}
 				out := map[string]any{
 					"ok": true, "dryRun": dryRun, "holes": len(holes),
 					"planned": len(moves), "applied": applied,
@@ -1978,6 +1987,10 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 				}
 				if opt.board != nil {
 					out["board"] = map[string]any{"x0": opt.board.x0, "y0": opt.board.y0, "x1": opt.board.x1, "y1": opt.board.y1}
+				}
+				if len(confirmOrient) > 0 {
+					out["confirmOrientation"] = confirmOrient
+					out["note"] = "对称/低置信连接器工具无法定向,已按原样保留:请确认这些端子的开口朝板外(或手动摆放)—— " + strings.Join(confirmOrient, ", ")
 				}
 				enc := json.NewEncoder(stdout)
 				enc.SetIndent("", "  ")

@@ -80,6 +80,78 @@ func placementIndex() blocks.PlacementIndex {
 	return cpIdx
 }
 
+// cpOpenOnce lazily loads the block library's connector-opening declarations
+// (which local side a connector's opening faces), so Tier-2 can orient a symmetric
+// terminal whose opening isn't in the pad geometry. Built once; read-only after.
+var (
+	cpOpenOnce sync.Once
+	cpOpen     []blocks.ConnectorOpening
+)
+
+func connectorOpenings() []blocks.ConnectorOpening {
+	cpOpenOnce.Do(func() {
+		if o, err := blocks.LoadConnectorOpenings(); err == nil {
+			cpOpen = o
+		}
+	})
+	return cpOpen
+}
+
+// openingVec parses a local opening string ("+x"/"-x"/"+y"/"-y") into a unit vector.
+func openingVec(local string) (float64, float64, bool) {
+	switch strings.ToLower(strings.TrimSpace(local)) {
+	case "+x", "x":
+		return 1, 0, true
+	case "-x":
+		return -1, 0, true
+	case "+y", "y":
+		return 0, 1, true
+	case "-y":
+		return 0, -1, true
+	}
+	return 0, 0, false
+}
+
+// connOpeningFor returns the block-declared LOCAL opening vector for a device (by
+// manufacturerId substring), if any block declares one.
+func connOpeningFor(device string) (float64, float64, bool) {
+	d := strings.ToLower(strings.TrimSpace(device))
+	if d == "" {
+		return 0, 0, false
+	}
+	for _, o := range connectorOpenings() {
+		if strings.Contains(d, strings.ToLower(o.Match)) {
+			if vx, vy, ok := openingVec(o.Local); ok {
+				return vx, vy, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+// rotate2d rotates (x,y) by deg CCW — the EasyEDA component-rotation convention
+// (calibrated on a real KF301: its local -y opening points +x at rotation 90).
+func rotate2d(x, y, deg float64) (float64, float64) {
+	r := deg * math.Pi / 180
+	c, s := math.Cos(r), math.Sin(r)
+	return x*c - y*s, x*s + y*c
+}
+
+// openingTargetDelta returns the rotation delta ∈ {0,90,180,270} to ADD to curRot
+// so the connector's local opening ends up facing OFF the assigned board edge.
+func openingTargetDelta(curRot, lox, loy float64, edge apEdge) float64 {
+	ix, iy := edgeInteriorDir(edge)
+	obx, oby := -ix, -iy // off-board = away from the interior
+	bestDelta, bestDot := 0.0, math.Inf(-1)
+	for _, d := range []float64{0, 90, 180, 270} {
+		ax, ay := rotate2d(lox, loy, curRot+d)
+		if dot := ax*obx + ay*oby; dot > bestDot {
+			bestDot, bestDelta = dot, d
+		}
+	}
+	return bestDelta
+}
+
 // classFromHint maps a block placement hint to a placement tier. It decides ONLY
 // on an EXPLICIT signal; an advisory hint (a side/orientation note with no
 // board_edge / user-facing / anchor) returns ok=false so classifyCP falls through
@@ -367,7 +439,14 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 		// edge-flush, outward-facing part and leave it untouched.
 		alreadyGood := best <= opt.edgeMargin+30 && curScore > 15
 		clearlyWrong := curScore < -30 && score > 30
-		if alreadyGood || !clearlyWrong {
+		blockOriented := false
+		if lox, loy, ok := connOpeningFor(c.footprint); ok {
+			// The block DECLARES which local side the opening faces → deterministic:
+			// rotate so it faces off-board. This overrides the pad-geometry guess AND
+			// the confirm flag — the opening isn't in the pads for a symmetric terminal.
+			delta = openingTargetDelta(c.rotation, lox, loy, edge)
+			blockOriented = true
+		} else if alreadyGood || !clearlyWrong {
 			delta = 0
 		}
 		// Geometry after the chosen rotation (about the anchor).
@@ -390,11 +469,24 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 			moves = append(moves, apMove{ID: c.id, Designator: c.designator,
 				NewX: round1(nx), NewY: round1(ny), NewRot: c.rotation + delta, SetRot: delta != 0, Edge: edge.String()})
 		}
+		// If we could NEITHER confirm the opening already faces out (alreadyGood) NOR
+		// confidently rotate it (clearlyWrong), then the opening direction isn't in the
+		// pad geometry — a symmetric 2-pin terminal / header. Don't silently leave a
+		// possibly-wrong-facing connector: flag it so the user confirms the opening
+		// faces off-board or hand-places it (per the "对称件保留用户手调" rule).
+		needsConfirm := !blockOriented && !alreadyGood && !clearlyWrong && curScore <= 15
 		reason := "edge:" + edge.String()
-		if alreadyGood {
+		switch {
+		case blockOriented && delta != 0:
+			reason += ":oriented-by-block"
+		case blockOriented:
+			reason += ":block-ok"
+		case alreadyGood:
 			reason += ":recognized"
-		} else if delta != 0 {
+		case delta != 0:
 			reason += ":oriented"
+		case needsConfirm:
+			reason += ":confirm-orientation"
 		}
 		diags = append(diags, apDiag{Designator: c.designator, Reason: reason})
 	}

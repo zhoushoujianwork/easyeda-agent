@@ -2,6 +2,7 @@ package app
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/blocks"
@@ -263,6 +264,81 @@ func TestConstrainedPlaceSatelliteHugsChip(t *testing.T) {
 	toOrigin := math.Hypot(c1.NewX, c1.NewY)
 	if toU3 > toOrigin {
 		t.Errorf("C1 should hug its net partner U3 (~2000,2000); landed (%.0f,%.0f) closer to the origin", c1.NewX, c1.NewY)
+	}
+}
+
+// TestConstrainedPlaceFlagsAmbiguousTerminal: a symmetric connector with NO block-
+// declared opening (a plain pin header here) has its opening direction absent from
+// the pad geometry, so the tool must flag it for user confirmation
+// (":confirm-orientation") instead of silently trusting the rotation. (A connector
+// the block DOES declare, e.g. KF301, is auto-oriented instead — see
+// TestConstrainedPlaceOrientsTerminalByBlock.)
+func TestConstrainedPlaceFlagsAmbiguousTerminal(t *testing.T) {
+	j5 := mkCP("J5", "HDR-2.54-1x2P", 1, 500, 100, 200, 150, 0)               // pin header: no block opening
+	j5.pads = []apPad{{num: "1", x: 450, y: 100}, {num: "2", x: 550, y: 100}} // symmetric about (500,100)
+	comps := []cpComp{
+		mkCP("U3", "CH340C", 1, 500, 800, 300, 200, 16), // main → defines the board extent
+		j5,
+	}
+	_, diags := planConstrainedPlace(comps, nil, defaultCpOptions())
+	var r string
+	for _, d := range diags {
+		if d.Designator == "J5" {
+			r = d.Reason
+		}
+	}
+	if !strings.Contains(r, "confirm-orientation") {
+		t.Errorf("symmetric header J5 (no block opening) must be flagged confirm-orientation; got %q", r)
+	}
+}
+
+// TestOpeningTargetDelta: the rotation math that faces a declared opening off-board.
+func TestOpeningTargetDelta(t *testing.T) {
+	// KF301 local opening -y. On the LEFT edge, off-board is -x. From rotation 90
+	// (opening +x, inward) the tool must add 180 → rotation 270 (opening -x, out).
+	if d := openingTargetDelta(90, 0, -1, edgeLeft); d != 180 {
+		t.Errorf("KF301(-y) at rot90 on left edge needs delta 180 (→270); got %v", d)
+	}
+	// Already correct at 270 → delta 0 (idempotent).
+	if d := openingTargetDelta(270, 0, -1, edgeLeft); d != 0 {
+		t.Errorf("KF301(-y) at rot270 already faces out → delta 0; got %v", d)
+	}
+	// On the RIGHT edge, off-board is +x → the opening must point +x (rotation 90).
+	if d := openingTargetDelta(0, 0, -1, edgeRight); d != 90 {
+		t.Errorf("KF301(-y) at rot0 on right edge needs delta 90 (opening +x); got %v", d)
+	}
+}
+
+// TestConstrainedPlaceOrientsTerminalByBlock is the end-to-end fix for the wrong
+// terminal orientation: a KF301 dropped opening-inward is auto-rotated so its
+// opening faces off-board, using the block-declared opening (xl1509_buck), NOT a
+// pad-geometry guess — and it is NOT flagged for manual confirmation.
+func TestConstrainedPlaceOrientsTerminalByBlock(t *testing.T) {
+	j1 := mkCP("J1", "KF301-5.0-2P", 1, 100, 500, 200, 300, 2)
+	j1.rotation = 90 // opening inward (+x) on the left edge
+	comps := []cpComp{
+		mkCP("U3", "CH340C", 1, 1500, 500, 300, 200, 16), // main → interior to the right
+		j1,
+	}
+	opt := defaultCpOptions()
+	opt.board = &cpRect{0, 0, 2000, 1000} // J1 sits near the left edge
+	moves, diags := planConstrainedPlace(comps, nil, opt)
+	var m *apMove
+	for i := range moves {
+		if moves[i].Designator == "J1" {
+			m = &moves[i]
+		}
+	}
+	if m == nil || !m.SetRot {
+		t.Fatal("J1 should be re-oriented by the block opening (a rotation move)")
+	}
+	if int(m.NewRot)%360 != 270 {
+		t.Errorf("J1 KF301 on the left edge should rotate to 270 (opening off-board); got %v", m.NewRot)
+	}
+	for _, d := range diags {
+		if d.Designator == "J1" && strings.Contains(d.Reason, "confirm-orientation") {
+			t.Errorf("block-oriented J1 must NOT need manual confirmation; got %q", d.Reason)
+		}
 	}
 }
 
