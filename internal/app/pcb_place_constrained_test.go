@@ -186,6 +186,44 @@ func TestConstrainedPlaceKeepsJP701(t *testing.T) {
 	}
 }
 
+// TestConstrainedPlaceUsesRealOutline is the defect-#2 regression: when a real
+// board outline is supplied, edge parts snap to the ACTUAL board edge, not to the
+// tight part-cloud extent (the topmost/edge-most part must not define its own
+// edge). Parts clustered near the origin on a much larger board must be flung to
+// the real edge.
+func TestConstrainedPlaceUsesRealOutline(t *testing.T) {
+	comps := []cpComp{
+		mkCP("U3", "CH340C", 1, 500, 500, 300, 200, 16),           // main
+		mkCP("J1", "KF301-3P terminal", 1, 500, 300, 200, 150, 3), // edge, nearest the bottom
+	}
+	find := func(ms []apMove, des string) (apMove, bool) {
+		for _, m := range ms {
+			if m.Designator == des {
+				return m, true
+			}
+		}
+		return apMove{}, false
+	}
+	// No outline → J1 snaps to the tight part-cloud bottom (~y 300s).
+	pc, _ := planConstrainedPlace(comps, nil, defaultCpOptions())
+	j1pc, ok := find(pc, "J1")
+	if !ok {
+		t.Fatal("J1 should be edge-snapped (part-cloud fallback)")
+	}
+	// Real board is far larger → J1 snaps to the REAL bottom edge (y≈0), far lower.
+	opt := defaultCpOptions()
+	opt.board = &cpRect{0, 0, 4000, 4000}
+	rb, _ := planConstrainedPlace(comps, nil, opt)
+	j1rb, ok := find(rb, "J1")
+	if !ok {
+		t.Fatal("J1 should be edge-snapped (real outline)")
+	}
+	if !(j1rb.NewY < j1pc.NewY-100) {
+		t.Errorf("with the real (larger) outline J1 must snap to the real bottom edge, "+
+			"far below the part-cloud edge: part-cloud newY=%.0f real-board newY=%.0f", j1pc.NewY, j1rb.NewY)
+	}
+}
+
 func TestConstrainedPlaceEdgeSnapAndNoOverlap(t *testing.T) {
 	// A USB connector parked 300mil inside the board must snap to the nearest edge;
 	// satellites must not overlap it or each other.

@@ -256,6 +256,7 @@ type cpOptions struct {
 	mainPins   int
 	edgeMargin float64 // gap between an edge part's bbox and the board edge
 	partGap    float64 // clearance between any two parts / part-to-hole
+	board      *cpRect // REAL board-outline bbox; nil → fall back to the part-cloud union extent
 }
 
 func defaultCpOptions() cpOptions {
@@ -276,7 +277,12 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 	if len(comps) == 0 {
 		return moves, diags
 	}
-	// Board rect = current placed extent (outline-fit already sized it).
+	// Board rect. Prefer the REAL board outline when the caller supplies it; the
+	// part-cloud union below is only the fallback. Using the part cloud as "the
+	// board" is wrong whenever the outline differs from the placed extent — the
+	// topmost part would otherwise define its own "top edge", so an edge connector
+	// snaps to the part pile instead of the actual board edge (the flaky U1 WROOM
+	// edge:top on ceshi was exactly this).
 	bx0, by0 := math.Inf(1), math.Inf(1)
 	bx1, by1 := math.Inf(-1), math.Inf(-1)
 	for _, c := range comps {
@@ -285,6 +291,9 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 		}
 		bx0, by0 = math.Min(bx0, c.minX), math.Min(by0, c.minY)
 		bx1, by1 = math.Max(bx1, c.maxX), math.Max(by1, c.maxY)
+	}
+	if opt.board != nil {
+		bx0, by0, bx1, by1 = opt.board.x0, opt.board.y0, opt.board.x1, opt.board.y1
 	}
 	m := opt.partGap
 	// placed holds the FIXED rects (edge parts + mains + holes) satellites avoid.

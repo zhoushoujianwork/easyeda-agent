@@ -1943,6 +1943,14 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 				if partGap > 0 {
 					opt.partGap = partGap
 				}
+				// Snap edges to the REAL board outline when one exists; fall back to the
+				// part-cloud extent otherwise (and say which was used, so a flaky edge
+				// position is explainable rather than silent).
+				boardSrc := "part-cloud-bbox (no outline — run `pcb outline-fit` for real edges)"
+				if r, oerr := outlineRect(cfg, window, 0); oerr == nil {
+					opt.board = &cpRect{r[0], r[1], r[2], r[3]}
+					boardSrc = "board-outline"
+				}
 				moves, diags := planConstrainedPlace(comps, holes, opt)
 
 				applied := 0
@@ -1964,7 +1972,11 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 				out := map[string]any{
 					"ok": true, "dryRun": dryRun, "holes": len(holes),
 					"planned": len(moves), "applied": applied,
-					"moves": moves, "diags": diags, "failures": failures,
+					"boardEdges": boardSrc,
+					"moves":      moves, "diags": diags, "failures": failures,
+				}
+				if opt.board != nil {
+					out["board"] = map[string]any{"x0": opt.board.x0, "y0": opt.board.y0, "x1": opt.board.x1, "y1": opt.board.y1}
 				}
 				enc := json.NewEncoder(stdout)
 				enc.SetIndent("", "  ")
