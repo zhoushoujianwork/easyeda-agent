@@ -13,7 +13,7 @@
     "U": {
       "part": "pmu.axp2101_qfn40",
       "qty": 1,
-      "note": "AXP2101 QFN-40 5×5mm,I2C 7-bit 0x34。5×DCDC(BUCK,需外部电感)+11×LDO(线性,仅需电容)+ 充电/power-path + 库仑计 + PWRON 电源键。脚名待 sch read 核实:VBUS/VMID/BAT/VSYS/VIN1-4/LX1-4/FB1-4/SW/ALDOIN/BLDOIN/ALDO1-4/BLDO1-2/DLDO1-2/CPULDOS/VRTC/VBackup/TS/VREF/PWRON/PWROK/IRQ/SDA/SCK/CHGLED/GPIO1/EP。EP=GND 必接。⚠部分 LilyGo 图纸标 QFN-41 与 datasheet QFN-40 冲突,以真实符号为准。"
+      "note": "AXP2101 QFN-40 5×5mm(footprint QFN-40_L5.0-W5.0-P0.40-TL-EP3.4,QFN-40 已实测确认非 QFN-41),I2C 7-bit 0x34。5×DCDC(BUCK,需外部电感)+11×LDO(线性,仅需电容)+ 充电/power-path + 库仑计 + PWRON 电源键。脚名经 ceshi `sch read` 实测(pin1-41):CHGLED/VREF/GND(pin3!)/FB3/LX3/VIN3/VIN4/LX4/FB4/CPULDOS/DLDO2·DC4SW/BLDO1/BLDOIN/BLDO2/ALDO4/ALDO3/ALDOIN/ALDO1/ALDO2/DLDO1·DC1SW/FB1/LX1/VIN1/VIN2/LX2/FB2/VBACKUP/VRTC/PWROK/PWRON/TS/GPIO1·FB5·RTC·LDO2/BAT/VSYS/SW/VMID/VBUS/IRQ/SDA/SCK/EP。⚠两个地脚:pin3=GND 与 pin41=EP 都必须接地(漏 pin3=悬空,实测发现)。"
     },
     "L_SW": { "part": "ind.1uh_1210", "qty": 1, "note": "主 buck(SW/DCDC5)电感,M5 三板均 1.0µH(WPN201610M1R0MT)。L_SW.2 建立系统开关轨(M5 命名 AXP_PS),回喂各 DCDC/LDO 输入——本 draft 把它并入 VSYS 网,精确拓扑待 sch read 核实(UNCONFIRMED)。" },
     "L_DCDC1": { "part": "ind.1uh_1210", "qty": 1, "note": "DCDC1(LX1/FB1)电感→主 3V3 核心轨。M5=1.0µH,LilyGo T-Beam=2.2µH——板级不同,标 UNCONFIRMED,按采集源定。" },
@@ -57,7 +57,7 @@
     ["U.TS", "R_TS1.2", "R_TS2.1", "J_BAT.3", "PORT:TS"],
     ["U.CHGLED", "R_LED.1"],
     ["R_LED.2", "LED_CHG.2"],
-    ["U.EP", "C_VBUS.2", "C_VMID.2", "C_BAT.2", "C_VSYS1.2", "C_VSYS2.2", "C_DCDC1O.2", "C_PWRON.2", "C_VREF.2", "SW1.2", "D_PWRON.2", "R_TS2.2", "J_BAT.2", "PORT:GND"]
+    ["U.GND", "U.EP", "C_VBUS.2", "C_VMID.2", "C_BAT.2", "C_VSYS1.2", "C_VSYS2.2", "C_DCDC1O.2", "C_PWRON.2", "C_VREF.2", "SW1.2", "D_PWRON.2", "R_TS2.2", "J_BAT.2", "PORT:GND"]
   ],
   "ports": {
     "VBUS_IN": { "dir": "in", "at": "U.VBUS", "desc": "USB 5V 唯一输入/充电源(3.9-5.5V,abs-max 12V,>7V 关断);单输入 NVDC,无 ACIN", "default_net": "+5V" },
@@ -83,7 +83,7 @@
     "I2C 地址=7-bit 0x34(真实图纸+XPowersLib/ESPHome/Zephyr 皆用 0x34;网传 0x68/0x69 是 8-bit 写/读形式)。SDA/SCK 上拉;IRQ 开漏低有效须上拉,勿悬空。",
     "datasheet 明文外围(error 级):BAT 就近 1µF、VSYS 就近 2×22µF、EP 接地。VMID/VREF 去耦按采集板处理。",
     "PWROK→MCU EN:PMU 电源就绪后放行 SoC 出复位(M5 CoreS3 PWROK→ESP32-S3 CHIP_PU;LilyGo PWROK→RSTN)。",
-    "脚名/极性核实:本 draft 的 U.<脚名> 与 LED 阳/阴极均为采集推断,validation 时须 sch read 逐一核实(EP 真实名、双脚同名 VSYS/BAT、DCDC 节点 LXn/FBn)。"
+    "脚名核实(已做):U.<脚名> 经 ceshi sch read 实测全部命中采集名;新发现独立 GND 脚(pin3)必须与 EP(pin41)一并接地。LED 阳/阴极极性(LED_CHG.1/.2)仍待放置后核实。"
   ],
   "pcb_layout": [
     { "rule": "master-power-gate", "target": "所有系统电轨", "constraint": "全部挂 PMU 的 DCDC/LDO 下游,禁旁路 BAT/VBUS 的活负载——直接决定长按关机能否关干净", "value": "0 条旁路活负载", "severity": "must" },
