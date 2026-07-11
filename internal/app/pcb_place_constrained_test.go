@@ -99,6 +99,57 @@ func TestClassifyCPFromBlockData(t *testing.T) {
 	}
 }
 
+// TestCpDeviceName guards the fix for the name-template blind spot found on the
+// real ceshi board: a placed part's `name` is the unresolved "={Manufacturer
+// Part}" template, so classification must key on the real manufacturerId.
+func TestCpDeviceName(t *testing.T) {
+	// manufacturerId present → use it (name is a useless template).
+	if got := cpDeviceName(map[string]any{"manufacturerId": "ESP32-S3-WROOM-1", "name": "={Manufacturer Part}"}); got != "ESP32-S3-WROOM-1" {
+		t.Errorf("should prefer manufacturerId; got %q", got)
+	}
+	// manufacturerId absent → fall back to a real name.
+	if got := cpDeviceName(map[string]any{"name": "conn.usb_c"}); got != "conn.usb_c" {
+		t.Errorf("should fall back to real name; got %q", got)
+	}
+	// manufacturerId absent AND name is a template → empty (nothing to match on).
+	if got := cpDeviceName(map[string]any{"name": "={Manufacturer Part}"}); got != "" {
+		t.Errorf("template-only should yield empty; got %q", got)
+	}
+}
+
+// TestParseCpCompsUsesManufacturerId is the real-board regression: an
+// ESP32-S3-WROOM-1 whose `name` is the "={Manufacturer Part}" template must still
+// be recognised as a WROOM module (→ edge-must), not fall to the pin-count
+// fallback and land as main/satellite. Before the fix it classified off the
+// template name and the `wroom` regex never fired.
+func TestParseCpCompsUsesManufacturerId(t *testing.T) {
+	result := map[string]any{
+		"components": []any{
+			map[string]any{
+				"primitiveId":    "p1",
+				"designator":     "U1",
+				"name":           "={Manufacturer Part}",
+				"manufacturerId": "ESP32-S3-WROOM-1",
+				"layer":          float64(1),
+				"x":              float64(0),
+				"y":              float64(250),
+				"bbox":           map[string]any{"minX": float64(-374), "minY": float64(-130), "maxX": float64(374), "maxY": float64(900)},
+				"pads":           []any{}, // 0 pins → without the fix this would be a satellite, not even main
+			},
+		},
+	}
+	comps := parseCpComps(result)
+	if len(comps) != 1 {
+		t.Fatalf("expected 1 comp, got %d", len(comps))
+	}
+	if comps[0].footprint != "ESP32-S3-WROOM-1" {
+		t.Errorf("footprint should be the manufacturerId; got %q", comps[0].footprint)
+	}
+	if got := classifyCP(comps[0], 8); got != cpEdgeMust {
+		t.Errorf("WROOM module must classify as edge-must; got %v", got)
+	}
+}
+
 // TestConstrainedPlaceKeepsJP701 asserts the end-to-end #95 acceptance: with a
 // JP701 sitting next to its 120R terminator and 3P terminal, place-constrained
 // must NOT spiral it off to a board corner. A block-anchored part is fixed in

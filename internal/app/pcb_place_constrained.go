@@ -474,6 +474,23 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 
 func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
+// cpDeviceName returns the string classifyCP pattern-matches on. A PLACED part's
+// `name` is frequently the UNRESOLVED EasyEDA template "={Manufacturer Part}"
+// (confirmed on the ceshi board — every part reported it), which makes the
+// module/connector NAME regexes blind (e.g. an ESP32-S3-WROOM-1 module fails the
+// `wroom` test and drops to the pin-count fallback → misclassified as a main chip
+// instead of an edge part). So prefer the real manufacturerId; fall back to `name`
+// only when manufacturerId is absent AND name isn't itself a "={…}" template.
+func cpDeviceName(cm map[string]any) string {
+	if mpn := strings.TrimSpace(asString(cm["manufacturerId"])); mpn != "" {
+		return mpn
+	}
+	if n := strings.TrimSpace(asString(cm["name"])); !strings.HasPrefix(n, "={") {
+		return n
+	}
+	return ""
+}
+
 // parseCpComps parses pcb.components.list into cpComps (apComp + device name +
 // layer). A PCB component's identifying string is its device `name` (no footprint
 // name is exposed); the layer is TOP=1 / BOTTOM=2.
@@ -491,7 +508,7 @@ func parseCpComps(result map[string]any) []cpComp {
 		if layer == 0 {
 			layer = 1
 		}
-		byID[id] = cpComp{footprint: asString(cm["name"]), layer: layer}
+		byID[id] = cpComp{footprint: cpDeviceName(cm), layer: layer}
 	}
 	out := make([]cpComp, 0, len(base))
 	for _, b := range base {
