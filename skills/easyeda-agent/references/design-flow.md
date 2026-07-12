@@ -200,7 +200,7 @@ P0 新板/切板 → P1 导器件 → P2 摆放(留装配位) → P3 板框 → 
   两条路径都以"布局确认(P2 停点)+ 板框确认(P3 停点)"收尾,再进 P6 可布性门。
 - **P2 摆放 — 按优先级分档,每档过确认(2026-07-09 走查#1 用户反馈定型)**:
   **摆放前先问两个决策**(见 design-decisions.md #13/#14,里程碑档必问):① **单面还是双面布局**(SD 卡槽、去耦帽这类矮件适合底面,双面省板但双面贴装贵);② **焊接工艺**(产线贴片可用 0402;手工焊接封装下限 0603/0805,直接影响选型与间距)。
-  **回答后立即落盘,不能只记在对话里**:`pcb stage set-assembly --profile hand-solder --min-gap 40 --large-pad-access 60`(或 `--profile reflow`)。手焊的 40mil 是普通器件外框间距地板;USB 外壳脚、SOT-223、模组大焊盘等至少留一个 60–80mil 烙铁进入方向。电气 DRC clearance 不能替代此门。每档移动后先截图复核朝向/烙铁入口,完成 P2 全布局后运行一次 `pcb layout-lint --gate`,通过才允许 `confirm-layout`;P3 改板框会使该结果失效,P6 必须在最终板框上重跑。(issue #99)
+  **回答后立即落盘,不能只记在对话里**:`pcb stage set-assembly --profile hand-solder --min-gap 40 --large-pad-access 60`(或 `--profile reflow`)。手焊的 40mil 是普通器件外框间距地板;USB 外壳脚、SOT-223、模组大焊盘等至少留一个 60–80mil 烙铁进入方向——**这条 gate 已机械检查**(solder-access:每器件 bbox 四侧至少一侧 ≥ `largePadAccessMil` 净通道,四面被围 = gate 失败,`confirm-layout` 拒绝;进入方向是否合理仍截图复核)。电气 DRC clearance 不能替代此门。`pcb auto-place` 的 `--assembly-gap` 默认自动取项目 profile 的 min-gap(摆放与门用同一间距)。完成 P2 全布局后运行一次 `pcb layout-lint --gate`,通过才允许 `confirm-layout`(确认摘要会打印 profile/min-gap/tight/access 数);P3 改板框会使该结果失效,P6 必须在最终板框上重跑。(issue #99)
   **优先级档序(每档摆完→截图/坐标表向用户确认→锁定,再摆下一档)**:
   1. **安装孔/结构孔**(M3 四角等)——最先放+**锁定**,后续所有档避开垫圈净空(M3 头 Ø6mm ≈ R118mil);孔后置必然与边缘件冲突(实测:四角 IPEX/USB 全压在垫圈区上)。
   2. **边缘接口件**(有开口方向的:端子/USB/SD 卡槽/排针/按键/IPEX)——按 spec 的出边意图放到板边,开口朝外;这一档**必须用户确认**(朝向、边序是装配体验,agent 猜不了)。

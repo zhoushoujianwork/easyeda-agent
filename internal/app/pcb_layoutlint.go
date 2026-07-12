@@ -64,21 +64,103 @@ type crossFinding struct {
 	Y    float64 `json:"y"`
 }
 
+// pcbLAccessFinding is a component boxed in on ALL four sides below the
+// hand-solder iron-access corridor (issue #99): there is no direction to bring
+// an iron tip / solder / rework tools in from.
+type pcbLAccessFinding struct {
+	Designator string             `json:"designator"`
+	BestGap    float64            `json:"bestGapMil"` // widest of the four side gaps
+	Sides      map[string]float64 `json:"sides"`      // left/right/top/bottom → gap to nearest blocker (mil)
+}
+
 // pcbLayoutReport is the full normalized result.
 type pcbLayoutReport struct {
-	OK             bool           `json:"ok"`
-	Score          int            `json:"score"`   // 0-100 routability
-	Verdict        string         `json:"verdict"` // easy | moderate | hard | very-hard | overlap
-	ComponentCount int            `json:"componentCount"`
-	MinGapMil      float64        `json:"minGapMil"`
-	Overlaps       []pcbLFinding  `json:"overlaps"`
-	OutsideOutline []pcbLFinding  `json:"outsideOutline"`
-	TightPairs     []pcbLFinding  `json:"tightSpacing"`
+	OK             bool          `json:"ok"`
+	Score          int           `json:"score"`   // 0-100 routability
+	Verdict        string        `json:"verdict"` // easy | moderate | hard | very-hard | overlap
+	ComponentCount int           `json:"componentCount"`
+	MinGapMil      float64       `json:"minGapMil"`
+	Overlaps       []pcbLFinding `json:"overlaps"`
+	OutsideOutline []pcbLFinding `json:"outsideOutline"`
+	TightPairs     []pcbLFinding `json:"tightSpacing"`
+	// AccessMil / AccessBlocked: hand-solder iron-access check (issue #99),
+	// populated only when the gate runs with a hand-solder assembly profile.
+	AccessMil     float64             `json:"accessMil,omitempty"`
+	AccessBlocked []pcbLAccessFinding `json:"accessBlocked,omitempty"`
+
 	SignalNets     int            `json:"signalNets"`
 	RatsnestLenMil float64        `json:"ratsnestLenMil"`
 	CrossingCount  int            `json:"crossingCount"`
 	Crossings      []crossFinding `json:"crossings,omitempty"`
 	Summary        string         `json:"summary"`
+}
+
+// analyzeSolderAccess flags components with NO accessible side: for each of the
+// four bbox directions the corridor (the component's own side span, extended
+// outward) must stay clear of other components for at least accessMil before
+// it counts as an iron-entry direction. One clear side is enough — a decap may
+// sit tight against its IC as long as its other flank stays workable, which is
+// exactly the issue-#99 rule ("去耦可贴近,但至少保留一侧可操作"). The board
+// edge never blocks (open air is reachable). Pad-size-aware "large pad"
+// classification needs pad width/height the connector does not expose yet, so
+// v1 applies the corridor rule to every component uniformly.
+func analyzeSolderAccess(comps []pcbLComp, accessMil float64) []pcbLAccessFinding {
+	withBBox := make([]pcbLComp, 0, len(comps))
+	for _, c := range comps {
+		if c.BBox != nil {
+			withBBox = append(withBBox, c)
+		}
+	}
+	// A gap this large means "no blocker in that direction" (open to the edge).
+	const openGap = 1e9
+	var out []pcbLAccessFinding
+	for i, c := range withBBox {
+		a := *c.BBox
+		sides := map[string]float64{"left": openGap, "right": openGap, "top": openGap, "bottom": openGap}
+		for j, o := range withBBox {
+			if i == j {
+				continue
+			}
+			b := *o.BBox
+			overlapY := b.MinY < a.MaxY && b.MaxY > a.MinY
+			overlapX := b.MinX < a.MaxX && b.MaxX > a.MinX
+			if overlapY {
+				if b.MinX >= a.MaxX { // blocker to the right
+					sides["right"] = math.Min(sides["right"], b.MinX-a.MaxX)
+				} else if b.MaxX <= a.MinX { // blocker to the left
+					sides["left"] = math.Min(sides["left"], a.MinX-b.MaxX)
+				}
+			}
+			if overlapX {
+				if b.MinY >= a.MaxY { // blocker above (y-up)
+					sides["top"] = math.Min(sides["top"], b.MinY-a.MaxY)
+				} else if b.MaxY <= a.MinY { // blocker below
+					sides["bottom"] = math.Min(sides["bottom"], a.MinY-b.MaxY)
+				}
+			}
+			// Overlapping bboxes are reported by the overlap check; for access
+			// purposes an overlapped side is simply gap 0 on both axes it blocks.
+			if overlapX && overlapY {
+				for k := range sides {
+					sides[k] = 0
+				}
+				break
+			}
+		}
+		best := 0.0
+		for _, g := range sides {
+			best = math.Max(best, g)
+		}
+		if best < accessMil {
+			rounded := map[string]float64{}
+			for k, g := range sides {
+				rounded[k] = round2(g)
+			}
+			out = append(out, pcbLAccessFinding{Designator: c.Designator, BestGap: round2(best), Sides: rounded})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Designator < out[j].Designator })
+	return out
 }
 
 // analyzePcbLayout is the pure core. minGapMil flags too-tight pairs; outline (may
@@ -378,6 +460,13 @@ func runPcbLayoutLint(cfg *appConfig, window string, minGapMil float64, asJSON b
 
 	rep := analyzePcbLayout(comps, pads, outline, minGapMil)
 
+	// Hand-solder iron-access check (issue #99): with a hand-solder profile the
+	// gate also requires every component to keep at least one clear entry side.
+	if gate.gate && assembly != nil && assembly.Profile == "hand-solder" && assembly.LargePadAccessMil > 0 {
+		rep.AccessMil = assembly.LargePadAccessMil
+		rep.AccessBlocked = analyzeSolderAccess(comps, assembly.LargePadAccessMil)
+	}
+
 	// Routability gate (issue #97): the base report already flags overlap /
 	// off-board; the gate adds score + crossings thresholds and — on a pass —
 	// confirms the project's pre_route_passed stage so route commands unlock.
@@ -443,6 +532,9 @@ func evalLayoutGate(rep pcbLayoutReport, opt pcbLayoutGateOpts) routeGateVerdict
 	if len(rep.TightPairs) > 0 {
 		v.Reasons = append(v.Reasons, fmt.Sprintf("%d tight pair(s) below %.1fmil assembly gap", len(rep.TightPairs), rep.MinGapMil))
 	}
+	if len(rep.AccessBlocked) > 0 {
+		v.Reasons = append(v.Reasons, fmt.Sprintf("%d component(s) boxed in below the %.1fmil iron-access corridor", len(rep.AccessBlocked), rep.AccessMil))
+	}
 	if rep.Score < opt.minScore {
 		v.Reasons = append(v.Reasons, fmt.Sprintf("score %d < min %d", rep.Score, opt.minScore))
 	}
@@ -467,7 +559,9 @@ func recordLayoutGatePass(project string, rep pcbLayoutReport, assembly *pcbAsse
 		Score: rep.Score, Verdict: rep.Verdict,
 		Overlaps: len(rep.Overlaps), OffBoard: len(rep.OutsideOutline),
 		CrossingCount: rep.CrossingCount, MinGapMil: rep.MinGapMil,
-		TightPairs: len(rep.TightPairs), Assembly: profile, At: time.Now().Format(time.RFC3339),
+		TightPairs: len(rep.TightPairs),
+		AccessMil:  rep.AccessMil, AccessBlocked: len(rep.AccessBlocked),
+		Assembly: profile, At: time.Now().Format(time.RFC3339),
 	}
 	st.Confirm(stagePreRoutePassed, "gate-pass",
 		fmt.Sprintf("layout-lint score=%d crossings=%d", rep.Score, rep.CrossingCount))
@@ -497,5 +591,10 @@ func renderPcbLayoutReport(rep pcbLayoutReport, w io.Writer) {
 	}
 	for _, t := range rep.TightPairs {
 		fmt.Fprintf(w, "  WARN  tight      %s ↔ %s  gap %.1f mil (< %.1f)\n", t.A, t.B, t.Gap, rep.MinGapMil)
+	}
+	for _, a := range rep.AccessBlocked {
+		fmt.Fprintf(w, "  WARN  no-access  %s boxed in on all sides (best %.1f mil < %.1f iron corridor: L%.0f R%.0f T%.0f B%.0f)\n",
+			a.Designator, a.BestGap, rep.AccessMil,
+			a.Sides["left"], a.Sides["right"], a.Sides["top"], a.Sides["bottom"])
 	}
 }

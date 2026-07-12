@@ -101,9 +101,9 @@ func workflowNext(st *pcbStageState, f workflowFacts) (next, why string) {
 		return "easyeda pcb import-changes",
 			"the PCB has no components yet (P1)"
 	case !st.Has(stagePlacementConfirmed):
-		if st.Layout == nil || st.Layout.TightPairs != 0 {
+		if st.Layout == nil || st.Layout.TightPairs != 0 || st.Layout.AccessBlocked != 0 {
 			return "easyeda pcb layout-lint --gate",
-				"placement not lint-gated yet (P2: fix overlaps/tight pairs, then gate)"
+				"placement not lint-gated yet (P2: fix overlaps/tight pairs/iron access, then gate)"
 		}
 		return "easyeda pcb stage confirm-layout --note \"...\"",
 			"placement awaits the P2 human sign-off"

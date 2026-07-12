@@ -81,6 +81,11 @@ type GateSummary struct {
 	CrossingCount int     `json:"crossingCount"`
 	MinGapMil     float64 `json:"minGapMil"`
 	TightPairs    int     `json:"tightPairs"`
+	// AccessMil / AccessBlocked capture the hand-solder iron-access check
+	// (issue #99): every component must keep ≥1 bbox side with AccessMil of
+	// clear corridor; AccessBlocked counts components boxed in on all sides.
+	AccessMil     float64 `json:"accessMil,omitempty"`
+	AccessBlocked int     `json:"accessBlocked,omitempty"`
 	Assembly      string  `json:"assembly,omitempty"`
 	At            string  `json:"at"`
 }

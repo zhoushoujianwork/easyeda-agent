@@ -1843,6 +1843,14 @@ This is a SEED, not a final layout — verify with 'pcb drc'.
 				// floor it at --assembly-gap so parts also keep hand-SOLDER room around
 				// their pads — a bare DRC-clearance gap (~28mil) routes fine but is too
 				// cramped to reach with an iron tip; default 40mil leaves that room.
+				// Assembly profile (issue #99): a persisted profile's min-gap is the
+				// default --assembly-gap, so auto-place and `layout-lint --gate`
+				// enforce the SAME clearance instead of drifting apart.
+				if !cmd.Flags().Changed("assembly-gap") {
+					if st, serr := loadPcbStageState(stageKeyBestEffort(cfg, window)); serr == nil && st.Assembly != nil && st.Assembly.MinGapMil > 0 {
+						assemblyGap = st.Assembly.MinGapMil
+					}
+				}
 				apRules := fetchPcbRules(cfg, window)
 				opt.gap = math.Max(assemblyGap, apRules.clearanceMil*2+apRules.trackWidthMil+6)
 				opt.pitch = math.Max(assemblyGap*0.7, apRules.clearanceMil+apRules.trackWidthMil)

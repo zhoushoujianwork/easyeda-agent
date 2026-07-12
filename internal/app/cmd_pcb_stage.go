@@ -106,8 +106,9 @@ func newPcbStageStatusCmd(cfg *appConfig, window *string, stdout io.Writer) *cob
 				fmt.Fprintf(stdout, "  %s %s\n", mark, s)
 			}
 			if st.Layout != nil {
-				fmt.Fprintf(stdout, "  layout gate: score %d (%s), %d crossings @ %s\n",
-					st.Layout.Score, st.Layout.Verdict, st.Layout.CrossingCount, st.Layout.At)
+				fmt.Fprintf(stdout, "  layout gate: score %d (%s), %d crossings, %d tight, %d access-blocked @ %s\n",
+					st.Layout.Score, st.Layout.Verdict, st.Layout.CrossingCount,
+					st.Layout.TightPairs, st.Layout.AccessBlocked, st.Layout.At)
 			}
 			if st.LayoutFP != nil {
 				fmt.Fprintf(stdout, "  layout fingerprint: %d parts @ %s\n", st.LayoutFP.Count, st.LayoutFP.At)
@@ -234,6 +235,11 @@ func runStageConfirmLayout(cfg *appConfig, window, note string, stderr io.Writer
 		fmt.Fprintf(stderr, "❌ placement assembly gate not passed — run `pcb layout-lint --gate` using the persisted %s profile first\n", st.Assembly.Profile)
 		return errActionFailed
 	}
+	if st.Layout.AccessBlocked != 0 {
+		fmt.Fprintf(stderr, "❌ %d component(s) have no %.1fmil iron-access side — free at least one flank per part (`pcb layout-lint --gate` lists them), then re-gate\n",
+			st.Layout.AccessBlocked, st.Layout.AccessMil)
+		return errActionFailed
+	}
 	fp, err := pullLayoutFingerprint(cfg, window)
 	if err != nil {
 		return fmt.Errorf("confirm-layout: %w", err)
@@ -248,7 +254,11 @@ func runStageConfirmLayout(cfg *appConfig, window, note string, stderr io.Writer
 	if err := savePcbStageState(st); err != nil {
 		return err
 	}
+	// The confirmation summary the user signs off on (issue #99 item 7).
 	fmt.Fprintf(stderr, "✓ placement confirmed for %q — fingerprinted %d parts\n", project, fp.Count)
+	fmt.Fprintf(stderr, "  assembly %s · min gap %.1fmil · tight pairs %d · iron-access blocked %d (corridor %.1fmil) · lint score %d\n",
+		st.Assembly.Profile, st.Layout.MinGapMil, st.Layout.TightPairs,
+		st.Layout.AccessBlocked, st.Layout.AccessMil, st.Layout.Score)
 	return nil
 }
 
