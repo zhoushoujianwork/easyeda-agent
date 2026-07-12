@@ -1216,14 +1216,14 @@ a real run. The PCB must be the active/foreground tab.`,
   easyeda pcb beautify --net USB_DP --net USB_DM # beautify several nets (repeat --net)`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				payload := map[string]any{
-					"cornerRadiusRatio": radiusRatio,
-					"forceArc":          forceArc,
+					"cornerRadiusRatio":       radiusRatio,
+					"forceArc":                forceArc,
 					"mergeTransitionSegments": mergeU,
-					"protect":           !noProtect,
-					"drc":               !noDRC,
-					"drcRetryCount":     drcRetry,
-					"rebuildPour":       !noPour,
-					"dryRun":            dryRun,
+					"protect":                 !noProtect,
+					"drc":                     !noDRC,
+					"drcRetryCount":           drcRetry,
+					"rebuildPour":             !noPour,
+					"dryRun":                  dryRun,
 				}
 				if selected {
 					payload["scope"] = "selected"
@@ -1482,9 +1482,14 @@ fit early. --dry-run previews the computed frame.`,
 				if err != nil {
 					return err
 				}
+				out := map[string]any{"ok": true, "summary": summary, "result": sr.Result}
+				// Redrawing the board edge invalidates outline_confirmed onward (#97).
+				if cleared := invalidatePcbStageFrom(cfg, stageOutlineConfirmed, "outline-fit resized the board"); len(cleared) > 0 {
+					out["stageInvalidated"] = cleared
+				}
 				enc := json.NewEncoder(stdout)
 				enc.SetIndent("", "  ")
-				return enc.Encode(map[string]any{"ok": true, "summary": summary, "result": sr.Result})
+				return enc.Encode(out)
 			},
 		}
 		c.Flags().Float64Var(&margin, "margin", 100, "margin from the part cloud to the board edge (mil)")
@@ -1679,6 +1684,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	}
 	// ── stage-snapshot: recording/demo stage capture (snapshot + data bundle) ──
 	pcb.AddCommand(newPcbStageSnapshotCmd(cfg, &window, stdout, stderr))
+	pcb.AddCommand(newPcbStageCmd(cfg, stdout, stderr))
 	// ── autoroute: one-command Freerouting round-trip ────────────────────────
 	// export DSN → run an external Freerouting engine → import the routed SES → DRC.
 	// The engine is external (Freerouting needs Java 17+); decoupled via a command
@@ -1687,6 +1693,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	{
 		var routerCmd string
 		var keep bool
+		var forceReason string
 		c := &cobra.Command{
 			Use:   "autoroute",
 			Short: "Auto-route the active PCB via an external Freerouting engine (DSN→route→SES→import→DRC)",
@@ -1713,6 +1720,12 @@ edge) MUST be in the DSN, else the router will route under the antenna. Verify t
 exported DSN contains keepout entries before trusting the result.`,
 			Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				// 0. Routability gate (issue #97): autoroute mutates the board, so it
+				// needs the same outline_confirmed + pre_route_passed state as
+				// route-short; --force <reason> overrides for audit.
+				if err := gateRouteCommand(cfg, "autoroute", forceReason, stderr); err != nil {
+					return err
+				}
 				// 1. Export DSN, capture the persisted file path.
 				res, err := dispatchCapture(cfg, "pcb.export.dsn", window, map[string]any{}, stdout)
 				if err != nil {
@@ -1778,6 +1791,7 @@ exported DSN contains keepout entries before trusting the result.`,
 		}
 		c.Flags().StringVar(&routerCmd, "router", "", "external router command with {in}/{out} (or FREEROUTING_CMD env)")
 		c.Flags().BoolVar(&keep, "keep", false, "keep the intermediate SES file")
+		c.Flags().StringVar(&forceReason, "force", "", "route even without outline_confirmed + pre_route_passed; requires a reason string, recorded for audit (issue #97)")
 		pcb.AddCommand(c)
 	}
 
@@ -1992,6 +2006,13 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 					out["confirmOrientation"] = confirmOrient
 					out["note"] = "对称/低置信连接器工具无法定向,已按原样保留:请确认这些端子的开口朝板外(或手动摆放)—— " + strings.Join(confirmOrient, ", ")
 				}
+				// Moving parts invalidates any downstream confirmation (issue #97):
+				// placement_confirmed and everything after must be re-earned.
+				if !dryRun && applied > 0 {
+					if cleared := invalidatePcbStageFrom(cfg, stagePlacementConfirmed, "place-constrained moved "+fmt.Sprint(applied)+" part(s)"); len(cleared) > 0 {
+						out["stageInvalidated"] = cleared
+					}
+				}
 				enc := json.NewEncoder(stdout)
 				enc.SetIndent("", "  ")
 				return enc.Encode(out)
@@ -2158,7 +2179,7 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 	{
 		var maxLen, width, signalWidth, powerWidth, roundRadius float64
 		var dryRun, routePower, noAvoid, noMultilayer bool
-		var corner string
+		var corner, forceReason string
 		c := &cobra.Command{
 			Use:   "route-short",
 			Short: "Self-route the short, clear hops: per-net MST, L-shaped tracks on the pads' layer",
@@ -2186,6 +2207,15 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
   easyeda pcb route-short --project ceshi --width-power 25     # fatter power tracks`,
 			Args: cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				// 0. Routability gate (issue #97): drawing tracks requires an
+				// outline_confirmed + pre_route_passed project state; --dry-run only
+				// prints the plan (no mutation) so it bypasses the gate. --force
+				// <reason> overrides but records the bypass for audit.
+				if !dryRun {
+					if err := gateRouteCommand(cfg, "route-short", forceReason, stderr); err != nil {
+						return err
+					}
+				}
 				// 1. Read pads (net + coords + layer) and which nets already have copper.
 				res, err := requestAction(cfg, "pcb.components.list", window,
 					map[string]any{"includePads": true})
@@ -2306,6 +2336,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 		c.Flags().BoolVar(&noMultilayer, "no-multilayer", false, "disable multilayer routing (defer too-long / cross-layer hops to the maze tier instead of detouring them via the alternate copper layer with vias)")
 		c.Flags().BoolVar(&routePower, "route-power", false, "also route power/ground nets as tracks (default skip — pour them instead; VCC/3V3/GND/… routed as thin tracks through pad fields is the #1 DRC source)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the routing plan without drawing anything")
+		c.Flags().StringVar(&forceReason, "force", "", "route even without outline_confirmed + pre_route_passed; requires a reason string, recorded for audit (issue #97)")
 		pcb.AddCommand(c)
 	}
 
@@ -2573,7 +2604,8 @@ x0,y0,x1,y1, or --ref <designator> (+ --margin to expand). Inspect / remove with
 	// non-zero on overlap/off-board so it can gate the flow. Core in pcb_layoutlint.go.
 	{
 		var minGap float64
-		var asJSON bool
+		var asJSON, gate bool
+		var minScore, maxCrossings int
 		c := &cobra.Command{
 			Use:   "layout-lint",
 			Short: "Score PCB placement quality + predict routability (ratsnest crossings)",
@@ -2598,11 +2630,16 @@ live track-to-pad clearance. Exits non-zero on any overlap/off-board (gate-able)
   easyeda pcb layout-lint --json
   easyeda pcb layout-lint --min-gap 8`,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return runPcbLayoutLint(cfg, window, minGap, asJSON, stdout, stderr)
+				return runPcbLayoutLint(cfg, window, minGap, asJSON, pcbLayoutGateOpts{
+					gate: gate, project: cfg.project, minScore: minScore, maxCrossings: maxCrossings,
+				}, stdout, stderr)
 			},
 		}
 		c.Flags().Float64Var(&minGap, "min-gap", 0, "min gap between footprint bboxes in mil (closer = WARN; default = board clearance)")
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
+		c.Flags().BoolVar(&gate, "gate", false, "apply the routability gate (score/crossings/overlap/off-board); on pass, confirm the project's pre_route_passed stage (issue #97)")
+		c.Flags().IntVar(&minScore, "min-score", 60, "minimum routability score for --gate to pass")
+		c.Flags().IntVar(&maxCrossings, "max-crossings", 8, "maximum cross-net ratline crossings for --gate to pass (-1 = unlimited)")
 		pcb.AddCommand(c)
 	}
 

@@ -21,6 +21,8 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strings"
+	"time"
 )
 
 // pcbLPad is a placed pad with its net and center (mil).
@@ -174,10 +176,10 @@ func analyzePcbLayout(comps []pcbLComp, pads []pcbLPad, outline *layoutBBox, min
 	// 4. Score + verdict. Overlaps are fatal; crossings/outside dominate routability.
 	rep.OK = len(rep.Overlaps) == 0 && len(rep.OutsideOutline) == 0
 	score := 100
-	score -= 100 * len(rep.Overlaps)         // any overlap ⇒ 0
-	score -= 20 * len(rep.OutsideOutline)    // off-board is nearly as bad
-	score -= 4 * rep.CrossingCount           // each cross-net crossing = a via/detour
-	score -= 1 * len(rep.TightPairs)         // minor
+	score -= 100 * len(rep.Overlaps)      // any overlap ⇒ 0
+	score -= 20 * len(rep.OutsideOutline) // off-board is nearly as bad
+	score -= 4 * rep.CrossingCount        // each cross-net crossing = a via/detour
+	score -= 1 * len(rep.TightPairs)      // minor
 	if score < 0 {
 		score = 0
 	}
@@ -285,7 +287,19 @@ func segCross(e, f ratLink) (x, y float64, ok bool) {
 // runPcbLayoutLint fetches the live placement (bbox + pads), the board outline, and
 // the DRC clearance, analyzes, renders, and returns a non-nil error when the layout
 // is not OK (overlap / off-board) so the command exits non-zero (gate-able).
-func runPcbLayoutLint(cfg *appConfig, window string, minGapMil float64, asJSON bool, stdout, stderr io.Writer) error {
+// pcbLayoutGateOpts configures the routability gate that layout-lint applies on
+// top of the overlap/off-board checks (issue #97): a minimum score and a maximum
+// cross-net ratline crossing count. When gate is enabled and the layout passes,
+// the project's pre_route_passed stage is confirmed and a gate summary is
+// persisted for the route commands to consult.
+type pcbLayoutGateOpts struct {
+	gate         bool
+	project      string
+	minScore     int
+	maxCrossings int
+}
+
+func runPcbLayoutLint(cfg *appConfig, window string, minGapMil float64, asJSON bool, gate pcbLayoutGateOpts, stdout, stderr io.Writer) error {
 	res, err := requestAction(cfg, "pcb.components.list", window, map[string]any{"includeBBox": true, "includePads": true})
 	if err != nil {
 		return fmt.Errorf("fetch PCB components: %w", err)
@@ -344,19 +358,102 @@ func runPcbLayoutLint(cfg *appConfig, window string, minGapMil float64, asJSON b
 
 	rep := analyzePcbLayout(comps, pads, outline, minGapMil)
 
+	// Routability gate (issue #97): the base report already flags overlap /
+	// off-board; the gate adds score + crossings thresholds and — on a pass —
+	// confirms the project's pre_route_passed stage so route commands unlock.
+	var gateVerdict *routeGateVerdict
+	if gate.gate {
+		gv := evalLayoutGate(rep, gate)
+		gateVerdict = &gv
+		if gv.Pass {
+			if perr := recordLayoutGatePass(gate.project, rep); perr != nil {
+				fmt.Fprintf(stderr, "⚠️  gate passed but could not persist pre_route_passed: %v\n", perr)
+			}
+		}
+	}
+
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(rep); err != nil {
+		payload := map[string]any{"report": rep}
+		if gateVerdict != nil {
+			payload["gate"] = gateVerdict
+		}
+		if err := enc.Encode(payload); err != nil {
 			return err
 		}
 	} else {
 		renderPcbLayoutReport(rep, stdout)
+		if gateVerdict != nil {
+			renderLayoutGate(*gateVerdict, stdout)
+		}
 	}
 	if !rep.OK {
 		return fmt.Errorf("layout not routable-ready: %d overlap, %d off-board", len(rep.Overlaps), len(rep.OutsideOutline))
 	}
+	if gateVerdict != nil && !gateVerdict.Pass {
+		return fmt.Errorf("routability gate FAILED: %s", strings.Join(gateVerdict.Reasons, "; "))
+	}
 	return nil
+}
+
+// routeGateVerdict is the machine-readable result of the layout-lint routability
+// gate (emitted in --json, stored on pass).
+type routeGateVerdict struct {
+	Pass          bool     `json:"pass"`
+	Score         int      `json:"score"`
+	MinScore      int      `json:"minScore"`
+	CrossingCount int      `json:"crossingCount"`
+	MaxCrossings  int      `json:"maxCrossings"`
+	Reasons       []string `json:"reasons,omitempty"`
+}
+
+// evalLayoutGate applies the score / crossings / overlap / off-board thresholds.
+func evalLayoutGate(rep pcbLayoutReport, opt pcbLayoutGateOpts) routeGateVerdict {
+	v := routeGateVerdict{
+		Score: rep.Score, MinScore: opt.minScore,
+		CrossingCount: rep.CrossingCount, MaxCrossings: opt.maxCrossings,
+	}
+	if len(rep.Overlaps) > 0 {
+		v.Reasons = append(v.Reasons, fmt.Sprintf("%d overlap", len(rep.Overlaps)))
+	}
+	if len(rep.OutsideOutline) > 0 {
+		v.Reasons = append(v.Reasons, fmt.Sprintf("%d off-board", len(rep.OutsideOutline)))
+	}
+	if rep.Score < opt.minScore {
+		v.Reasons = append(v.Reasons, fmt.Sprintf("score %d < min %d", rep.Score, opt.minScore))
+	}
+	if opt.maxCrossings >= 0 && rep.CrossingCount > opt.maxCrossings {
+		v.Reasons = append(v.Reasons, fmt.Sprintf("crossings %d > max %d", rep.CrossingCount, opt.maxCrossings))
+	}
+	v.Pass = len(v.Reasons) == 0
+	return v
+}
+
+// recordLayoutGatePass persists pre_route_passed + the gate snapshot.
+func recordLayoutGatePass(project string, rep pcbLayoutReport) error {
+	st, err := loadPcbStageState(project)
+	if err != nil {
+		return err
+	}
+	st.Layout = &pcbLayoutGateSummary{
+		Score: rep.Score, Verdict: rep.Verdict,
+		Overlaps: len(rep.Overlaps), OffBoard: len(rep.OutsideOutline),
+		CrossingCount: rep.CrossingCount, At: time.Now().Format(time.RFC3339),
+	}
+	st.confirmStage(stagePreRoutePassed, "gate-pass",
+		fmt.Sprintf("layout-lint score=%d crossings=%d", rep.Score, rep.CrossingCount))
+	return savePcbStageState(st)
+}
+
+// renderLayoutGate prints the human-readable gate verdict.
+func renderLayoutGate(v routeGateVerdict, w io.Writer) {
+	if v.Pass {
+		fmt.Fprintf(w, "\nroutability gate: ✅ PASS (score %d ≥ %d, crossings %d ≤ %d) → pre_route_passed confirmed\n",
+			v.Score, v.MinScore, v.CrossingCount, v.MaxCrossings)
+		return
+	}
+	fmt.Fprintf(w, "\nroutability gate: ❌ FAIL — %s\n", strings.Join(v.Reasons, "; "))
 }
 
 func renderPcbLayoutReport(rep pcbLayoutReport, w io.Writer) {
