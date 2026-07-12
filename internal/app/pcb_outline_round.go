@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 )
 
 // roundedRectPoints returns the CCW polygon of a rounded rectangle (y-up). r is the
@@ -81,5 +82,12 @@ func runOutlineRound(cfg *appConfig, window, rectSpec string, radius, margin flo
 		enc.SetIndent("", "  ")
 		return enc.Encode(map[string]any{"dryRun": true, "radius": round2(radius), "segmentsPerCorner": segments, "rect": []float64{x0, y0, x1, y1}, "points": pts})
 	}
-	return dispatch(cfg, "pcb.outline.set", window, map[string]any{"points": pts}, stdout, stderr)
+	if err := dispatch(cfg, "pcb.outline.set", window, map[string]any{"points": pts}, stdout, stderr); err != nil {
+		return err
+	}
+	// Redrawing the board edge invalidates outline_confirmed onward (#97).
+	if cleared := invalidatePcbStageFrom(cfg, stageOutlineConfirmed, "outline-round redrew the board edge"); len(cleared) > 0 {
+		fmt.Fprintf(stderr, "ℹ️  stage invalidated: %s (re-confirm the outline before routing)\n", strings.Join(cleared, ", "))
+	}
+	return nil
 }
