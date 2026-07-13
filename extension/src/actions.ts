@@ -6419,6 +6419,11 @@ const pcbLineList: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'Failed to list PCB tracks.');
 	}
+	// Arcs are ALSO copper tracks (beautify rounds corners into track→arc→track).
+	// Return them so headless checks (pcb.check dangling-end) can see a track
+	// terminating on an arc endpoint as anchored, not floating. Best-effort: an
+	// older API without pcb_PrimitiveArc must not break the line list.
+	const arcs = await eda.pcb_PrimitiveArc.getAll(net, layer).catch(() => []);
 	const list = (lines ?? []).map(l => ({
 		primitiveId: l.getState_PrimitiveId(),
 		net: l.getState_Net(),
@@ -6430,7 +6435,19 @@ const pcbLineList: Handler = async (payload) => {
 		lineWidth: l.getState_LineWidth(),
 		locked: l.getState_PrimitiveLock(),
 	}));
-	return { result: { lines: list, count: list.length } };
+	const arcList = (arcs ?? []).map(a => ({
+		primitiveId: a.getState_PrimitiveId(),
+		net: a.getState_Net(),
+		layer: a.getState_Layer(),
+		startX: a.getState_StartX(),
+		startY: a.getState_StartY(),
+		endX: a.getState_EndX(),
+		endY: a.getState_EndY(),
+		arcAngle: a.getState_ArcAngle(),
+		lineWidth: a.getState_LineWidth(),
+		locked: a.getState_PrimitiveLock(),
+	}));
+	return { result: { lines: list, arcs: arcList, count: list.length, arcCount: arcList.length } };
 };
 
 const pcbViaList: Handler = async (payload) => {

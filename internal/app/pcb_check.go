@@ -57,6 +57,18 @@ type pcbTrack struct {
 	Width  float64
 }
 
+// pcbArc is a copper ARC (pcb.line.list → arcs). beautify (走线美化) rounds a sharp
+// corner into a track→arc→track chain, so a track terminating on an arc endpoint is
+// electrically continued, not floating. Only the endpoints are carried — that is
+// where a track joins the arc; the curvature (arcAngle) is not needed for anchoring.
+type pcbArc struct {
+	ID     string
+	Net    string
+	Layer  int
+	X1, Y1 float64
+	X2, Y2 float64
+}
+
 // pcbViaP is one via (pcb.via.list).
 type pcbViaP struct {
 	ID   string
@@ -194,13 +206,14 @@ type pcbCheckReport struct {
 // analyzePcbCheck is the copper-only DFM core (no silkscreen). Thin wrapper over
 // analyzePcbCheckFull; kept for the many unit tests that don't exercise silk.
 func analyzePcbCheck(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, couplingW float64) pcbCheckReport {
-	return analyzePcbCheckFull(pads, tracks, vias, nil, couplingW)
+	return analyzePcbCheckFull(pads, tracks, vias, nil, nil, couplingW)
 }
 
 // analyzePcbCheckFull is the pure DFM core over placed primitives. couplingW is the
 // 3W-rule center-spacing factor (≤0 → default pcbCouplingW). silk feeds the
-// silkscreen-orientation rule (flipped/back-side labels).
-func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, silk []pcbSilkText, couplingW float64) pcbCheckReport {
+// silkscreen-orientation rule (flipped/back-side labels); arcs (beautify's rounded
+// corners) anchor track endpoints so rounding doesn't fabricate dangling stubs.
+func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, arcs []pcbArc, silk []pcbSilkText, couplingW float64) pcbCheckReport {
 	rep := pcbCheckReport{TrackCount: len(tracks), ViaCount: len(vias), PadCount: len(pads)}
 	if couplingW <= 0 {
 		couplingW = pcbCouplingW
@@ -216,7 +229,7 @@ func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, silk
 	}
 	tracks = real
 
-	rep.Findings = append(rep.Findings, findDanglingEnds(tracks, vias, pads)...)
+	rep.Findings = append(rep.Findings, findDanglingEnds(tracks, vias, pads, arcs)...)
 	rep.Findings = append(rep.Findings, findAcuteAngles(tracks)...)
 	rep.Findings = append(rep.Findings, findNonOrthogonal(tracks)...)
 	rep.Findings = append(rep.Findings, findTrackOverPad(tracks, pads)...)
@@ -267,13 +280,13 @@ func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, silk
 // is an unfinished / floating copper stub (a routing artifact). Endpoints that
 // join a pad center, a via, or any other track (endpoint OR mid-body T-junction)
 // are anchored.
-func findDanglingEnds(tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP) []pcbCheckFinding {
+func findDanglingEnds(tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP, arcs []pcbArc) []pcbCheckFinding {
 	var out []pcbCheckFinding
 	seen := map[[2]int64]bool{} // dedup by rounded point — one finding per free node
 	for i, t := range tracks {
 		for _, ep := range [][2]float64{{t.X1, t.Y1}, {t.X2, t.Y2}} {
 			px, py := ep[0], ep[1]
-			if anchored(px, py, i, t.Layer, t.Net, tracks, vias, pads) {
+			if anchored(px, py, i, t.Layer, t.Net, tracks, vias, pads, arcs) {
 				continue
 			}
 			k := [2]int64{int64(math.Round(px * 100)), int64(math.Round(py * 100))}
@@ -305,7 +318,7 @@ const padBodyAnchorTol = 30.0
 // is NOT a connection), a via, or ANOTHER track passing through it ON THE SAME
 // LAYER. A different-layer track crossing the XY is NOT a connection without a
 // via, so it must not anchor the stub.
-func anchored(px, py float64, self, layer int, net string, tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP) bool {
+func anchored(px, py float64, self, layer int, net string, tracks []pcbTrack, vias []pcbViaP, pads []pcbPadP, arcs []pcbArc) bool {
 	for _, p := range pads {
 		tol := pcbCoincEps
 		if net != "" && p.Net == net {
@@ -338,6 +351,18 @@ func anchored(px, py float64, self, layer int, net string, tracks []pcbTrack, vi
 			continue
 		}
 		if segPtDist(px, py, o.X1, o.Y1, o.X2, o.Y2) <= pcbCoincEps {
+			return true
+		}
+	}
+	// A copper ARC on the same layer whose endpoint meets this point continues the
+	// trace — beautify (走线美化) rounds a corner into track→arc→track, so the track
+	// terminates exactly on the arc endpoint. Without this, every rounded corner
+	// fabricates two false "dangling" stubs (EasyEDA's own DRC reports 0 opens).
+	for _, a := range arcs {
+		if a.Layer != layer {
+			continue
+		}
+		if math.Hypot(a.X1-px, a.Y1-py) <= pcbCoincEps || math.Hypot(a.X2-px, a.Y2-py) <= pcbCoincEps {
 			return true
 		}
 	}
@@ -1315,6 +1340,13 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 	if err != nil {
 		return fmt.Errorf("fetch PCB tracks: %w", err)
 	}
+	// Arcs anchor track endpoints (beautify's rounded corners). Best-effort: an older
+	// connector omits them → empty slice, dangling-end just loses arc-awareness.
+	arcs, aerr := fetchPcbArcs(cfg, window)
+	if aerr != nil {
+		fmt.Fprintf(stderr, "warning: arc fetch failed, dangling-end check runs without arc-awareness (%v)\n", aerr)
+		arcs = nil
+	}
 	vias, err := fetchPcbVias(cfg, window)
 	if err != nil {
 		return fmt.Errorf("fetch PCB vias: %w", err)
@@ -1328,7 +1360,7 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 		silk = nil
 	}
 
-	rep := analyzePcbCheckFull(pads, tracks, vias, silk, couplingW)
+	rep := analyzePcbCheckFull(pads, tracks, vias, arcs, silk, couplingW)
 
 	// Clearance is a LIVE rule — it needs the board's live spacing value. Flags
 	// copper running under the spacing rule against another net's pad/via/track
@@ -1467,6 +1499,33 @@ func fetchPcbTracks(cfg *appConfig, window string) ([]pcbTrack, error) {
 		tracks = append(tracks, pcbTrack{ID: id, Net: net, Layer: int(layer), X1: x1, Y1: y1, X2: x2, Y2: y2, Width: w})
 	}
 	return tracks, nil
+}
+
+// fetchPcbArcs reads copper arcs from the same pcb.line.list response (the connector
+// returns them in an `arcs` field). An older connector that omits `arcs` yields an
+// empty slice — the dangling-end check simply loses arc-awareness, it does not fail.
+func fetchPcbArcs(cfg *appConfig, window string) ([]pcbArc, error) {
+	res, err := requestAction(cfg, "pcb.line.list", window, nil)
+	if err != nil {
+		return nil, err
+	}
+	rawArcs, _ := mnav(res.Result, "arcs").([]any)
+	var arcs []pcbArc
+	for _, ra := range rawArcs {
+		am, ok := ra.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := am["primitiveId"].(string)
+		net, _ := am["net"].(string)
+		layer, _ := asFloatOK(am["layer"])
+		x1, _ := asFloatOK(am["startX"])
+		y1, _ := asFloatOK(am["startY"])
+		x2, _ := asFloatOK(am["endX"])
+		y2, _ := asFloatOK(am["endY"])
+		arcs = append(arcs, pcbArc{ID: id, Net: net, Layer: int(layer), X1: x1, Y1: y1, X2: x2, Y2: y2})
+	}
+	return arcs, nil
 }
 
 func fetchPcbVias(cfg *appConfig, window string) ([]pcbViaP, error) {

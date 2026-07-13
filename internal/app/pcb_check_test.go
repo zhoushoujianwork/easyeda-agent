@@ -238,14 +238,14 @@ func TestPcbCheck_SilkscreenFlipped(t *testing.T) {
 	sideMismatch := []pcbSilkText{
 		{ID: "a1", Kind: "attribute", Text: "R1", Layer: 4, Mirror: true, CompID: "c1", CompLayer: 1},
 	}
-	if got := countType(analyzePcbCheckFull(nil, nil, nil, sideMismatch, 0), "silkscreen-flipped"); got != 1 {
+	if got := countType(analyzePcbCheckFull(nil, nil, nil, nil,sideMismatch, 0), "silkscreen-flipped"); got != 1 {
 		t.Fatalf("side-mismatch = %d, want 1", got)
 	}
 	// Free label on TOP silk but mirrored → reads backwards.
 	backwards := []pcbSilkText{
 		{ID: "s1", Kind: "string", Text: "REV A", Layer: 3, Mirror: true},
 	}
-	if got := countType(analyzePcbCheckFull(nil, nil, nil, backwards, 0), "silkscreen-flipped"); got != 1 {
+	if got := countType(analyzePcbCheckFull(nil, nil, nil, nil,backwards, 0), "silkscreen-flipped"); got != 1 {
 		t.Fatalf("mirrored-top = %d, want 1", got)
 	}
 	// Correct states: top part / top silk / un-mirrored, AND a bottom part / bottom
@@ -255,7 +255,7 @@ func TestPcbCheck_SilkscreenFlipped(t *testing.T) {
 		{ID: "a2", Kind: "attribute", Text: "U2", Layer: 4, Mirror: true, CompID: "c2", CompLayer: 2},
 		{ID: "s1", Kind: "string", Text: "LOGO", Layer: 3, Mirror: false},
 	}
-	rep := analyzePcbCheckFull(nil, nil, nil, ok, 0)
+	rep := analyzePcbCheckFull(nil, nil, nil, nil,ok, 0)
 	if got := countType(rep, "silkscreen-flipped"); got != 0 {
 		t.Fatalf("correct silk = %d, want 0 (findings: %+v)", got, rep.Findings)
 	}
@@ -370,7 +370,7 @@ func TestPcbCheck_SilkDesignatorOrientation(t *testing.T) {
 		{ID: "s3", Kind: "attribute", Key: "Designator", Text: "U1", Layer: silkTopLayer, Rotation: 0},     // upright OK
 		{ID: "s4", Kind: "attribute", Key: "Footprint", Text: "C0402", Layer: silkTopLayer, Rotation: 180}, // not a RefDes → ignore
 	}
-	rep := analyzePcbCheckFull(nil, nil, nil, silk, 0)
+	rep := analyzePcbCheckFull(nil, nil, nil, nil,silk, 0)
 	if got := countType(rep, "silkscreen-flipped"); got != 2 {
 		t.Fatalf("silk orientation = %d, want 2 (C1 180° + LED1 90°; upright + footprint ignored): %+v", got, rep.Findings)
 	}
@@ -381,7 +381,7 @@ func TestPcbCheck_SilkReversed(t *testing.T) {
 	silk := []pcbSilkText{
 		{ID: "s1", Kind: "attribute", Key: "Designator", Text: "R9", Layer: silkTopLayer, Reverse: true},
 	}
-	rep := analyzePcbCheckFull(nil, nil, nil, silk, 0)
+	rep := analyzePcbCheckFull(nil, nil, nil, nil,silk, 0)
 	if got := countType(rep, "silkscreen-flipped"); got != 1 {
 		t.Fatalf("reversed top-silk = %d, want 1 (reads backwards)", got)
 	}

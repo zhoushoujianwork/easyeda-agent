@@ -75,15 +75,48 @@ func TestDanglingEndViaAreaAnchor(t *testing.T) {
 	tracks := []pcbTrack{{ID: "t1", Net: "GND", Layer: 1, X1: 0, Y1: 0, X2: 192, Y2: 0, Width: 10}}
 	vias := []pcbViaP{{ID: "v1", Net: "GND", X: 200, Y: 0, Dia: 24}}
 	pads := []pcbPadP{{Designator: "C1", Net: "GND", Layer: 1, X: 0, Y: 0}} // anchors the left end
-	got := findDanglingEnds(tracks, vias, pads)
+	got := findDanglingEnds(tracks, vias, pads, nil)
 	if len(got) != 0 {
 		t.Errorf("same-net endpoint inside via copper must anchor: %+v", got)
 	}
 
 	// A FOREIGN-net via at the same off-center spot must NOT anchor.
 	foreign := []pcbViaP{{ID: "v1", Net: "+5V", X: 200, Y: 0, Dia: 24}}
-	got = findDanglingEnds(tracks, foreign, pads)
+	got = findDanglingEnds(tracks, foreign, pads, nil)
 	if len(got) != 1 {
 		t.Errorf("foreign via off-center must not anchor: %+v", got)
+	}
+}
+
+// beautify rounds a corner into track→arc→track: the two tracks now terminate on the
+// arc's endpoints, not on each other. A dangling-end check that ignores arcs would
+// fabricate a false stub at every rounded corner — with arcs it stays clean.
+func TestDanglingEndArcAnchor(t *testing.T) {
+	// Corner at (100,0): horizontal track in from the left, vertical track down —
+	// beautify replaces the shared vertex with a small arc whose endpoints sit just
+	// before each track end. Both tracks are anchored at their far ends by pads.
+	tracks := []pcbTrack{
+		{ID: "h", Net: "SIG", Layer: 1, X1: 0, Y1: 0, X2: 90, Y2: 0, Width: 10},
+		{ID: "v", Net: "SIG", Layer: 1, X1: 100, Y1: -10, X2: 100, Y2: -100, Width: 10},
+	}
+	pads := []pcbPadP{
+		{Designator: "U1", Net: "SIG", Layer: 1, X: 0, Y: 0},
+		{Designator: "U2", Net: "SIG", Layer: 1, X: 100, Y: -100},
+	}
+	arcs := []pcbArc{{ID: "a", Net: "SIG", Layer: 1, X1: 90, Y1: 0, X2: 100, Y2: -10}}
+
+	// Without the arc, the inner ends (90,0) and (100,-10) dangle → 2 findings.
+	if got := findDanglingEnds(tracks, nil, pads, nil); len(got) != 2 {
+		t.Fatalf("precondition: without arc want 2 dangling, got %d", len(got))
+	}
+	// With the arc, both inner ends anchor on its endpoints → 0 findings.
+	if got := findDanglingEnds(tracks, nil, pads, arcs); len(got) != 0 {
+		t.Errorf("arc endpoints must anchor beautified track ends: %+v", got)
+	}
+
+	// A DIFFERENT-layer arc must NOT anchor (no via = no layer transition).
+	otherLayer := []pcbArc{{ID: "a", Net: "SIG", Layer: 2, X1: 90, Y1: 0, X2: 100, Y2: -10}}
+	if got := findDanglingEnds(tracks, nil, pads, otherLayer); len(got) != 2 {
+		t.Errorf("arc on another layer must not anchor: got %d, want 2", len(got))
 	}
 }
