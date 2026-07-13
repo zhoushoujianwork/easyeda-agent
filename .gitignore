@@ -5,6 +5,10 @@
 /dist/
 /coverage.out
 
+# 人工分发的自包含总包(construct via scripts/pack-download.sh) — 太大不进 git,
+# 上传到外部下载托管;downloads/ 目录本身与其 README 保留。
+/downloads/*.zip
+
 # air live-reload build output
 /tmp/
 /build-errors.log

@@ -22,7 +22,7 @@
 
 The upstream `run-api-gateway` proves the important entry point: code can run inside EasyEDA with access to the official `eda` object. Its rough edge is that it exposes raw JavaScript execution as the main workflow. That is powerful, but brittle for agents.
 
-The connector is real and working: it port-scans `49620-49629`, validates a handshake, self-heals its connection, and dispatches a typed action catalog to the official `eda.*` API. Raw JS survives only as the confirmation-gated `debug.exec_js` escape hatch. See [docs/FEATURES.md](docs/FEATURES.md) for the full feature/roadmap inventory.
+The connector is real and working: the daemon binds a **single fixed port `49620`** (it never spills to the next; a stale easyeda daemon already holding it is taken over automatically), the connector locks onto it, validates a handshake, self-heals its connection, and dispatches a typed action catalog to the official `eda.*` API. Raw JS survives only as the confirmation-gated `debug.exec_js` escape hatch. See [docs/FEATURES.md](docs/FEATURES.md) for the full feature/roadmap inventory.
 
 This project moves the system into a better shape:
 
@@ -192,13 +192,13 @@ go run ./cmd/easyeda board list --project <name>
 go run ./cmd/easyeda call system.health
 ```
 
-`daemon start` starts the local server. It binds the first free port in `127.0.0.1:49620-49629` and serves three endpoints, then runs until interrupted (Ctrl-C / SIGTERM):
+`daemon start` starts the local server. It binds a **single fixed port `127.0.0.1:49620`** — never spilling to the next, so at most one daemon runs and the connector always finds it there. A stale easyeda daemon already holding `49620` is taken over automatically; a foreign process makes it ask (interactive) or refuse (headless) rather than start a second daemon elsewhere. It serves three endpoints, then runs until interrupted (Ctrl-C / SIGTERM):
 
 - `GET /health` — service identity, version, and connected windows
 - `GET /eda` — WebSocket the EasyEDA connector registers on (daemon sends a `handshake` on connect)
 - `POST /action` — a typed action envelope to forward to a connected window
 
-`daemon health` scans the same port range for an `easyeda-agent` daemon. With the daemon running it reports `status: found` and lists connected windows; otherwise a clean `not_found` result is expected.
+`daemon health` scans the configured `--ports` range (default `49620-49629`) for an `easyeda-agent` daemon — which now lives on the fixed `49620`. With the daemon running it reports `status: found` and lists connected windows; otherwise a clean `not_found` result is expected.
 
 `call <action>` finds the running daemon and posts a typed action to it. `system.health` is answered by the daemon itself (no connector required); window-scoped actions need a connected EasyEDA window and return `NO_CONNECTOR` until the connector extension is running.
 
