@@ -6,6 +6,39 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-14
+
+本版把**项目工作流机械化**(#97)、补上**手焊可达门**(#99)、让 `place-constrained`
+**网感知分组连接器**,并修掉三处在 esp32Mini 端到端回归里暴露的工具张力(Type-C 突出板框、
+beautify 圆角与 `pcb check` 的弧不感知)。
+
+### Added
+- **项目 design-flow 状态机机械强制(#97)**:新增 `easyeda workflow`(init / status /
+  advance / confirm / reset)——6 段门(imported→placement_ready→placement_confirmed→
+  outline_confirmed→pre_route_passed→routing_authorized)。daemon 在 `/action` 层**拦截
+  未授权布线**(`pcb.line.create` / `pcb.via.create` / `pcb.import_autoroute`,fail-closed);
+  布局/朝向类 action 携带指纹,任何 mutation **自动失效**下游确认并全链回退。
+- **手焊铁路门(#99)**:`pcb layout-lint --gate` 增加**手焊可达**检查——每个器件至少一侧有
+  ≥60mil 净通道(否则「四面被围」判 fail);配 `pcb stage set-assembly hand-solder`
+  落盘的装配档(min-gap 40 / large-pad 60)。
+- **`pcb.line.list` 返回 copper 弧(`arcs`)**:与 `lines` 并列返回圆弧图元的端点,向后兼容
+  (旧 CLI 忽略新字段)。让 headless 检查能把「track 端接在弧端点」识别为已连,而非悬空。
+
+### Changed
+- **`place-constrained` 网感知分组**:`edge="user-facing"` 的连接器(USB / SD / 端子 / 排针)
+  **分组到同一条共享边**并沿边紧凑排布;共享边由**网感知**选(贴连接器电气搭档主芯片的那条边,
+  经共享 local 网,而非几何质心)——USB 贴 CH340 同侧,缩短差分对、少交叉(实测同种子 61→28 交叉)。
+  `edge="any"`(RF/模组)保持各自最近边。
+
+### Fixed
+- **`layout-lint` off-board 改按焊盘中心判**:连接器身/courtyard 突出板框(Type-C mating 面、
+  卡座、螺钉端子)但**焊盘全在框内**属有意贴边,不再误判 off-board、不再卡死 confirm-layout
+  授权链;无焊盘件兜底 bbox(焊盘边到板框净空仍归 DRC)。
+- **`pcb check` 弧感知(消除 beautify 圆角伪报)**:`beautify` 把拐角圆化成 track→arc→track 后,
+  `dangling-end` 与 `floating-track-island` 两个检测因**不认弧**而爆假阳性(实测一块板 dangling
+  0→130、island 0→10,而官方 DRC 报 0 断)。现 `dangling-end` 认「同层弧端点=track 端已连」、
+  `floating-track-island` 用**弧桥接** union(镜像过孔桥接)——实测两者双双归零。
+
 ## [0.11.3] - 2026-07-12
 
 守护进程端口稳定性(补丁):
