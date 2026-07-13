@@ -72,3 +72,30 @@ func TestAnalyzePcbLayout_OutlineAndClean(t *testing.T) {
 		t.Errorf("clean: ok=%v cross=%d score=%d verdict=%q, want true/0/100/easy", rep2.OK, rep2.CrossingCount, rep2.Score, rep2.Verdict)
 	}
 }
+
+// A connector whose BODY protrudes past the outline but whose PADS are all inside
+// is an intentional edge-mount (Type-C mating face overhanging), NOT off-board. A
+// pad actually landing outside still trips the check.
+func TestAnalyzePcbLayout_ProtrudingConnector(t *testing.T) {
+	outline := bb(0, 0, 100, 100)
+	// J1 body reaches x=-20 (past the left edge) but both pads sit at x>=5 (inside).
+	protrude := []pcbLComp{{Designator: "J1", BBox: bb(-20, 40, 30, 60)}}
+	padsIn := []pcbLPad{
+		{Designator: "J1", Net: "USB_DP", X: 5, Y: 45},
+		{Designator: "J1", Net: "USB_DM", X: 5, Y: 55},
+	}
+	rep := analyzePcbLayout(protrude, padsIn, outline, 6)
+	if !rep.OK || len(rep.OutsideOutline) != 0 {
+		t.Errorf("protruding connector (pads inside): ok=%v outside=%d, want true/0", rep.OK, len(rep.OutsideOutline))
+	}
+
+	// Same body, but now a pad actually falls off the board (x=-5) → real error.
+	padsOff := []pcbLPad{
+		{Designator: "J1", Net: "USB_DP", X: -5, Y: 45},
+		{Designator: "J1", Net: "USB_DM", X: 5, Y: 55},
+	}
+	rep2 := analyzePcbLayout(protrude, padsOff, outline, 6)
+	if rep2.OK || len(rep2.OutsideOutline) != 1 {
+		t.Errorf("pad off-board: ok=%v outside=%d, want false/1", rep2.OK, len(rep2.OutsideOutline))
+	}
+}

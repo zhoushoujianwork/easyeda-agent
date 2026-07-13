@@ -193,11 +193,32 @@ func analyzePcbLayout(comps []pcbLComp, pads []pcbLPad, outline *layoutBBox, min
 		}
 	}
 
-	// 2. Outside board outline (component bbox not fully inside the outline bbox).
+	// 2. Outside board outline. A part is off-board only when one of its PADS lands
+	//    outside the outline — a connector whose body/courtyard protrudes past the
+	//    edge (Type-C, card slot, screw terminal) with every pad inside is an
+	//    INTENTIONAL edge-mount (the mating face overhangs on purpose), not a
+	//    misplacement. Fall back to the bbox for parts with no pads (mechanical /
+	//    graphic). Pad centers are used (pad-edge-to-outline clearance is DRC's job).
 	if outline != nil {
+		padsByRef := map[string][]pcbLPad{}
+		for _, p := range pads {
+			padsByRef[p.Designator] = append(padsByRef[p.Designator], p)
+		}
 		for _, c := range withBBox {
-			if c.BBox.MinX < outline.MinX || c.BBox.MinY < outline.MinY ||
-				c.BBox.MaxX > outline.MaxX || c.BBox.MaxY > outline.MaxY {
+			var outside bool
+			if cps := padsByRef[c.Designator]; len(cps) > 0 {
+				for _, p := range cps {
+					if p.X < outline.MinX || p.X > outline.MaxX ||
+						p.Y < outline.MinY || p.Y > outline.MaxY {
+						outside = true
+						break
+					}
+				}
+			} else {
+				outside = c.BBox.MinX < outline.MinX || c.BBox.MinY < outline.MinY ||
+					c.BBox.MaxX > outline.MaxX || c.BBox.MaxY > outline.MaxY
+			}
+			if outside {
 				rep.OutsideOutline = append(rep.OutsideOutline, pcbLFinding{Type: "outside-outline", A: c.Designator})
 			}
 		}
