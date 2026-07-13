@@ -675,6 +675,59 @@ curves are approximated by line segments. Reports whether all components fall in
 			return dispatch(cfg, "pcb.drc.rules", window, nil, stdout, stderr)
 		},
 	})
+	// net-classes — print the role→width ladder (规范线宽) that route-short and
+	// `pcb check width-under-spec` use. Seeded from the board's LIVE rules (signal =
+	// live default; power roles step up per §7.8), so it reflects the actual board.
+	{
+		var asJSON bool
+		c := &cobra.Command{
+			Use:   "net-classes",
+			Short: "Print the net-class → spec track-width ladder (signal/power-branch/power-trunk/high-current/gnd)",
+			Args:  cobra.NoArgs,
+			Long: `Show the role→width ladder the daemon uses for规范线宽 (spec track widths):
+route-short picks each net's width by role, and "pcb check" flags power tracks
+thinner than their role's width. Roles are classified by net name/voltage
+(pcb_netclass.go); a block's declared per-net track_width_mil overrides them.
+
+Widths are seeded from the board's LIVE DRC rules (signal = the live default,
+power roles step up per pcb-layout-conventions.md §7.8), clamped ≥ the fab's
+legal minimum.`,
+			Example: `  easyeda pcb net-classes            # human table
+  easyeda pcb net-classes --json     # {role: {mil, mm}}`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				rules := fetchPcbRules(cfg, window)
+				table := netClassWidthTable(rules)
+				notes := map[string]string{
+					roleSignal:      "logic/analog signal (live default)",
+					rolePowerBranch: "regulated rail <5V (3V3/1V8/VCC/VDD)",
+					rolePowerTrunk:  "main rail 5–9V (+5V-class)",
+					roleHighCurrent: "connector-in/battery/bus (VBUS/VIN/VBAT, ≥9V)",
+					roleGnd:         "ground — prefer pour/plane over a track",
+				}
+				if asJSON {
+					out := map[string]any{"source": rules.source, "classes": map[string]any{}}
+					for _, role := range netClassRolesByWidth {
+						out["classes"].(map[string]any)[role] = map[string]any{
+							"mil":  round2(table[role]),
+							"mm":   round2(table[role] / mmToMil),
+							"note": notes[role],
+						}
+					}
+					enc := json.NewEncoder(stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(out)
+				}
+				fmt.Fprintf(stdout, "net-class spec widths (rules: %s)\n", rules.source)
+				fmt.Fprintf(stdout, "  %-14s %6s  %6s   %s\n", "ROLE", "mil", "mm", "note")
+				for _, role := range netClassRolesByWidth {
+					fmt.Fprintf(stdout, "  %-14s %6.2g  %6.3g   %s\n", role, table[role], table[role]/mmToMil, notes[role])
+				}
+				return nil
+			},
+		}
+		c.Flags().BoolVar(&asJSON, "json", false, "emit the ladder as JSON")
+		pcb.AddCommand(c)
+	}
 	// drc-rules-set — the write side of drc-rules. v1 exposes exactly one knob:
 	// the pour/plane copper clearance (Plane.*.lineClearance), raise-only. This
 	// is the solidified fix for the fresh-PCB pour-reflow divergence (a newly
@@ -2253,15 +2306,25 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 				rules := fetchPcbRules(cfg, window)
 				opt.signalWidth = rules.clampWidth(rules.trackWidthMil)
 				opt.powerWidth = rules.clampWidth(rules.powerWidthMil)
+				// Role→width ladder seeded from the live rules (pcb_netclass.go):
+				// signal / power-branch / power-trunk / high-current each get a spec
+				// width instead of one flat power bucket.
+				opt.netClassWidths = netClassWidthTable(rules)
 				if maxLen > 0 {
 					opt.maxLen = maxLen
 				}
 				opt.width = width
 				if signalWidth > 0 {
 					opt.signalWidth = signalWidth
+					opt.netClassWidths[roleSignal] = signalWidth
 				}
 				if powerWidth > 0 {
+					// --width-power forces ONE width across every power role (legacy
+					// single-power-width behavior), overriding the ladder steps.
 					opt.powerWidth = powerWidth
+					for _, role := range []string{rolePowerBranch, rolePowerTrunk, roleHighCurrent, roleGnd} {
+						opt.netClassWidths[role] = powerWidth
+					}
 				}
 				if roundRadius > 0 {
 					opt.roundRadius = roundRadius
@@ -2324,7 +2387,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 					"viasDrawn":  viasDrawn,
 					"multilayer": opt.multilayer,
 					"avoid":      opt.avoid,
-					"rules":      map[string]any{"source": rules.source, "clearanceMil": rules.clearanceMil, "trackWidthMil": rules.trackWidthMil, "signalWidth": opt.signalWidth, "powerWidth": opt.powerWidth},
+					"rules":      map[string]any{"source": rules.source, "clearanceMil": rules.clearanceMil, "trackWidthMil": rules.trackWidthMil, "signalWidth": opt.signalWidth, "powerWidth": opt.powerWidth, "netClassWidths": opt.netClassWidths},
 					"routes":     segs,
 					"skipped":    diags,
 					"failures":   failures,
@@ -2336,8 +2399,8 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 		}
 		c.Flags().Float64Var(&maxLen, "max-len", 0, "longest hop to route (Manhattan mil, default 1000)")
 		c.Flags().Float64Var(&width, "width", 0, "force ALL tracks to this width (mil); overrides --width-signal/--width-power")
-		c.Flags().Float64Var(&signalWidth, "width-signal", 0, "signal-net track width (mil, default 10)")
-		c.Flags().Float64Var(&powerWidth, "width-power", 0, "power/ground-net track width (mil, default 20)")
+		c.Flags().Float64Var(&signalWidth, "width-signal", 0, "signal-net track width (mil); overrides the ladder's signal role (default = live rule track width)")
+		c.Flags().Float64Var(&powerWidth, "width-power", 0, "force ONE width across all power roles (mil); overrides the branch/trunk/high-current ladder (default = §7.8 ladder: 10/15/20)")
 		c.Flags().StringVar(&corner, "corner", "90", "corner style: 90 (L), 45 (chamfer), round (chord fillet)")
 		c.Flags().Float64Var(&roundRadius, "round-radius", 0, "max fillet radius for --corner round (mil, default 20)")
 		c.Flags().BoolVar(&noAvoid, "no-avoid", false, "disable obstacle-aware L-orientation (v1 naive horizontal-first)")

@@ -61,9 +61,13 @@ type rtNetDiag struct {
 type rtOptions struct {
 	maxLen      float64 // longest single hop (Manhattan, mil) still considered "short"
 	width       float64 // global override (mil); >0 forces ALL segments to this width
-	signalWidth float64 // class width for signal nets (used when width==0)
-	powerWidth  float64 // class width for power/ground nets (used when width==0)
-	skipPower   bool    // skip power+ground nets (isGlobalNet) — they belong in a pour, not thin tracks
+	signalWidth float64 // class width for signal nets (legacy two-bucket fallback)
+	powerWidth  float64 // class width for power/ground nets (legacy two-bucket fallback)
+	// netClassWidths is the role→width (mil) ladder (pcb_netclass.go); when present
+	// widthFor consults it (signal / power-branch / power-trunk / high-current / gnd)
+	// instead of the two-bucket signalWidth/powerWidth split.
+	netClassWidths map[string]float64
+	skipPower      bool // skip power+ground nets (isGlobalNet) — they belong in a pour, not thin tracks
 	corner      string  // corner style: "90" (L), "45" (chamfer), "round" (chord fillet)
 	roundRadius float64 // max fillet radius for corner=="round" (mil)
 	avoid       bool    // obstacle-aware L-orientation selection (#23)
@@ -94,7 +98,8 @@ type rtOptions struct {
 func defaultRtOptions() rtOptions {
 	return rtOptions{
 		maxLen: 1000, width: 0, signalWidth: 10, powerWidth: 20,
-		skipPower: true, corner: "90", roundRadius: 20,
+		netClassWidths: netClassWidthTable(defaultPcbRules()),
+		skipPower:      true, corner: "90", roundRadius: 20,
 		avoid: true, clearance: 6,
 		multilayer: true, stub: 30, viaDia: 24, viaHole: 12,
 		minWidth: 6, finePitch: 26,
@@ -102,12 +107,18 @@ func defaultRtOptions() rtOptions {
 }
 
 // widthFor picks a track width by net class: an explicit --width overrides
-// everything; otherwise power/ground nets (isGlobalNet) get the fatter powerWidth
-// and ordinary signals get signalWidth. Returns 0 only if every width is 0
-// (connector default).
+// everything; otherwise the role→width ladder (netClassWidths) gives a spec width
+// per role (signal / power-branch / power-trunk / high-current / gnd). Falls back to
+// the legacy two-bucket split (isGlobalNet ? powerWidth : signalWidth) when the
+// ladder is absent. Returns 0 only if every width is 0 (connector default).
 func (o rtOptions) widthFor(net string) float64 {
 	if o.width > 0 {
 		return o.width
+	}
+	if o.netClassWidths != nil {
+		if w, ok := o.netClassWidths[netRole(net)]; ok && w > 0 {
+			return w
+		}
 	}
 	if isGlobalNet(net) {
 		return o.powerWidth
