@@ -127,3 +127,9 @@ ESP32 双三极管自动下载、SY8089 buck、RS-485、GNSS 前端、microSD…
 - ⬜ **T3 主芯片信号流 floorplan**:块**不编码**主芯片相对位置 → 板子大小主要由 agent 的种子决定,
   这是「偏散板」的更大根因(见 [e2e-automation-acceptance.md](./e2e-automation-acceptance.md) §5)。
 - ⬜ **末端 headless 干净布线**:route-short 稀疏板启发式,非平凡板需 tier② 原生自动布线。
+
+### 布线排序铁律(2026-07-13 实测踩过)
+- **电源先于信号**(P7.0):次级电源轨(如 5V)**必须在信号自动布线之前**先布好并锁定——留到最后布,信号已把板占满(全锁),散布的电源焊盘会被**围死**,route-short 和原生自动布线都布不动。
+- **散布电源轨走信号层铺铜,不穿细线**:8 个散布 5V 焊盘无法用细线干净连;焊盘在顶层就**顶层铺一片 net-bound pour** 直连(`pour-fit --net 5V --layer 1`)。**同层多网 pour 靠优先级**:顶层 GND pour 优先级高会把 5V 挤没 → **删掉/降低竞争的 GND 顶层 pour** 让 5V 独占该层(「2 层接地」由 GND 内电层 + 底层 GND pour 兜)。
+- **tier② 原生自动布线** 布信号:route-short 84 clearance 的板,原生路由器 Track-to-Track 降到个位数(推挤/撕绕/规则原生一致);前提=P7.0 关键网/电源先布并 `track-lock`,对话框选「保留 + 只顶底层 + 忽略已在平面的电源网」。
+- **孤立铜清理**:被 `track-lock --all` 锁住的残留短轨桩 rip 不掉 → 先 `track-lock --net X --unlock` 再 `rip-up --net X`。
