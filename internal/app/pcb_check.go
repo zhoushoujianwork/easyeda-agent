@@ -189,6 +189,8 @@ type pcbCheckSummary struct {
 	NetlessPours      int `json:"netlessPours"`
 	ViaCrossesPlane   int `json:"viaCrossesPlane"`
 	FloatingIslands   int `json:"floatingIslands"`
+	PowerNotPoured    int `json:"powerNotPoured"`
+	WidthUnderSpec    int `json:"widthUnderSpec"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
@@ -1122,6 +1124,152 @@ func fetchPcbPours(cfg *appConfig, window string) ([]pcbPourP, error) {
 	return pours, nil
 }
 
+// ── R13: power net not carried by copper pour/plane (能力 B / 电源走铺铜块) ──
+// Power/ground nets should distribute current through a copper POUR or inner
+// PLANE, not thin tracks (design-flow P7.0; thin power tracks are the #1 DRC
+// source — design-decisions.md measured 18/27 Safe-Spacing violations from six
+// thin 3V3 tracks). Flags every power net (isGlobalNet, incl. GND) with ≥2 pads
+// that has NO same-net pour and is bound to NO PLANE — its current is carried by
+// tracks alone (or is unrouted). Single-pad nets (test points) are skipped.
+func findPowerNotPoured(pads []pcbPadP, pouredNets map[string]bool) []pcbCheckFinding {
+	padCount := map[string]int{}
+	for _, p := range pads {
+		n := strings.TrimSpace(p.Net)
+		if n == "" || !isGlobalNet(n) {
+			continue
+		}
+		padCount[n]++
+	}
+	nets := make([]string, 0, len(padCount))
+	for n := range padCount {
+		nets = append(nets, n)
+	}
+	sort.Strings(nets)
+	var out []pcbCheckFinding
+	for _, n := range nets {
+		if padCount[n] < 2 || pouredNets[n] {
+			continue
+		}
+		fix := fmt.Sprintf("`pcb pour-fit --net %s` (2-layer) or `pcb power-planes` (4-layer)", n)
+		out = append(out, pcbCheckFinding{
+			Type: "power-not-poured", Level: "WARN", Net: n,
+			Message: fmt.Sprintf("power net %s (%d pads) has no copper pour/plane — power should be poured, not carried by thin tracks: %s", n, padCount[n], fix),
+		})
+	}
+	return out
+}
+
+// pouredNetSet returns the set of nets whose current is delivered by copper area:
+// any net bound to a same-net pour or to an inner PLANE. Pass planes already run
+// through bindPlaneNets so their Nets are populated.
+func pouredNetSet(pours []pcbPourP, planes []pcbPlaneLayer) map[string]bool {
+	set := map[string]bool{}
+	for _, p := range pours {
+		if n := strings.TrimSpace(p.Net); n != "" {
+			set[n] = true
+		}
+	}
+	for _, pl := range planes {
+		for _, n := range pl.Nets {
+			set[n] = true
+		}
+	}
+	return set
+}
+
+// ── R14: power track under its net-class spec width (能力 A / 规范线宽) ──────
+// A routed power track thinner than its net-class spec (pcb_netclass.go: branch 10
+// / trunk 15 / high-current 20 / gnd) is under-sized for the current it carries.
+// One aggregated finding per net (thinnest offender + count) caps noise. Exempts
+// (a) fine-pitch narrowing — a track pinned to a fine-pitch pad field, where
+// narrowing to the legal minimum is the only way to clear spacing — and (b) short
+// via-stitch escape stubs. Signal nets are NOT checked (their spec is the live
+// default and fine-pitch narrowing is legitimate). `widths` is netClassWidthTable.
+func findWidthUnderSpec(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, widths map[string]float64) []pcbCheckFinding {
+	if len(widths) == 0 {
+		return nil
+	}
+	obPads := make([]obPad, 0, len(pads))
+	for _, p := range pads {
+		obPads = append(obPads, obPad{net: strings.TrimSpace(p.Net), x: p.X, y: p.Y, layer: p.Layer})
+	}
+	type offender struct {
+		count    int
+		thinnest float64
+		spec     float64
+		at       pcbXY
+		prim     string
+	}
+	byNet := map[string]*offender{}
+	var order []string
+	for _, t := range tracks {
+		net := strings.TrimSpace(t.Net)
+		role := netRole(net)
+		if role == roleSignal { // signals exempt (spec == live default; fine-pitch legit)
+			continue
+		}
+		spec, ok := widths[role]
+		if !ok || spec <= 0 || t.Width >= spec-pcbWidthTolMil {
+			continue
+		}
+		// Legitimately-narrow exemptions.
+		if finePitchAt(t.X1, t.Y1, net, obPads, 26) || finePitchAt(t.X2, t.Y2, net, obPads, 26) {
+			continue
+		}
+		if trackIsStitchStub(t, vias) {
+			continue
+		}
+		o := byNet[net]
+		if o == nil {
+			o = &offender{thinnest: math.Inf(1), spec: spec}
+			byNet[net] = o
+			order = append(order, net)
+		}
+		o.count++
+		if t.Width < o.thinnest {
+			o.thinnest = t.Width
+			o.at = pcbXY{round2((t.X1 + t.X2) / 2), round2((t.Y1 + t.Y2) / 2)}
+			o.prim = t.ID
+		}
+	}
+	sort.Strings(order)
+	var out []pcbCheckFinding
+	for _, n := range order {
+		o := byNet[n]
+		f := pcbCheckFinding{
+			Type: "width-under-spec", Level: "WARN", Net: n,
+			Widths: []float64{round2(o.thinnest), round2(o.spec)},
+			At:     &pcbXY{o.at.X, o.at.Y},
+			Message: fmt.Sprintf("power net %s: %d track(s) below the %s spec width %.3g mil (thinnest %.3g mil) — widen for current capacity (route-short sizes by role; pour it instead, or --width-power to override)",
+				n, o.count, netRole(n), o.spec, o.thinnest),
+		}
+		if o.prim != "" {
+			f.Primitives = []string{o.prim}
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// trackIsStitchStub reports whether a short track is a via-connection escape stub
+// (one endpoint on a same-net via, length ≤ a stub threshold) — legitimately
+// narrow, so width-under-spec should not flag it.
+func trackIsStitchStub(t pcbTrack, vias []pcbViaP) bool {
+	const stubMaxLen = 60.0 // mil — route-short stub setback ≈30; stitch stubs are short
+	if math.Hypot(t.X2-t.X1, t.Y2-t.Y1) > stubMaxLen {
+		return false
+	}
+	for _, v := range vias {
+		if v.Net != t.Net {
+			continue
+		}
+		if math.Hypot(v.X-t.X1, v.Y-t.Y1) <= pcbCoincEps || math.Hypot(v.X-t.X2, v.Y-t.Y2) <= pcbCoincEps {
+			return true
+		}
+	}
+	return false
+}
+
 // ── R10: antenna keep-out ───────────────────────────────────────────────────
 // A component that carries an RF antenna (an ESP WROOM/WROVER module, or a part
 // named/designated as an antenna) needs a NO-COPPER keep-out under/around its
@@ -1367,7 +1515,8 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 	// and against board cutouts (slots): the headless twin of native DRC's
 	// 间距错误, so `pcb check --strict` gates the low-level shorts WITHOUT the
 	// foreground-only native DRC.
-	clearance := fetchPcbRules(cfg, window).clearanceMil
+	rules := fetchPcbRules(cfg, window)
+	clearance := rules.clearanceMil
 	if clearance <= 0 {
 		clearance = 6
 	}
@@ -1398,32 +1547,55 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 		rep.Passed = rep.Summary.Total == 0
 	}
 
-	// Netless-pour + via-crosses-plane + floating-track-island are
-	// LIVE-only rules (they need the pour lists / the stackup, which the
-	// pure copper core doesn't take). Degrade gracefully if a fetch fails.
+	// Netless-pour + via-crosses-plane + floating-track-island + power-not-poured
+	// + width-under-spec are LIVE-only rules (they need the pour lists / the
+	// stackup / the live width ladder, which the pure copper core doesn't take).
+	// Degrade gracefully if a fetch fails.
 	if pours, perr := fetchPcbPours(cfg, window); perr != nil {
-		fmt.Fprintf(stderr, "warning: netless-pour + via-crosses-plane + floating-track-island checks skipped (%v)\n", perr)
+		fmt.Fprintf(stderr, "warning: pour/plane + power-distribution checks skipped (%v)\n", perr)
 	} else {
+		// Planes (bound to their nets) feed both via-crosses-plane and the
+		// poured-net set that power-not-poured / width-under-spec share.
+		planes, lerr := fetchPcbPlaneLayers(cfg, window)
+		if lerr != nil {
+			fmt.Fprintf(stderr, "warning: plane data unavailable (%v)\n", lerr)
+			planes = nil
+		}
+		planes = bindPlaneNets(planes, pours)
+		pouredNets := pouredNetSet(pours, planes)
+
 		for _, f := range findNetlessPours(pours) {
 			rep.Findings = append(rep.Findings, f)
 			rep.Summary.NetlessPours++
 			rep.Summary.Warnings++
 			rep.Summary.Total++
 		}
-		if planes, lerr := fetchPcbPlaneLayers(cfg, window); lerr != nil {
-			fmt.Fprintf(stderr, "warning: via-crosses-plane check skipped (%v)\n", lerr)
-		} else if len(planes) > 0 {
-			for _, f := range findViaCrossesPlane(vias, bindPlaneNets(planes, pours)) {
+		if len(planes) > 0 {
+			for _, f := range findViaCrossesPlane(vias, planes) {
 				rep.Findings = append(rep.Findings, f)
 				rep.Summary.ViaCrossesPlane++
 				rep.Summary.Warnings++
 				rep.Summary.Total++
 			}
 		}
-
 		for _, f := range findFloatingTrackIslands(tracks, vias, pads, pours, arcs) {
 			rep.Findings = append(rep.Findings, f)
 			rep.Summary.FloatingIslands++
+			rep.Summary.Warnings++
+			rep.Summary.Total++
+		}
+		// power-not-poured (能力 B) + width-under-spec (能力 A) — both WARN, both
+		// gate under --strict. Share pouredNets so a thin stitch stub on a poured
+		// net is exempt.
+		for _, f := range findPowerNotPoured(pads, pouredNets) {
+			rep.Findings = append(rep.Findings, f)
+			rep.Summary.PowerNotPoured++
+			rep.Summary.Warnings++
+			rep.Summary.Total++
+		}
+		for _, f := range findWidthUnderSpec(tracks, pads, vias, netClassWidthTable(rules)) {
+			rep.Findings = append(rep.Findings, f)
+			rep.Summary.WidthUnderSpec++
 			rep.Summary.Warnings++
 			rep.Summary.Total++
 		}
@@ -1729,9 +1901,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d clearance=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d floatingIsland=%d\n",
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d clearance=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d floatingIsland=%d powerNotPoured=%d widthUnderSpec=%d\n",
 		s.Errors, s.Warnings-s.Errors,
-		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.Clearance, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane, s.FloatingIslands)
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.Clearance, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane, s.FloatingIslands, s.PowerNotPoured, s.WidthUnderSpec)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {

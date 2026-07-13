@@ -2749,6 +2749,12 @@ Rules:
   • floating-track-island — a connected GROUP of tracks anchoring to no pad → WARN
                         (dangling-end's blind spot: members anchor each other;
                         islands under a same-net pour are exempt)
+  • power-not-poured  — a power/GND net (≥2 pads) with no same-net pour/plane → WARN
+                        (power should be poured, not carried by thin tracks;
+                        fix: 'pcb pour-fit --net N' 2-layer / 'pcb power-planes' 4-layer)
+  • width-under-spec  — a routed power track thinner than its net-class spec  → WARN
+                        (branch 10 / trunk 15 / high-current 20 mil — see
+                        'pcb net-classes'; fine-pitch narrowing + stitch stubs exempt)
 
 Complements 'pcb drc' (rule clearance) and 'pcb layout-lint' (placement/routability).
 Exit code: 0 by default (informational). --strict exits non-zero on any WARN/ERROR
