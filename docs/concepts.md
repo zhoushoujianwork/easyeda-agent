@@ -128,6 +128,13 @@ ESP32 双三极管自动下载、SY8089 buck、RS-485、GNSS 前端、microSD…
   这是「偏散板」的更大根因(见 [e2e-automation-acceptance.md](./e2e-automation-acceptance.md) §5)。
 - ⬜ **末端 headless 干净布线**:route-short 稀疏板启发式,非平凡板需 tier② 原生自动布线。
 
+### 4 层叠层规格(客户确认 2026-07-13)= GND 主导
+- **L1 顶层**:信号 + **GND 铺铜**(首层) · **L2 Inner1**:**GND 内电层 PLANE** · **L3 Inner2**:信号层**主走电源**(3V3+5V 埋这层) · **L4 底层**:信号 + **GND 铺铜**(尾层)。
+- GND 在 顶/内层1/底 三层,电源(3V3+5V)埋内层2。**必须一次 `power-planes` 在干净板上做对**——**别反复 pour/翻层**:实测反复操作会累积 netless 死铜(挡顶层铺铜填充)+ 把 PLANE 绑定 pour-rebuild 降级成 netless@L1(L15 绑不上),把板子搞脏。CLI **无 via-create**:电源缝合过孔靠 `power-planes`(plane 网)或 `route-short --route-power`(信号层电源,会打缝合过孔,但顺带画冗余走线)。
+
+### Type-C 端子突出板框(P3 一次做对)
+受体连接器(USB-C / DC jack)mating 面**突出板框 ~0.5–1mm**(焊盘留板内,板框在端子正下方内缩让位)——P3 定板框时做,别等布线后再改(返工)。见 `pcb-layout-conventions.md §2.2`。
+
 ### 布线排序铁律(2026-07-13 实测踩过)
 - **电源先于信号**(P7.0):次级电源轨(如 5V)**必须在信号自动布线之前**先布好并锁定——留到最后布,信号已把板占满(全锁),散布的电源焊盘会被**围死**,route-short 和原生自动布线都布不动。
 - **散布电源轨走信号层铺铜,不穿细线**:8 个散布 5V 焊盘无法用细线干净连;焊盘在顶层就**顶层铺一片 net-bound pour** 直连(`pour-fit --net 5V --layer 1`)。**同层多网 pour 靠优先级**:顶层 GND pour 优先级高会把 5V 挤没 → **删掉/降低竞争的 GND 顶层 pour** 让 5V 独占该层(「2 层接地」由 GND 内电层 + 底层 GND pour 兜)。
