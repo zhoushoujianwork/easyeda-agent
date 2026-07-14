@@ -58,6 +58,7 @@ on `main` by default (user preference). Don't `git checkout -b`; just commit to
 | `extension/` | TypeScript connector → esbuild → `.eext`. `src/transport.ts` (port-scan + auto-reconnect), `src/actions.ts` (eda.* handlers + `connect_pin`). |
 | `skills/easyeda-agent/` | Merged public skill — short `SKILL.md` router plus `references/` for design flow, schematic, PCB, conventions, canonical data, and `scripts/` for lint/BOM/parts/calibration tools. |
 | `docs/FEATURES.md` | Feature-status inventory (20 actions grouped by capability) + roadmap. |
+| `docs/pcb-design-rules.md` | PCB 设计规范手册 — 线宽/间距/过孔/布局/走线/铺铜/Mark点/拼板/叠层/DRC 清单，基于 JLC 工艺能力 + IPC-2221。 |
 | `skills/easyeda-agent/SKILL.md` | The user-facing skill. |
 
 ## Dev workflow

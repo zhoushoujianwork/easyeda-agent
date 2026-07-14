@@ -191,6 +191,11 @@ type pcbCheckSummary struct {
 	FloatingIslands   int `json:"floatingIslands"`
 	PowerNotPoured    int `json:"powerNotPoured"`
 	WidthUnderSpec    int `json:"widthUnderSpec"`
+	SilkOverPad       int `json:"silkOverPad"`
+	DecapTooFar       int `json:"decapTooFar"`
+	ViaInPad          int `json:"viaInPad"`
+	CopperNearEdge    int `json:"copperNearEdge"`
+	FiducialMissing   int `json:"fiducialMissing"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
@@ -240,6 +245,10 @@ func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, arcs
 	rep.Findings = append(rep.Findings, findDuplicateSegments(tracks)...)
 	rep.Findings = append(rep.Findings, findParallelCoupling(tracks, couplingW)...)
 	rep.Findings = append(rep.Findings, findSilkscreenFlipped(silk)...)
+	rep.Findings = append(rep.Findings, findSilkOverPad(silk, pads)...)
+	rep.Findings = append(rep.Findings, findDecapTooFar(pads)...)
+	rep.Findings = append(rep.Findings, findViaInPad(vias, pads)...)
+	rep.Findings = append(rep.Findings, findFiducialMissing(pads)...)
 
 	for _, f := range rep.Findings {
 		switch f.Type {
@@ -263,6 +272,14 @@ func analyzePcbCheckFull(pads []pcbPadP, tracks []pcbTrack, vias []pcbViaP, arcs
 			rep.Summary.ParallelCoupling++
 		case "silkscreen-flipped":
 			rep.Summary.SilkscreenFlipped++
+		case "silk-over-pad":
+			rep.Summary.SilkOverPad++
+		case "decap-too-far":
+			rep.Summary.DecapTooFar++
+		case "via-in-pad":
+			rep.Summary.ViaInPad++
+		case "fiducial-missing":
+			rep.Summary.FiducialMissing++
 		}
 		switch f.Level {
 		case "ERROR":
@@ -1533,6 +1550,32 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 	}
 	rep.Passed = rep.Summary.Total == 0
 
+	// Copper-near-edge is a LIVE-only rule (needs the board outline). The floor is
+	// the live copper-to-edge rule (fallback: JLC routed-edge 8mil, doc §5.1
+	// recommends ~20mil/0.5mm — we gate on the fab floor, the doc value is advice).
+	if ores, oerr := requestAction(cfg, "pcb.outline.get", window, nil); oerr != nil {
+		fmt.Fprintf(stderr, "warning: copper-near-edge check skipped (%v)\n", oerr)
+	} else if bb, ok := mnav(ores.Result, "bbox").(map[string]any); ok {
+		minX, ok1 := asFloatOK(bb["minX"])
+		minY, ok2 := asFloatOK(bb["minY"])
+		maxX, ok3 := asFloatOK(bb["maxX"])
+		maxY, ok4 := asFloatOK(bb["maxY"])
+		if ok1 && ok2 && ok3 && ok4 {
+			outline := &layoutBBox{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY}
+			edgeClr := rules.copperToEdgeMil
+			if edgeClr <= 0 {
+				edgeClr = 8
+			}
+			for _, f := range findCopperNearEdge(tracks, vias, outline, edgeClr) {
+				rep.Findings = append(rep.Findings, f)
+				rep.Summary.CopperNearEdge++
+				rep.Summary.Warnings++
+				rep.Summary.Total++
+			}
+			rep.Passed = rep.Summary.Total == 0
+		}
+	}
+
 	// Antenna keep-out is a LIVE-only rule (needs component bboxes + regions, which
 	// the pure core doesn't take). Degrade gracefully if either fetch fails.
 	if ants, regions, copperLayers, aerr := fetchAntennaContext(cfg, window, silk); aerr != nil {
@@ -1901,9 +1944,9 @@ func renderPcbCheckReport(rep pcbCheckReport, w io.Writer) {
 		fmt.Fprintln(w, "  ✓ no DFM issues found")
 		return
 	}
-	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d clearance=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d floatingIsland=%d powerNotPoured=%d widthUnderSpec=%d\n",
+	fmt.Fprintf(w, "  ERROR=%d WARN=%d  |  dangling=%d acute=%d nonOrtho=%d overPad=%d clearance=%d silkFlipped=%d overlapVia=%d singleLayerVia=%d widthMismatch=%d dupSegment=%d coupling=%d antennaKeepout=%d netlessPour=%d viaCrossesPlane=%d floatingIsland=%d powerNotPoured=%d widthUnderSpec=%d silkOverPad=%d decapTooFar=%d viaInPad=%d copperNearEdge=%d fiducialMissing=%d\n",
 		s.Errors, s.Warnings-s.Errors,
-		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.Clearance, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane, s.FloatingIslands, s.PowerNotPoured, s.WidthUnderSpec)
+		s.DanglingEnds, s.AcuteAngles, s.NonOrthogonal, s.TrackOverPad, s.Clearance, s.SilkscreenFlipped, s.OverlappingVias, s.SingleLayerVias, s.WidthMismatches, s.DuplicateSegments, s.ParallelCoupling, s.AntennaKeepout, s.NetlessPours, s.ViaCrossesPlane, s.FloatingIslands, s.PowerNotPoured, s.WidthUnderSpec, s.SilkOverPad, s.DecapTooFar, s.ViaInPad, s.CopperNearEdge, s.FiducialMissing)
 	for _, f := range rep.Findings {
 		loc := ""
 		if f.At != nil {
