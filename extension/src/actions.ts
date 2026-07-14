@@ -179,14 +179,40 @@ function serializePcbComponent(component: PcbComponent): Record<string, unknown>
 }
 
 /**
+ * Extract a pad's real copper extent (width/height in mil, axis-aligned after
+ * rotation) from its TPCB_PrimitivePadShape tuple. Every shape is a tagged
+ * array: [ELLIPSE|OVAL|NGON, w, h] / [RECT, w, h, cornerRadius] / [POLYGON,
+ * sourceArray] — the polygon case has no cheap extent, so it returns null and
+ * consumers fall back to their nominal estimate.
+ *
+ * @param pad - the PCB component pad primitive object
+ * @returns { width, height } in mil, or null when the shape carries no extent
+ */
+function padExtent(pad: PcbPad): { width: number; height: number } | null {
+	let shape: unknown;
+	try { shape = pad.getState_Pad?.(); } catch { return null; }
+	if (!Array.isArray(shape) || shape.length < 3) return null;
+	const w = shape[1], h = shape[2];
+	if (typeof w !== 'number' || typeof h !== 'number' || !isFinite(w) || !isFinite(h)) return null;
+	// A 90°/270° pad rotation swaps the axis-aligned extents.
+	let rot = 0;
+	try { rot = Number(pad.getState_Rotation?.() ?? 0); } catch { /* keep 0 */ }
+	const quarter = Math.abs(((rot % 180) + 180) % 180 - 90) < 45;
+	return quarter ? { width: h, height: w } : { width: w, height: h };
+}
+
+/**
  * Serialize a single PCB component pad to plain JSON. Pads carry the
  * net-by-name connectivity model that replaces schematic net flags.
+ * width/height are the REAL axis-aligned copper extents (mil) from the pad's
+ * shape tuple — so Go-side checks/routing stop guessing a nominal pad size —
+ * omitted for complex-polygon pads (consumers keep their fallback).
  *
  * @param pad - the PCB component pad primitive object
  * @returns a plain JSON record
  */
 function serializePcbPad(pad: PcbPad): Record<string, unknown> {
-	return {
+	const record: Record<string, unknown> = {
 		primitiveId: pad.getState_PrimitiveId(),
 		padNumber: pad.getState_PadNumber(),
 		net: pad.getState_Net(),
@@ -196,6 +222,12 @@ function serializePcbPad(pad: PcbPad): Record<string, unknown> {
 		rotation: pad.getState_Rotation(),
 		padType: pad.getState_PadType(),
 	};
+	const ext = padExtent(pad);
+	if (ext) {
+		record.width = ext.width;
+		record.height = ext.height;
+	}
+	return record;
 }
 
 /**
@@ -4035,6 +4067,7 @@ const pcbSilkList: Handler = async () => {
 				mirror: !!a.getState_Mirror?.(),
 				reverse: !!a.getState_Reverse?.(),
 				rotation: Number(a.getState_Rotation?.() ?? 0),
+				fontSize: Number(a.getState_FontSize?.() ?? 0) || 0,
 				componentId: pid,
 				componentLayer: compLayer.get(pid) ?? 0,
 				x: a.getState_X() ?? 0,
@@ -4061,6 +4094,7 @@ const pcbSilkList: Handler = async () => {
 				mirror: !!s.getState_Mirror?.(),
 				reverse: !!s.getState_Reverse?.(),
 				rotation: Number(s.getState_Rotation?.() ?? 0),
+				fontSize: Number(s.getState_FontSize?.() ?? 0) || 0,
 				componentId: '',
 				componentLayer: 0,
 				x: s.getState_X() ?? 0,
@@ -4245,8 +4279,10 @@ const pcbSilkNetnames: Handler = async (payload) => {
 			const x = pad.getState_X?.() ?? 0;
 			const y = pad.getState_Y?.() ?? 0;
 			if (net && padId) {
-				// Use fixed pad size for collision detection; refine later if needed
-				const width = 50, height = 50;
+				// Real pad extent from the shape tuple; nominal 50mil only for
+				// complex-polygon pads that carry no cheap extent.
+				const ext = padExtent(pad as unknown as PcbPad);
+				const width = ext?.width ?? 50, height = ext?.height ?? 50;
 				pads.push({ primitiveId: padId, net, x, y, width, height });
 			}
 		}

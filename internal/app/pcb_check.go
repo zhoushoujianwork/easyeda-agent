@@ -78,13 +78,26 @@ type pcbViaP struct {
 	Dia  float64
 }
 
-// pcbPadP is one placed pad (pcb.components.list --include-pads).
+// pcbPadP is one placed pad (pcb.components.list --include-pads). W/H are the
+// real axis-aligned copper extents (mil) from the connector's pad-shape tuple;
+// 0 = unknown (older connector, or a complex-polygon pad) → halfExt() falls back
+// to the nominal estimate.
 type pcbPadP struct {
 	Designator string
 	Number     string
 	Net        string
 	Layer      int
 	X, Y       float64
+	W, H       float64
+}
+
+// halfExt is the pad's half-extent (mil) for center-distance clearance math —
+// the real max(W,H)/2 when the connector reported a size, else nominalPadHalf.
+func (p pcbPadP) halfExt() float64 {
+	if h := math.Max(p.W, p.H) / 2; h > 0 {
+		return h
+	}
+	return nominalPadHalf
 }
 
 // pcbSlotP is one board cutout / slot (a MULTI-layer fill, layer 12 — e.g. an M3
@@ -138,6 +151,7 @@ type pcbSilkText struct {
 	Mirror    bool
 	Reverse   bool    // reversed reading (left-right flipped) — reads backwards
 	Rotation  float64 // degrees; a designator should read upright (0°)
+	FontSize  float64 // mil; 0 = unknown (older connector) → estimate at 40
 	CompID    string
 	CompLayer int
 	X, Y      float64
@@ -545,9 +559,10 @@ func findTrackOverPad(tracks []pcbTrack, pads []pcbPadP) []pcbCheckFinding {
 // track-over-pad owns the exact overlap (a track crossing a pad center); this
 // owns the "too close but not on top" band and the track↔via / track↔track cases
 // that overlap-only checks miss, so `pcb check` can gate on shorts WITHOUT the
-// foreground-only native DRC. Pad sizes aren't in the input, so a nominal pad
-// half-extent pads the distance; vias use their real outer radius. Capped so a
-// wall of violations can't drown the report — the count says how many were cut.
+// foreground-only native DRC. Pads use their REAL half-extent when the connector
+// reports width/height (halfExt(), nominal fallback for old connectors / polygon
+// pads); vias use their real outer radius. Capped so a wall of violations can't
+// drown the report — the count says how many were cut.
 func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, slots []pcbSlotP, clearance float64) []pcbCheckFinding {
 	const cap = 40
 	var out []pcbCheckFinding
@@ -574,7 +589,7 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 				continue // legitimate termination
 			}
 			d := segPtDist(p.X, p.Y, t.X1, t.Y1, t.X2, t.Y2)
-			if d >= clearance+nominalPadHalf || d <= pcbOverPadEps {
+			if d >= clearance+p.halfExt() || d <= pcbOverPadEps {
 				continue // over-pad short is track-over-pad's; ≥clearance is fine
 			}
 			ref := p.Designator
@@ -633,7 +648,7 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			if p.Net == v.Net || strings.TrimSpace(p.Net) == "" {
 				continue
 			}
-			if d := math.Hypot(v.X-p.X, v.Y-p.Y) - v.Dia/2 - nominalPadHalf; d < clearance {
+			if d := math.Hypot(v.X-p.X, v.Y-p.Y) - v.Dia/2 - p.halfExt(); d < clearance {
 				ref := p.Designator
 				if p.Number != "" {
 					ref += "." + p.Number
@@ -1208,7 +1223,7 @@ func findWidthUnderSpec(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, width
 	}
 	obPads := make([]obPad, 0, len(pads))
 	for _, p := range pads {
-		obPads = append(obPads, obPad{net: strings.TrimSpace(p.Net), x: p.X, y: p.Y, layer: p.Layer})
+		obPads = append(obPads, obPad{net: strings.TrimSpace(p.Net), x: p.X, y: p.Y, layer: p.Layer, half: math.Max(p.W, p.H) / 2})
 	}
 	type offender struct {
 		count    int
@@ -1685,7 +1700,9 @@ func fetchPcbPads(cfg *appConfig, window string) ([]pcbPadP, error) {
 			x, _ := asFloatOK(pm["x"])
 			y, _ := asFloatOK(pm["y"])
 			layer, _ := asFloatOK(pm["layer"])
-			pads = append(pads, pcbPadP{Designator: desig, Number: num, Net: net, Layer: int(layer), X: x, Y: y})
+			w, _ := asFloatOK(pm["width"]) // real extents (0 = old connector / polygon pad)
+			h, _ := asFloatOK(pm["height"])
+			pads = append(pads, pcbPadP{Designator: desig, Number: num, Net: net, Layer: int(layer), X: x, Y: y, W: w, H: h})
 		}
 	}
 	return pads, nil
@@ -1815,13 +1832,14 @@ func fetchPcbSilk(cfg *appConfig, window string) ([]pcbSilkText, error) {
 		mirror, _ := tm["mirror"].(bool)
 		reverse, _ := tm["reverse"].(bool)
 		rotation, _ := asFloatOK(tm["rotation"])
+		fontSize, _ := asFloatOK(tm["fontSize"]) // 0 = old connector → estimated
 		compID, _ := tm["componentId"].(string)
 		compLayer, _ := asFloatOK(tm["componentLayer"])
 		x, _ := asFloatOK(tm["x"])
 		y, _ := asFloatOK(tm["y"])
 		silk = append(silk, pcbSilkText{
 			ID: id, Kind: kind, Key: key, Text: text, Layer: int(layer), Mirror: mirror,
-			Reverse: reverse, Rotation: rotation, CompID: compID, CompLayer: int(compLayer), X: x, Y: y,
+			Reverse: reverse, Rotation: rotation, FontSize: fontSize, CompID: compID, CompLayer: int(compLayer), X: x, Y: y,
 		})
 	}
 	return silk, nil

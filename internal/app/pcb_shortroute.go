@@ -135,7 +135,7 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 	for _, c := range comps {
 		for _, pd := range c.pads {
 			net := strings.TrimSpace(pd.net)
-			obPads = append(obPads, obPad{net: net, x: pd.x, y: pd.y, layer: pd.layer})
+			obPads = append(obPads, obPad{net: net, x: pd.x, y: pd.y, layer: pd.layer, half: math.Max(pd.w, pd.h) / 2})
 			if net == "" {
 				continue
 			}
@@ -238,7 +238,7 @@ func viaSpotClear(x, y float64, net string, obPads []obPad, obVias []obVia, segs
 		if p.net == net {
 			continue
 		}
-		if math.Hypot(x-p.x, y-p.y) < opt.clearance+viaR+nominalPadHalf {
+		if math.Hypot(x-p.x, y-p.y) < opt.clearance+viaR+p.halfOr() {
 			return false
 		}
 	}

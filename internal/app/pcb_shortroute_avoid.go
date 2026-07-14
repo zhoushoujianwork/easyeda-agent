@@ -22,12 +22,22 @@ package app
 import "math"
 
 // obPad is a pad as an obstacle: its net (a same-net pad is never an obstacle), center
-// (mil) and copper layer. Pads have no size in the router's input, so proximity is
-// judged against the clearance plus a nominal pad half-extent.
+// (mil), copper layer, and half-extent. half is the REAL max-extent/2 when the
+// connector reports pad width/height, else 0 → halfOr() falls back to the nominal.
 type obPad struct {
 	net   string
 	x, y  float64
 	layer int
+	half  float64
+}
+
+// halfOr is the pad's half-extent for clearance math — the real value when known,
+// else the nominal stand-in.
+func (p obPad) halfOr() float64 {
+	if p.half > 0 {
+		return p.half
+	}
+	return nominalPadHalf
 }
 
 // obVia is a via as an obstacle. A via is through-hole, so it obstructs every copper
@@ -103,7 +113,9 @@ func hopCost(cand []rtSeg, net string, a, b rtPad, placed []rtSeg, obstacles []o
 			if samePoint(pd.x, pd.y, a.x, a.y) || samePoint(pd.x, pd.y, b.x, b.y) {
 				continue // this hop's own endpoints
 			}
-			if segPointDist(s.X1, s.Y1, s.X2, s.Y2, pd.x, pd.y) < clr {
+			// clr bakes in the nominal pad half; swap it for the REAL half-extent
+			// when the connector reported one (identical when unknown).
+			if segPointDist(s.X1, s.Y1, s.X2, s.Y2, pd.x, pd.y) < clr-nominalPadHalf+pd.halfOr() {
 				cost += 4
 			}
 		}
@@ -132,7 +144,7 @@ func viaClearanceCost(v rtVia, obPads []obPad, obVias []obVia, clr, r float64) i
 		if pd.net == v.Net || pd.net == "" {
 			continue
 		}
-		if math.Hypot(v.X-pd.x, v.Y-pd.y) < clr+r {
+		if math.Hypot(v.X-pd.x, v.Y-pd.y) < clr-nominalPadHalf+pd.halfOr()+r {
 			cost += 4
 		}
 	}

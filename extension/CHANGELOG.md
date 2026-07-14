@@ -6,6 +6,23 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-07-14
+
+结束「pad 尺寸靠猜」时代:焊盘/丝印把**真实几何**送到 Go 侧,所有 clearance/DFM/避障
+规则从名义常量升级到实测值。
+
+### Added
+- **`pcb.components.list --include-pads` 返回每个 pad 的真实铜皮尺寸 `width`/`height`**
+  (mil,轴对齐,已按 pad rotation 换轴)——从 `getState_Pad()` 形状元组提取
+  (ELLIPSE/OVAL/RECT/NGON;复杂多边形 pad 无廉价 extent,省略字段,消费方回退名义值)。
+  Go 侧 `pcb check` 的 clearance / via-in-pad / silk-over-pad 与 `route-short` 避障
+  即刻消费:大焊盘(USB 壳/散热盘)不再漏报,0201 小盘不再误报。
+- **`pcb.silk.list` 返回每条丝印文本的 `fontSize`**(mil;attribute 与 free string 都带)——
+  `pcb check` silk-over-pad 的文本 extent 从「40mil 假设」升级为真实字号估算。
+
+### Changed
+- `pcb.silk_netnames` 的碰撞检测 pad 尺寸从硬编码 50×50 改为真实 extent(同上回退)。
+
 ## [0.12.0] - 2026-07-14
 
 本版把**项目工作流机械化**(#97)、补上**手焊可达门**(#99)、让 `place-constrained`

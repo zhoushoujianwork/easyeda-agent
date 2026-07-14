@@ -687,7 +687,8 @@ curves are approximated by line segments. Reports whether all components fall in
 			Long: `Show the role→width ladder the daemon uses for规范线宽 (spec track widths):
 route-short picks each net's width by role, and "pcb check" flags power tracks
 thinner than their role's width. Roles are classified by net name/voltage
-(pcb_netclass.go); a block's declared per-net track_width_mil overrides them.
+(pcb_netclass.go). (A block's per-net track_width_mil is declared in the block
+data but NOT consumed yet — phase-2; today the name/voltage heuristic decides.)
 
 Widths are seeded from the board's LIVE DRC rules (signal = the live default,
 power roles step up per pcb-layout-conventions.md §7.8), clamped ≥ the fab's
@@ -3328,6 +3329,8 @@ func parseApComps(result map[string]any) []apComp {
 					x:     asFloat(pm["x"]),
 					y:     asFloat(pm["y"]),
 					layer: int(asFloat(pm["layer"])),
+					w:     asFloat(pm["width"]), // real extents (0 = old connector)
+					h:     asFloat(pm["height"]),
 				})
 			}
 		}

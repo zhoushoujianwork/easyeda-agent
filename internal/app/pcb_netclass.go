@@ -13,9 +13,10 @@ package app
 // the signal width and the legal-minimum floor — the ladder only adds the role
 // steps ON TOP of what the live rule already gives.
 //
-// The classifier is a NAME/voltage heuristic FALLBACK. When a circuit block declares
-// a per-net track_width_mil / net_class (internal/blocks/data/*.json signals map,
-// the "sink to blocks" rule), that authoritative value overrides this heuristic.
+// The classifier is a NAME/voltage heuristic. A circuit block CAN declare a per-net
+// track_width_mil / net_class (internal/blocks/data/*.json signals map, the "sink to
+// blocks" rule) but NOTHING consumes that declaration yet — wiring it in as the
+// authoritative override is phase-2 work; until then this heuristic decides alone.
 
 import (
 	"math"

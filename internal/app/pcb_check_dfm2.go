@@ -27,17 +27,14 @@ const (
 	// pad-EDGE distance; center-to-center adds the cap's own half-length, so the
 	// threshold carries ~0.5mm slack (100 mil ≈ 2.54mm).
 	pcbDecapMaxMil = 100.0
-	// via-in-pad: via center within this of a same-net pad center = ON the pad.
-	// Matches nominalPadHalf (the clearance rule's nominal pad half-extent).
-	pcbViaInPadEps = nominalPadHalf
 	// fiducial-missing only fires on a board that plausibly goes through SMT —
 	// gauged by top-layer pad count (a hand-soldered proto doesn't need marks).
 	pcbFidMinPads = 30
-	// silk-over-pad text-extent estimate (font size isn't in pcb.silk.list):
-	// default silk font is 40mil tall; a char is ~0.6× that wide.
+	// silk-over-pad text-extent estimate: the REAL fontSize from pcb.silk.list
+	// when reported (>0), else the 40mil default; a char is ~0.6× the height wide.
 	pcbSilkEstH     = 40.0
-	pcbSilkEstChar  = 24.0
-	pcbSilkPadSlack = 6.0 // inflate the text box by this before testing pad centers
+	pcbSilkCharAsp  = 0.6
+	pcbSilkPadSlack = 6.0 // inflate the text box by this before testing pads
 )
 
 // docRule appends the design-rules-manual reference to a finding message so the
@@ -63,9 +60,10 @@ func padOnSilkSide(padLayer, silkLayer int) bool {
 
 // ── R18: silk-over-pad (§11.2 丝印不压焊盘) ─────────────────────────────────
 // Silk text printed over an exposed pad is clipped by the fab (solder mask
-// opening wins) and can wick into the joint. Text extent is ESTIMATED from the
-// string length at the default 40mil font (pcb.silk.list carries no font size),
-// so this is a WARN, not an ERROR.
+// opening wins) and can wick into the joint. Text extent is estimated from the
+// string length at the REAL font size (pcb.silk.list fontSize; 40mil default
+// when the connector omits it); pads use their real half-extents. Still a WARN,
+// not an ERROR — text width is an aspect-ratio estimate.
 func findSilkOverPad(silk []pcbSilkText, pads []pcbPadP) []pcbCheckFinding {
 	var out []pcbCheckFinding
 	for _, s := range silk {
@@ -73,8 +71,12 @@ func findSilkOverPad(silk []pcbSilkText, pads []pcbPadP) []pcbCheckFinding {
 		if txt == "" {
 			continue
 		}
-		hw := float64(len([]rune(txt))) * pcbSilkEstChar / 2
-		hh := pcbSilkEstH / 2
+		fh := s.FontSize
+		if fh <= 0 {
+			fh = pcbSilkEstH
+		}
+		hw := float64(len([]rune(txt))) * fh * pcbSilkCharAsp / 2
+		hh := fh / 2
 		// 90°/270° rotation swaps the box extents.
 		if r := math.Mod(math.Abs(s.Rotation), 180); r > 45 && r < 135 {
 			hw, hh = hh, hw
@@ -83,7 +85,11 @@ func findSilkOverPad(silk []pcbSilkText, pads []pcbPadP) []pcbCheckFinding {
 			if !padOnSilkSide(p.Layer, s.Layer) {
 				continue
 			}
-			if math.Abs(p.X-s.X) > hw+pcbSilkPadSlack || math.Abs(p.Y-s.Y) > hh+pcbSilkPadSlack {
+			phw, phh := p.W/2, p.H/2
+			if phw <= 0 || phh <= 0 {
+				phw, phh = 0, 0 // unknown pad size → test the pad center only
+			}
+			if math.Abs(p.X-s.X) > hw+phw+pcbSilkPadSlack || math.Abs(p.Y-s.Y) > hh+phh+pcbSilkPadSlack {
 				continue
 			}
 			ref := p.Designator
@@ -187,7 +193,9 @@ func findDecapTooFar(pads []pcbPadP) []pcbCheckFinding {
 // A via drilled in a same-net pad wicks solder down the barrel (starved joint)
 // unless the fab fills+caps it — and this project's power-planes stitching bit
 // exactly this (via-on-pad ≠ connected). Cross-net via↔pad is the clearance
-// rule's ERROR; this rule owns the SAME-net case.
+// rule's ERROR; this rule owns the SAME-net case. "On the pad" is judged by the
+// pad's REAL half-extent when the connector reports it (halfExt(), nominal
+// fallback otherwise).
 func findViaInPad(vias []pcbViaP, pads []pcbPadP) []pcbCheckFinding {
 	var out []pcbCheckFinding
 	for _, v := range vias {
@@ -199,7 +207,7 @@ func findViaInPad(vias []pcbViaP, pads []pcbPadP) []pcbCheckFinding {
 			if strings.TrimSpace(p.Net) != net {
 				continue
 			}
-			if math.Hypot(v.X-p.X, v.Y-p.Y) > pcbViaInPadEps {
+			if math.Hypot(v.X-p.X, v.Y-p.Y) > p.halfExt() {
 				continue
 			}
 			ref := p.Designator

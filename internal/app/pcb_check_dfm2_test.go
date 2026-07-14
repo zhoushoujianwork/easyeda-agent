@@ -93,6 +93,34 @@ func TestFindViaInPad(t *testing.T) {
 	}
 }
 
+// Real pad extents drive via-in-pad: a via 20mil from a BIG pad's center (60×60,
+// half=30) is ON it; the same via next to a default-size pad is not.
+func TestFindViaInPad_RealExtent(t *testing.T) {
+	vias := []pcbViaP{{ID: "v1", Net: "GND", X: 20, Y: 0, Hole: 12, Dia: 24}}
+	big := []pcbPadP{{Designator: "U1", Number: "EP", Net: "GND", Layer: 1, X: 0, Y: 0, W: 60, H: 60}}
+	if out := findViaInPad(vias, big); len(out) != 1 {
+		t.Fatalf("via 20mil into a 60mil pad = %d findings, want 1", len(out))
+	}
+	small := []pcbPadP{{Designator: "R1", Number: "1", Net: "GND", Layer: 1, X: 0, Y: 0, W: 16, H: 16}}
+	if out := findViaInPad(vias, small); len(out) != 0 {
+		t.Fatalf("via 20mil from an 16mil pad must be clear, got %+v", out)
+	}
+}
+
+// Real fontSize drives silk-over-pad: a small 10mil label near (not on) the pad
+// clears; the same label at 60mil font reaches the pad.
+func TestFindSilkOverPad_FontSize(t *testing.T) {
+	pads := []pcbPadP{{Designator: "R1", Number: "1", Net: "N1", Layer: 1, X: 40, Y: 0, W: 16, H: 16}}
+	small := []pcbSilkText{{ID: "s1", Kind: "string", Text: "AB", Layer: 3, X: 0, Y: 0, FontSize: 10}}
+	if out := findSilkOverPad(small, pads); len(out) != 0 {
+		t.Fatalf("10mil label must clear the pad, got %+v", out)
+	}
+	huge := []pcbSilkText{{ID: "s1", Kind: "string", Text: "AB", Layer: 3, X: 0, Y: 0, FontSize: 60}}
+	if out := findSilkOverPad(huge, pads); len(out) != 1 {
+		t.Fatalf("60mil label reaches the pad = %d findings, want 1", len(out))
+	}
+}
+
 // ── copper-near-edge (§5.1) ──────────────────────────────────────────────────
 
 func TestFindCopperNearEdge(t *testing.T) {

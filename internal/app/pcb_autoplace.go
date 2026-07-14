@@ -31,6 +31,7 @@ type apPad struct {
 	x     float64
 	y     float64
 	layer int
+	w, h  float64 // real copper extents (mil); 0 = unknown (old connector / polygon pad)
 }
 
 // apComp is a placed component with the geometry the planner reasons over.
