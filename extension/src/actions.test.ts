@@ -125,3 +125,131 @@ test('place without designator: no modify call, keeps placeholder (issue #68)', 
 	assert.equal((res.result.component as any).designator, 'C?');
 	delete (globalThis as any).eda;
 });
+
+// ─── pcb.page.clear scope parsing (pure, no eda runtime) ─────────────────
+import { parsePcbClearScopes } from './actions';
+
+test('parsePcbClearScopes: omitted → all five scopes', () => {
+	assert.deepEqual(parsePcbClearScopes(undefined), ['components', 'routing', 'copper', 'regions', 'silk']);
+	assert.deepEqual(parsePcbClearScopes(''), ['components', 'routing', 'copper', 'regions', 'silk']);
+	assert.deepEqual(parsePcbClearScopes(null), ['components', 'routing', 'copper', 'regions', 'silk']);
+});
+
+test('parsePcbClearScopes: comma string is trimmed, lower-cased, de-duped, canonical order', () => {
+	// Input order (silk before routing) must NOT survive — canonical order wins.
+	assert.deepEqual(parsePcbClearScopes(' Silk , routing , SILK '), ['routing', 'silk']);
+});
+
+test('parsePcbClearScopes: accepts a string[]', () => {
+	assert.deepEqual(parsePcbClearScopes(['copper', 'components']), ['components', 'copper']);
+});
+
+test('parsePcbClearScopes: whitespace-only → all scopes (not empty)', () => {
+	assert.deepEqual(parsePcbClearScopes(' , '), ['components', 'routing', 'copper', 'regions', 'silk']);
+});
+
+test('parsePcbClearScopes: unknown scope throws', () => {
+	assert.throws(() => parsePcbClearScopes('components,bogus'), /Unknown clear scope/);
+});
+
+// ─── pcb.page.clear handler (mock eda) — locks in the review fixes ────────
+import { pcbPageClear } from './actions';
+
+/** A minimal PCB primitive: id + optional layer + lock state. */
+function pcbPrim(id: string, layer?: number, locked = false): any {
+	const o: any = { getState_PrimitiveId: () => id, getState_PrimitiveLock: () => locked };
+	if (layer !== undefined) o.getState_Layer = () => layer;
+	return o;
+}
+
+/** Stub every pcb_Primitive* class pcbPageClear touches; record deleted ids per class. */
+function installPcbClearStub(fx: {
+	components?: any[]; lines?: any[]; arcs?: any[]; vias?: any[];
+	pours?: any[]; fills?: any[]; regions?: any[]; strings?: any[]; polylines?: any[];
+	delResult?: boolean;
+}): { deleted: Record<string, string[]> } {
+	const deleted: Record<string, string[]> = {};
+	const delResult = fx.delResult ?? true;
+	const mk = (key: string, items: any[] | undefined) => ({
+		getAll: async () => items ?? [],
+		delete: async (ids: string[]) => { (deleted[key] ??= []).push(...ids); return delResult; },
+	});
+	(globalThis as any).eda = {
+		pcb_PrimitiveComponent: mk('components', fx.components),
+		pcb_PrimitiveLine: mk('lines', fx.lines),
+		pcb_PrimitiveArc: mk('arcs', fx.arcs),
+		pcb_PrimitiveVia: mk('vias', fx.vias),
+		pcb_PrimitivePour: mk('pours', fx.pours),
+		pcb_PrimitiveFill: mk('fills', fx.fills),
+		pcb_PrimitiveRegion: mk('regions', fx.regions),
+		pcb_PrimitiveString: mk('strings', fx.strings),
+		pcb_PrimitivePolyline: mk('polylines', fx.polylines),
+	};
+	return { deleted };
+}
+
+test('pcbPageClear: default clears silk (layer 3/4) + copper, keeps copper/doc strings and layer-11 outline', async () => {
+	const { deleted } = installPcbClearStub({
+		strings: [pcbPrim('s-top', 3), pcbPrim('s-bot', 4), pcbPrim('s-cu', 1), pcbPrim('s-doc', 12)],
+		lines: [pcbPrim('trk', 1), pcbPrim('silkL', 3), pcbPrim('outL', 11)],
+		components: [pcbPrim('U1', 1)],
+	});
+	await pcbPageClear({});
+	// silk strings: ONLY layer 3/4 (copper/doc strings are artwork, preserved)
+	assert.deepEqual((deleted.strings ?? []).sort(), ['s-bot', 's-top']);
+	// lines: copper track + silk-layer line deleted; layer-11 outline preserved
+	assert.deepEqual((deleted.lines ?? []).sort(), ['silkL', 'trk']);
+	assert.ok(!(deleted.lines ?? []).includes('outL'), 'board outline must survive default clear');
+	delete (globalThis as any).eda;
+});
+
+test('pcbPageClear: locked preserved by default, removed with includeLocked', async () => {
+	let s = installPcbClearStub({ components: [pcbPrim('U1', 1, false), pcbPrim('U2', 1, true)] });
+	const res: any = await pcbPageClear({});
+	assert.deepEqual(s.deleted.components ?? [], ['U1']);
+	assert.equal(res.result.skippedLockedTotal, 1);
+	delete (globalThis as any).eda;
+
+	s = installPcbClearStub({ components: [pcbPrim('U1', 1, false), pcbPrim('U2', 1, true)] });
+	await pcbPageClear({ includeLocked: true });
+	assert.deepEqual((s.deleted.components ?? []).sort(), ['U1', 'U2']);
+	delete (globalThis as any).eda;
+});
+
+test('pcbPageClear: dryRun reports counts without calling any delete', async () => {
+	const { deleted } = installPcbClearStub({ components: [pcbPrim('U1', 1)], pours: [pcbPrim('p1', 1)] });
+	const res: any = await pcbPageClear({ dryRun: true });
+	assert.equal(Object.keys(deleted).length, 0, 'dryRun must not delete');
+	assert.equal(res.result.total, 2);
+	assert.equal(res.result.deleted.components, 1);
+	assert.equal(res.result.deleted.pours, 1);
+	delete (globalThis as any).eda;
+});
+
+test('pcbPageClear: --only silk narrows to silkscreen artwork only', async () => {
+	const { deleted } = installPcbClearStub({
+		components: [pcbPrim('U1', 1)],
+		lines: [pcbPrim('trk', 1), pcbPrim('silkL', 3)],
+		strings: [pcbPrim('s', 4)],
+	});
+	await pcbPageClear({ only: 'silk' });
+	assert.equal(deleted.components, undefined, 'components untouched under --only silk');
+	assert.deepEqual(deleted.lines ?? [], ['silkL'], 'copper track must NOT be cleared by silk scope');
+	assert.deepEqual(deleted.strings ?? [], ['s']);
+	delete (globalThis as any).eda;
+});
+
+test('pcbPageClear: a delete returning false is surfaced (no false-clean report)', async () => {
+	installPcbClearStub({ pours: [pcbPrim('p1', 1)], delResult: false });
+	const res: any = await pcbPageClear({ only: 'copper' });
+	assert.ok(res.result.failed?.includes('pours'), 'failed list must name the bucket');
+	assert.ok((res.result.warnings ?? []).some((w: string) => w.includes('pours')), 'warning must mention the failed delete');
+	delete (globalThis as any).eda;
+});
+
+test('pcbPageClear: --no-preserve-outline removes the locked board outline', async () => {
+	const { deleted } = installPcbClearStub({ lines: [pcbPrim('outL', 11, true)] });
+	await pcbPageClear({ preserveOutline: false });
+	assert.deepEqual(deleted.lines ?? [], ['outL'], 'outline bypasses the lock guard under --no-preserve-outline');
+	delete (globalThis as any).eda;
+});

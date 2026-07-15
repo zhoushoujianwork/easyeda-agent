@@ -16,6 +16,49 @@ import (
 	"github.com/zhoushoujianwork/easyeda-agent/internal/blocks"
 )
 
+// pcbClearScopes is the canonical set of `pcb clear --only` values, mirrored in
+// the connector's PCB_CLEAR_SCOPES.
+var pcbClearScopes = map[string]bool{
+	"components": true,
+	"routing":    true,
+	"copper":     true,
+	"regions":    true,
+	"silk":       true,
+}
+
+// buildPcbClearPayload turns the `pcb clear` flags into the pcb.page.clear action
+// payload. `only` is validated against pcbClearScopes so a typo fails locally,
+// before hitting the daemon. Pure + unit-tested (see cmd_pcb_clear_test.go).
+func buildPcbClearPayload(only string, dryRun, noPreserveOutline, includeLocked bool) (map[string]any, error) {
+	payload := map[string]any{
+		"dryRun":          dryRun,
+		"preserveOutline": !noPreserveOutline,
+		"includeLocked":   includeLocked,
+	}
+	if strings.TrimSpace(only) == "" {
+		return payload, nil
+	}
+	var scopes []string
+	seen := map[string]bool{}
+	for _, s := range strings.Split(only, ",") {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" {
+			continue
+		}
+		if !pcbClearScopes[s] {
+			return nil, fmt.Errorf("invalid --only scope %q (valid: components,routing,copper,regions,silk)", s)
+		}
+		if !seen[s] {
+			seen[s] = true
+			scopes = append(scopes, s)
+		}
+	}
+	if len(scopes) > 0 {
+		payload["only"] = scopes
+	}
+	return payload, nil
+}
+
 // newPcbCmd returns the "pcb" subcommand group with all PCB actions.
 // --window is a persistent flag on the group so every subcommand inherits it.
 //
@@ -455,6 +498,38 @@ schematic is active, so you pass them). Workflow:
 			},
 		}
 		c.Flags().StringVar(&idsJSON, "ids", "", `JSON array of primitive IDs to delete (required)`)
+		pcb.AddCommand(c)
+	}
+
+	// ── clear ─────────────────────────────────────────────────────────────
+	// pcb.page.clear — one-shot board reset, the PCB counterpart of `sch clear`.
+	// `pcb delete` only removes components; this also clears routing/pours/regions/
+	// silk so the board is truly reset. Keeps locked primitives + the board outline.
+	{
+		var only string
+		var dryRun, noPreserveOutline, includeLocked bool
+		c := &cobra.Command{
+			Use:   "clear",
+			Short: "One-shot PCB reset: components + routing + copper + regions + silk (keeps locked primitives & the board outline)",
+			Args:  cobra.NoArgs,
+			Example: `  easyeda pcb clear                        # reset board content, keep locked primitives + outline
+  easyeda pcb clear --dry-run              # report what would be deleted, delete nothing
+  easyeda pcb clear --only components      # delete only components
+  easyeda pcb clear --only routing,copper  # delete only routing + pours/fills
+  easyeda pcb clear --no-preserve-outline  # also delete the board outline (layer 11)
+  easyeda pcb clear --include-locked       # also delete locked primitives (danger)`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload, err := buildPcbClearPayload(only, dryRun, noPreserveOutline, includeLocked)
+				if err != nil {
+					return err
+				}
+				return dispatch(cfg, "pcb.page.clear", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&only, "only", "", "comma-separated subset to clear: components,routing,copper,regions,silk (omit = all)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "report counts without deleting anything")
+		c.Flags().BoolVar(&noPreserveOutline, "no-preserve-outline", false, "also delete the board outline (layer 11); by default it is kept")
+		c.Flags().BoolVar(&includeLocked, "include-locked", false, "also delete locked primitives; by default they are kept")
 		pcb.AddCommand(c)
 	}
 

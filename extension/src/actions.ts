@@ -5564,6 +5564,184 @@ const pcbComponentDelete: Handler = async (payload) => {
 	return { result: { deleted } };
 };
 
+// ─── PCB one-shot reset (pcb.page.clear) ─────────────────────────────────
+// Symmetric to schematic.page.clear. `pcb.component.delete` leaves routing,
+// pours, regions and free silk behind (the board looks empty in components.list
+// while copper remains); this enumerates every content class so a board reset is
+// actually clean. Preserves LOCKED primitives + the board outline (layer 11) by
+// default — the outline is a layout prerequisite (like the sheet in the sch
+// clear). Reuses the rip_up copper-layer rule so routing never touches artwork.
+
+/** Selectable clear scopes. Each maps to one or more primitive classes below. */
+const PCB_CLEAR_SCOPES = ['components', 'routing', 'copper', 'regions', 'silk'] as const;
+type PcbClearScope = (typeof PCB_CLEAR_SCOPES)[number];
+
+const PCB_BOARD_OUTLINE_LAYER = 11;
+/** Copper layers: TOP=1, BOTTOM=2, INNER_1..30 = 15..44 (excludes outline 11 + artwork). */
+const onPcbCopperLayer = (layer: number): boolean => layer === 1 || layer === 2 || (layer >= 15 && layer <= 44);
+/** Silkscreen layers: TOP_SILK=3 / BOTTOM_SILK=4 (mirrors isSilk in pcb.silk.list). */
+const isPcbSilkLayer = (layer: number): boolean => layer === PCB_TOP_SILK || layer === PCB_BOTTOM_SILK;
+
+/** Defensive lock read — not every pcb_Primitive* class declares getState_PrimitiveLock. */
+function pcbPrimLocked(p: SchPrimitiveLike): boolean {
+	const f = (p as { getState_PrimitiveLock?: () => unknown }).getState_PrimitiveLock;
+	try { return typeof f === 'function' ? f.call(p) === true : false; }
+	catch { return false; }
+}
+/** Defensive layer read — vias carry no layer; returns NaN when the getter is absent. */
+function pcbPrimLayer(p: SchPrimitiveLike): number {
+	const f = (p as { getState_Layer?: () => unknown }).getState_Layer;
+	try { return typeof f === 'function' ? Number(f.call(p)) : NaN; }
+	catch { return NaN; }
+}
+
+type PcbClearKind = {
+	key: string;
+	// Content kinds carry a scope (gated by --only); outline kinds omit it (they
+	// are gated by preserveOutline instead, never by the scope set).
+	scope?: PcbClearScope;
+	getAll: () => Promise<Array<SchPrimitiveLike>>;
+	del: (ids: Array<string>) => Promise<boolean>;
+	// Membership test: copper-only for routing tracks/arcs, silk-only (layer 3/4)
+	// for silk artwork, layer-11 for outline. Lock handling is uniform in the handler.
+	filter?: (p: SchPrimitiveLike) => boolean;
+};
+
+// Content classes, grouped by scope. `pcb_PrimitiveLine`/`Arc` primitives live on
+// three disjoint layer bands so each getAll() is partitioned by filter with NO
+// overlap: routing = copper (1/2/15-44), silk = silkscreen (3/4), outline = 11.
+// Vias span layers (no layer filter). `pcb_PrimitiveString` is layer-filtered to
+// silk (3/4) too — a free copper/doc-layer string is deliberate artwork, kept
+// (mirrors the isSilk filter in pcb.silk.list); only silkscreen text is cleared.
+const PCB_CLEAR_KINDS: Array<PcbClearKind> = [
+	{ key: 'components', scope: 'components', getAll: () => eda.pcb_PrimitiveComponent.getAll(), del: ids => eda.pcb_PrimitiveComponent.delete(ids) },
+	{ key: 'tracks', scope: 'routing', getAll: () => eda.pcb_PrimitiveLine.getAll(), del: ids => eda.pcb_PrimitiveLine.delete(ids), filter: p => onPcbCopperLayer(pcbPrimLayer(p)) },
+	{ key: 'arcs', scope: 'routing', getAll: () => eda.pcb_PrimitiveArc.getAll(), del: ids => eda.pcb_PrimitiveArc.delete(ids), filter: p => onPcbCopperLayer(pcbPrimLayer(p)) },
+	{ key: 'vias', scope: 'routing', getAll: () => eda.pcb_PrimitiveVia.getAll(), del: ids => eda.pcb_PrimitiveVia.delete(ids) },
+	{ key: 'pours', scope: 'copper', getAll: () => eda.pcb_PrimitivePour.getAll(), del: ids => eda.pcb_PrimitivePour.delete(ids) },
+	{ key: 'fills', scope: 'copper', getAll: () => eda.pcb_PrimitiveFill.getAll(), del: ids => eda.pcb_PrimitiveFill.delete(ids) },
+	{ key: 'regions', scope: 'regions', getAll: () => eda.pcb_PrimitiveRegion.getAll(), del: ids => eda.pcb_PrimitiveRegion.delete(ids) },
+	{ key: 'silkStrings', scope: 'silk', getAll: () => eda.pcb_PrimitiveString.getAll(), del: ids => eda.pcb_PrimitiveString.delete(ids), filter: p => isPcbSilkLayer(pcbPrimLayer(p)) },
+	{ key: 'silkLines', scope: 'silk', getAll: () => eda.pcb_PrimitiveLine.getAll(), del: ids => eda.pcb_PrimitiveLine.delete(ids), filter: p => isPcbSilkLayer(pcbPrimLayer(p)) },
+	{ key: 'silkArcs', scope: 'silk', getAll: () => eda.pcb_PrimitiveArc.getAll(), del: ids => eda.pcb_PrimitiveArc.delete(ids), filter: p => isPcbSilkLayer(pcbPrimLayer(p)) },
+];
+
+// Board-outline classes (layer 11), deleted only when preserveOutline === false.
+// Outline removal bypasses the lock guard — the outline is created LOCKED, so the
+// whole point of --no-preserve-outline is to remove it regardless of lock.
+const PCB_OUTLINE_KINDS: Array<PcbClearKind> = [
+	{ key: 'outlineLines', getAll: () => eda.pcb_PrimitiveLine.getAll(), del: ids => eda.pcb_PrimitiveLine.delete(ids), filter: p => pcbPrimLayer(p) === PCB_BOARD_OUTLINE_LAYER },
+	{ key: 'outlineArcs', getAll: () => eda.pcb_PrimitiveArc.getAll(), del: ids => eda.pcb_PrimitiveArc.delete(ids), filter: p => pcbPrimLayer(p) === PCB_BOARD_OUTLINE_LAYER },
+	{ key: 'outlinePolylines', getAll: () => eda.pcb_PrimitivePolyline.getAll(), del: ids => eda.pcb_PrimitivePolyline.delete(ids), filter: p => pcbPrimLayer(p) === PCB_BOARD_OUTLINE_LAYER },
+];
+
+/**
+ * Parse the `only` payload into a validated, de-duplicated scope list. Omitted →
+ * all scopes. Accepts a comma-separated string or a string[]. Pure (no `eda`),
+ * so it is unit-tested directly. Throws on an unknown scope.
+ */
+export function parsePcbClearScopes(raw: unknown): Array<PcbClearScope> {
+	if (raw === undefined || raw === null || raw === '') return [...PCB_CLEAR_SCOPES];
+	const list = Array.isArray(raw) ? raw : String(raw).split(',');
+	const wanted = list.map(s => String(s).trim().toLowerCase()).filter(Boolean);
+	if (!wanted.length) return [...PCB_CLEAR_SCOPES];
+	const invalid = wanted.filter(s => !(PCB_CLEAR_SCOPES as ReadonlyArray<string>).includes(s));
+	if (invalid.length) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			`Unknown clear scope(s): ${invalid.join(', ')}. Valid: ${PCB_CLEAR_SCOPES.join(', ')}.`,
+		);
+	}
+	// Preserve canonical order, drop dupes.
+	return PCB_CLEAR_SCOPES.filter(s => wanted.includes(s));
+}
+
+export const pcbPageClear: Handler = async (payload) => {
+	const dryRun = optionalBoolean(payload, 'dryRun') === true;
+	const includeLocked = optionalBoolean(payload, 'includeLocked') === true;
+	const preserveOutline = optionalBoolean(payload, 'preserveOutline') !== false;
+	const scopes = parsePcbClearScopes(payload.only);
+	const active = new Set<PcbClearScope>(scopes);
+
+	const idsByKey: Record<string, Array<string>> = {};
+	const skippedLocked: Record<string, number> = {};
+	const warnings: Array<string> = [];
+
+	// Collect content-primitive ids per active scope, skipping locked (unless
+	// includeLocked) and applying each kind's copper-layer / membership filter.
+	// An enumeration failure is a WARNING (never silently swallowed — a class
+	// that fails to enumerate would otherwise be under-reported as "0 to clear").
+	const collect = async (kind: PcbClearKind, ignoreLock: boolean): Promise<void> => {
+		let items: Array<SchPrimitiveLike>;
+		try {
+			items = (await kind.getAll()) ?? [];
+		}
+		catch (err) {
+			warnings.push(warnText(`enumerate ${kind.key}`, err));
+			return;
+		}
+		for (const p of items) {
+			if (kind.filter && !kind.filter(p)) continue;
+			if (!ignoreLock && !includeLocked && pcbPrimLocked(p)) {
+				skippedLocked[kind.key] = (skippedLocked[kind.key] ?? 0) + 1;
+				continue;
+			}
+			(idsByKey[kind.key] ??= []).push(p.getState_PrimitiveId());
+		}
+	};
+
+	for (const kind of PCB_CLEAR_KINDS) {
+		if (kind.scope && active.has(kind.scope)) await collect(kind, false);
+	}
+	if (!preserveOutline) {
+		for (const kind of PCB_OUTLINE_KINDS) await collect(kind, true);
+	}
+
+	// Build the delete-fn index (kind key → its class delete).
+	const delByKey = new Map<string, (ids: Array<string>) => Promise<boolean>>();
+	for (const kind of [...PCB_CLEAR_KINDS, ...PCB_OUTLINE_KINDS]) delByKey.set(kind.key, kind.del);
+
+	// Track which buckets actually deleted OK. delete() returns an OVERALL boolean
+	// (false = batch rejected WITHOUT throwing) — surface that as a warning so a
+	// false-clean report can't hide a leftover class (same guard rip_up applies).
+	const failed: Array<string> = [];
+	if (!dryRun) {
+		for (const [key, ids] of Object.entries(idsByKey)) {
+			if (!ids.length) continue;
+			const del = delByKey.get(key);
+			if (!del) continue;
+			try {
+				const ok = await del(ids);
+				if (ok === false) {
+					failed.push(key);
+					warnings.push(`delete ${key}: batch delete returned false — ${ids.length} primitive(s) may remain`);
+				}
+			}
+			catch (err) { failed.push(key); warnings.push(warnText(`delete ${key}`, err)); }
+		}
+	}
+
+	const deleted: Record<string, number> = {};
+	let total = 0;
+	for (const [key, ids] of Object.entries(idsByKey)) { deleted[key] = ids.length; total += ids.length; }
+	const skippedTotal = Object.values(skippedLocked).reduce((a, b) => a + b, 0);
+
+	return {
+		result: {
+			scopes,
+			deleted,
+			total,
+			deletedIds: idsByKey,
+			...(skippedTotal ? { skippedLocked, skippedLockedTotal: skippedTotal } : {}),
+			...(failed.length ? { failed } : {}),
+			preserveOutline,
+			includeLocked,
+			dryRun,
+			...(warnings.length ? { warnings } : {}),
+		},
+	};
+};
+
 // ─── PCB layout adjustment (deterministic align / distribute / grid-snap) ──
 // EasyEDA exposes NO component align/distribute/grid API, so these read each
 // component's bbox + anchor, compute, and write absolute x/y. Fully testable.
@@ -7109,6 +7287,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.add_component': pcbAddComponent,
 	'pcb.component.modify': pcbComponentModify,
 	'pcb.component.delete': pcbComponentDelete,
+	'pcb.page.clear': pcbPageClear,
 	'pcb.align': pcbAlign,
 	'pcb.distribute': pcbDistribute,
 	'pcb.grid_snap': pcbGridSnap,

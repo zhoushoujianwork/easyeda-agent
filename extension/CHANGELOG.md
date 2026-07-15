@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **`pcb.page.clear` — 一键整版清空 PCB**(`easyeda pcb clear`),`schematic.page.clear`
+  的 PCB 对称版。一次删掉所有板级内容:器件 + 布线(轨/弧/过孔)+ 铺铜/填充 + keep-out/规则区域
+  + 自由丝印(丝印层 3/4 的字符串**及线/弧图形**,不误删铜层文字或机械/装配图元)。
+  `pcb.component.delete` 只删器件、布线/铺铜会静默残留;这个才是真正的清板重来。
+  **默认保留锁定图元 + 板框(layer 11)**;`--only components,routing,copper,regions,silk` 收窄、
+  `--no-preserve-outline` 连板框删、`--include-locked` 连锁定件删。`--dry-run` 只统计不删。
+  复用 `rip_up` 的 copper-only 规则,布线永不误伤丝印/板框。无 undo,确认门控。
+
 ## [0.12.1] - 2026-07-14
 
 结束「pad 尺寸靠猜」时代:焊盘/丝印把**真实几何**送到 Go 侧,所有 clearance/DFM/避障
