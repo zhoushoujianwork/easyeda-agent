@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -171,68 +170,8 @@ func newBomEnrichCmd(stdout, stderr io.Writer) *cobra.Command {
 	return c
 }
 
-// findBomEnrichScript resolves the bom-enrich.py script path.
-// Priority:
-//  1. --script flag value (returned as-is)
-//  2. $EASYEDA_SKILLS_DIR/easyeda-agent/scripts/bom-enrich.py (install layout)
-//  3. Walk up from the running binary to find skills/.../bom-enrich.py (dev: ./bin/easyeda)
-//  4. Walk up from the working directory (agent run inside the repo/project)
-//  5. PATH lookup for bom-enrich.py
-//
-// 2 and 4 matter once `bom export` enriches by default: the installed binary
-// lives at /usr/local/bin (so exe walk-up can't reach the repo's skills/), but
-// the agent usually runs from the repo/project dir or sets EASYEDA_SKILLS_DIR.
+// findBomEnrichScript resolves the bom-enrich.py script path (see
+// resolveEnrichScript for the probe order).
 func findBomEnrichScript(override string) (string, error) {
-	if override != "" {
-		return override, nil
-	}
-
-	rels := []string{
-		"easyeda-agent/scripts/bom-enrich.py",
-		"easyeda-schematic/scripts/bom-enrich.py", // compatibility with pre-merge installs
-	}
-	if skillsDir := os.Getenv("EASYEDA_SKILLS_DIR"); skillsDir != "" {
-		for _, rel := range rels {
-			candidate := filepath.Join(skillsDir, filepath.FromSlash(rel))
-			if _, err := os.Stat(candidate); err == nil {
-				return candidate, nil
-			}
-		}
-	}
-
-	// Walk up from a start directory looking for skills/.../bom-enrich.py.
-	walkUp := func(dir string) (string, bool) {
-		for i := 0; i < 8; i++ {
-			for _, rel := range rels {
-				candidate := filepath.Join(dir, "skills", filepath.FromSlash(rel))
-				if _, err := os.Stat(candidate); err == nil {
-					return candidate, true
-				}
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-		return "", false
-	}
-
-	if exe, err := os.Executable(); err == nil {
-		if path, ok := walkUp(filepath.Dir(exe)); ok {
-			return path, nil
-		}
-	}
-	if cwd, err := os.Getwd(); err == nil {
-		if path, ok := walkUp(cwd); ok {
-			return path, nil
-		}
-	}
-
-	// Fallback: PATH lookup.
-	if path, err := exec.LookPath("bom-enrich.py"); err == nil {
-		return path, nil
-	}
-
-	return "", errors.New("bom-enrich.py not found; use --script to specify the full path")
+	return resolveEnrichScript(override)
 }
