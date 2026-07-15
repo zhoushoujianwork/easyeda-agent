@@ -649,8 +649,15 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			// EDGE gap: centerline distance minus BOTH half-widths. The old
 			// centerline test under-reported (two 10mil tracks 8mil apart on
 			// centerlines already OVERLAP, yet printed "8mil apart") — #43.
+			//
+			// NO pcbOverPadEps escape here (#43 R2): the track↔pad branch hands
+			// its overlap band to the track-over-pad rule, but NOTHING owns
+			// track↔track overlap — a `centerD > eps` guard let two tracks that
+			// actually CROSS (centerD == 0, a dead short) skip the check while
+			// flagging the near-misses beside them. Crossing copper is the worst
+			// case, so it must always report.
 			centerD := segSegDist(a.X1, a.Y1, a.X2, a.Y2, b.X1, b.Y1, b.X2, b.Y2)
-			if edgeD := centerD - a.Width/2 - b.Width/2; edgeD < clearance && centerD > pcbOverPadEps {
+			if edgeD := centerD - a.Width/2 - b.Width/2; edgeD < clearance {
 				mx, my := (a.X1+a.X2)/2, (a.Y1+a.Y2)/2
 				add(pcbCheckFinding{
 					Type: "clearance", Level: "ERROR", Nets: uniqStr([]string{a.Net, b.Net}), Layer: a.Layer,

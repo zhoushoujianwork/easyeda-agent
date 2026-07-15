@@ -549,3 +549,38 @@ func TestFindClearance_EdgeDistanceSemantics(t *testing.T) {
 		t.Errorf("edge gap 6.5mil clears, got %d: %+v", len(out), out)
 	}
 }
+
+// #43 R2: two tracks that actually CROSS (centerD == 0) are a dead short — the
+// worst case — and must always report. A `centerD > pcbOverPadEps` guard used to
+// skip exactly them while flagging the near-misses beside them ("擦肩报错,撞上
+//放行"): the track↔pad branch hands its overlap band to track-over-pad, but
+// nothing owns track↔track overlap.
+func TestFindClearance_CrossingTracksAreReported(t *testing.T) {
+	crossing := []pcbTrack{
+		{ID: "a", Net: "SPIHD", Layer: 1, X1: 700, Y1: 407.4, X2: 900, Y2: 407.4, Width: 10},
+		{ID: "b", Net: "SPIWP", Layer: 1, X1: 815.4, Y1: 380.7, X2: 815.4, Y2: 423.1, Width: 10},
+	}
+	out := findClearanceViolations(crossing, nil, nil, nil, 6)
+	if len(out) != 1 {
+		t.Fatalf("crossing tracks (dead short) must report, got %d violation(s)", len(out))
+	}
+	if !strings.Contains(out[0].Message, "0.0mil") {
+		t.Errorf("a crossing prints a 0.0mil gap, got: %s", out[0].Message)
+	}
+	// Same-net crossing is legitimate (a T-junction) — never flagged.
+	sameNet := []pcbTrack{
+		{ID: "a", Net: "N", Layer: 1, X1: 700, Y1: 400, X2: 900, Y2: 400, Width: 10},
+		{ID: "b", Net: "N", Layer: 1, X1: 800, Y1: 350, X2: 800, Y2: 450, Width: 10},
+	}
+	if out := findClearanceViolations(sameNet, nil, nil, nil, 6); len(out) != 0 {
+		t.Errorf("same-net crossing is a junction, got %d: %+v", len(out), out)
+	}
+	// Different LAYER crossing is fine (that's what layers are for).
+	crossLayer := []pcbTrack{
+		{ID: "a", Net: "A", Layer: 1, X1: 700, Y1: 400, X2: 900, Y2: 400, Width: 10},
+		{ID: "b", Net: "B", Layer: 2, X1: 800, Y1: 350, X2: 800, Y2: 450, Width: 10},
+	}
+	if out := findClearanceViolations(crossLayer, nil, nil, nil, 6); len(out) != 0 {
+		t.Errorf("cross-layer crossing is legal, got %d: %+v", len(out), out)
+	}
+}
