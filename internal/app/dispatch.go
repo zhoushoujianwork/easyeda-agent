@@ -294,6 +294,27 @@ func selectWindow(windows []healthWindow, project, window string) (string, error
 	}
 }
 
+// cliClientID identifies this CLI process to the daemon, computed once per
+// process: "<hostname>:<pid>", plus an optional session label from
+// EASYEDA_CLIENT_LABEL (e.g. "mikas-mbp:12345:e2e-regression"). The daemon
+// stamps it into every audit entry (pid = precise per-process attribution) and
+// uses it to detect a different client writing to the same window
+// (concurrentWriter advisory, issue #108). NOTE: the advisory compares SESSION
+// identity — hostname+label, or hostname alone when unlabeled — because the
+// pid churns on every one-shot CLI invocation; set EASYEDA_CLIENT_LABEL per
+// agent/session to make same-host concurrent writers detectable.
+var cliClientID = sync.OnceValue(func() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown-host"
+	}
+	id := fmt.Sprintf("%s:%d", host, os.Getpid())
+	if label := os.Getenv("EASYEDA_CLIENT_LABEL"); label != "" {
+		id += ":" + label
+	}
+	return id
+})
+
 // staleRiskSeen deduplicates stale-read warnings within one CLI invocation:
 // composite commands (pcb check, report …) fire many read actions and would
 // otherwise repeat the identical advisory for each. Daemon messages are
@@ -323,6 +344,42 @@ func warnStaleRisk(respBody []byte, stderr io.Writer) {
 	fmt.Fprintf(stderr, "⚠ staleRisk: %s\n", parsed.StaleRisk)
 }
 
+// concurrentWriterSeen deduplicates concurrent-writer warnings within one CLI
+// invocation, keyed by the last writer's identity+action (the "N seconds ago"
+// part churns per action, so the raw message would never collapse). Same
+// rationale as staleRiskSeen: composite commands fire many actions.
+var (
+	concurrentWriterMu   sync.Mutex
+	concurrentWriterSeen = map[string]bool{}
+)
+
+// warnConcurrentWriter surfaces a daemon-attached concurrentWriter advisory
+// (another client mutated this window recently — issue #108) on STDERR, so
+// JSON/table output on stdout stays machine-parseable. Best-effort and
+// non-blocking, aligned with warnStaleRisk.
+func warnConcurrentWriter(respBody []byte, stderr io.Writer) {
+	var parsed struct {
+		ConcurrentWriter string `json:"concurrentWriter"`
+	}
+	if json.Unmarshal(respBody, &parsed) != nil || parsed.ConcurrentWriter == "" {
+		return
+	}
+	// Dedup on the stable tail ("… last writer <id> ran <action>"); fall back
+	// to the whole message when the marker is absent.
+	key := parsed.ConcurrentWriter
+	if i := strings.Index(key, "last writer "); i >= 0 {
+		key = key[i:]
+	}
+	concurrentWriterMu.Lock()
+	seen := concurrentWriterSeen[key]
+	concurrentWriterSeen[key] = true
+	concurrentWriterMu.Unlock()
+	if seen {
+		return
+	}
+	fmt.Fprintf(stderr, "⚠ concurrentWriter: %s\n", parsed.ConcurrentWriter)
+}
+
 // postAction is the shared HTTP core: find a live daemon, POST the typed action,
 // and return the raw response body.
 func postAction(cfg *appConfig, action, window string, payload any, timeout time.Duration) ([]byte, error) {
@@ -343,6 +400,9 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	}
 
 	body := map[string]any{"action": action}
+	// Identify this client process for audit attribution and the daemon's
+	// concurrent-writer advisory (issue #108).
+	body["clientId"] = cliClientID()
 	// Send the round-trip budget: the daemon shortens its connector wait to
 	// (budget - grace) so it answers with a structured DISPATCH_FAILED *before*
 	// this HTTP client times out — instead of both sides hanging to their own
@@ -395,6 +455,8 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	// dispatch paths (dispatch/dispatchCapture/requestAction) share — so every
 	// command warns without per-command wiring. stderr keeps stdout clean.
 	warnStaleRisk(respBody, os.Stderr)
+	// Same choke point for the concurrent-writer advisory (issue #108).
+	warnConcurrentWriter(respBody, os.Stderr)
 	return respBody, nil
 }
 

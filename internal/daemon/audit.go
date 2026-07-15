@@ -14,9 +14,14 @@ import (
 // intentionally flat so future `easyeda audit` tooling can pipe it through
 // jq/grep without parsing nested envelopes.
 type auditEntry struct {
-	Timestamp  time.Time      `json:"ts"`
-	RequestID  string         `json:"requestId"`
-	WindowID   string         `json:"windowId,omitempty"`
+	Timestamp time.Time `json:"ts"`
+	RequestID string    `json:"requestId"`
+	WindowID  string    `json:"windowId,omitempty"`
+	// ClientID attributes the entry to the calling client process
+	// ("<hostname>:<pid>[:<label>]", see protocol.Request.ClientID) so
+	// multi-client incidents are attributable from the audit log alone
+	// (issue #108). Empty for callers that sent no identity.
+	ClientID   string         `json:"clientId,omitempty"`
 	Action     string         `json:"action"`
 	Payload    map[string]any `json:"payload,omitempty"`
 	OK         bool           `json:"ok"`
@@ -81,6 +86,7 @@ func fromResponse(started time.Time, req *protocol.Request, resp *protocol.Respo
 		Timestamp:  started,
 		RequestID:  req.ID,
 		WindowID:   req.WindowID,
+		ClientID:   req.ClientID,
 		Action:     req.Action,
 		Payload:    req.Payload,
 		DurationMs: time.Since(started).Milliseconds(),

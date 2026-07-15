@@ -32,8 +32,15 @@ type Request struct {
 	// DISPATCH_FAILED instead of a raw HTTP timeout when the connector hangs
 	// (e.g. DRC recompute on a background window never finishes). 0 = daemon
 	// default.
-	TimeoutMs int            `json:"timeoutMs,omitempty"`
-	Payload   map[string]any `json:"payload,omitempty"`
+	TimeoutMs int `json:"timeoutMs,omitempty"`
+	// ClientID identifies the calling client process for audit attribution and
+	// the concurrent-writer advisory (issue #108): multiple CLIs/agents can
+	// drive the same board through one daemon, and without an identity field
+	// the audit log cannot say WHO replayed a stale plan. The CLI fills it once
+	// per process as "<hostname>:<pid>[:<EASYEDA_CLIENT_LABEL>]". Optional —
+	// raw HTTP callers that omit it simply stay unattributed.
+	ClientID string         `json:"clientId,omitempty"`
+	Payload  map[string]any `json:"payload,omitempty"`
 }
 
 type Response struct {
@@ -49,6 +56,13 @@ type Response struct {
 	// `doc reload`: the per-document engine state may serve stale data (SKILL
 	// iron rule 5). Purely additive — absent when there is no risk.
 	StaleRisk string `json:"staleRisk,omitempty"`
+	// ConcurrentWriter is a daemon-attached, non-blocking advisory set on a
+	// mutating action when a DIFFERENT client mutated the same window recently
+	// (issue #108): two clients driving one board with no mutex silently fight
+	// each other. Purely additive — absent when the last writer is the same
+	// client, the request is a read, or the last write is old enough to no
+	// longer conflict.
+	ConcurrentWriter string `json:"concurrentWriter,omitempty"`
 }
 
 type Context struct {

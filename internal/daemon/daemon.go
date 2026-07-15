@@ -56,6 +56,11 @@ type Server struct {
 	// a doc reload, so PCB reads can carry a staleRisk advisory (stalereads.go).
 	staleReads *staleGuard
 
+	// concurrentWrites tracks the last mutating client per window, so a
+	// different client's mutation can carry a concurrentWriter advisory
+	// (concurrentwrites.go, issue #108).
+	concurrentWrites *concurrentGuard
+
 	// inflight tracks non-reentrant actions currently forwarded, keyed
 	// "<action>|<windowId>" — see acquireExclusive / nonReentrant.
 	inflight sync.Map
@@ -86,10 +91,11 @@ func (s *Server) logf(format string, args ...any) {
 // New builds a Server. It does not bind a port until Run is called.
 func New(opts Options) *Server {
 	s := &Server{
-		opts:       opts,
-		hub:        newHub(),
-		audit:      newAuditWriter(opts.AuditDir),
-		staleReads: newStaleGuard(),
+		opts:             opts,
+		hub:              newHub(),
+		audit:            newAuditWriter(opts.AuditDir),
+		staleReads:       newStaleGuard(),
+		concurrentWrites: newConcurrentGuard(),
 	}
 	if opts.AutosaveDebounce > 0 {
 		s.autosave = newAutosaver(opts.AutosaveDebounce, s.dispatchSave)

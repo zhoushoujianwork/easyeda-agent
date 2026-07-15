@@ -225,6 +225,10 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	// mutation, clear on reload/pour-rebuild, and annotate PCB reads that arrive
 	// in between with a non-blocking staleRisk field. See stalereads.go.
 	s.staleReads.observe(&req, resp)
+	// Concurrent-writer advisory (issue #108): when a DIFFERENT client mutates
+	// a window another client wrote to recently, annotate the response with a
+	// non-blocking concurrentWriter field. See concurrentwrites.go.
+	s.concurrentWrites.observe(&req, resp)
 	s.audit.Append(fromResponse(started, &req, resp))
 	// After a successful content-changing action, arm a debounced autosave so the
 	// work reaches disk without the agent having to remember to save (no-op when
