@@ -493,24 +493,24 @@
       "desc": "auto-added from box-v2 realization 2026-06-26"
     },
     "mcu.esp32s3_chip": {
-      "value": null,
+      "value": "ESP32-S3",
       "mpn": "ESP32-S3",
       "lcsc": "C2913192",
       "manufacturer": "ESPRESSIF(乐鑫)",
       "deviceUuid": "9e0ed3f3b23744baaa755898c300ed66",
       "footprint": "QFN-56_L7.0-W7.0-P0.40-TL-EP4.0",
       "basic": false,
-      "desc": ""
+      "desc": "ESP32-S3 裸片 QFN-56(无内封 flash/PSRAM)——芯片级最小系统需外挂 8MB flash(ic.w25q64_flash)+8MB PSRAM(ic.aps6404l,共 SPI0 独立 CS)+40MHz 晶振+天线π匹配;N8R8 用例优先选 mcu.esp32s3r8_chip(内封 PSRAM 免外挂)"
     },
     "ic.w25q64_flash": {
-      "value": null,
+      "value": "W25Q64JVSSIQ",
       "mpn": "W25Q64JVSSIQ",
       "lcsc": "C179171",
       "manufacturer": "Winbond(华邦)",
       "deviceUuid": "da24d6cf9cb64b0281929764ad5a4ad8",
       "footprint": "SOIC-8_L5.3-W5.3-P1.27-LS8.0-BL",
       "basic": false,
-      "desc": ""
+      "desc": "8MB(64Mbit) QSPI flash 133MHz SOP-8——ESP32-S3 裸片外挂 N8;走 SPI0(CLK/CMD/D0-D3),与 PSRAM 共总线独立 CS,靠近芯片走线短少过孔"
     },
     "xtal.40mhz_3225_12pf": {
       "value": "40MHz",
@@ -520,7 +520,7 @@
       "deviceUuid": "623e113eed364ff4b720c853614bbbb0",
       "footprint": "CRYSTAL-SMD_4P-L3.2-W2.5-BL",
       "basic": false,
-      "desc": ""
+      "desc": "40MHz 3225 贴片晶振 ±10ppm/CL=12pF——ESP32-S3 裸片主时钟;贴近芯片对称布负载电容(cap.12p_0402×2),XTAL_P/N 包地"
     },
     "xtal.26mhz_3225_10pf": {
       "value": "26MHz",
@@ -1120,6 +1120,56 @@
       "class": "cap",
       "basic": false,
       "desc": "RF 隔直/pi 匹配占位。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+    },
+    "mcu.esp32s3r8_chip": {
+      "value": "ESP32-S3R8",
+      "mpn": "ESP32-S3R8",
+      "lcsc": "C2913194",
+      "manufacturer": "ESPRESSIF(乐鑫)",
+      "deviceUuid": "8aaa14a7c2254cc9b606da49ecfff825",
+      "footprint": "QFN-56_L7.0-W7.0-P0.40-TL-EP4.0",
+      "basic": false,
+      "desc": "ESP32-S3R8 裸片 QFN-56(内封 8MB Octal PSRAM)——芯片级 N8R8 首选主控:R8 由封装内 PSRAM 直接满足,免外挂 APS6404L;仍需外挂 8MB flash(W25Q64,N8)+40MHz 晶振+板载天线π匹配。VDD_SPI 供内封 PSRAM,SPI0 与外挂 flash 共享;symbol=ESP32-S3(R8)"
+    },
+    "ic.aps6404l": {
+      "value": "APS6404L-3SQR-SN",
+      "mpn": "APS6404L-3SQR-SN",
+      "lcsc": "C5333729",
+      "manufacturer": "Apmemory",
+      "deviceUuid": "17efa43e965c41fbae150206d6ec36c5",
+      "footprint": "SOIC-8_L4.9-W3.9-P1.27-LS6.0-BL",
+      "basic": false,
+      "desc": "8MB(64Mbit) QSPI PSRAM 144MHz 3.0-3.6V SOP-8——普通 ESP32-S3 裸片外挂 R8 备用件(选 S3R8 时可省);⚠必须带3前缀的3SQR/3SQN才是3.3V版,无3的SQN系是1.8V件勿混;与 flash 共 SPI0 总线独立 CS,走线短尽量等长"
+    },
+    "ant.ceramic_2g4": {
+      "value": "2450AT18A100E",
+      "mpn": "2450AT18A100E",
+      "lcsc": "C89334",
+      "manufacturer": "JOHANSON(约翰逊)",
+      "deviceUuid": "eec8277a1e56424eb8b4de445349f0d2",
+      "footprint": "ANT-SMD_L3.2-W1.6",
+      "basic": false,
+      "desc": "Johanson 2450AT18 系 2.4GHz 陶瓷贴片天线 3216(0.5dBi/2W;parts-select 比对:库存3739/单价0.30 优于 D 系 C17410360)——BT/WiFi 板载天线;天线区所有层 keep-out(禁铜/禁线/禁过孔),馈线 50Ω 经 π 匹配接 RF 脚;布板端角/边缘,净空按 datasheet"
+    },
+    "ind.2n7_0402": {
+      "value": "2.7nH",
+      "mpn": "LQG15HS2N7S02D",
+      "lcsc": "C77108",
+      "manufacturer": "muRata(村田)",
+      "deviceUuid": "df85800c300944958622843ca957103f",
+      "footprint": "L0402",
+      "basic": false,
+      "desc": "2.7nH 0402 RF 电感(LQG15HS 系,800mA/DCR 120mΩ)——2.4GHz 天线 π 匹配(C-L-C)串联 L 代表值;按天线实测调谐实配,预留可不贴"
+    },
+    "cap.1p_0402": {
+      "value": "1pF",
+      "mpn": "0402CG1R0C500NT",
+      "lcsc": "C1550",
+      "manufacturer": "FH(风华)",
+      "deviceUuid": "0fa17adbab424e96a21c449504f83f47",
+      "footprint": "C0402",
+      "basic": false,
+      "desc": "1pF C0G 0402——2.4GHz 天线 π 匹配并联 C 代表值(配 ind.2n7_0402);按天线实测调谐实配,预留可不贴"
     }
   }
 }
