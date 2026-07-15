@@ -1,0 +1,135 @@
+{
+  "id": "block.ant_2g4_ceramic_pi",
+  "desc": "2.4GHz 陶瓷贴片天线(Johanson 2450AT18A100E 3216)+ π 型匹配(C-L-C:1pF‖-2.7nH串-1pF‖,代表值实配调谐)+ 50Ω 馈线;接 ESP32-S3 裸片 LNA_IN 等 2.4G RF 口",
+  "category": "rf",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.12.1",
+  "updated": "v0.12.1",
+  "source": "datasheet:2450AT18A100E (Johanson Technology,参考应用电路:馈点前置匹配网络 + 板角/板边净空布局建议) + official-ref:Espressif《ESP32-S3 Hardware Design Guidelines》RF 段(LNA_IN 与天线间预留 π 型 CLC 匹配,馈线 50Ω)。天线符号脚名 2026-07-15 在 ceshi 临时页 place C89334 后 sch read 核实:ANT(1)=馈点,2=固定焊盘",
+  "validated": null,
+  "parts": {
+    "ANT": {
+      "part": "ant.ceramic_2g4",
+      "qty": 1,
+      "note": "Johanson 2450AT18A100E 2.4GHz 陶瓷贴片天线 3216(0.5dBi/2W);脚 ANT=馈点,脚 2=机械固定焊盘(datasheet: NC,勿接地勿接铜)"
+    },
+    "C_M1": {
+      "part": "cap.1p_0402",
+      "qty": 1,
+      "note": "π 匹配芯片侧并联 C,1pF C0G 代表值(datasheet 参考电路起步);按整板天线实测(S11/史密斯图)调谐实配,预留可不贴"
+    },
+    "L_M": {
+      "part": "ind.2n7_0402",
+      "qty": 1,
+      "note": "π 匹配串联 L,2.7nH RF 电感(LQG15HS)代表值;实测调谐实配"
+    },
+    "C_M2": {
+      "part": "cap.1p_0402",
+      "qty": 1,
+      "note": "π 匹配天线侧并联 C,1pF C0G 代表值;实测调谐实配,预留可不贴"
+    }
+  },
+  "_internal_nets_note": "ANT 符号脚名已 sch read 核实:ANT(1)=馈点、2=固定焊盘(NC,不入网表)。π 结构:RF_IN → [C_M1 并联到地] → L_M 串联 → [C_M2 并联到地] → ANT.ANT。匹配值是 datasheet 参考电路 + standard-parts 代表值起步,量产前须按实际板叠层/接地环境用矢网调谐。",
+  "internal_nets": [
+    ["PORT:RF_IN", "C_M1.1", "L_M.1"],
+    ["L_M.2", "C_M2.1", "ANT.ANT"],
+    ["C_M1.2", "C_M2.2", "PORT:GND"]
+  ],
+  "ports": {
+    "RF_IN": {
+      "dir": "in",
+      "at": "L_M.1",
+      "desc": "50Ω RF 输入,接 MCU/收发器 RF 脚(block.esp32s3r8_chip_minsys 的 LNA_IN port);馈线全程 50Ω 微带",
+      "default_net": "RF_ANT"
+    },
+    "GND": {
+      "dir": "bidir",
+      "at": "C_M1.2",
+      "desc": "匹配网络参考地,须直连完整地平面(短回地,过孔就近)",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "π 型匹配 C-L-C:C_M1(芯片侧并联 1pF)→ L_M(串联 2.7nH)→ C_M2(天线侧并联 1pF)→ ANT 馈点。值是 Johanson datasheet 参考电路 + 本库代表值**起步**,实际匹配强依赖板叠层/地平面/外壳,量产前必须矢网实测 S11 调谐;两颗并联 C 常见预留不贴(先只留串联 0Ω/L 通路)。",
+    "ANT 脚 2 是机械固定焊盘:datasheet 标 NC——不接地、不接铜、不入网表(误接地会把单极天线变差谐振)。",
+    "本块只管匹配+天线;RF 源侧(LNA_IN 出脚即 50Ω)约束在 block.esp32s3r8_chip_minsys。RF_IN↔LNA_IN 之间不允许再串任何非 50Ω 结构(测试座除外,预留 IPEX 时另开块)。",
+    "netflag 必须经真实导线连接(坐标重叠不算连通)——本项目通用约束。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "antenna-keepout",
+      "target": "ANT",
+      "constraint": "天线本体及 datasheet 规定净空区内**所有层**禁铜:顶/底层 no-pour + 内层 no-inner-electrical + 禁走线禁过孔;净空区内也不放其它器件。每层独立画 keep-out region(单层画不覆盖内层)",
+      "value": "all-layers keep-out,净空尺寸按 2450AT18A100E datasheet 推荐 land pattern/clearance",
+      "severity": "must"
+    },
+    {
+      "rule": "antenna-edge-corner",
+      "target": "ANT",
+      "constraint": "天线置于板边/板角,长轴贴板边,馈点朝板内;天线外侧不留板(或留最小工艺边),周边地平面按 datasheet 后退",
+      "value": "板角优先(datasheet 推荐取向)",
+      "severity": "must"
+    },
+    {
+      "rule": "feed-50ohm",
+      "target": "RF_IN",
+      "constraint": "RF 馈线(RF 脚→π 匹配→天线馈点)按 50Ω 微带/共面波导控制阻抗:线宽由实际叠层(介质厚度/εr/是否共面地)计算——4 层 JLC 常规叠层参考 Si9000/嘉立创阻抗计算器,设计者按叠层算线宽,不要抄固定值;下方参考地连续,两侧护地+缝合过孔,尽量短直、0 过孔",
+      "value": "50ohm ±10%",
+      "severity": "must"
+    },
+    {
+      "rule": "match-near-antenna",
+      "target": "C_M1 / L_M / C_M2",
+      "constraint": "π 匹配三件紧凑放在馈线上、靠近天线馈点端,元件间距最小;并联件回地过孔就近(每颗独立过孔)",
+      "value": "紧邻馈点,组内间距 <= 1mm",
+      "severity": "must"
+    },
+    {
+      "rule": "match-value-tuning",
+      "target": "C_M1 / L_M / C_M2",
+      "constraint": "匹配值按 datasheet 参考电路起步(1pF/2.7nH/1pF 代表值),量产前矢网实测 S11 调谐实配;首版并联 C 可预留不贴",
+      "value": "起步值≠终值,实测定",
+      "severity": "must"
+    },
+    {
+      "rule": "nc-pad-no-copper",
+      "target": "ANT (脚2 固定焊盘)",
+      "constraint": "固定焊盘只做机械焊接,不接地不连铜(datasheet NC)",
+      "value": "",
+      "severity": "must"
+    }
+  ],
+  "placement": {
+    "ANT": {
+      "board_edge": true,
+      "edge": "any",
+      "side": "top",
+      "orientation": "板角/板边,长轴贴板边,馈点朝板内,天线区外侧无板材或最小工艺边;净空区(全层禁铜)随天线一起落位",
+      "severity": "must",
+      "reason": "陶瓷单极天线靠地平面开口辐射,埋在板中/被铜包围=失谐+效率崩(datasheet 布局章节)"
+    }
+  },
+  "signals": {
+    "RF_FEED": {
+      "nets": ["RF_IN"],
+      "type": "rf",
+      "impedance_ohm": 50,
+      "impedance_kind": "single-ended",
+      "max_via": 0,
+      "route": "50Ω 受控阻抗微带/共面波导,短直、0 过孔;线宽按实际叠层计算(见 pcb_layout feed-50ohm)",
+      "keepout": "馈线两侧护地+缝合过孔;远离晶振/SPI0/开关电源;天线净空区全层禁铜",
+      "severity": "must",
+      "reason": "2.4GHz 馈线失配直接吃掉发射功率/灵敏度"
+    }
+  },
+  "silk": {
+    "ANT": {
+      "label": "ANT 2.4G",
+      "note": "标注在天线本体外、净空区边界外侧;净空区内连丝印都尽量少(部分厂丝印含金属颗粒,保守起见)",
+      "clearance": "outside-body",
+      "severity": "should"
+    }
+  },
+  "bom_note": "共 4 件:1× 2450AT18A100E 陶瓷天线(C89334,扩展料)+ 1× 2.7nH 0402 RF 电感(C77108)+ 2× 1pF C0G 0402(C1550)。匹配三件为『代表值,实测调谐实配』,首版并联 C 常预留不贴——BOM 里保留位号标 DNF 更稳。"
+}
