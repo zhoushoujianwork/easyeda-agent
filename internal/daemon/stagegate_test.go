@@ -31,8 +31,20 @@ func TestStageGateCatalogWiring(t *testing.T) {
 			t.Fatalf("%s must invalidate %s, got %q", a, want, invalidatesForAction[a])
 		}
 	}
-	// Reads and routing-repair actions must stay ungated/non-invalidating.
-	for _, a := range []string{"pcb.components.list", "pcb.route.rip_up", "pcb.clear_routing", "pcb.save"} {
+	// Routing-class mutations invalidate the post-route check gate (布完必查):
+	// any copper change makes the standing pcb-check audit stale. They stay
+	// UNGATED (rip-up/repair must work on an unconfirmed board).
+	for _, a := range []string{"pcb.route.rip_up", "pcb.clear_routing", "pcb.route.delete",
+		"pcb.pour.create", "pcb.pour.rebuild", "pcb.beautify", "pcb.fill.create"} {
+		if invalidatesForAction[a] != workflow.StagePostRouteChecked {
+			t.Fatalf("%s must invalidate post_route_checked, got %q", a, invalidatesForAction[a])
+		}
+	}
+	if gateForAction["pcb.route.rip_up"] != "" || gateForAction["pcb.clear_routing"] != "" {
+		t.Fatal("rip-up/clear_routing must stay ungated (repair path)")
+	}
+	// Reads and save stay ungated and non-invalidating.
+	for _, a := range []string{"pcb.components.list", "pcb.save"} {
 		if gateForAction[a] != "" {
 			t.Fatalf("%s must not be gated", a)
 		}

@@ -227,3 +227,26 @@ func TestHashLayoutNormalization(t *testing.T) {
 		t.Fatal("a TOP→BOTTOM flip must change the hash")
 	}
 }
+
+// post_route_checked joins the order after routing_authorized and its snapshot
+// clears on invalidation from any stage at or before it.
+func TestPostRouteCheckedStage(t *testing.T) {
+	if Rank(StagePostRouteChecked) != len(Order)-1 {
+		t.Fatalf("post_route_checked must be the last stage, rank=%d", Rank(StagePostRouteChecked))
+	}
+	if Rank(StagePostRouteChecked) <= Rank(StageRoutingAuthorized) {
+		t.Fatal("post_route_checked must rank after routing_authorized")
+	}
+	st := &State{Project: "t"}
+	st.Confirm(StagePostRouteChecked, "gate-pass", "test")
+	st.Check = &CheckGateSummary{Tracks: 42, At: "now"}
+	// Invalidating an EARLIER stage clears the later stage + its snapshot.
+	st.InvalidateFrom(StageRoutingAuthorized, "copper changed")
+	if st.Has(StagePostRouteChecked) || st.Check != nil {
+		t.Fatal("invalidating routing_authorized must clear post_route_checked + Check snapshot")
+	}
+	// A legacy state file without the new stage loads as unconfirmed.
+	if (&State{Project: "old", Confirmed: map[Stage]bool{StageRoutingAuthorized: true}}).Has(StagePostRouteChecked) {
+		t.Fatal("legacy state must not have post_route_checked")
+	}
+}

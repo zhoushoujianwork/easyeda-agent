@@ -1533,13 +1533,39 @@ func uniqStr(in []string) []string {
 // runPcbCheck pulls placed copper (tracks + vias + pads), runs the DFM audit,
 // renders it, and (with strict) returns a non-zero exit when there are findings.
 func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSON bool, stdout, stderr io.Writer) error {
+	rep, err := gatherPcbCheckReport(cfg, window, couplingW, stderr)
+	if err != nil {
+		return err
+	}
+
+	if asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(rep); err != nil {
+			return err
+		}
+	} else {
+		renderPcbCheckReport(*rep, stdout)
+	}
+
+	if strict && rep.Summary.Warnings > 0 {
+		return fmt.Errorf("pcb check: %d issue(s) (--strict)", rep.Summary.Warnings)
+	}
+	return nil
+}
+
+// gatherPcbCheckReport runs the full DFM audit (core + every LIVE-only rule)
+// and returns the report — the reusable seam `workflow advance` drives for the
+// post_route_checked gate (布完必查), while `pcb check` keeps owning rendering
+// and --strict semantics.
+func gatherPcbCheckReport(cfg *appConfig, window string, couplingW float64, stderr io.Writer) (*pcbCheckReport, error) {
 	pads, err := fetchPcbPads(cfg, window)
 	if err != nil {
-		return fmt.Errorf("fetch PCB pads: %w", err)
+		return nil, fmt.Errorf("fetch PCB pads: %w", err)
 	}
 	tracks, err := fetchPcbTracks(cfg, window)
 	if err != nil {
-		return fmt.Errorf("fetch PCB tracks: %w", err)
+		return nil, fmt.Errorf("fetch PCB tracks: %w", err)
 	}
 	// Arcs anchor track endpoints (beautify's rounded corners). Best-effort: an older
 	// connector omits them → empty slice, dangling-end just loses arc-awareness.
@@ -1550,7 +1576,7 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 	}
 	vias, err := fetchPcbVias(cfg, window)
 	if err != nil {
-		return fmt.Errorf("fetch PCB vias: %w", err)
+		return nil, fmt.Errorf("fetch PCB vias: %w", err)
 	}
 	// Silkscreen is OPTIONAL: the silk rule needs the pcb.silk.list connector handler.
 	// On an older connector (before it was added) this errors "Unknown action" — degrade
@@ -1681,20 +1707,7 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, strict, asJSO
 		rep.Passed = rep.Summary.Total == 0
 	}
 
-	if asJSON {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(rep); err != nil {
-			return err
-		}
-	} else {
-		renderPcbCheckReport(rep, stdout)
-	}
-
-	if strict && rep.Summary.Warnings > 0 {
-		return fmt.Errorf("pcb check: %d issue(s) (--strict)", rep.Summary.Warnings)
-	}
-	return nil
+	return &rep, nil
 }
 
 func fetchPcbPads(cfg *appConfig, window string) ([]pcbPadP, error) {

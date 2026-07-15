@@ -34,7 +34,7 @@ EasyEDA tooling.
 11. **丝印每个标记落在器件本体/courtyard 之外、装配后不被遮** — 端子塑料罩/卡座壳/按键帽会盖住 footprint 内的丝印 = 等于没标。→ design-flow P9
 12. **禁用 `eda.sch_Netlist.getNetlist()`**(已废弃、悬空脚挂死)— 网表走 `sch read/check/netlist/export`;raw 路径不得已才 `getNetlistFile()` 读 `File.text()`。→ schematic.md / actions.md
 13. **电气 clearance ≠ 手焊可达性** — P2 先持久化装配档案:`pcb stage set-assembly --profile hand-solder`(默认/下限40mil;大焊盘烙铁通道60mil);`layout-lint --gate` 有任何 tight pair 即失败,任何器件四面被围、无一侧 ≥60mil 烙铁通道(no-access)也失败;未过门不得确认布局。→ design-flow P2/P6 · issue #99
-14. **阶段门禁是机械强制的,不靠记忆** — 布线(`route-short`/`autoroute`,以及底层 `pcb.line.create`/`pcb.via.create`/`pcb.import_autoroute`)未过 `outline_confirmed`+`pre_route_passed` 一律被拒,**daemon 在 /action 派发层也拦**(raw 调用绕不过);确认与**文档指纹**绑定——GUI 拖动 / `exec_js` 等门外改动会被下一个 gate 自动失效回退。任意阶段切入 / 恢复会话:先 `easyeda workflow status --reconcile` 校准,再 `easyeda workflow advance` 按流程继续;`--force <理由>` 仅本次执行有效且入审计。→ design-flow P6/P7 · issue #97
+14. **阶段门禁是机械强制的,不靠记忆** — 布线(`route-short`/`autoroute`,以及底层 `pcb.line.create`/`pcb.via.create`/`pcb.import_autoroute`)未过 `outline_confirmed`+`pre_route_passed` 一律被拒,**daemon 在 /action 派发层也拦**(raw 调用绕不过);确认与**文档指纹**绑定——GUI 拖动 / `exec_js` 等门外改动会被下一个 gate 自动失效回退。**布完必查也是门**:布线后必须过 `post_route_checked`(`workflow advance` 自动跑 pcb check,ERROR/power-not-poured/width-under-spec 必须清零才放行丝印/交付;任何布线类 mutation 自动失效此门重新关上)。任意阶段切入 / 恢复会话:先 `easyeda workflow status --reconcile` 校准,再 `easyeda workflow advance` 按流程继续;`--force <理由>` 仅本次执行有效且入审计。→ design-flow P6/P7 · issue #97
 
 ## ② 流程停点 + 档位默认 + 块地图速查
 
@@ -105,6 +105,7 @@ EasyEDA tooling.
 4. **禁布区 / 丝印(P4/P5)在布线 P7 之前**(布完再加会逼返工重绕)→ design-flow P4/P5
 5. **改层数 / `outline-fit` 在铺铜布线之前** → design-flow P8
 6. **PLANE 先铺 SIGNAL 再翻;PLANE 翻好后禁打异网 via**(官方缺陷 #32 不挖 anti-pad、`pour-rebuild` 不补救;换层先删 via 走外层,`pcb check via-crosses-plane` 会标出)→ design-flow P8
+7. **布完必过 post-route check 门再进丝印/交付**(`workflow advance` 跑 pcb check,ERROR/power-not-poured/width-under-spec 清零才过;WARN 挂着不处理曾致 5V 细线违规漏到人工评审才被抓)→ 铁律 14
 
 ## What To Read(加载触发索引 —— load-more)
 

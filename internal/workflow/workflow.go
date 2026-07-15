@@ -41,6 +41,12 @@ const (
 	StageOutlineConfirmed   Stage = "outline_confirmed"
 	StagePreRoutePassed     Stage = "pre_route_passed"
 	StageRoutingAuthorized  Stage = "routing_authorized"
+	// StagePostRouteChecked is the "布完必查" gate: after routing, the pcb-check
+	// audit must come back with zero hard ERRORs, zero power-not-poured and zero
+	// width-under-spec findings before silkscreen/delivery. Any routing-class
+	// mutation (track/via/pour/fill/beautify/import_autoroute/…) invalidates it
+	// (catalog-driven, like the placement/outline stages).
+	StagePostRouteChecked Stage = "post_route_checked"
 )
 
 // Order is the canonical progression; index = rank.
@@ -51,6 +57,7 @@ var Order = []Stage{
 	StageOutlineConfirmed,
 	StagePreRoutePassed,
 	StageRoutingAuthorized,
+	StagePostRouteChecked,
 }
 
 // Rank returns the ordinal of a stage (−1 if unknown).
@@ -91,6 +98,20 @@ type GateSummary struct {
 	At            string  `json:"at"`
 }
 
+// CheckGateSummary is the machine-readable `pcb check` gate snapshot stored
+// when the post_route_checked gate passes (the routed-copper twin of the
+// layout-lint GateSummary): what the board's DFM audit looked like at sign-off.
+// Tracks is the routed track count at gate time — a WEAK drift check (there is
+// no routing-geometry fingerprint yet; reconcile compares it to the live count).
+type CheckGateSummary struct {
+	Errors         int    `json:"errors"`
+	Warnings       int    `json:"warnings"`
+	WidthUnderSpec int    `json:"widthUnderSpec"`
+	PowerNotPoured int    `json:"powerNotPoured"`
+	Tracks         int    `json:"tracks"`
+	At             string `json:"at"`
+}
+
 // AssemblyProfile is the project-level assembly/hand-solder contract. It is
 // persisted so a later agent cannot silently fall back to electrical clearance
 // after the user selected hand assembly (issue #99).
@@ -118,6 +139,7 @@ type State struct {
 	Confirmed map[Stage]bool   `json:"confirmed"`
 	Assembly  *AssemblyProfile `json:"assembly,omitempty"`
 	Layout    *GateSummary     `json:"layoutGate,omitempty"`
+	Check     *CheckGateSummary `json:"checkGate,omitempty"`
 	LayoutFP  *Fingerprint     `json:"layoutFingerprint,omitempty"`
 	OutlineFP *Fingerprint     `json:"outlineFingerprint,omitempty"`
 	History   []Event          `json:"history,omitempty"`
@@ -161,6 +183,9 @@ func (s *State) InvalidateFrom(from Stage, cause string) []Stage {
 	}
 	if Rank(StagePreRoutePassed) >= fromRank {
 		s.Layout = nil
+	}
+	if Rank(StagePostRouteChecked) >= fromRank {
+		s.Check = nil
 	}
 	if Rank(StagePlacementConfirmed) >= fromRank {
 		s.LayoutFP = nil

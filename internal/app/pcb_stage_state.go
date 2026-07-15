@@ -30,6 +30,7 @@ type (
 	pcbStageState        = workflow.State
 	pcbAssemblyProfile   = workflow.AssemblyProfile
 	pcbLayoutGateSummary = workflow.GateSummary
+	pcbCheckGateSummary  = workflow.CheckGateSummary
 	routeGate            = workflow.Gate
 	stageFingerprint     = workflow.Fingerprint
 	stageComponentPose   = workflow.ComponentPose
@@ -42,6 +43,7 @@ const (
 	stageOutlineConfirmed   = workflow.StageOutlineConfirmed
 	stagePreRoutePassed     = workflow.StagePreRoutePassed
 	stageRoutingAuthorized  = workflow.StageRoutingAuthorized
+	stagePostRouteChecked   = workflow.StagePostRouteChecked
 )
 
 var pcbStageOrder = workflow.Order

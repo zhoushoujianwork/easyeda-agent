@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/workflow"
@@ -116,10 +117,56 @@ func workflowNext(st *pcbStageState, f workflowFacts) (next, why string) {
 	case !st.Has(stagePreRoutePassed):
 		return "easyeda pcb layout-lint --gate",
 			"routability gate not passed since the last change (P6)"
-	default:
+	case f.RoutedLines == 0:
 		return "easyeda pcb route-short   (or autoroute)",
 			"routing is authorized (P7)"
+	case !st.Has(stagePostRouteChecked):
+		return "easyeda workflow advance   (runs the pcb-check gate)",
+			"board is routed but the post-route check gate (布完必查) has not passed (P7.9): ERRORs + power-not-poured + width-under-spec must be zero"
+	default:
+		return "easyeda pcb silk-align && pcb drc && pcb save   (P9/P10 delivery)",
+			"post-route check passed — proceed to silkscreen / native DRC / save / export"
 	}
+}
+
+// runPostRouteCheckGate runs the pcb-check audit as the post_route_checked
+// mechanical gate (布完必查). Gate criteria: zero hard ERRORs, zero
+// power-not-poured, zero width-under-spec — the power-discipline trio the
+// 5V-thin-track regression proved agents ignore when it is only a WARN. Other
+// WARN/INFO findings (coupling, fiducial, silk…) are reported but do NOT block:
+// gating on them would make the gate impossible on dense boards. On pass the
+// stage is confirmed with a CheckGateSummary snapshot; on fail the offending
+// findings (with their 规范 § references) are printed and the stage stays
+// unconfirmed.
+func runPostRouteCheckGate(cfg *appConfig, window, project string, st *pcbStageState, f workflowFacts, stdout, stderr io.Writer) error {
+	rep, err := gatherPcbCheckReport(cfg, window, 0, stderr)
+	if err != nil {
+		return fmt.Errorf("post-route check gate: %w", err)
+	}
+	blocking := rep.Summary.Errors + rep.Summary.PowerNotPoured + rep.Summary.WidthUnderSpec
+	if blocking > 0 {
+		fmt.Fprintf(stderr, "❌ post-route check gate FAILED — %d blocking finding(s) (ERROR=%d powerNotPoured=%d widthUnderSpec=%d):\n",
+			blocking, rep.Summary.Errors, rep.Summary.PowerNotPoured, rep.Summary.WidthUnderSpec)
+		for _, fd := range rep.Findings {
+			if fd.Level == "ERROR" || fd.Type == "power-not-poured" || fd.Type == "width-under-spec" {
+				fmt.Fprintf(stderr, "   %-5s %-17s %s\n", fd.Level, fd.Type, fd.Message)
+			}
+		}
+		return errActionFailed
+	}
+	st.Check = &pcbCheckGateSummary{
+		Errors: rep.Summary.Errors, Warnings: rep.Summary.Warnings,
+		WidthUnderSpec: rep.Summary.WidthUnderSpec, PowerNotPoured: rep.Summary.PowerNotPoured,
+		Tracks: f.RoutedLines, At: time.Now().Format(time.RFC3339),
+	}
+	st.Confirm(stagePostRouteChecked, "gate-pass",
+		fmt.Sprintf("pcb check: 0 blocking (warnings=%d, tracks=%d)", rep.Summary.Warnings, f.RoutedLines))
+	if err := savePcbStageState(st); err != nil {
+		return fmt.Errorf("persist post_route_checked: %w", err)
+	}
+	fmt.Fprintf(stderr, "✓ post-route check gate passed (0 ERROR / 0 power-not-poured / 0 width-under-spec; %d non-blocking warning(s)) — post_route_checked confirmed\n",
+		rep.Summary.Warnings)
+	return nil
 }
 
 // reconcileWorkflow re-syncs the marker with the live document: fingerprint
@@ -158,6 +205,20 @@ func reconcileWorkflow(cfg *appConfig, window string, st *pcbStageState, f workf
 		notes = append(notes, fmt.Sprintf(
 			"%d routed line(s) exist but routing was never authorized — rip up (`pcb clear-routing`) or complete the gates before continuing",
 			f.RoutedLines))
+	}
+	// Post-route check drift (WEAK: track count only — there is no routing
+	// fingerprint yet). Copper changed since the check gate passed → the audit
+	// is stale; invalidate so advance re-runs it. The daemon-side
+	// InvalidatesStage already catches typed-action edits; this catches GUI /
+	// exec_js edits at reconcile time.
+	if st.Has(stagePostRouteChecked) && st.Check != nil && st.Check.Tracks != f.RoutedLines {
+		if cleared := st.InvalidateFrom(stagePostRouteChecked,
+			fmt.Sprintf("routed copper changed since the check gate (%d → %d tracks)", st.Check.Tracks, f.RoutedLines)); len(cleared) > 0 {
+			_ = savePcbStageState(st)
+			notes = append(notes, fmt.Sprintf(
+				"routing changed since the post-route check (%d → %d tracks) — `workflow advance` will re-run the check gate",
+				st.Check.Tracks, f.RoutedLines))
+		}
 	}
 	return notes
 }
@@ -336,6 +397,18 @@ exactly the points a human must approve.`,
 					// fall through — next below will point at fixing the layout
 				}
 				// reload: the gate may have confirmed pre_route_passed
+				if reloaded, rerr := loadPcbStageState(project); rerr == nil {
+					st = reloaded
+				}
+			}
+
+			// Mechanical acceptance #2: the post-route check gate (布完必查).
+			// Runs once the board is routed and every earlier stage is in.
+			if st.Has(stagePreRoutePassed) && facts.RoutedLines > 0 && !st.Has(stagePostRouteChecked) {
+				fmt.Fprintf(stderr, "→ running the post-route `pcb check` gate (ERROR / power-not-poured / width-under-spec must be 0)\n")
+				if gerr := runPostRouteCheckGate(cfg, *window, project, st, facts, stdout, stderr); gerr != nil && gerr != errActionFailed {
+					fmt.Fprintf(stderr, "❌ post-route check gate could not run: %v\n", gerr)
+				}
 				if reloaded, rerr := loadPcbStageState(project); rerr == nil {
 					st = reloaded
 				}
