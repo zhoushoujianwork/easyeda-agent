@@ -231,3 +231,92 @@ func connectsEnds(segs []rtSeg, ax, ay, bx, by float64) bool {
 	first, last := segs[0], segs[len(segs)-1]
 	return first.X1 == ax && first.Y1 == ay && last.X2 == bx && last.Y2 == by
 }
+
+// #107 regression: a multilayer detour must carry the net-class width
+// (widthFor(net)) on EVERY sub-segment — via stubs AND the alternate-layer
+// trunk — not fall back to the signal default. Uses a power-trunk net (5V,
+// ladder 0.4mm = 15.748…mil ≠ signal 10mil) so a width leak is visible.
+func TestPlanShortRoutes_MultilayerPowerWidth(t *testing.T) {
+	opt := defaultRtOptions()
+	opt.skipPower = false // --route-power: route the power net as tracks
+	wantW := opt.widthFor("5V")
+	if wantW == opt.signalWidth {
+		t.Fatalf("fixture needs ladder width != signal width to expose the regression (both %v)", wantW)
+	}
+
+	boards := map[string][]apComp{
+		// Same layer but > maxLen → detour: stub, layer-2 trunk, stub + 2 vias.
+		"too-long": {
+			mkComp("a", "A", 0, 0, 50, 50, []apPad{p("1", "5V", 0, 0)}),
+			mkComp("b", "B", 2000, 0, 50, 50, []apPad{p("1", "5V", 2000, 0)}),
+		},
+		// SMD top↔bottom → one layer-change via, sub-L on each pad's layer.
+		"cross-layer": {
+			mkComp("a", "A", 100, 100, 50, 50, []apPad{p("1", "5V", 100, 100)}),
+			mkComp("b", "B", 150, 160, 50, 50, []apPad{{num: "1", net: "5V", x: 150, y: 160, layer: 2}}),
+		},
+	}
+	for name, board := range boards {
+		segs, vias, _ := planShortRoutes(board, map[string]bool{}, opt)
+		if len(segs) == 0 || len(vias) == 0 {
+			t.Fatalf("%s: want a multilayer detour (segs+vias), got %d segs, %d vias", name, len(segs), len(vias))
+		}
+		for _, s := range segs {
+			if s.Width != wantW {
+				t.Errorf("%s: detour seg (%g,%g)→(%g,%g) layer %d width %v, want class width %v",
+					name, s.X1, s.Y1, s.X2, s.Y2, s.Layer, s.Width, wantW)
+			}
+		}
+	}
+}
+
+// #107 companion: the fine-pitch narrow-down still applies to a detour, but PER
+// SUB-SEGMENT — the stub that terminates inside a fine-pitch pad field narrows
+// to the legal minimum, while the alternate-layer trunk (far from the field)
+// keeps the full net-class width.
+func TestPlanShortRoutes_MultilayerFinePitch(t *testing.T) {
+	opt := defaultRtOptions()
+	opt.skipPower = false
+	classW := opt.widthFor("5V")
+
+	board := []apComp{
+		// Pad a sits in a fine-pitch field: an other-net pad 20mil away (< finePitch 26).
+		mkComp("a", "A", 0, 0, 50, 50, []apPad{p("1", "5V", 0, 0), p("2", "SIG", 0, 20)}),
+		// Far endpoint (> maxLen) forces the multilayer detour.
+		mkComp("b", "B", 2000, 0, 50, 50, []apPad{p("1", "5V", 2000, 0)}),
+	}
+	segs, vias, _ := planShortRoutes(board, map[string]bool{}, opt)
+	if len(vias) != 2 {
+		t.Fatalf("want a 2-via detour, got %d vias (%d segs)", len(vias), len(segs))
+	}
+
+	sawNarrowStub, sawTrunk := false, false
+	for _, s := range segs {
+		if s.Net != "5V" {
+			continue
+		}
+		touchesA := (s.X1 == 0 && s.Y1 == 0) || (s.X2 == 0 && s.Y2 == 0)
+		switch {
+		case touchesA:
+			// Stub out of the fine-pitch field → narrowed to the legal minimum.
+			if s.Width != opt.minWidth {
+				t.Errorf("a-side stub (%g,%g)→(%g,%g) width %v, want minWidth %v",
+					s.X1, s.Y1, s.X2, s.Y2, s.Width, opt.minWidth)
+			}
+			sawNarrowStub = true
+		case s.Layer == 2:
+			// Trunk rides the alternate layer, clear of the field → full class width.
+			if s.Width != classW {
+				t.Errorf("trunk (%g,%g)→(%g,%g) width %v, want class width %v",
+					s.X1, s.Y1, s.X2, s.Y2, s.Width, classW)
+			}
+			sawTrunk = true
+		}
+	}
+	if !sawNarrowStub {
+		t.Error("no stub touching the fine-pitch endpoint found")
+	}
+	if !sawTrunk {
+		t.Error("no layer-2 trunk found")
+	}
+}

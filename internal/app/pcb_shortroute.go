@@ -176,13 +176,11 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			mlen := math.Abs(a.x-b.x) + math.Abs(a.y-b.y)
 			mustDetour := crossLayer || mlen > opt.maxLen // can't run as one same-layer L
 
-			// Fine-pitch endpoint → the whole hop narrows to the legal minimum
-			// (see rtOptions.minWidth: at 20mil pitch no wider track can clear).
-			w := classW
-			if opt.minWidth > 0 && opt.minWidth < w &&
-				(finePitchAt(a.x, a.y, net, obPads, opt.finePitch) || finePitchAt(b.x, b.y, net, obPads, opt.finePitch)) {
-				w = opt.minWidth
-			}
+			// Fine-pitch endpoint → the single-layer hop narrows to the legal
+			// minimum (see rtOptions.minWidth: at 20mil pitch no wider track can
+			// clear). A multilayer detour gets classW and applies the same
+			// narrowing PER SUB-SEGMENT instead (#107) — see routeMultilayerHop.
+			w := applyFinePitch(classW, net, opt, obPads, [2]float64{a.x, a.y}, [2]float64{b.x, b.y})
 
 			// Without multilayer, a hop that needs a detour defers to the maze tier.
 			if mustDetour && !opt.multilayer {
@@ -206,7 +204,10 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			// same-layer L would violate clearance and a bottom-layer trunk is cleaner
 			// (all SMD pads sit on top, so the bottom trunk clears the pad field).
 			if opt.multilayer && (mustDetour || singleCost > 0) {
-				ml, mv := routeMultilayerHop(net, a, b, w, opt, obPads, obVias, obstacleSegs)
+				// Pass the un-narrowed class width: the detour narrows each
+				// sub-segment independently (#107), so a bottom-layer trunk far
+				// from a fine-pitch field keeps the full net-class width.
+				ml, mv := routeMultilayerHop(net, a, b, classW, opt, obPads, obVias, obstacleSegs)
 				// The detour's cost includes its own vias landing near other nets —
 				// otherwise it would trade a track-over-pad short for a worse via-over-pad.
 				mlCost := hopCost(ml, net, a, b, obstacleSegs, obPads, obVias, clr) + hopSlotCost(ml, opt.slots, opt.clearance)
@@ -283,24 +284,34 @@ func findViaSpot(px, py, tx, ty float64, net string, opt rtOptions, obPads []obP
 // positions are clearance-searched (findViaSpot), not fixed: in a fine-pitch pad
 // field the vias walk OUT of the field instead of landing between pads. Pad-side
 // stubs stay on the pad's own layer; the trunk rides the other copper layer.
-func routeMultilayerHop(net string, a, b rtPad, w float64, opt rtOptions, obPads []obPad, obVias []obVia, obstacleSegs []rtSeg) ([]rtSeg, []rtVia) {
+//
+// classW is the net-class width (widthFor(net), NOT hop-narrowed): every
+// sub-segment carries it, narrowed to opt.minWidth only where ITS OWN endpoints
+// sit in a fine-pitch pad field (#107). So a detour trunk keeps the full
+// power-trunk width instead of inheriting a narrow-down forced by a far-away
+// endpoint — and a stub that terminates between 20mil-pitch pads still narrows
+// exactly like a single-layer hop would.
+func routeMultilayerHop(net string, a, b rtPad, classW float64, opt rtOptions, obPads []obPad, obVias []obVia, obstacleSegs []rtSeg) ([]rtSeg, []rtVia) {
+	fp := func(x1, y1, x2, y2 float64) float64 {
+		return applyFinePitch(classW, net, opt, obPads, [2]float64{x1, y1}, [2]float64{x2, y2})
+	}
 	isTH := func(l int) bool { return l != 1 && l != 2 }
 	if a.layer != b.layer {
 		// A through-hole pad (multi-layer, id outside 1/2) reaches every copper
 		// layer by itself — route the whole L on the SMD side's layer, no via.
 		if isTH(a.layer) && !isTH(b.layer) {
-			return lShape90(net, rtPad{x: a.x, y: a.y, layer: b.layer}, b, w, true), nil
+			return lShape90(net, rtPad{x: a.x, y: a.y, layer: b.layer}, b, fp(a.x, a.y, b.x, b.y), true), nil
 		}
 		if isTH(b.layer) && !isTH(a.layer) {
-			return lShape90(net, a, rtPad{x: b.x, y: b.y, layer: a.layer}, w, true), nil
+			return lShape90(net, a, rtPad{x: b.x, y: b.y, layer: a.layer}, fp(a.x, a.y, b.x, b.y), true), nil
 		}
 		if isTH(a.layer) && isTH(b.layer) {
-			return lShape90(net, rtPad{x: a.x, y: a.y, layer: 1}, rtPad{x: b.x, y: b.y, layer: 1}, w, true), nil
+			return lShape90(net, rtPad{x: a.x, y: a.y, layer: 1}, rtPad{x: b.x, y: b.y, layer: 1}, fp(a.x, a.y, b.x, b.y), true), nil
 		}
 		// True SMD top↔bottom: L on a.layer to a clear via, then b.layer to b.
 		vx, vy := findViaSpot(b.x, a.y, a.x, a.y, net, opt, obPads, obVias, obstacleSegs)
-		segs := bestL(net, a, rtPad{x: vx, y: vy, layer: a.layer}, w, opt, obstacleSegs, obPads, obVias)
-		segs = append(segs, bestL(net, rtPad{x: vx, y: vy, layer: b.layer}, b, w, opt, obstacleSegs, obPads, obVias)...)
+		segs := bestL(net, a, rtPad{x: vx, y: vy, layer: a.layer}, fp(a.x, a.y, vx, vy), opt, obstacleSegs, obPads, obVias)
+		segs = append(segs, bestL(net, rtPad{x: vx, y: vy, layer: b.layer}, b, fp(vx, vy, b.x, b.y), opt, obstacleSegs, obPads, obVias)...)
 		return segs, []rtVia{{net, vx, vy}}
 	}
 
@@ -310,9 +321,9 @@ func routeMultilayerHop(net string, a, b rtPad, w float64, opt rtOptions, obPads
 	}
 	v1x, v1y := findViaSpot(a.x, a.y, b.x, b.y, net, opt, obPads, obVias, obstacleSegs)
 	v2x, v2y := findViaSpot(b.x, b.y, a.x, a.y, net, opt, obPads, obVias, obstacleSegs)
-	segs := bestL(net, a, rtPad{x: v1x, y: v1y, layer: a.layer}, w, opt, obstacleSegs, obPads, obVias) // pad-side stub (a.layer)
-	segs = append(segs, bestL(net, rtPad{x: v1x, y: v1y, layer: other}, rtPad{x: v2x, y: v2y, layer: other}, w, opt, obstacleSegs, obPads, obVias)...) // trunk
-	segs = append(segs, bestL(net, rtPad{x: v2x, y: v2y, layer: b.layer}, b, w, opt, obstacleSegs, obPads, obVias)...) // stub into b
+	segs := bestL(net, a, rtPad{x: v1x, y: v1y, layer: a.layer}, fp(a.x, a.y, v1x, v1y), opt, obstacleSegs, obPads, obVias) // pad-side stub (a.layer)
+	segs = append(segs, bestL(net, rtPad{x: v1x, y: v1y, layer: other}, rtPad{x: v2x, y: v2y, layer: other}, fp(v1x, v1y, v2x, v2y), opt, obstacleSegs, obPads, obVias)...) // trunk
+	segs = append(segs, bestL(net, rtPad{x: v2x, y: v2y, layer: b.layer}, b, fp(v2x, v2y, b.x, b.y), opt, obstacleSegs, obPads, obVias)...) // stub into b
 	return segs, []rtVia{{net, v1x, v1y}, {net, v2x, v2y}}
 }
 
@@ -441,6 +452,24 @@ func lShapeRound(net string, a, b rtPad, w, maxR float64, hFirst bool) []rtSeg {
 		px, py = nx, ny
 	}
 	return appendSeg(out, net, px, py, b.x, b.y, a.layer, w) // straight out
+}
+
+// applyFinePitch narrows a net-class width to the fab's legal minimum when any of
+// the given points sits inside a fine-pitch pad field (see rtOptions.minWidth: a
+// wide track terminating between 20mil-pitch pads cannot clear the spacing rule no
+// matter how it is routed — width is the only lever). The single-layer path applies
+// it once per hop (both pad endpoints); a multilayer detour applies it per
+// sub-segment (#107), so only the pieces actually inside the field narrow.
+func applyFinePitch(w float64, net string, opt rtOptions, obPads []obPad, pts ...[2]float64) float64 {
+	if opt.minWidth <= 0 || opt.minWidth >= w {
+		return w
+	}
+	for _, p := range pts {
+		if finePitchAt(p[0], p[1], net, obPads, opt.finePitch) {
+			return opt.minWidth
+		}
+	}
+	return w
 }
 
 // finePitchAt reports whether an other-net pad sits within `pitch` mil of (x,y) —
