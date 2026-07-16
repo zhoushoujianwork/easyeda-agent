@@ -23,19 +23,20 @@
 > **结论:全 headless DRC=0 目前不可达。** 达标路径 = 好布局 + **tier② 原生自动布线(human-in-loop)**。
 > 信号连通性本次已 100% 完成(DRC Connection=0),4 层电源树已通(Connection 52→0);差的只有布线**间距**。
 
-## 2. blocks 已消除的「验证/思考」——信任,别重复做
+## 2. blocks 已减少的重复推导——按 verification 和消费者能力使用
 
-blocks 接入后,以下环节**不需要再验证或思考**(每块带 `validated` 证据字段):
+blocks 当前主要提供可检索的已证拓扑和设计提示,尚无完整 `block apply`。它可以减少重复推导,但不能因为
+某项知识已写入 JSON 就假定选型、布局或实板均已机械验证:
 
-| 环节 | blocks 提供 | 以后**不用**做 |
+| 环节 | blocks 提供 | 可减少的工作 / 仍需验证 |
 |---|---|---|
-| 选型 | `parts` → `standard-parts.json` 的 libraryUuid+deviceUuid+LCSC | 不用查芯片、不用比选型、不用解析 UUID(照抄) |
-| 块内拓扑 | `internal_nets` + `ports`(引脚功能名,已 sch read 核实) | **不逐块重验块内网表**(validated 块=已证);只信任照抄 |
-| 布局/朝向知识 | `placement`(edge/side/orientation/reason)+ `pcb_layout`(decap/xtal adjacency) | 不用凭经验猜连接器朝向、去耦贴脚距离(**但工具尚未消费,见 §5**) |
-| 丝印 | `silk`(pins/label/note) | 不用逐脚想标什么 |
+| 选型 | `parts` → `standard-parts.json` 的 libraryUuid+deviceUuid+LCSC | `component_selection=passed` 时复用已证选择;仍检查供应状态和项目适用性 |
+| 块内拓扑 | `internal_nets` + `ports`(引脚功能名,已 sch read 核实) | `verification.schematic=passed` 时不重复推导块内网表;只复用已证拓扑并核实跨块边界 |
+| 布局/朝向知识 | `placement`(edge/side/orientation/reason)+ `pcb_layout`(decap/xtal adjacency) | 已有消费者的字段机械执行;其余仍是 Agent/人工提示 |
+| 丝印 | `silk`(pins/label/note) | 作为标注清单复用;未有消费者时仍须人工落位和检查遮挡 |
 
-**唯一还需思考/验证的原理图环节 = 跨块边界重绑**(每个 block 的 `port` → 本板网络名,如
-buck.VIN/CH340.VBUS/端子 → `5V`),因为这是**跨块**、blocks 各自不知道。
+始终需要验证跨块边界重绑(`port` → 本板网络名),并按 verification stage 判断器件选型、PCB 和 bring-up
+是否真的通过。blocks 不替代最终 `sch check` / DRC / 实板验证。
 
 ## 3. 仍需机械验证的「真门」——用对判据(别省、别信错的读)
 

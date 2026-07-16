@@ -86,8 +86,11 @@ regex 兜底(regex 是块数据的镜像)。**仍不解析自由文本 `orientat
 ### 块是什么
 **块 = 一段已在真板上端到端验证过的「外围功能子电路」,作为可复用单元。**(CH340 USB 转串口、
 ESP32 双三极管自动下载、SY8089 buck、RS-485、GNSS 前端、microSD…)。不是零散的器件、也不是
-一整块板,而是**功能粒度**的电路积木——「点灯」「USB 烧录」「5V→3V3」各是一个块。是本项目的
-**旗舰核心能力**:让 agent 照抄验证过的块、只重绑端口,免去从零选型+接线+踩坑。
+一整块板,而是**功能粒度**的电路积木——「点灯」「USB 烧录」「5V→3V3」各是一个块。
+
+**当前定位**:blocks 是轻量拓扑 manifest(`parts/internal_nets/ports`)加 Agent 可读设计手册。现阶段主要
+能力是离线检索、复用已证拓扑和给少量 PCB 消费器提供声明；完整 `block apply` 尚未实现,所以不能把
+“JSON 中有字段”理解成“工具已执行该约束”,也不把复杂 block IR 视为已经证明价值的旗舰能力。
 
 ### 三层库(器件 → 块 → 流程)
 - **器件层** `standard-parts.json`:role → LCSC/UUID,选型单一源。
@@ -95,35 +98,48 @@ ESP32 双三极管自动下载、SY8089 buck、RS-485、GNSS 前端、microSD…
 - **流程层** design-flow(S0–S6/P0–P10):把块编排进整板流程。
 块 `parts.<role>` 指回器件层、`block` 引用被流程层的 S0 方案书 module 引用——三层串起来。
 
-### `validated` 门(块的"就绪"判据)
-一个块只有**在真板上跑通** place→wire→`sch check`(0 桥接)→`sch drc`(0 fatal)→netlist 逐网核实
-后,写上**证据 + 署名**(`validated: "<工程> <日期> by @<作者>: <逐网对账数据>"`),才算 `ready`;
-否则是 `draft`。**validated 块信任照抄、不逐块重验**,只验跨块边界重绑。校验折进 `go test ./internal/blocks/`
-(每块 `parts` 必须在 standard-parts 里)。
+### `verification` 门(块的分项可信判据)
+
+`schema_version: 2` 起将验证拆成 `schematic`、`component_selection`、`pcb_drc`、`bringup`
+四个独立阶段,每阶段记录 `status` + evidence/issues。只有四项均为 `passed` 且显式
+`production_ready: true` 才显示 `ready`;原理图拓扑通过但尚未投产就绪时显示 `verified`,不能把
+"拓扑可复用"误读为"选型和实板均可靠"。
+
+迁移期间保留 legacy `validated` 字符串兼容旧块;一旦 block 存在结构化 `verification`,它就优先决定
+状态。新贡献不得只依赖非空字符串声明 ready。拓扑证据允许免去重复推导,但跨块边界仍需核实;
+器件选型、PCB 和 bring-up 是否可信必须分别读取对应 stage。
+
+机器约束由 `internal/blocks/data/_block.schema.json` 和 `go test ./internal/blocks/` 共同执行:前者约束
+稳定字段类型/必填项/枚举,后者检查 standard-parts 外键及 role/port/internal_nets 引用闭合。
 
 ### 消费与贡献
 - **消费**:`easyeda blocks ls/show/search`(go:embed 进二进制,**离线、无需 daemon/窗口**);手工接任何
   已知外围**前先查块**(铁律 8)。
-- **贡献**:手接并端到端验证过的新外围**回流入库**(署名 + `validated`)——「一次设计同时是一次贡献」。
-  改进(朝向/贴边/间距)也**沉淀成块声明式数据**,不做成工具猜的启发式(见 [[improvements-sink-to-blocks]]:
-  声明式=共享、不误伤别人板)。
+- **贡献**:手接并端到端验证过的新外围可回流入库,但优先保持核心 manifest 简洁；只有已有或即将实现的
+  消费器需要某项约束时才新增结构字段,解释、经验和项目复盘留作文档内容。
+  朝向/贴边/间距等改进若已有确定性消费者,沉淀成声明式数据；否则先作为手册说明,不为未来猜测提前扩 schema。
 
 ### 块数据模型(多维 map)
 
-`internal/blocks/data/*.json` 是布局/选型/拓扑知识的**声明式单一源**。一个块携带多维 map,各阶段按需读:
+`internal/blocks/data/*.json` 是块拓扑的声明式来源,同时暂存部分设计说明。下表必须区分“工具已消费”与
+“仅供 Agent/人工阅读”;未消费字段不是机械保证:
 
 | 字段 | 内容 | 谁消费 |
 |---|---|---|
-| `parts.<role>` | role → `standard-parts.json` 的 LCSC/UUID | 选型(零思考,照抄)|
-| `internal_nets` / `ports` | 块内网表 + 边界端口(功能名) | 原理图实例化(validated 块信任照抄,只验跨块重绑)|
+| `parts.<role>` | role → `standard-parts.json` 的 LCSC/UUID | Agent/人工选型入口；仍按 verification、供应状态和项目适用性判断 |
+| `internal_nets` / `ports` | 块内网表 + 边界端口(功能名) | 原理图实例化(`verification.schematic=passed` 时复用已证拓扑,仍验跨块重绑)|
 | `placement.<ref>` | `board_edge` / `edge` / `side` / `orientation` / `severity` / `reason` | T2 边缘件(edge 已消费;side/orientation 待补)|
 | `openings` | `[{match, local}]` 连接器开口本地方向 | T2 朝向(旋到开口朝板外)|
 | `pcb_layout` | `*-adjacency`(去耦/晶振贴脚)/ `rf-keepout` / `ep-*` | T4 贴脚(待消费)/ P4 禁布 / P8 热焊盘 |
 | `signals` | 差分对 / 阻抗 / 等长 | P7.0 关键网先行 |
 | `silk` | 逐脚标注 | P9 丝印 |
 
-**source-of-truth 分层**:选型 = standard-parts;拓扑 = internal_nets;放置 = placement/pcb_layout。
-工具**消费**块数据,不复制、不猜。
+**source-of-truth 分层**:选型 = standard-parts;拓扑 = internal_nets;外部电气事实 = datasheet/官方参考;
+板级工艺参数 = 当前项目 stackup/fab profile。blocks 对外部手册多为摘要和引用,不是这些事实的最终来源。
+
+**投资门槛**:在继续扩 schema 或全量迁移前,先用一个简单块完成最小 `sch block-apply` 闭环
+(放置→连内部网→绑定 ports→check→实例 manifest)。只有该闭环能稳定减少操作和返工,才继续投入稳定
+net ID、全量 verification、provenance 和复杂 PCB constraints；否则保持“简洁 manifest + 手册”。
 
 ---
 

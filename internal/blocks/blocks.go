@@ -23,22 +23,78 @@ var data embed.FS
 // Block is the queryable projection of a circuit block. The full original JSON
 // is kept in Raw for `show` so nothing is lost to the struct shape.
 type Block struct {
-	ID           string          `json:"id"`
-	Desc         string          `json:"desc"`
-	Category     string          `json:"category"`
-	Author       string          `json:"author"`
-	Contributors []string        `json:"contributors"`
-	Added        string          `json:"added"`
-	Updated      string          `json:"updated"`
-	Source       string          `json:"source"`
-	Validated    *string         `json:"validated"` // nil/null → draft, else ready
-	Parts        map[string]any  `json:"parts"`
-	Ports        map[string]any  `json:"ports"`
-	Raw          json.RawMessage `json:"-"`
+	SchemaVersion int             `json:"schema_version,omitempty"`
+	Revision      int             `json:"revision,omitempty"`
+	ID            string          `json:"id"`
+	Desc          string          `json:"desc"`
+	Category      string          `json:"category"`
+	Author        string          `json:"author"`
+	Contributors  []string        `json:"contributors"`
+	Added         string          `json:"added"`
+	Updated       string          `json:"updated"`
+	Source        string          `json:"source"`
+	Validated     *string         `json:"validated"` // legacy evidence; verification supersedes it
+	Verification  *Verification   `json:"verification,omitempty"`
+	Parts         map[string]Part `json:"parts"`
+	Ports         map[string]Port `json:"ports"`
+	Raw           json.RawMessage `json:"-"`
 }
 
-// Ready reports whether the block passed full-flow validation (validated != null).
-func (b Block) Ready() bool { return b.Validated != nil && strings.TrimSpace(*b.Validated) != "" }
+// Part is one role in a block, backed by the standard-parts library.
+type Part struct {
+	Part          string   `json:"part"`
+	Alt           []string `json:"alt,omitempty"`
+	Qty           int      `json:"qty"`
+	ValueOverride string   `json:"value_override,omitempty"`
+	Note          string   `json:"note,omitempty"`
+}
+
+// Port is a block boundary connection. At is always a functional ROLE.pin ref.
+type Port struct {
+	Dir        string `json:"dir"`
+	At         string `json:"at"`
+	Desc       string `json:"desc"`
+	DefaultNet string `json:"default_net,omitempty"`
+}
+
+// VerificationStage records one independently reviewable readiness dimension.
+// Status is passed, failed, pending, or not_tested; evidence remains human-readable.
+type VerificationStage struct {
+	Status   string   `json:"status"`
+	Evidence string   `json:"evidence,omitempty"`
+	Issues   []string `json:"issues,omitempty"`
+}
+
+// Verification separates topology evidence from selection, PCB, and bring-up.
+// ProductionReady is deliberately explicit and is validated against all four gates.
+type Verification struct {
+	Schematic          VerificationStage `json:"schematic"`
+	ComponentSelection VerificationStage `json:"component_selection"`
+	PCBDRC             VerificationStage `json:"pcb_drc"`
+	Bringup            VerificationStage `json:"bringup"`
+	ProductionReady    bool              `json:"production_ready"`
+}
+
+// Ready reports production readiness for v2 data. Legacy blocks retain the old
+// non-empty validated behavior until they are migrated to structured verification.
+func (b Block) Ready() bool {
+	if b.Verification != nil {
+		return b.Verification.ProductionReady
+	}
+	return b.Validated != nil && strings.TrimSpace(*b.Validated) != ""
+}
+
+// Status is the user-facing maturity label. Structured verification avoids
+// collapsing a schematic-verified block back into the ambiguous legacy "draft".
+func (b Block) Status() string {
+	if b.Ready() {
+		return "ready"
+	}
+	if b.Verification != nil && b.Verification.Schematic.Status == "passed" {
+		return "verified"
+	}
+	return "draft"
+}
 
 // Load parses every embedded block, sorted by id. It never touches the disk, so
 // it works from a bare binary.

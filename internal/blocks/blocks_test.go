@@ -19,9 +19,64 @@ func TestLoad(t *testing.T) {
 		if b.ID == "" || b.Desc == "" {
 			t.Errorf("block missing id/desc: %+v", b)
 		}
-		if b.Ready() != (b.Validated != nil && *b.Validated != "") {
-			t.Errorf("%s: Ready() disagrees with Validated", b.ID)
+		if b.Verification == nil && b.Ready() != (b.Validated != nil && *b.Validated != "") {
+			t.Errorf("%s: legacy Ready() disagrees with Validated", b.ID)
 		}
+		if b.Verification != nil && b.Ready() != b.Verification.ProductionReady {
+			t.Errorf("%s: Ready() disagrees with structured verification", b.ID)
+		}
+	}
+}
+
+func TestAllBlocksPassCoreValidation(t *testing.T) {
+	all, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range ValidateAll(all) {
+		t.Error(err)
+	}
+}
+
+func TestValidateRejectsBrokenTopology(t *testing.T) {
+	raw := json.RawMessage(`{
+		"id":"block.bad","desc":"bad","category":"power",
+		"parts":{"U":{"part":"ic.bad","qty":1}},
+		"ports":{"OUT":{"dir":"sideways","at":"MISSING.OUT"}},
+		"internal_nets":[["U.OUT","PORT:NO_SUCH_PORT"],["U.OUT","U.GND"]]
+	}`)
+	var b Block
+	if err := json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	b.Raw = raw
+	errs := Validate(b)
+	joined := make([]string, 0, len(errs))
+	for _, err := range errs {
+		joined = append(joined, err.Error())
+	}
+	got := strings.Join(joined, "\n")
+	for _, want := range []string{"unknown port", "already belongs", "unknown value", "unknown role"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("validation errors missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestStructuredVerificationControlsReadiness(t *testing.T) {
+	legacy := "old evidence"
+	b := Block{Validated: &legacy}
+	if !b.Ready() {
+		t.Fatal("legacy validated block must remain ready during migration")
+	}
+	b.Verification = &Verification{
+		Schematic:          VerificationStage{Status: "passed", Evidence: "netlist"},
+		ComponentSelection: VerificationStage{Status: "failed", Issues: []string{"wrong ESD"}},
+		PCBDRC:             VerificationStage{Status: "not_tested"},
+		Bringup:            VerificationStage{Status: "not_tested"},
+	}
+	if b.Ready() || b.Status() != "verified" {
+		t.Fatalf("structured verification must override legacy evidence: ready=%v status=%s", b.Ready(), b.Status())
 	}
 }
 

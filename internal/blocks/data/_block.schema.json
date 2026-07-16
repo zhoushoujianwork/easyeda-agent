@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zhoushoujianwork/easyeda-agent/internal/blocks/block.schema.json",
+  "title": "EasyEDA circuit block",
+  "type": "object",
+  "required": [
+    "id",
+    "desc",
+    "category",
+    "author",
+    "source",
+    "parts",
+    "internal_nets",
+    "ports"
+  ],
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^block\\.[a-z0-9_]+$"},
+    "desc": {"type": "string", "minLength": 1},
+    "category": {
+      "enum": [
+        "button",
+        "comms",
+        "indicator",
+        "mcu",
+        "mcu-support",
+        "power",
+        "protection",
+        "rf",
+        "sensing",
+        "storage",
+        "usb",
+        "usb-serial"
+      ]
+    },
+    "author": {"type": "string", "minLength": 1},
+    "contributors": {"type": "array", "items": {"type": "string"}},
+    "added": {"type": "string"},
+    "updated": {"type": "string"},
+    "source": {"type": "string", "minLength": 1},
+    "validated": {"type": ["string", "null"]},
+    "verification": {"$ref": "#/$defs/verification"},
+    "parts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/part"}
+    },
+    "internal_nets": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "uniqueItems": true,
+        "items": {"type": "string", "minLength": 1}
+      }
+    },
+    "ports": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/port"}
+    },
+    "schematic_notes": {"type": "array", "items": {"type": "string"}},
+    "pcb_layout": {"type": "array", "items": {"type": "object"}},
+    "placement": {"type": "object"},
+    "signals": {"type": "object"},
+    "silk": {"type": "object"},
+    "openings": {"type": "array", "items": {"type": "object"}},
+    "keepout": {"type": "object"},
+    "bom_note": {"type": "string"}
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": ["part", "qty"],
+      "properties": {
+        "part": {"type": "string", "minLength": 1},
+        "alt": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "qty": {"type": "integer", "minimum": 1},
+        "value_override": {"type": "string"},
+        "note": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "port": {
+      "type": "object",
+      "required": ["dir", "at", "desc"],
+      "properties": {
+        "dir": {"enum": ["in", "out", "bidir"]},
+        "at": {"type": "string", "pattern": "^[^.]+\\..+$"},
+        "desc": {"type": "string", "minLength": 1},
+        "default_net": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "verification_stage": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {"enum": ["passed", "failed", "pending", "not_tested"]},
+        "evidence": {"type": "string"},
+        "issues": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "required": [
+        "schematic",
+        "component_selection",
+        "pcb_drc",
+        "bringup",
+        "production_ready"
+      ],
+      "properties": {
+        "schematic": {"$ref": "#/$defs/verification_stage"},
+        "component_selection": {"$ref": "#/$defs/verification_stage"},
+        "pcb_drc": {"$ref": "#/$defs/verification_stage"},
+        "bringup": {"$ref": "#/$defs/verification_stage"},
+        "production_ready": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

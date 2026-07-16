@@ -1,4 +1,6 @@
 {
+  "schema_version": 2,
+  "revision": 2,
   "id": "block.ch340c_usb_serial",
   "desc": "CH340C 单路 USB 转串口(内置振荡器,无需晶振)+ USB-C + ESD",
   "category": "usb-serial",
@@ -8,6 +10,25 @@
   "updated": "v0.6.0",
   "source": "datasheet:CH340C (南京沁恒) + 立创常见参考电路",
   "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(7件)→wire(34 netflag/netport)→sch check(0 geom-net/0 net-marker mismatch, 仅未用脚 WARN)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)。netlist 逐网核实:5V=4 / GND=12 / V3=2 / USB_DP=4 / USB_DM=4 / CC1=CC2=2 / MCU_RX=MCU_TX=DTR=RTS=1,合并全对。",
+  "verification": {
+    "schematic": {
+      "status": "passed",
+      "evidence": "ceshi 2026-07-09: place(7件)→wire→sch check(0 geom-net/0 net-marker mismatch)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)，netlist 逐网核实通过"
+    },
+    "component_selection": {
+      "status": "failed",
+      "issues": [
+        "D_ESD 使用 RS-485 专用 SM712，不适合 USB D+/D-；须替换为对称低容 USB ESD 阵列并重新验证"
+      ]
+    },
+    "pcb_drc": {
+      "status": "not_tested"
+    },
+    "bringup": {
+      "status": "not_tested"
+    },
+    "production_ready": false
+  },
   "parts": {
     "U": {
       "part": "ic.ch340c",

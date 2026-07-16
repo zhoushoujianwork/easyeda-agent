@@ -21,9 +21,10 @@
     "merge conflicts + clean per-file git-blame attribution. `category` stays a FIELD (filter",
     "with `easyeda blocks ls --category`), never a directory boundary.",
     "",
-    "HARD RULE — a block only enters the library as READY after ONE full-flow validation",
-    "(place → wire → sch check → DRC = 0) on a real project. Until then `validated: null`",
-    "(draft). NEVER hand-write a topology from memory — harvest it from a validated oshwhub",
+    "MACHINE SCHEMA — `_block.schema.json` is the executable JSON Schema for stable fields; this file remains the human-readable field guide.",
+    "HARD RULE — a block only enters the library as READY after structured verification marks every production gate passed",
+    "(`verification.schematic/component_selection/pcb_drc/bringup` all passed) with evidence. Until then",
+    "it is verified or draft, not production-ready. NEVER hand-write a topology from memory — harvest it from a validated oshwhub",
     "board or an official reference design (see oshwhub training loop). A draft block MAY carry",
     "a proposed `internal_nets` sourced from an official ref, but stays draft until proven; use",
     "the string `pending` when the topology itself is not yet settled.",
@@ -61,9 +62,11 @@
   "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
   "_schema": {
     "<id-without-block-prefix>.json": {
+      "schema_version": "integer; v2 adds structured verification while retaining legacy validated during migration",
+      "revision": "monotonic per-block data revision",
       "id": "block.<id> — MUST match the filename (minus block.) — `go test ./internal/blocks/` checks this",
       "desc": "one-line 中文 what-it-is",
-      "category": "usb-serial | power | mcu-support | button | protection | rf | comms",
+      "category": "button | comms | indicator | mcu | mcu-support | power | protection | rf | sensing | storage | usb | usb-serial",
       "author": "original contributor — GitHub @handle;署名不删,让贡献可追、有归属",
       "contributors": [
         "@handle of anyone who later fixed/updated this block"
@@ -71,7 +74,14 @@
       "added": "version this block first entered the library, e.g. v0.6.0",
       "updated": "version of the last change (bump when parts/topology/rules change)",
       "source": "provenance — oshwhub:<url> | datasheet:<mpn> | official-ref:<vendor>",
-      "validated": "null until proven, else 'project@date by @handle: place→wire→check→DRC=0 + netlist proof'",
+      "validated": "legacy evidence string; retained for migration compatibility, superseded by verification when present",
+      "verification": {
+        "schematic": "{status,evidence?,issues?}",
+        "component_selection": "{status,evidence?,issues?}",
+        "pcb_drc": "{status,evidence?,issues?}",
+        "bringup": "{status,evidence?,issues?}",
+        "production_ready": "true only when all four stages are passed"
+      },
       "parts": {
         "<ROLE>": {
           "part": "<key into standard-parts.json>",

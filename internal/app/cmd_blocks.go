@@ -37,17 +37,18 @@ EasyEDA window, and no skill files — a bare 'easyeda' install can look blocks 
 
 func printBlocksTable(w io.Writer, list []blocks.Block) {
 	fmt.Fprintf(w, "%-32s %-8s %-12s %-18s %s\n", "BLOCK", "STATUS", "CATEGORY", "AUTHOR", "DESC")
-	ready := 0
+	ready, verified := 0, 0
 	for _, blk := range list {
-		status := "draft"
+		status := blk.Status()
 		if blk.Ready() {
-			status = "ready"
 			ready++
+		} else if status == "verified" {
+			verified++
 		}
 		fmt.Fprintf(w, "%-32s %-8s %-12s %-18s %s\n", blk.ID, status, blk.Category, blk.Author, blk.Desc)
 	}
-	fmt.Fprintf(w, "\n%d block(s): %d ready, %d draft. `easyeda blocks show <id>` for detail.\n",
-		len(list), ready, len(list)-ready)
+	fmt.Fprintf(w, "\n%d block(s): %d ready, %d verified, %d draft. `easyeda blocks show <id>` for detail.\n",
+		len(list), ready, verified, len(list)-ready-verified)
 }
 
 func newBlocksLsCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -86,8 +87,8 @@ func newBlocksLsCmd(stdout, stderr io.Writer) *cobra.Command {
 	}
 	c.Flags().StringVar(&category, "category", "", "filter by category (power|comms|rf|mcu|…)")
 	c.Flags().BoolVar(&asJSON, "json", false, "output the block list as JSON")
-	c.Flags().BoolVar(&readyOnly, "ready", false, "only validated (ready) blocks")
-	c.Flags().BoolVar(&draftOnly, "draft", false, "only unvalidated (draft) blocks")
+	c.Flags().BoolVar(&readyOnly, "ready", false, "only production-ready blocks")
+	c.Flags().BoolVar(&draftOnly, "draft", false, "only blocks that are not production-ready (includes verified)")
 	return c
 }
 

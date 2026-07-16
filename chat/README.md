@@ -11,6 +11,8 @@
 
 | 文件 | 主题 |
 |---|---|
+| [2026-07-16-blocks-data-model.md](2026-07-16-blocks-data-model.md) | Blocks 数据结构缺陷、block-apply 价值验证(已通过)、反馈闭环定案(否决在线服务,走 GitHub Issue) |
+| [2026-07-16-new-parts-research-archive.md](2026-07-16-new-parts-research-archive.md) | 四颗新器件一手源调研存档(CAN/WS2812B/EEPROM/蜂鸣器)——未落库,待需求触发 |
 | [2026-06-30-skill-merge.md](2026-06-30-skill-merge.md) | 将 4 个 EasyEDA 技能合并为单一 `easyeda-agent` 技能的决策记录 |
 | [项目方向评估.md](项目方向评估.md) | 整体态势、roadmap 取舍、高价值前沿在哪 |
 | [pcb-自动布线方向.md](pcb-自动布线方向.md) | 自动布线能不能做、文件式往返 vs 提 issue vs 等 API |
