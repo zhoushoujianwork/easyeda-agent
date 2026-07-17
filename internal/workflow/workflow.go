@@ -468,14 +468,29 @@ type Gate struct {
 	Forced  bool     `json:"forced,omitempty"`
 	Missing []string `json:"missing,omitempty"`
 	Message string   `json:"message,omitempty"`
+	// Audited is set when the verdict appended a history event (force /
+	// force-unsafe / force-refused) — the caller must persist the state so the
+	// audit trail survives.
+	Audited bool `json:"-"`
 }
 
 // CheckRouteGate reports whether routing may proceed: it needs both
-// outline_confirmed and pre_route_passed. When force is set it always allows
-// and records the override reason in the state's history so the bypass is
-// auditable, not silent — but the authorization is for THIS run only: nothing
-// is confirmed, so the next un-forced call is gated again.
-func CheckRouteGate(s *State, force bool, reason string) Gate {
+// outline_confirmed and pre_route_passed.
+//
+// The override is TIERED (issue #132 — plan 1, 分级放行). #116's live run
+// proved an unconditional --force is a footgun: with ZERO confirmations it
+// produced 257 tracks + 92 vias that all had to be ripped. So:
+//   - force (--force <reason>) bypasses SOFT gaps only — the mechanical
+//     skeleton must be at least partly confirmed (placement_confirmed OR
+//     outline_confirmed present). Typical legitimate uses: pre_route_passed
+//     not re-run yet, outline pending while placement is signed off.
+//   - forceUnsafe (--force-unsafe <reason>) bypasses everything, including a
+//     zero-confirmation board — the deliberate, higher-friction escape hatch.
+// Every bypass is recorded in the state history (action "force" /
+// "force-unsafe"); a refused --force is recorded too ("force-refused"), so the
+// attempt is auditable even though nothing ran. Authorization is for THIS run
+// only: nothing is confirmed, the next un-forced call is gated again.
+func CheckRouteGate(s *State, force, forceUnsafe bool, reason string) Gate {
 	var missing []string
 	if !s.Has(StageOutlineConfirmed) {
 		missing = append(missing, string(StageOutlineConfirmed))
@@ -486,14 +501,42 @@ func CheckRouteGate(s *State, force bool, reason string) Gate {
 	if len(missing) == 0 {
 		return Gate{Allowed: true}
 	}
+	// The mechanical skeleton (板框+布局) is unconfirmed when NEITHER placement
+	// nor outline has a live sign-off — routing on such a board is the #116
+	// rework case, not an override-worthy shortcut.
+	hardMissing := !s.Has(StagePlacementConfirmed) && !s.Has(StageOutlineConfirmed)
+	if forceUnsafe {
+		s.History = append(s.History, Event{
+			Stage: StageRoutingAuthorized, At: time.Now().Format(time.RFC3339),
+			Action: "force-unsafe", Reason: reason,
+			Note: "routing UNSAFE-forced past missing: " + strings.Join(missing, ", "),
+		})
+		return Gate{
+			Allowed: true, Forced: true, Missing: missing, Audited: true,
+			Message: "gate UNSAFE-FORCED past " + strings.Join(missing, ", ") + " (reason: " + reason + ")",
+		}
+	}
 	if force {
+		if hardMissing {
+			s.History = append(s.History, Event{
+				Stage: StageRoutingAuthorized, At: time.Now().Format(time.RFC3339),
+				Action: "force-refused", Reason: reason,
+				Note: "--force refused: mechanical skeleton unconfirmed (neither placement_confirmed nor outline_confirmed)",
+			})
+			return Gate{
+				Allowed: false, Missing: missing, Audited: true,
+				Message: "routing blocked: --force cannot bypass an UNCONFIRMED mechanical skeleton (neither placement_confirmed nor outline_confirmed is set — issue #132). " +
+					"Confirm layout (`easyeda pcb stage confirm-layout`) + outline (`easyeda pcb stage confirm-outline`), " +
+					"or escalate deliberately with `--force-unsafe <reason>`.",
+			}
+		}
 		s.History = append(s.History, Event{
 			Stage: StageRoutingAuthorized, At: time.Now().Format(time.RFC3339),
 			Action: "force", Reason: reason,
 			Note: "routing forced past missing: " + strings.Join(missing, ", "),
 		})
 		return Gate{
-			Allowed: true, Forced: true, Missing: missing,
+			Allowed: true, Forced: true, Missing: missing, Audited: true,
 			Message: "gate FORCED past " + strings.Join(missing, ", ") + " (reason: " + reason + ")",
 		}
 	}
@@ -501,7 +544,8 @@ func CheckRouteGate(s *State, force bool, reason string) Gate {
 		Allowed: false, Missing: missing,
 		Message: "routing blocked: missing " + strings.Join(missing, ", ") +
 			". Confirm layout (`easyeda pcb stage confirm-layout`), outline (`easyeda pcb stage confirm-outline`) " +
-			"and pass the routability gate (`easyeda pcb layout-lint --gate`), or override with `--force <reason>`.",
+			"and pass the routability gate (`easyeda pcb layout-lint --gate`), or override with `--force <reason>`" +
+			" (--force-unsafe <reason> if even the mechanical skeleton is unconfirmed).",
 	}
 }
 

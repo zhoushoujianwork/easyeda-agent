@@ -92,9 +92,21 @@ func TestCheckStageGateForceIsPerRequestAndAudited(t *testing.T) {
 	t.Setenv(workflow.EnvDir, t.TempDir())
 	s := New(Options{})
 
-	req := &protocol.Request{Action: "pcb.via.create", Project: "force-proj", ForceReason: "prototype spin"}
+	// #132 tier check: on a zero-confirmation project a plain forceReason is
+	// REFUSED (STAGE_BLOCKED pointing at --force-unsafe)…
+	plain := &protocol.Request{Action: "pcb.via.create", Project: "force-proj", ForceReason: "prototype spin"}
+	if resp := s.checkStageGate(plain); resp == nil || resp.Error == nil || resp.Error.Code != "STAGE_BLOCKED" {
+		t.Fatalf("plain forceReason must be refused on a zero-confirmation project (#132), got %+v", resp)
+	}
+	// …and the refusal is audited.
+	if st, err := workflow.Load("force-proj"); err != nil || len(st.History) == 0 || st.History[len(st.History)-1].Action != "force-refused" {
+		t.Fatalf("refused force must be audited, err=%v", err)
+	}
+
+	// ForceUnsafe escalates past the hard tier.
+	req := &protocol.Request{Action: "pcb.via.create", Project: "force-proj", ForceReason: "prototype spin", ForceUnsafe: true}
 	if resp := s.checkStageGate(req); resp != nil {
-		t.Fatalf("forceReason must override the gate, got %+v", resp.Error)
+		t.Fatalf("forceUnsafe must override the gate, got %+v", resp.Error)
 	}
 	// The override is audited in the state history…
 	st, err := workflow.Load("force-proj")
@@ -103,7 +115,7 @@ func TestCheckStageGateForceIsPerRequestAndAudited(t *testing.T) {
 	}
 	found := false
 	for _, e := range st.History {
-		if e.Action == "force" && strings.Contains(e.Reason, "prototype spin") {
+		if e.Action == "force-unsafe" && strings.Contains(e.Reason, "prototype spin") {
 			found = true
 		}
 	}

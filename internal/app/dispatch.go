@@ -42,6 +42,9 @@ type appConfig struct {
 	// every action request so the daemon-side workflow stage gate honors the same
 	// audited override (per-run; see internal/daemon/stagegate.go).
 	forceReason string
+	// forceUnsafe escalates forceReason past a fully-unconfirmed mechanical
+	// skeleton (issue #132) — set only by --force-unsafe.
+	forceUnsafe bool
 }
 
 // portRange parses the ports string and returns (start, end, err).
@@ -416,6 +419,9 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	}
 	if cfg.forceReason != "" {
 		body["forceReason"] = cfg.forceReason
+		if cfg.forceUnsafe {
+			body["forceUnsafe"] = true
+		}
 	}
 	// Tell the daemon where to drop artifacts: this CLI's working directory. The
 	// daemon writes them under <cwd>/.easyeda/artifacts so screenshots/exports

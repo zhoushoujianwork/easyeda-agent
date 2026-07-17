@@ -89,7 +89,16 @@ func (s *Server) checkStageGate(req *protocol.Request) *protocol.Response {
 			fmt.Sprintf("%s: workflow stage state unreadable — refusing gated action", req.Action), err.Error())
 		return &resp
 	}
-	verdict := workflow.CheckRouteGate(st, force, strings.TrimSpace(req.ForceReason))
+	verdict := workflow.CheckRouteGate(st, force, req.ForceUnsafe, strings.TrimSpace(req.ForceReason))
+	if verdict.Audited {
+		// Persist every audit event — a granted bypass AND a refused --force
+		// attempt (#132) both belong in the trail. Authorization stays
+		// per-request (nothing is confirmed), so the next un-forced call is
+		// gated again.
+		if serr := workflow.Save(st); serr != nil {
+			s.logf("stage gate: could not persist force audit for %s: %v", req.Action, serr)
+		}
+	}
 	if !verdict.Allowed {
 		resp := errorResponse(req.ID, "STAGE_BLOCKED",
 			fmt.Sprintf("%s: %s", req.Action, verdict.Message),
@@ -97,12 +106,7 @@ func (s *Server) checkStageGate(req *protocol.Request) *protocol.Response {
 		return &resp
 	}
 	if verdict.Forced {
-		// Persist the force audit event; authorization stays per-request (nothing
-		// is confirmed), so the next un-forced call is gated again.
-		if serr := workflow.Save(st); serr != nil {
-			s.logf("stage gate: could not persist force audit for %s: %v", req.Action, serr)
-		}
-		s.logf("stage gate: %s FORCED past %s (reason: %s)", req.Action, strings.Join(verdict.Missing, ", "), req.ForceReason)
+		s.logf("stage gate: %s FORCED past %s (unsafe=%v, reason: %s)", req.Action, strings.Join(verdict.Missing, ", "), req.ForceUnsafe, req.ForceReason)
 	}
 	return nil
 }

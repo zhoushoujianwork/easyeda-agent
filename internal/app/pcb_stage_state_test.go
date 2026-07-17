@@ -16,7 +16,7 @@ func newTestStageState() *pcbStageState {
 
 func TestRouteGateBlocksUnconfirmed(t *testing.T) {
 	st := newTestStageState()
-	g := checkRouteGate(st, false, "")
+	g := checkRouteGate(st, false, false, "")
 	if g.Allowed {
 		t.Fatal("route gate must block a fresh (unconfirmed) layout")
 	}
@@ -29,23 +29,54 @@ func TestRouteGateAllowsWhenConfirmed(t *testing.T) {
 	st := newTestStageState()
 	st.Confirm(stageOutlineConfirmed, "confirm", "")
 	st.Confirm(stagePreRoutePassed, "gate-pass", "")
-	g := checkRouteGate(st, false, "")
+	g := checkRouteGate(st, false, false, "")
 	if !g.Allowed {
 		t.Fatalf("route gate should allow with both confirmations, missing=%v", g.Missing)
 	}
 }
 
-func TestRouteGateForceRecordsAudit(t *testing.T) {
+// TestRouteGateForceTiers pins the #132 plan-1 semantics: plain --force only
+// bypasses SOFT gaps (mechanical skeleton at least partly confirmed); a
+// zero-confirmation board refuses it and demands --force-unsafe, which bypasses
+// everything. Every path leaves an audit event, including the refusal.
+func TestRouteGateForceTiers(t *testing.T) {
+	// HARD: nothing confirmed → plain force is refused, audited as force-refused.
 	st := newTestStageState()
-	g := checkRouteGate(st, true, "prototype spin, DRC reviewed manually")
+	g := checkRouteGate(st, true, false, "prototype spin")
+	if g.Allowed {
+		t.Fatal("plain --force must be refused on a zero-confirmation board (#132)")
+	}
+	if !g.Audited || len(st.History) != 1 || st.History[0].Action != "force-refused" {
+		t.Fatalf("refused force must record a force-refused audit event, got %v", st.History)
+	}
+
+	// HARD + unsafe → allowed, audited as force-unsafe.
+	st = newTestStageState()
+	g = checkRouteGate(st, true, true, "prototype spin, DRC reviewed manually")
+	if !g.Allowed || !g.Forced {
+		t.Fatal("--force-unsafe must allow routing past a zero-confirmation board")
+	}
+	if len(st.History) != 1 || st.History[0].Action != "force-unsafe" || st.History[0].Reason == "" {
+		t.Fatalf("unsafe override must record a force-unsafe audit event with reason, got %v", st.History)
+	}
+
+	// SOFT: placement confirmed, outline+preRoute missing → plain force passes.
+	st = newTestStageState()
+	st.Confirm(stagePlacementConfirmed, "confirm", "")
+	g = checkRouteGate(st, true, false, "outline pending, prototype")
+	if !g.Allowed || !g.Forced {
+		t.Fatalf("plain --force must bypass soft gaps once the skeleton is partly confirmed, got %+v", g)
+	}
+	if len(st.History) != 2 || st.History[1].Action != "force" {
+		t.Fatalf("soft force must record a force audit event, got %v", st.History)
+	}
+
+	// SOFT variant: outline confirmed, only pre_route missing → plain force passes.
+	st = newTestStageState()
+	st.Confirm(stageOutlineConfirmed, "confirm", "")
+	g = checkRouteGate(st, true, false, "lint gate stale, re-running after")
 	if !g.Allowed {
-		t.Fatal("force must allow routing past a missing gate")
-	}
-	if len(st.History) != 1 || st.History[0].Action != "force" {
-		t.Fatalf("force must record one audit event, got %v", st.History)
-	}
-	if st.History[0].Reason == "" {
-		t.Fatal("forced override must record a reason")
+		t.Fatalf("plain --force must bypass a missing pre_route_passed, got %+v", g)
 	}
 }
 
@@ -73,7 +104,7 @@ func TestMutationInvalidatesDownstream(t *testing.T) {
 		t.Fatal("layout gate snapshot must drop when pre_route is invalidated")
 	}
 	// Gate now blocks again.
-	if checkRouteGate(st, false, "").Allowed {
+	if checkRouteGate(st, false, false, "").Allowed {
 		t.Fatal("routing must be blocked again after invalidation")
 	}
 }

@@ -1937,7 +1937,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	{
 		var routerCmd string
 		var keep bool
-		var forceReason string
+		var forceReason, forceUnsafeReason string
 		c := &cobra.Command{
 			Use:   "autoroute",
 			Short: "Auto-route the active PCB via an external Freerouting engine (DSN→route→SES→import→DRC)",
@@ -1967,7 +1967,7 @@ exported DSN contains keepout entries before trusting the result.`,
 				// 0. Routability gate (issue #97): autoroute mutates the board, so it
 				// needs the same outline_confirmed + pre_route_passed state as
 				// route-short; --force <reason> overrides for audit.
-				if err := gateRouteCommand(cfg, window, "autoroute", forceReason, stderr); err != nil {
+				if err := gateRouteCommand(cfg, window, "autoroute", forceReason, forceUnsafeReason, stderr); err != nil {
 					return err
 				}
 				// 1. Export DSN, capture the persisted file path.
@@ -2035,7 +2035,8 @@ exported DSN contains keepout entries before trusting the result.`,
 		}
 		c.Flags().StringVar(&routerCmd, "router", "", "external router command with {in}/{out} (or FREEROUTING_CMD env)")
 		c.Flags().BoolVar(&keep, "keep", false, "keep the intermediate SES file")
-		c.Flags().StringVar(&forceReason, "force", "", "route even without outline_confirmed + pre_route_passed; requires a reason string, recorded for audit (issue #97)")
+		c.Flags().StringVar(&forceReason, "force", "", "bypass SOFT gate gaps only (e.g. pre_route_passed) — refused when neither placement_confirmed nor outline_confirmed is set (#132); reason string recorded for audit")
+		c.Flags().StringVar(&forceUnsafeReason, "force-unsafe", "", "bypass EVERYTHING incl. a fully-unconfirmed mechanical skeleton (#132) — the deliberate escape hatch; reason string recorded for audit")
 		pcb.AddCommand(c)
 	}
 
@@ -2436,7 +2437,7 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 	{
 		var maxLen, width, signalWidth, powerWidth, roundRadius float64
 		var dryRun, routePower, noAvoid, noMultilayer bool
-		var corner, forceReason string
+		var corner, forceReason, forceUnsafeReason string
 		c := &cobra.Command{
 			Use:   "route-short",
 			Short: "Self-route the short, clear hops: per-net MST, L-shaped tracks on the pads' layer",
@@ -2469,7 +2470,7 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 				// prints the plan (no mutation) so it bypasses the gate. --force
 				// <reason> overrides but records the bypass for audit.
 				if !dryRun {
-					if err := gateRouteCommand(cfg, window, "route-short", forceReason, stderr); err != nil {
+					if err := gateRouteCommand(cfg, window, "route-short", forceReason, forceUnsafeReason, stderr); err != nil {
 						return err
 					}
 				}
@@ -2603,7 +2604,8 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 		c.Flags().BoolVar(&noMultilayer, "no-multilayer", false, "disable multilayer routing (defer too-long / cross-layer hops to the maze tier instead of detouring them via the alternate copper layer with vias)")
 		c.Flags().BoolVar(&routePower, "route-power", false, "also route power/ground nets as tracks (default skip — pour them instead; VCC/3V3/GND/… routed as thin tracks through pad fields is the #1 DRC source)")
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the routing plan without drawing anything")
-		c.Flags().StringVar(&forceReason, "force", "", "route even without outline_confirmed + pre_route_passed; requires a reason string, recorded for audit (issue #97)")
+		c.Flags().StringVar(&forceReason, "force", "", "bypass SOFT gate gaps only (e.g. pre_route_passed) — refused when neither placement_confirmed nor outline_confirmed is set (#132); reason string recorded for audit")
+		c.Flags().StringVar(&forceUnsafeReason, "force-unsafe", "", "bypass EVERYTHING incl. a fully-unconfirmed mechanical skeleton (#132) — the deliberate escape hatch; reason string recorded for audit")
 		pcb.AddCommand(c)
 	}
 

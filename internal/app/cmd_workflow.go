@@ -337,7 +337,7 @@ authorization). Use it whenever you (or anyone) edited outside the flow.`,
 				}
 				notes = reconcileWorkflow(cfg, *window, st, facts)
 			}
-			gate := checkRouteGate(st, false, "")
+			gate := checkRouteGate(st, false, false, "")
 			next, why := workflowNext(st, facts)
 			if asJSON {
 				enc := json.NewEncoder(stdout)

@@ -53,8 +53,8 @@ func pcbStageRank(s pcbStage) int { return workflow.Rank(s) }
 func loadPcbStageState(project string) (*pcbStageState, error) { return workflow.Load(project) }
 func savePcbStageState(s *pcbStageState) error                 { return workflow.Save(s) }
 
-func checkRouteGate(s *pcbStageState, force bool, reason string) routeGate {
-	return workflow.CheckRouteGate(s, force, reason)
+func checkRouteGate(s *pcbStageState, force, forceUnsafe bool, reason string) routeGate {
+	return workflow.CheckRouteGate(s, force, forceUnsafe, reason)
 }
 
 // resolveStageProject yields the project key the workflow state is filed under:
@@ -183,33 +183,55 @@ func verifyStageFingerprints(cfg *appConfig, window string, st *pcbStageState) (
 // It returns errActionFailed (already-explained) when routing is blocked, nil
 // when allowed. FAIL-CLOSED: an unreadable state or an unverifiable fingerprint
 // blocks routing (the pre-#97 behavior treated a read error as "un-gated").
-// --force <reason> overrides for THIS run only — the reason is recorded in the
-// state history AND propagated to the daemon (cfg.forceReason → every routing
-// action request), so the daemon-side gate honors the same audited override;
-// nothing is confirmed, and the next un-forced run is gated again.
-func gateRouteCommand(cfg *appConfig, window, cmdName, forceReason string, stderr io.Writer) error {
+//
+// The override is TIERED (issue #132, plan 1): --force <reason> bypasses SOFT
+// gaps only — the mechanical skeleton (placement_confirmed / outline_confirmed)
+// must be at least partly confirmed, and an UNKNOWN state (unresolvable
+// project, unreadable state file) does not qualify (unknown = possibly
+// zero-confirmed). --force-unsafe <reason> bypasses everything — the #116
+// footgun now requires deliberately reaching for the sharper flag. Either
+// override is per-run, audited in the state history, and propagated to the
+// daemon (cfg.forceReason/forceUnsafe → every routing action request) so the
+// daemon-side gate applies the same tier; nothing is confirmed, and the next
+// un-forced run is gated again.
+func gateRouteCommand(cfg *appConfig, window, cmdName, forceReason, forceUnsafeReason string, stderr io.Writer) error {
+	unsafeReason := strings.TrimSpace(forceUnsafeReason)
+	forceUnsafe := unsafeReason != ""
 	reason := strings.TrimSpace(forceReason)
+	if forceUnsafe && reason == "" {
+		reason = unsafeReason
+	}
 	force := reason != ""
 	if force {
 		// Propagate to the daemon-side gate for the routing actions this command
 		// is about to dispatch (pcb.line.create / pcb.via.create / …).
 		cfg.forceReason = reason
+		cfg.forceUnsafe = forceUnsafe
 	}
 
 	project, err := resolveStageProject(cfg, window)
 	if err != nil {
-		if force {
-			fmt.Fprintf(stderr, "⚠️  %s: %v — proceeding on --force (reason: %s)\n", cmdName, err, reason)
+		if forceUnsafe {
+			fmt.Fprintf(stderr, "⚠️  %s: %v — proceeding on --force-unsafe (reason: %s)\n", cmdName, err, reason)
 			return nil
+		}
+		if force {
+			fmt.Fprintf(stderr, "❌ %s: %v — --force cannot vouch for an UNKNOWN stage state (it may be zero-confirmed, issue #132); pass --project, or escalate with --force-unsafe <reason>\n", cmdName, err)
+			return errActionFailed
 		}
 		fmt.Fprintf(stderr, "❌ %s: %v (routing is stage-gated; pass --project or --force <reason>)\n", cmdName, err)
 		return errActionFailed
 	}
 	st, err := loadPcbStageState(project)
 	if err != nil {
-		if force {
-			fmt.Fprintf(stderr, "⚠️  %s: could not read workflow state: %v — proceeding on --force (reason: %s)\n", cmdName, err, reason)
+		if forceUnsafe {
+			fmt.Fprintf(stderr, "⚠️  %s: could not read workflow state: %v — proceeding on --force-unsafe (reason: %s)\n", cmdName, err, reason)
 			return nil
+		}
+		if force {
+			fmt.Fprintf(stderr, "❌ %s: workflow state unreadable (%v) — --force cannot vouch for an unknown state (issue #132); fix or delete %s, or escalate with --force-unsafe <reason>\n",
+				cmdName, err, workflow.Path(project))
+			return errActionFailed
 		}
 		fmt.Fprintf(stderr, "❌ %s: workflow state unreadable (%v) — refusing to route (fail-closed); fix or delete %s, or --force <reason>\n",
 			cmdName, err, workflow.Path(project))
@@ -233,17 +255,20 @@ func gateRouteCommand(cfg *appConfig, window, cmdName, forceReason string, stder
 		}
 	}
 
-	gate := checkRouteGate(st, force, reason)
+	gate := checkRouteGate(st, force, forceUnsafe, reason)
+	if gate.Audited {
+		// Persist every audit event — a granted bypass AND a refused --force
+		// attempt (#132) both belong in the history trail.
+		if serr := savePcbStageState(st); serr != nil {
+			fmt.Fprintf(stderr, "⚠️  %s: gate audit could not be persisted: %v\n", cmdName, serr)
+		}
+	}
 	if !gate.Allowed {
 		fmt.Fprintf(stderr, "❌ %s: %s\n", cmdName, gate.Message)
 		return errActionFailed
 	}
 	if gate.Forced {
-		// The force audit event is in the history; persist it. Authorization is
-		// per-run: routing_authorized is NOT set.
-		if serr := savePcbStageState(st); serr != nil {
-			fmt.Fprintf(stderr, "⚠️  %s: gate override could not be persisted: %v\n", cmdName, serr)
-		}
+		// Authorization is per-run: routing_authorized is NOT set.
 		fmt.Fprintf(stderr, "⚠️  %s: %s\n", cmdName, gate.Message)
 		return nil
 	}

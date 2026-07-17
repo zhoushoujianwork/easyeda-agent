@@ -170,17 +170,23 @@ func TestHashLayoutDeterministicAndOrderIndependent(t *testing.T) {
 }
 
 func TestCheckRouteGateForceDoesNotConfirm(t *testing.T) {
+	// #132: on a zero-confirmation board only --force-unsafe passes; use it here
+	// so this test keeps pinning its own claim (per-run authorization only).
 	st := &State{Project: "f", Confirmed: map[Stage]bool{}}
-	g := CheckRouteGate(st, true, "why")
+	g := CheckRouteGate(st, true, true, "why")
 	if !g.Allowed || !g.Forced {
-		t.Fatalf("force must allow (forced), got %+v", g)
+		t.Fatalf("force-unsafe must allow (forced), got %+v", g)
 	}
 	if st.Has(StageRoutingAuthorized) || st.Has(StageOutlineConfirmed) {
 		t.Fatal("force must not confirm any stage — per-run authorization only")
 	}
 	// Un-forced call right after: still blocked.
-	if CheckRouteGate(st, false, "").Allowed {
+	if CheckRouteGate(st, false, false, "").Allowed {
 		t.Fatal("gate must block again after a forced run")
+	}
+	// Plain --force on the same zero-confirmation board: refused (#132 plan 1).
+	if CheckRouteGate(st, true, false, "why").Allowed {
+		t.Fatal("plain force must be refused while the mechanical skeleton is unconfirmed")
 	}
 }
 

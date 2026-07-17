@@ -25,8 +25,15 @@ type Request struct {
 	// ForceReason explicitly overrides a workflow stage gate for THIS request
 	// only (e.g. routing actions before outline_confirmed + pre_route_passed).
 	// The daemon records it in the project's stage history so the bypass is
-	// auditable, never silent. Empty = no override.
+	// auditable, never silent. Empty = no override. The override is TIERED
+	// (issue #132): plain force only bypasses soft gaps — when the mechanical
+	// skeleton is entirely unconfirmed (neither placement_confirmed nor
+	// outline_confirmed) it is refused unless ForceUnsafe is also set.
 	ForceReason string `json:"forceReason,omitempty"`
+	// ForceUnsafe escalates ForceReason to bypass EVERYTHING, including a
+	// zero-confirmation board — the deliberate, higher-friction escape hatch
+	// (`--force-unsafe <reason>`). Meaningless without ForceReason.
+	ForceUnsafe bool `json:"forceUnsafe,omitempty"`
 	// TimeoutMs is the caller's round-trip budget. The daemon shortens its own
 	// connector wait to (TimeoutMs - grace) so the caller receives a structured
 	// DISPATCH_FAILED instead of a raw HTTP timeout when the connector hangs

@@ -76,7 +76,7 @@ func newPcbStageStatusCmd(cfg *appConfig, window *string, stdout io.Writer) *cob
 			if err != nil {
 				return err
 			}
-			gate := checkRouteGate(st, false, "")
+			gate := checkRouteGate(st, false, false, "")
 			if asJSON {
 				enc := json.NewEncoder(stdout)
 				enc.SetIndent("", "  ")
