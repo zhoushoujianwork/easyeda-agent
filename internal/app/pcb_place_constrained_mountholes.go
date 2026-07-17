@@ -70,13 +70,20 @@ func mhCircleRectIntersects(cx, cy, r, x0, y0, x1, y1 float64) bool {
 }
 
 // planMountHoles is the pure planning half (no I/O, unit-tests): board-outline
-// bbox + requested corners + component bboxes + existing cutouts → per-corner
-// verdicts. Coordinates are y-up (EasyEDA PCB): top = maxY. clearanceMil
-// overrides the fastener keep-out radius (≤0 → auto: max(hole R+40, washer 118)
-// per conventions §2.3) — for a smaller-head fastener the caller knowingly
-// accepts.
+// bbox + requested corners + component bboxes + existing cutouts + routed
+// copper → per-corner verdicts. Coordinates are y-up (EasyEDA PCB): top = maxY.
+// clearanceMil overrides the fastener keep-out radius (≤0 → auto: max(hole
+// R+40, washer 118) per conventions §2.3) — for a smaller-head fastener the
+// caller knowingly accepts.
+//
+// tracks/vias + copperBand are the #122 copper gate: a track or via whose
+// copper edge lands within copperBand of the hole's milled edge would be native
+// DRC's Slot Region to Track the moment the hole exists. The router hard-avoids
+// existing slots (hopFeasible), so mount-holes placed AFTER routing must
+// equally avoid existing copper — a corner that fails is skip-conflict, never
+// force-milled. copperBand mirrors `pcb check`'s slot judge: max(clearance, 8).
 func planMountHoles(board cpRect, corners []string, diaMil, insetMil, clearanceMil float64,
-	comps []cpComp, existing []cpHole) ([]mhCandidate, error) {
+	comps []cpComp, existing []cpHole, tracks []pcbTrack, vias []pcbViaP, copperBand float64) ([]mhCandidate, error) {
 	if diaMil <= 0 {
 		return nil, fmt.Errorf("--dia must be > 0 (got %g)", diaMil)
 	}
@@ -134,6 +141,27 @@ func planMountHoles(board cpRect, corners []string, diaMil, insetMil, clearanceM
 				}
 			}
 		}
+		// Copper collision (#122): routed tracks/vias vs the hole's milled edge.
+		if cand.Status == "plan" && copperBand > 0 {
+			for _, t := range tracks {
+				if d := segPointDist(t.X1, t.Y1, t.X2, t.Y2, ctr[0], ctr[1]) - diaMil/2 - t.Width/2; d < copperBand {
+					cand.Status = "skip-conflict"
+					cand.Reason = fmt.Sprintf("track (net %s) runs %.1fmil from the hole's milled edge — under the %.0fmil copper-to-cutout rule (Slot Region to Track); rip/reroute it or pick another corner",
+						t.Net, math.Max(d, 0), copperBand)
+					break
+				}
+			}
+		}
+		if cand.Status == "plan" && copperBand > 0 {
+			for _, v := range vias {
+				if d := math.Hypot(v.X-ctr[0], v.Y-ctr[1]) - diaMil/2 - v.Dia/2; d < copperBand {
+					cand.Status = "skip-conflict"
+					cand.Reason = fmt.Sprintf("via (net %s) sits %.1fmil from the hole's milled edge — under the %.0fmil copper-to-cutout rule; remove it or pick another corner",
+						v.Net, math.Max(d, 0), copperBand)
+					break
+				}
+			}
+		}
 		out = append(out, cand)
 	}
 	return out, nil
@@ -157,8 +185,19 @@ func runPcbMountHoles(cfg *appConfig, window string, dia, inset, clearance float
 	}
 	comps := parseCpComps(res.Result)
 	existing := readCpHoles(cfg, window)
+	// #122: existing routed copper is a placement constraint too (best-effort —
+	// an unrouted board simply has none). Band mirrors the check's slot judge.
+	tracks, terr := fetchPcbTracks(cfg, window)
+	if terr != nil {
+		tracks = nil
+	}
+	vias, verr := fetchPcbVias(cfg, window)
+	if verr != nil {
+		vias = nil
+	}
+	copperBand := math.Max(fetchPcbRules(cfg, window).clearanceMil, 8)
 
-	plan, err := planMountHoles(board, strings.Split(cornersCSV, ","), dia, inset, clearance, comps, existing)
+	plan, err := planMountHoles(board, strings.Split(cornersCSV, ","), dia, inset, clearance, comps, existing, tracks, vias, copperBand)
 	if err != nil {
 		return err
 	}

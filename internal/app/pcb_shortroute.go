@@ -201,7 +201,7 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 			if !mustDetour {
 				single, singleOK = routeWithAvoid(net, a, b, w, opt, obstacleSegs, obPads, obVias)
 				if singleOK {
-					singleCost = hopCost(single, net, a, b, obstacleSegs, obPads, obVias, clr) + hopSlotCost(single, opt.slots, opt.clearance)
+					singleCost = hopCost(single, net, a, b, obstacleSegs, obPads, obVias, clr)
 				}
 			}
 
@@ -216,7 +216,7 @@ func planShortRoutes(comps []apComp, alreadyRouted map[string]bool, opt rtOption
 				ml, mv, mlOK := routeMultilayerHop(net, a, b, classW, opt, obPads, obVias, obstacleSegs)
 				// The detour's cost includes its own vias landing near other nets —
 				// otherwise it would trade a track-over-pad short for a worse via-over-pad.
-				mlCost := hopCost(ml, net, a, b, obstacleSegs, obPads, obVias, clr) + hopSlotCost(ml, opt.slots, opt.clearance)
+				mlCost := hopCost(ml, net, a, b, obstacleSegs, obPads, obVias, clr)
 				for _, vv := range mv {
 					mlCost += viaClearanceCost(vv, obPads, obVias, clr, opt.viaDia/2)
 				}

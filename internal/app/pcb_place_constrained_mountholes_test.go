@@ -62,7 +62,7 @@ func TestCpHolesFromFillsPointsFallback(t *testing.T) {
 
 func TestPlanMountHolesCorners(t *testing.T) {
 	board := cpRect{0, 0, 2000, 1500}
-	plan, err := planMountHoles(board, []string{"tl", "tr", "bl", "br"}, 126, 197, 0, nil, nil)
+	plan, err := planMountHoles(board, []string{"tl", "tr", "bl", "br"}, 126, 197, 0, nil, nil, nil, nil, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestPlanMountHolesConflictSkips(t *testing.T) {
 	board := cpRect{0, 0, 2000, 1500}
 	// C1 sits inside the tl keep-out circle (center (197,1303), R 118).
 	comps := []cpComp{mkCP("C1", "cap.100nf", 1, 250, 1280, 60, 30, 2)}
-	plan, err := planMountHoles(board, []string{"tl", "br"}, 126, 197, 0, comps, nil)
+	plan, err := planMountHoles(board, []string{"tl", "br"}, 126, 197, 0, comps, nil, nil, nil, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,14 +105,14 @@ func TestPlanMountHolesClearanceOverride(t *testing.T) {
 	board := cpRect{0, 0, 2000, 1500}
 	// R3-style part ~110mil from the bl center (197,197): conflicts at R118, clears at R100.
 	comps := []cpComp{mkCP("R3", "res.10k", 1, 197, 337, 80, 46, 2)}
-	plan, err := planMountHoles(board, []string{"bl"}, 126, 197, 0, comps, nil)
+	plan, err := planMountHoles(board, []string{"bl"}, 126, 197, 0, comps, nil, nil, nil, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if plan[0].Status != "skip-conflict" {
 		t.Fatalf("auto clearance: bl = %q, want skip-conflict", plan[0].Status)
 	}
-	plan, err = planMountHoles(board, []string{"bl"}, 126, 197, 100, comps, nil)
+	plan, err = planMountHoles(board, []string{"bl"}, 126, 197, 100, comps, nil, nil, nil, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestPlanMountHolesClearanceOverride(t *testing.T) {
 		t.Errorf("clearance 100: bl = %q (%s), want plan", plan[0].Status, plan[0].Reason)
 	}
 	// clearance below the hole radius is nonsense → error
-	if _, err := planMountHoles(board, []string{"bl"}, 126, 197, 50, nil, nil); err == nil {
+	if _, err := planMountHoles(board, []string{"bl"}, 126, 197, 50, nil, nil, nil, nil, 8); err == nil {
 		t.Error("clearance < dia/2 should error")
 	}
 }
@@ -128,7 +128,7 @@ func TestPlanMountHolesClearanceOverride(t *testing.T) {
 func TestPlanMountHolesExistingIdempotent(t *testing.T) {
 	board := cpRect{0, 0, 2000, 1500}
 	existing := []cpHole{{x: 200, y: 200, r: 123.5}} // ≈ the bl corner (197,197)
-	plan, err := planMountHoles(board, []string{"bl", "tr"}, 126, 197, 0, nil, existing)
+	plan, err := planMountHoles(board, []string{"bl", "tr"}, 126, 197, 0, nil, existing, nil, nil, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,17 +142,17 @@ func TestPlanMountHolesExistingIdempotent(t *testing.T) {
 
 func TestPlanMountHolesValidation(t *testing.T) {
 	board := cpRect{0, 0, 2000, 1500}
-	if _, err := planMountHoles(board, []string{"tl"}, 126, 50, 0, nil, nil); err == nil {
+	if _, err := planMountHoles(board, []string{"tl"}, 126, 50, 0, nil, nil, nil, nil, 8); err == nil {
 		t.Error("inset < dia/2 should error (hole would cut the board edge)")
 	}
-	if _, err := planMountHoles(board, []string{"middle"}, 126, 197, 0, nil, nil); err == nil {
+	if _, err := planMountHoles(board, []string{"middle"}, 126, 197, 0, nil, nil, nil, nil, 8); err == nil {
 		t.Error("unknown corner should error")
 	}
-	if _, err := planMountHoles(cpRect{0, 0, 400, 400}, []string{"tl"}, 126, 197, 0, nil, nil); err == nil {
+	if _, err := planMountHoles(cpRect{0, 0, 400, 400}, []string{"tl"}, 126, 197, 0, nil, nil, nil, nil, 8); err == nil {
 		t.Error("board smaller than 2*inset+dia should error")
 	}
 	// duplicate corners collapse to one
-	plan, err := planMountHoles(board, []string{"tl", "TL", " tl "}, 126, 197, 0, nil, nil)
+	plan, err := planMountHoles(board, []string{"tl", "TL", " tl "}, 126, 197, 0, nil, nil, nil, nil, 8)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,5 +180,44 @@ func TestMhClearanceRadius(t *testing.T) {
 	}
 	if r := mhClearanceRadius(250); r != 165 { // big hole: hole+margin dominates
 		t.Errorf("Ø250 clearance = %g, want 165 (hole+40)", r)
+	}
+}
+
+// TestPlanMountHolesCopperConflict is #122's second half: a hole must not be
+// milled onto existing routed copper — a track/via inside the copper-to-cutout
+// band of the hole edge is a skip-conflict, never force-placed.
+func TestPlanMountHolesCopperConflict(t *testing.T) {
+	board := cpRect{0, 0, 2000, 1500}
+	// A track running right through the bl hole center (197,197).
+	tracks := []pcbTrack{{ID: "t1", Net: "SPICS0", X1: 0, Y1: 197, X2: 500, Y2: 197, Layer: 2, Width: 10}}
+	plan, err := planMountHoles(board, []string{"bl", "br"}, 126, 197, 0, nil, nil, tracks, nil, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan[0].Status != "skip-conflict" || !strings.Contains(plan[0].Reason, "SPICS0") {
+		t.Errorf("bl = %q (%s), want skip-conflict naming the SPICS0 track", plan[0].Status, plan[0].Reason)
+	}
+	if plan[1].Status != "plan" {
+		t.Errorf("br = %q (%s), want plan (no copper there)", plan[1].Status, plan[1].Reason)
+	}
+
+	// A via hugging the br hole edge: center distance 70 − holeR 63 − viaR 12 < 8.
+	vias := []pcbViaP{{ID: "v1", Net: "GND", X: 1803 + 70, Y: 197, Dia: 24}}
+	plan, err = planMountHoles(board, []string{"br"}, 126, 197, 0, nil, nil, nil, vias, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan[0].Status != "skip-conflict" || !strings.Contains(plan[0].Reason, "GND") {
+		t.Errorf("br = %q (%s), want skip-conflict naming the GND via", plan[0].Status, plan[0].Reason)
+	}
+
+	// Copper safely outside the band stays plan.
+	farTracks := []pcbTrack{{ID: "t2", Net: "SPICS0", X1: 0, Y1: 400, X2: 500, Y2: 400, Layer: 2, Width: 10}}
+	plan, err = planMountHoles(board, []string{"bl"}, 126, 197, 0, nil, nil, farTracks, nil, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan[0].Status != "plan" {
+		t.Errorf("bl = %q (%s), want plan (track 203mil away)", plan[0].Status, plan[0].Reason)
 	}
 }

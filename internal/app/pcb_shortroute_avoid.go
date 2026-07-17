@@ -111,7 +111,24 @@ const nominalPadHalf = 12
 // were +4 cost as well, and the planner appends each detour's vias to obVias as it
 // goes — so on ceshi SPIWP drew straight through two vias route-short itself had
 // dropped for SPICLK seconds earlier.
-func hopFeasible(cand []rtSeg, net string, a, b rtPad, obPads []obPad, obVias []obVia, clearance float64) bool {
+//
+// Other-net TRACKS are gated too (#119 — #111 only covered pads): a proper
+// crossing on the same layer is a dead short (segSegDist returns 0, so the edge
+// test catches it), and running under the spacing rule beside one is what native
+// DRC flags as Track to Track. hopCost priced a crossing at +10, so when BOTH L
+// orientations crossed something the planner still drew the "cheaper" short —
+// R2's SPIHD×SPIWP / SPICS0×SPIWP came from exactly this, via detour entry stubs
+// dropping through a same-layer foreign track. The judge is the check's
+// (segSegDist − both half-widths, crossing ⇒ 0 — commit 33df2d9); same-net and
+// cross-layer segments are never obstacles. Netless (net:"") tracks count, same
+// stance as unnamed pads above: copper is copper.
+//
+// Board cutouts/SLOTS are a hard gate as well (#122 — same cost-not-veto bug):
+// copper within max(clearance, 8mil) of a milled edge is native DRC's Slot
+// Region to Track. Judge shared with `pcb check`'s slot branch (rectSegDist −
+// half-width vs slotClr).
+func hopFeasible(cand []rtSeg, net string, a, b rtPad, placed []rtSeg, obPads []obPad, obVias []obVia, slots []pcbSlotP, clearance float64) bool {
+	slotClr := math.Max(clearance, 8)
 	for _, s := range cand {
 		for _, pd := range obPads {
 			if pd.net == net || pd.layer != s.Layer {
@@ -135,6 +152,19 @@ func hopFeasible(cand []rtSeg, net string, a, b rtPad, obPads []obPad, obVias []
 				return false
 			}
 		}
+		for _, p := range placed {
+			if p.Net == net || p.Layer != s.Layer {
+				continue
+			}
+			if segSegDist(s.X1, s.Y1, s.X2, s.Y2, p.X1, p.Y1, p.X2, p.Y2)-s.Width/2-p.Width/2 < clearance {
+				return false
+			}
+		}
+		for _, sl := range slots {
+			if rectSegDist(sl.MinX, sl.MinY, sl.MaxX, sl.MaxY, s.X1, s.Y1, s.X2, s.Y2)-s.Width/2 < slotClr {
+				return false
+			}
+		}
 	}
 	return true
 }
@@ -145,11 +175,11 @@ func hopFeasible(cand []rtSeg, net string, a, b rtPad, obPads []obPad, obVias []
 // orientation clears the other-net pad field — the returned segments must NOT be
 // drawn, they are only the caller's least-bad candidate for diagnostics.
 func pickL(net string, a, b rtPad, h, v []rtSeg, opt rtOptions, placed []rtSeg, obstacles []obPad, vias []obVia) ([]rtSeg, bool) {
-	hOK := hopFeasible(h, net, a, b, obstacles, vias, opt.clearance)
-	vOK := hopFeasible(v, net, a, b, obstacles, vias, opt.clearance)
+	hOK := hopFeasible(h, net, a, b, placed, obstacles, vias, opt.slots, opt.clearance)
+	vOK := hopFeasible(v, net, a, b, placed, obstacles, vias, opt.slots, opt.clearance)
 	clr := opt.clearance + nominalPadHalf
-	hc := hopCost(h, net, a, b, placed, obstacles, vias, clr) + hopSlotCost(h, opt.slots, opt.clearance)
-	vc := hopCost(v, net, a, b, placed, obstacles, vias, clr) + hopSlotCost(v, opt.slots, opt.clearance)
+	hc := hopCost(h, net, a, b, placed, obstacles, vias, clr)
+	vc := hopCost(v, net, a, b, placed, obstacles, vias, clr)
 	if (vOK && !hOK) || (vOK == hOK && vc < hc) {
 		return v, vOK
 	}
@@ -169,7 +199,7 @@ func routeWithAvoid(net string, a, b rtPad, w float64, opt rtOptions, placed []r
 	// through five of U1's pads.
 	if a.x == b.x || a.y == b.y {
 		cand := routeHop(net, a, b, w, opt, true)
-		return cand, hopFeasible(cand, net, a, b, obstacles, vias, opt.clearance)
+		return cand, hopFeasible(cand, net, a, b, placed, obstacles, vias, opt.slots, opt.clearance)
 	}
 	return pickL(net, a, b,
 		routeHop(net, a, b, w, opt, true),  // horizontal-first
@@ -177,28 +207,11 @@ func routeWithAvoid(net string, a, b rtPad, w float64, opt rtOptions, placed []r
 		opt, placed, obstacles, vias)
 }
 
-// hopSlotCost penalizes a candidate whose copper lands inside a board cutout's
-// keep-away band (max(clearance, 8mil) off the milled edge, every layer).
-func hopSlotCost(cand []rtSeg, slots []pcbSlotP, clearance float64) int {
-	if len(slots) == 0 {
-		return 0
-	}
-	band := math.Max(clearance, 8)
-	cost := 0
-	for _, s := range cand {
-		for _, sl := range slots {
-			if rectSegDist(sl.MinX, sl.MinY, sl.MaxX, sl.MaxY, s.X1, s.Y1, s.X2, s.Y2)-s.Width/2 < band {
-				cost += 6
-			}
-		}
-	}
-	return cost
-}
-
 // hopCost scores a candidate route by how many other-net obstacles it hits. This
 // hop's own endpoint pads (a, b) are never counted. Cost 0 means the route violates
-// no clearance against anything planned/known so far. opt-independent obstacles
-// (slots) are scored via hopSlotCost by the caller that has them.
+// no clearance against anything planned/known so far. Slots need no cost term:
+// their keep-away band is a hard hopFeasible gate (#122) at the same threshold, so
+// a feasible candidate can never incur one.
 func hopCost(cand []rtSeg, net string, a, b rtPad, placed []rtSeg, obstacles []obPad, vias []obVia, clr float64) int {
 	cost := 0
 	for _, s := range cand {
