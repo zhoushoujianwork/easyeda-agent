@@ -2288,7 +2288,7 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 	// end (defect #4; geometry in pcb_antenna_keepout.go, depth block-declared).
 	{
 		var dryRun bool
-		var margin, padClear float64
+		var margin, padClear, chipMargin float64
 		c := &cobra.Command{
 			Use:   "antenna-keepout",
 			Short: "Auto-generate the all-layer no-copper keep-out over each RF/antenna part's antenna end",
@@ -2352,6 +2352,7 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 					Designator string     `json:"designator"`
 					Device     string     `json:"device"`
 					Rect       [4]float64 `json:"rect"`
+					Chip       bool       `json:"chipAntenna,omitempty"` // #123: bbox+margin form, no no-wires
 					Created    bool       `json:"created"`
 				}
 				var plan []akPlan
@@ -2377,11 +2378,22 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 							pads = append(pads, [2]float64{asFloat(pm["x"]), asFloat(pm["y"])})
 						}
 					}
+					bminX, bminY := asFloat(bb["minX"]), asFloat(bb["minY"])
+					bmaxX, bmaxY := asFloat(bb["maxX"]), asFloat(bb["maxY"])
 					x0, y0, x1, y1, ok := antennaKeepoutRect(
-						asFloat(bb["minX"]), asFloat(bb["minY"]), asFloat(bb["maxX"]), asFloat(bb["maxY"]),
+						bminX, bminY, bmaxX, bmaxY,
 						pads, antennaKeepoutFrac(keepouts, device), margin, padClear)
+					chip := false
+					if !ok && isChipAntennaSize(bmaxX-bminX, bmaxY-bminY) {
+						// #123: a discrete chip antenna (two-pad ceramic SMD) has no
+						// pad-free strip — the whole footprint is the radiator. Keep-out
+						// = bbox + --chip-margin every side; created WITHOUT no-wires so
+						// the 50Ω feed can reach the feed pad (#129).
+						x0, y0, x1, y1, ok = chipAntennaKeepoutRect(bminX, bminY, bmaxX, bmaxY, chipMargin)
+						chip = ok
+					}
 					if !ok {
-						skipped = append(skipped, map[string]any{"designator": desig, "reason": "no pad-free antenna strip found"})
+						skipped = append(skipped, map[string]any{"designator": desig, "reason": "no pad-free antenna strip found (and not chip-antenna sized)"})
 						continue
 					}
 					myRect := cpRect{x0, y0, x1, y1}
@@ -2396,7 +2408,7 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 						skipped = append(skipped, map[string]any{"designator": desig, "reason": "already covered by an existing no-copper keep-out"})
 						continue
 					}
-					plan = append(plan, akPlan{Designator: desig, Device: device, Rect: [4]float64{x0, y0, x1, y1}})
+					plan = append(plan, akPlan{Designator: desig, Device: device, Rect: [4]float64{x0, y0, x1, y1}, Chip: chip})
 				}
 				created := 0
 				for i := range plan {
@@ -2404,10 +2416,17 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 						continue
 					}
 					points := rectCorners(plan[i].Rect[0], plan[i].Rect[1], plan[i].Rect[2], plan[i].Rect[3])
+					// Module strip: no-wires/no-fills/no-pours + no-inner-electrical.
+					// Chip antenna (#123): DROP no-wires — the feed line must enter the
+					// clearance zone to reach the feed pad (#129's live-verified trap).
+					rules := []any{5, 6, 7, 8}
+					if plan[i].Chip {
+						rules = []any{6, 7, 8}
+					}
 					if _, err := requestAction(cfg, "pcb.region.create", window, map[string]any{
 						"points":   points,
 						"layer":    pcbLayerMulti,
-						"ruleType": []any{5, 6, 7, 8}, // no-wires/no-fills/no-pours + no-inner-electrical → all layers
+						"ruleType": rules,
 						"name":     "antenna-" + plan[i].Designator,
 					}); err != nil {
 						skipped = append(skipped, map[string]any{"designator": plan[i].Designator, "reason": err.Error()})
@@ -2429,6 +2448,7 @@ placement; re-run 'pcb check' to confirm the antenna-keepout warning clears.
 		c.Flags().BoolVar(&dryRun, "dry-run", false, "print the keep-out plan without creating regions")
 		c.Flags().Float64Var(&margin, "margin", 20, "expand the keep-out outward (away from pads) by this many mil")
 		c.Flags().Float64Var(&padClear, "pad-clearance", 40, "pull the keep-out's pad-facing edge back this many mil to clear pad bodies (strip is measured to pad centers)")
+		c.Flags().Float64Var(&chipMargin, "chip-margin", 120, "discrete chip antenna (#123): keep-out margin around the footprint bbox in mil (datasheet clearance ≈3mm; region has NO no-wires so the feed can enter)")
 		pcb.AddCommand(c)
 	}
 

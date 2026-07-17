@@ -72,3 +72,26 @@ func TestWroomBlockDeclaresKeepout(t *testing.T) {
 		t.Error("the WROOM block must declare a keepout matching \"wroom\"")
 	}
 }
+
+// TestChipAntennaKeepout is #123: a two-pad ceramic SMD antenna (whole footprint
+// = radiator, no pad-free strip) gets a bbox+margin keep-out; a module-sized
+// bbox stays with the strip heuristic.
+func TestChipAntennaKeepout(t *testing.T) {
+	// Johanson 2450AT18A100E: 3.2×1.6mm ≈ 126×63 mil.
+	if !isChipAntennaSize(126, 63) {
+		t.Error("126×63mil ceramic antenna must qualify as chip-antenna sized")
+	}
+	if isChipAntennaSize(700, 710) {
+		t.Error("a WROOM-sized bbox must NOT qualify as a chip antenna")
+	}
+	x0, y0, x1, y1, ok := chipAntennaKeepoutRect(100, 200, 226, 263, 120)
+	if !ok {
+		t.Fatal("chip keep-out must be produced for a valid bbox")
+	}
+	if x0 != -20 || y0 != 80 || x1 != 346 || y1 != 383 {
+		t.Errorf("chip keep-out = (%g,%g)-(%g,%g), want bbox+120 each side", x0, y0, x1, y1)
+	}
+	if _, _, _, _, ok := chipAntennaKeepoutRect(100, 200, 100, 263, 120); ok {
+		t.Error("degenerate bbox must not produce a keep-out")
+	}
+}

@@ -1415,7 +1415,10 @@ type pcbKeepRegion struct {
 // antenna-bearing part (integrated-antenna modules + discrete antennas).
 func isAntennaDevice(device, designator string) bool {
 	d := strings.ToUpper(device)
-	for _, kw := range []string{"WROOM", "WROVER", "ANTENNA", "ESP32-C3-MINI", "ESP8266"} {
+	// "2450AT" (Johanson 2.4GHz ceramic chip family) and "ANT-SMD" (the LCSC
+	// footprint prefix for discrete SMD antennas) catch two-pad chip antennas
+	// whose auto-assigned designator isn't ANT* (#123: AE1 on the live board).
+	for _, kw := range []string{"WROOM", "WROVER", "ANTENNA", "ESP32-C3-MINI", "ESP8266", "2450AT", "ANT-SMD"} {
 		if strings.Contains(d, kw) {
 			return true
 		}

@@ -107,3 +107,32 @@ func antennaKeepoutRect(minX, minY, maxX, maxY float64, pads [][2]float64, endFr
 	}
 	return x0, y0, x1, y1, true
 }
+
+// ── discrete chip antennas (#123) ───────────────────────────────────────────
+// A two-pad ceramic SMD antenna (Johanson 2450AT18A100E, footprint
+// ANT-SMD_L3.2-W1.6) has NO pad-free strip — the whole footprint IS the
+// radiator, so the strip heuristic above skips it ("no pad-free antenna strip
+// found") and the part gets no protection at all. For these the keep-out is the
+// full footprint bbox expanded by a datasheet-style clearance margin on every
+// side. Its region must NOT carry no-wires: the antenna's own 50Ω feed line has
+// to enter the clearance zone to reach the feed pad (#129's live-verified trap
+// — no-wires bans the feed and native DRC fires Prohibited Region to Track).
+
+// chipAntennaMaxDimMil separates a chip antenna from a module: the largest
+// discrete SMD antennas are ~10mm (394mil); an integrated-antenna module
+// (WROOM ≈ 700+ mil) always exceeds this and keeps the strip heuristic.
+const chipAntennaMaxDimMil = 400.0
+
+// isChipAntennaSize reports whether a bbox is chip-antenna sized.
+func isChipAntennaSize(w, h float64) bool {
+	return w > 0 && h > 0 && math.Max(w, h) <= chipAntennaMaxDimMil
+}
+
+// chipAntennaKeepoutRect is the discrete-antenna keep-out: bbox + margin on all
+// four sides (the clearance the datasheet demands AROUND the radiator).
+func chipAntennaKeepoutRect(minX, minY, maxX, maxY, margin float64) (x0, y0, x1, y1 float64, ok bool) {
+	if maxX <= minX || maxY <= minY {
+		return
+	}
+	return minX - margin, minY - margin, maxX + margin, maxY + margin, true
+}
