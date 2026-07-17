@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-18
+
+**「真机可信化」版**:一天内 16 个 issue 闭环的集中发布。三大主题:
+① **via/导入可信化**——EPAD 内嵌热过孔的删除欺骗与赋网易失被彻底摸清(删不掉:
+假成功+立即 getAll 也骗+reload 原 id 复活;赋网只活到 reload),`pcb.route.delete`
+前置拒删、`pcb.add_component` 放置即键合、CLI 新增 `pcb via-bond` 幂等重键合 +
+`pcb check` netless-via-in-pad 触发器;**import-changes 十七天误诊破案**——它从来
+不是 no-op,是「确认导入信息」对话框没人点,现在 handler 自动点「应用修改」,
+clear→reimport 往返打通。② **布线器硬否决**——异网走线/slot 从代价升级为
+hopFeasible 硬门(R2 两条真交叉短路的根治),mount-holes 反查既有铜皮。
+③ **门禁与工具诚实化**——power-not-poured 对 GND 内电层死锁解除(PlanePouredNets
+状态互通)、`--force` 分级放行(零确认机械骨架要 `--force-unsafe`)、`pcb clear`
+默认 verify 复合流程、高 pin 连接器不再抢 main、陶瓷贴片天线 keepout、
+根级 `easyeda health` 别名。
+
 ### Fixed
 - **`pcb.import_changes` 假 no-op 根因修复(#124,订正 #20 诊断)**:importChanges 一直
   都能正确算出变更清单——它弹「确认导入信息」对话框等人点「应用修改」,API 返回 true 只
