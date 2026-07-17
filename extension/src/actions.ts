@@ -5104,31 +5104,45 @@ const systemNotify: Handler = async (payload) => {
  * opt-out leaves it for manual review), then reports the component count delta.
  */
 
-// importConfirmModal finds the visible 确认导入信息 modal, if any.
-const importConfirmModal = (): HTMLElement | undefined =>
-	Array.from(document.querySelectorAll<HTMLElement>('.arco-modal, [class*=modal]'))
-		.filter(e => e.offsetParent !== null && (e.innerText || '').includes('确认导入信息'))
-		.pop();
-
-// clickImportConfirm waits for the import-confirm modal and clicks 应用修改.
+// clickImportConfirm waits for the 确认导入信息 modal and clicks 应用修改.
 // Returns 'applied', 'no-dialog' (import needed no confirmation), or 'no-button'.
+//
+// DOM access MUST go through an AsyncFunction escape: the extension sandbox
+// shadows `document` to undefined in module scope (live-verified INTERNAL_ERROR
+// "reading 'querySelectorAll' of undefined"), while a `new AsyncFunction`'s
+// scope chain ends at the real global — the exact trick debug.exec_js uses,
+// which is why exec_js probes could always see the dialog.
 async function clickImportConfirm(timeoutMs: number): Promise<string> {
+	const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as {
+		new (body: string): () => Promise<unknown>;
+	};
+	// NOTE: '[class*=modal]' matches NESTED wrapper nodes — an inner node can
+	// carry the 确认导入信息 text without the footer buttons (live-verified
+	// 'no-button' miss), so the button search must span ALL matching nodes.
+	const step = new AsyncFunction(`
+		const modals = Array.from(document.querySelectorAll('.arco-modal, [class*=modal]'))
+			.filter(e => e.offsetParent !== null && (e.innerText || '').includes('确认导入信息'));
+		if (!modals.length) return 'none';
+		const btn = modals.flatMap(m => Array.from(m.querySelectorAll('button')))
+			.find(b => (b.innerText || '').trim() === '应用修改' && b.offsetParent !== null);
+		if (!btn) return 'no-button';
+		btn.click();
+		return 'clicked';
+	`);
+	const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const modal = importConfirmModal();
-		if (modal) {
-			const btn = Array.from(modal.querySelectorAll<HTMLButtonElement>('button'))
-				.find(b => (b.innerText || '').trim() === '应用修改' && b.offsetParent !== null);
-			if (!btn) return 'no-button';
-			btn.click();
+		const r = await step();
+		if (r === 'clicked') {
 			// Wait for the modal to actually close (the apply is async).
 			const closeBy = Date.now() + 10_000;
-			while (Date.now() < closeBy && importConfirmModal()) {
-				await new Promise(r => setTimeout(r, 250));
+			while (Date.now() < closeBy && (await step()) !== 'none') {
+				await pause(250);
 			}
 			return 'applied';
 		}
-		await new Promise(r => setTimeout(r, 250));
+		if (r === 'no-button') return 'no-button';
+		await pause(250);
 	}
 	return 'no-dialog';
 }
@@ -5197,7 +5211,19 @@ const pcbImportChanges: Handler = async (payload) => {
 		}
 		catch { /* best-effort */ }
 	}
-	const componentsAfter = await countComponents();
+	// The apply keeps materializing components AFTER the modal closes (live:
+	// counted 1 immediately, 20 a few seconds later) — poll until the count is
+	// stable across two reads before reporting it as ground truth.
+	let componentsAfter = await countComponents();
+	if (confirmOutcome === 'applied') {
+		const settleBy = Date.now() + 10_000;
+		while (Date.now() < settleBy) {
+			await new Promise(r => setTimeout(r, 1_000));
+			const again = await countComponents();
+			if (again === componentsAfter && again > componentsBefore) break;
+			componentsAfter = again;
+		}
+	}
 
 	return {
 		result: {
