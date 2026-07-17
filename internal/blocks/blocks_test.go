@@ -325,3 +325,26 @@ func TestSilkMap(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateBomNoteCountMismatch(t *testing.T) {
+	raw := json.RawMessage(`{
+		"id":"block.bomnote","desc":"x","category":"power",
+		"bom_note":"共 17 件:1× IC + 若干电容",
+		"parts":{"U":{"part":"ic.x","qty":1},"C":{"part":"cap.x","qty":2}},
+		"ports":{},
+		"internal_nets":[["U.OUT","C.1"]]
+	}`)
+	var b Block
+	if err := json.Unmarshal(raw, &b); err != nil {
+		t.Fatal(err)
+	}
+	b.Raw = raw
+	errs := Validate(b)
+	got := ""
+	for _, err := range errs {
+		got += err.Error() + "\n"
+	}
+	if !strings.Contains(got, "共 17 件 but parts qty sums to 3") {
+		t.Errorf("expected bom_note count mismatch error, got:\n%s", got)
+	}
+}

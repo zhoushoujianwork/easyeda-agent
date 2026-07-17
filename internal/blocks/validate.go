@@ -3,6 +3,8 @@ package blocks
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -61,6 +63,8 @@ func Validate(b Block) []error {
 			add("parts."+role+".qty", "must be >= 1")
 		}
 	}
+
+	validateBomNoteCount(b, add)
 
 	var topology struct {
 		InternalNets [][]string `json:"internal_nets"`
@@ -134,6 +138,32 @@ func Validate(b Block) []error {
 		validateVerification(b, add)
 	}
 	return errs
+}
+
+// bom_note is prose, but a "共 N 件" claim inside it is a checkable fact: agents
+// and humans use it to audit BOM completeness before ordering, so a stale count
+// causes real mis-orders (#128). N must equal the sum of parts[].qty.
+var reBomNoteCount = regexp.MustCompile(`共\s*(\d+)\s*件`)
+
+func validateBomNoteCount(b Block, add func(string, string)) {
+	var extra struct {
+		BomNote string `json:"bom_note"`
+	}
+	if err := json.Unmarshal(b.Raw, &extra); err != nil || extra.BomNote == "" {
+		return
+	}
+	m := reBomNoteCount.FindStringSubmatch(extra.BomNote)
+	if m == nil {
+		return
+	}
+	claimed, _ := strconv.Atoi(m[1])
+	total := 0
+	for _, p := range b.Parts {
+		total += p.Qty
+	}
+	if claimed != total {
+		add("bom_note", fmt.Sprintf("claims 共 %d 件 but parts qty sums to %d", claimed, total))
+	}
 }
 
 func splitPinRef(ref string) (role, pin string, ok bool) {
