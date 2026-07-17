@@ -66,7 +66,7 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 - [ ] `pcb netlist-diff`:sch↔pcb 逐网 degree 机械比对(EPAD 1-pin↔N-pads 感知),把 "Netlist Error" 定性成可交付结论。
 - [ ] `pcb floorplan --spec`:PCB 模块级布局规划器(`sch autolayout` 的 PCB 版),内置本轮校验器的约束(贴边件朝向/天线区/M3 四角/装配间隙/布线通道预留)。本轮用 3-designer workflow 临时完成,应产品化。
 - [ ] `route-short --nets <list>`:网络过滤(现在全有或全无)。
-- [ ] `pcb region create --layers 1,2`:一次建多层同形 region(天线 keepout 每层独立才过 `pcb check`)。
+- [x] ~~`pcb region create --layers 1,2`:一次建多层同形 region~~ 已有更简做法:单个 `--layer 12`(多层)region 一次覆盖全部铜层,`pcb check` antenna-keepout 认可(#129/#43 R2 真机验证),无需逐层建。
 
 **P2**
 - [ ] `pcb stage-snapshot` 的前台检测提示统一接入所有重操作(DRC/rebuild)。

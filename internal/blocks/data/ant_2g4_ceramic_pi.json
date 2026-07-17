@@ -60,8 +60,8 @@
     {
       "rule": "antenna-keepout",
       "target": "ANT",
-      "constraint": "天线本体及 datasheet 规定净空区内**所有层**禁铜:顶/底层 no-pour + 内层 no-inner-electrical + 禁走线禁过孔;净空区内也不放其它器件。每层独立画 keep-out region(单层画不覆盖内层)",
-      "value": "all-layers keep-out,净空尺寸按 2450AT18A100E datasheet 推荐 land pattern/clearance",
+      "constraint": "天线本体及 datasheet 规定净空区内禁铜/填充:单个多层 region(--layer 12)即可覆盖所有层,禁 pour + 禁 fill(no-pours + no-fills);净空区内不放其它器件。馈线从板内侧馈点进入不受此规则限制(不要加 no-wires,否则会把自己的 50Ω 馈线禁掉,原生 DRC 报 Prohibited Region to Track——#43 R2 真机踩坑)",
+      "value": "single multi-layer keep-out(--layer 12, no-pours+no-fills),净空尺寸按 2450AT18A100E datasheet 推荐 land pattern/clearance",
       "severity": "must"
     },
     {
