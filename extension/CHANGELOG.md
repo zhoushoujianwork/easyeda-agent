@@ -7,6 +7,13 @@ follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **`pcb.import_changes` 假 no-op 根因修复(#124,订正 #20 诊断)**:importChanges 一直
+  都能正确算出变更清单——它弹「确认导入信息」对话框等人点「应用修改」,API 返回 true 只
+  代表**对话框弹出**;headless 没人点,看起来就是静默 no-op(「不支持增量导入」是误诊)。
+  真机实证:点击后 20 件全部落板。handler 现在自动等待对话框并点「应用修改」
+  (`confirm:false` 保留人工审查),且 importChanges 的 promise **不再串行 await**
+  (实测某些状态下永不 resolve,会卡死连接器整个动作队列)——改为并发点击 + 12s 超时
+  兜底,以器件计数差(componentsBefore/After)为落板真值。
 - **`pcb.route.delete` 假报成功修复(#120,真机订正)**:SDK 的 `delete()` 对**封装内嵌
   via**(QFN EPAD 热过孔是 component 的一部分)返回 `true` 且**立即 getAll 也显示已删**,
   但 save/reload 后从封装定义原 id 复活(ceshi 真机实证)——纯 readback 会被骗。handler

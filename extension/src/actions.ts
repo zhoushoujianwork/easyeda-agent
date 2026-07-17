@@ -5093,11 +5093,51 @@ const systemNotify: Handler = async (payload) => {
  * the primary way components arrive on the board. `importChanges` returns false
  * on a floating PCB, so ensure a Board ties the schematic and PCB together
  * first, then recompute ratlines.
+ *
+ * ROOT CAUSE of the long-standing "no-op" (#124, corrects #20's diagnosis):
+ * importChanges COMPUTES the change list correctly, then surfaces a 确认导入信息
+ * modal with an 应用修改 button — and resolves true when the DIALOG opens, not
+ * when the changes apply. Headless, nobody ever clicked it, so the API looked
+ * like a silent no-op ("no incremental add"). Verified live (2026-07-17,
+ * ceshi): clicking 应用修改 landed all 20 components on a cleared board. The
+ * handler now waits for that modal and clicks 应用修改 itself (confirm:false
+ * opt-out leaves it for manual review), then reports the component count delta.
  */
+
+// importConfirmModal finds the visible 确认导入信息 modal, if any.
+const importConfirmModal = (): HTMLElement | undefined =>
+	Array.from(document.querySelectorAll<HTMLElement>('.arco-modal, [class*=modal]'))
+		.filter(e => e.offsetParent !== null && (e.innerText || '').includes('确认导入信息'))
+		.pop();
+
+// clickImportConfirm waits for the import-confirm modal and clicks 应用修改.
+// Returns 'applied', 'no-dialog' (import needed no confirmation), or 'no-button'.
+async function clickImportConfirm(timeoutMs: number): Promise<string> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const modal = importConfirmModal();
+		if (modal) {
+			const btn = Array.from(modal.querySelectorAll<HTMLButtonElement>('button'))
+				.find(b => (b.innerText || '').trim() === '应用修改' && b.offsetParent !== null);
+			if (!btn) return 'no-button';
+			btn.click();
+			// Wait for the modal to actually close (the apply is async).
+			const closeBy = Date.now() + 10_000;
+			while (Date.now() < closeBy && importConfirmModal()) {
+				await new Promise(r => setTimeout(r, 250));
+			}
+			return 'applied';
+		}
+		await new Promise(r => setTimeout(r, 250));
+	}
+	return 'no-dialog';
+}
+
 const pcbImportChanges: Handler = async (payload) => {
 	const schematicUuid = optionalString(payload, 'schematicUuid');
 	const ensureBoard = optionalBoolean(payload, 'ensureBoard') !== false;
 	const recomputeRatline = optionalBoolean(payload, 'recomputeRatline') !== false;
+	const autoConfirm = optionalBoolean(payload, 'confirm') !== false;
 
 	let board;
 	try {
@@ -5122,12 +5162,33 @@ const pcbImportChanges: Handler = async (payload) => {
 		}
 	}
 
-	let imported;
-	try {
-		imported = await eda.pcb_Document.importChanges(schematicUuid);
+	const countComponents = async (): Promise<number> => {
+		try { return ((await eda.pcb_PrimitiveComponent.getAll()) ?? []).length; }
+		catch { return -1; }
+	};
+	const componentsBefore = await countComponents();
+
+	// #124: importChanges' resolution semantics are UNRELIABLE around its
+	// 确认导入信息 dialog — observed both "resolves true when the dialog opens"
+	// and "never resolves" (which serially wedged the connector's whole action
+	// queue on the live board). So: fire it WITHOUT awaiting, click 应用修改
+	// concurrently, and cap the wait — the component-count delta below is the
+	// ground truth either way.
+	const importPromise: Promise<boolean> = eda.pcb_Document.importChanges(schematicUuid)
+		.catch(() => false);
+	let confirmOutcome = 'skipped';
+	if (autoConfirm) {
+		confirmOutcome = await clickImportConfirm(8_000);
 	}
-	catch (err) {
-		throw edaError(err, 'Failed to import changes from the schematic.');
+	let imported: boolean | undefined;
+	let apiTimedOut = false;
+	imported = await Promise.race([
+		importPromise,
+		new Promise<boolean | undefined>(r => setTimeout(() => r(undefined), 12_000)),
+	]);
+	if (imported === undefined) {
+		apiTimedOut = true;
+		imported = confirmOutcome === 'applied'; // the click is what actually lands parts
 	}
 
 	if (imported && recomputeRatline) {
@@ -5136,10 +5197,15 @@ const pcbImportChanges: Handler = async (payload) => {
 		}
 		catch { /* best-effort */ }
 	}
+	const componentsAfter = await countComponents();
 
 	return {
 		result: {
 			imported,
+			confirm: confirmOutcome,
+			apiTimedOut,
+			componentsBefore,
+			componentsAfter,
 			createdBoard,
 			// Read schematic/pcb defensively: a Board can legitimately hold only one
 			// side (e.g. after a rebuild the schematic ref may be a deleted/orphaned
@@ -5148,7 +5214,9 @@ const pcbImportChanges: Handler = async (payload) => {
 				? { name: board.name, schematicUuid: board.schematic?.uuid ?? null, pcbUuid: board.pcb?.uuid ?? null }
 				: null,
 			reason: imported
-				? null
+				? (confirmOutcome === 'no-button'
+					? 'the 确认导入信息 dialog is open but its 应用修改 button was not found — apply it manually in the editor'
+					: null)
 				: 'importChanges returned false — the PCB may be floating (no linked schematic) or schematicUuid is invalid.',
 		},
 	};
