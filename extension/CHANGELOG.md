@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **`schematic.pin.set_no_connect` 真正生成非连接 X 标识(订正 0.5.14 的平台 no-op 误诊)**:
+  真机复现确认 `setState_NoConnected(...)` 只修改当前 pin 句柄的待提交状态,必须再
+  `await pin.done()` 才会写回画布;此前 handler 漏掉 `done()`,fresh readback 因而恢复
+  `false`,被误判成 EasyEDA Pro 3.2.x 平台限制。现在改走
+  `sch_PrimitiveComponent.get(id) → component.getAllPins()`,逐脚 setter + `done()`,再用
+  新器件实例回读验证。Pro 3.2.149 真机已确认绿色 X 出现、`noConnected:true`,且
+  `sch check` 的 floating-pin 计数同步减少;`--clear` 同路径持久化清除。
+
 ## [0.14.0] - 2026-07-18
 
 **「真机可信化」版**:一天内 16 个 issue 闭环的集中发布。三大主题:

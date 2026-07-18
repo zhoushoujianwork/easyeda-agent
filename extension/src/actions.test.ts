@@ -84,7 +84,7 @@ test('normalizeDeviceRef: non-string uuid/libraryUuid coerced to empty', () => {
 	assert.deepEqual(ref, { libraryUuid: '', uuid: '', name: 'X' });
 });
 
-import { schematicComponentPlace } from './actions';
+import { schematicComponentPlace, schematicPinSetNoConnect } from './actions';
 
 /** Install a fake `eda.sch_PrimitiveComponent` on the global for one test.
  *  create() returns a placeholder-designator component; modify() records its
@@ -123,6 +123,82 @@ test('place without designator: no modify call, keeps placeholder (issue #68)', 
 	});
 	assert.equal(calls.modify.length, 0);
 	assert.equal((res.result.component as any).designator, 'C?');
+	delete (globalThis as any).eda;
+});
+
+// ─── schematic.pin.set_no_connect (live component pin lifecycle) ──────────
+
+/**
+ * Install a pin-state model where setState_NoConnected only stages a value and
+ * done() persists it. Every getAllPins() call returns fresh handles, matching the
+ * EasyEDA runtime behavior that exposed the missing-done regression.
+ */
+function installNoConnectStub(initial: Record<string, boolean>) {
+	const stored = new Map(Object.entries(initial));
+	const doneCalls: Array<{ pin: string; value: boolean }> = [];
+	const getCalls: string[] = [];
+	const componentId = 'u1-pid';
+
+	const component = {
+		getAllPins: async () => [...stored.entries()].map(([number, persisted]) => {
+			let staged = persisted;
+			const pin: any = {
+				getState_PinNumber: () => number,
+				getState_NoConnected: () => staged,
+				setState_NoConnected: (value: boolean) => { staged = value; return pin; },
+				done: async () => {
+					stored.set(number, staged);
+					doneCalls.push({ pin: number, value: staged });
+					return pin;
+				},
+			};
+			return pin;
+		}),
+	};
+
+	(globalThis as any).eda = {
+		sch_PrimitiveComponent: {
+			getAll: async () => [{
+				getState_Designator: () => 'U1',
+				getState_PrimitiveId: () => componentId,
+			}],
+			get: async (id: string) => {
+				getCalls.push(id);
+				return id === componentId ? component : undefined;
+			},
+		},
+	};
+	return { stored, doneCalls, getCalls };
+}
+
+test('no-connect: commits every target pin with done() and verifies fresh instance state', async () => {
+	const fx = installNoConnectStub({ '10': false, '11': false, '12': false });
+	const res: any = await schematicPinSetNoConnect({ designator: 'U1', pins: ['10', 11] });
+
+	assert.deepEqual(fx.doneCalls, [
+		{ pin: '10', value: true },
+		{ pin: '11', value: true },
+	]);
+	assert.deepEqual(fx.getCalls, ['u1-pid', 'u1-pid'], 'initial mutation + fresh verification use component.get');
+	assert.equal(fx.stored.get('10'), true);
+	assert.equal(fx.stored.get('11'), true);
+	assert.equal(fx.stored.get('12'), false);
+	assert.deepEqual(res.result.pins, [
+		{ pin: '10', noConnected: true },
+		{ pin: '11', noConnected: true },
+	]);
+	assert.deepEqual(res.result.notApplied, []);
+	delete (globalThis as any).eda;
+});
+
+test('no-connect: noConnected=false clears and persists an existing X marker', async () => {
+	const fx = installNoConnectStub({ '10': true });
+	const res: any = await schematicPinSetNoConnect({ designator: 'U1', pins: ['10'], noConnected: false });
+
+	assert.deepEqual(fx.doneCalls, [{ pin: '10', value: false }]);
+	assert.equal(fx.stored.get('10'), false);
+	assert.deepEqual(res.result.pins, [{ pin: '10', noConnected: false }]);
+	assert.deepEqual(res.result.notApplied, []);
 	delete (globalThis as any).eda;
 });
 

@@ -308,7 +308,7 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Mark (or clear) a component pin's no-connect flag (非连接标识, the X marker) — tells DRC the pin is intentionally unconnected so it stops reporting 'un-connected pin'. Targets pins by designator + pin number; pass noConnected=false to clear. ⚠️ KNOWN PLATFORM LIMITATION: on EasyEDA Pro 3.2.x, pin.setState_NoConnected is a NO-OP (the pin primitive has no noConnected field — verified by re-pull, DRC re-run, and snapshot: no NC mark is placed, DRC still reports the pin as floating). The action now VERIFIES the write and FAILS with a clear error when it doesn't take, instead of silently 'succeeding'. There is no public eda.* API to place a 非连接标识 on this build; use schematic.check to enumerate floating pins.",
+			Description: "Mark (or clear) a component pin's no-connect flag (非连接标识, the X marker) — tells DRC the pin is intentionally unconnected so it stops reporting 'un-connected pin'. Targets pins by designator + pin number; pass noConnected=false to clear. Resolves the live component instance, reads pins through component.getAllPins(), commits every staged pin state with pin.done(), then verifies fresh instance state instead of trusting the mutated handle.",
 			Inputs:      []string{"designator", "pins", "noConnected optional"},
 			Outputs:     []string{"designator", "primitive id", "pins[].noConnected", "notApplied[]"},
 			VerifyWith:  []string{"schematic.components.list", "schematic.drc.check"},
