@@ -1,0 +1,80 @@
+{
+  "id": "block.ina226_power_monitor",
+  "desc": "INA226 高侧电流/电压/功率监测(I2C):10mΩ 2512 采样电阻串在电池/电源主路,MCU 读实时电流·总线电压·功率——Flipper Zero『屏幕上看待机功耗』同款思路的通用化最小实现;0.25mA/LSB,mA 级待机可测(µA 级深睡电流测不了,见 notes)",
+  "category": "sensing",
+  "author": "@zhoushoujianwork",
+  "contributors": [],
+  "added": "v0.14.1",
+  "updated": "v0.14.1",
+  "source": "datasheet:INA226 (TI SBOS547) 外围明文(VS 0.1µF 去耦/地址表/CAL 公式 0.00512/(Current_LSB×Rshunt)) + design-pattern:Flipper Zero 电源监测(BQ25896 充电 + BQ27220 库仑计电量计,shunt 串电池负极低侧)的通用化——改用高侧 shunt+INA226 使 GND 不被抬升、任意轨可测。选型与脚名 2026-07-19 ceshi 真机核对",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "U 全部 10 脚名(1=A1/2=A0/3=Alert/4=SDA/5=SCL/6=VS+/7=GND/8=VBUS/9=VIN-/10=VIN+)经 ceshi 真机 sch place→sch read 实测核对全命中(2026-07-19,C49851 官方符号);完整 place→wire→sch check 尚未跑"
+    },
+    "component_selection": {
+      "status": "passed",
+      "evidence": "easyeda lib search 真机命中并写回 standard-parts.json:INA226AIDGSR=C49851(MSOP-10,deviceUuid c19abc37…)、HoLR2512-1W-10mR-1%-15ppm=C2885415(2512 采样电阻 ±15ppm/℃ 低温漂,deviceUuid 102f328d…)"
+    },
+    "pcb_drc": { "status": "not_tested" },
+    "bringup": { "status": "not_tested" },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "ic.ina226_msop10",
+      "qty": 1,
+      "note": "INA226 高侧电流/功率监测,MSOP-10,I2C(A0=A1=GND → 7-bit 0x40)。差分输入 ±81.92mV 满量程,16-bit,2.5µV/LSB;VBUS 引脚独立测总线电压 0-36V;内置电流×电压=功率寄存器。脚名经 ceshi sch read 实测:A1/A0/Alert/SDA/SCL/VS+/GND/VBUS/VIN-/VIN+。"
+    },
+    "R_SHUNT": {
+      "part": "res.shunt_10mr_2512",
+      "qty": 1,
+      "note": "10mΩ 1% 1W 2512 采样电阻,±15ppm/℃ 低温漂(测量级,普通厚膜 ±500ppm 会随温度漂 mA 级)。串在被测主路(电池正极/电源轨)。10mΩ → 满量程 ±8.19A,压降 10mV@1A 可忽略;1W 额定≈10A 裕量。"
+    },
+    "C_VS": { "part": "cap.100nf_0402", "qty": 1, "note": "VS+ 电源去耦,datasheet 明文 0.1µF 就近。" },
+    "R_SDA": { "part": "res.4k7_0402", "qty": 1, "note": "SDA 上拉到 VS。⚠宿主 I2C 总线已有上拉(如与 AXP2101/其它 I2C 块同总线)时删除本对,避免并联过强。" },
+    "R_SCL": { "part": "res.4k7_0402", "qty": 1, "note": "SCL 上拉,同 R_SDA。" },
+    "R_ALERT": { "part": "res.10k_0402", "qty": 1, "note": "Alert 开漏低有效,上拉到 VS。可配过流/过压/欠压/功率超限/转换完成告警;不用告警功能时可删本件并 NC 该脚。" }
+  },
+  "internal_nets": [
+    ["U.VIN+", "R_SHUNT.1", "PORT:VBAT_IN"],
+    ["U.VIN-", "U.VBUS", "R_SHUNT.2", "PORT:VOUT"],
+    ["U.VS+", "C_VS.1", "R_SDA.2", "R_SCL.2", "R_ALERT.2", "PORT:VS"],
+    ["U.SDA", "R_SDA.1", "PORT:I2C_SDA"],
+    ["U.SCL", "R_SCL.1", "PORT:I2C_SCL"],
+    ["U.Alert", "R_ALERT.1", "PORT:ALERT_N"],
+    ["U.GND", "U.A0", "U.A1", "C_VS.2", "PORT:GND"]
+  ],
+  "ports": {
+    "VBAT_IN": { "dir": "in", "at": "R_SHUNT.1", "desc": "被测电源输入侧(电池+/上游轨)——电流从这里流经 shunt 到 VOUT,放电方向读数为正", "default_net": "VBAT" },
+    "VOUT": { "dir": "out", "at": "R_SHUNT.2", "desc": "负载侧输出(接系统电源树入口);VBUS 引脚绑在此侧 → 功率寄存器读的是负载功率", "default_net": "VSYS" },
+    "VS": { "dir": "in", "at": "U.VS+", "desc": "芯片供电 2.7-5.5V(与被测路独立,共模 0-36V 可测高于 VS 的轨);也是 I2C/Alert 上拉参考轨", "default_net": "+3V3" },
+    "I2C_SDA": { "dir": "bidir", "at": "U.SDA", "desc": "I2C 数据(7-bit 0x40,A0/A1 改接 VS/SDA/SCL 可扩到 0x4F 共 16 址)", "default_net": "SDA" },
+    "I2C_SCL": { "dir": "bidir", "at": "U.SCL", "desc": "I2C 时钟(≤2.94MHz)", "default_net": "SCL" },
+    "ALERT_N": { "dir": "out", "at": "U.Alert", "desc": "开漏低有效告警/转换完成中断(可选,接 MCU GPIO;不用可 NC)", "default_net": "INA_ALERT" },
+    "GND": { "dir": "bidir", "at": "U.GND", "desc": "参考地(A0/A1 同接地 → 地址 0x40)", "default_net": "GND" }
+  },
+  "schematic_notes": [
+    "拓扑=高侧采样:shunt 串在电源正极主路,VIN+ 接上游/VIN- 接负载侧,GND 不被抬升(对比 Flipper 的 BQ27220 低侧方案——低侧省共模但整机地随电流浮动,高侧是通用板更稳妥的默认)。VBUS 引脚独立接负载侧 → 功率=负载真实功率;想测源功率把 U.VBUS 改绑 R_SHUNT.1 侧即可。",
+    "量程/分辨率(10mΩ):满量程 ±81.92mV/10mΩ=±8.19A;推荐 Current_LSB=0.25mA → CAL 寄存器=0.00512/(0.00025×0.01)=2048(整数,无截断误差)。mA 级待机电流可测、可平均(AVG 最多 1024 次抑噪);但 µA 级深睡测不了——10µA×10mΩ=0.1µV,远小于 2.5µV/LSB 与 ±10µV 失调(≈±1mA 等效误差)。要 µA 级请换电量计(CW2217B/BQ27220,待收录)或专用仪器(PPK2)。",
+    "I2C 地址:A0=A1=GND → 0x40(本块默认)。同总线挂多片时把 A0/A1 改接 VS/SDA/SCL,共 16 个地址;改接后从 GND 网移出对应脚。",
+    "Kelvin 采样铁律:VIN+/VIN- 必须从 R_SHUNT 两焊盘的内侧独立引出细线直达芯片,绝不允许借用大电流铜面/主路走线做采样路径——否则走线压降计入测量,10mΩ 面前 1mΩ 铜阻就是 10% 误差。",
+    "I2C 上拉去重:R_SDA/R_SCL 仅在本块是总线上唯一上拉源时保留;宿主已有上拉(MCU 板常见)则删除,避免并联过强拉不动。",
+    "读数换算:电流寄存器×Current_LSB=电流;功率寄存器×25×Current_LSB=功率(W);总线电压 LSB 固定 1.25mV。固件侧 Arduino/ESP-IDF 均有现成 INA226 驱动。",
+    "shunt 阻值可换档:待机精度优先可换 100mΩ(满量程 0.82A、25µA/LSB,但 1A 压降 100mV——大电流板不可);多档常见做法是双 INA226 粗/细两路。本块默认 10mΩ 单档,覆盖 mA~8A。"
+  ],
+  "pcb_layout": [
+    { "rule": "kelvin-sense", "target": "U.VIN+/U.VIN- 走线", "constraint": "从 R_SHUNT 两焊盘内侧对称引出,成对短走线直达 U,不共用功率铜;两线等长等宽贴近走(差分对待)", "value": "<=10mm, 对称", "severity": "must" },
+    { "rule": "trace-width", "target": "VBAT_IN→R_SHUNT→VOUT 主路", "constraint": "功率主路按实际电流加宽(shunt 额定 8A 级)", "value": ">=1mm 或铺铜", "severity": "must" },
+    { "rule": "decap-datasheet", "target": "C_VS", "constraint": "VS+ 脚就近 0.1µF", "value": "<=2mm", "severity": "must" },
+    { "rule": "thermal-symmetry", "target": "R_SHUNT 两端焊盘", "constraint": "两端铜面积/散热对称,避免温差热电动势(塞贝克效应)污染 µV 级采样", "value": "对称铺铜", "severity": "should" },
+    { "rule": "signal-isolation", "target": "U.VIN± 采样线", "constraint": "远离开关电源 SW/LX 节点与 RF,勿与噪声线平行长距离", "value": ">=2mm", "severity": "should" }
+  ],
+  "signals": {
+    "_doc": "采样差分对 + I2C 低速总线。",
+    "SENSE": { "nets": ["VBAT_IN", "VOUT"], "type": "analog_diff", "route": "VIN+/VIN- 按 Kelvin 从 shunt 焊盘内侧成对引出,等长贴近", "keepout": "远离 SW/LX/RF", "severity": "must", "reason": "µV 级差分测量,布线不对称直接变测量误差" },
+    "I2C": { "nets": ["I2C_SDA", "I2C_SCL"], "type": "single_high_speed", "route": "短走线,上拉至 VS", "keepout": "远离功率开关节点", "severity": "should", "reason": "读数总线,受扰会丢采样" }
+  },
+  "bom_note": "6 件: INA226 + 10mΩ 2512 低温漂采样电阻 + VS 100nF 去耦 + I2C 上拉×2 + ALERT 上拉。一条 I2C 读电流/电压/功率三合一——Flipper Zero 式『待机功耗可视化』的最小通用实现;分辨率 0.25mA/LSB(mA 级待机 OK,µA 级深睡不行)。全部扩展料,合计约 ¥3。"
+}

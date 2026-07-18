@@ -32,6 +32,26 @@
       "basic": false,
       "desc": "USB-to-UART bridge, SOP-16, no external crystal (built-in); V3 tied to VCC at 3.3V"
     },
+    "ic.ina226_msop10": {
+      "value": "INA226AIDGSR",
+      "mpn": "INA226AIDGSR",
+      "lcsc": "C49851",
+      "manufacturer": "TI",
+      "deviceUuid": "c19abc37bc174e89b3cbd0176ec08490",
+      "footprint": "MSOP-10_L3.0-W3.0-P0.50-LS5.0-BL",
+      "basic": false,
+      "desc": "High-side current/power monitor, I2C, 0-36V CM, ±81.92mV shunt range, 16-bit; addr 0x40-0x4F via A0/A1"
+    },
+    "res.shunt_10mr_2512": {
+      "value": "10mΩ",
+      "mpn": "HoLR2512-1W-10mR-1%-15ppm",
+      "lcsc": "C2885415",
+      "manufacturer": "Milliohm(毫欧)",
+      "deviceUuid": "102f328de1f6451f91db5ce85032cba2",
+      "footprint": "RES-SMD_L6.3-W3.3_HOLR2512",
+      "basic": false,
+      "desc": "10mΩ 1% 1W 2512 采样电阻, ±15ppm/℃ 低温漂 (电流检测专用; 1W@10mΩ≈10A 裕量)"
+    },
     "conn.screw_terminal_2p": {
       "value": "KF301-5.0-2P",
       "mpn": "KF301-5.0-2P",
