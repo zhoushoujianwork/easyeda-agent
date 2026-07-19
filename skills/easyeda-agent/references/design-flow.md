@@ -221,11 +221,12 @@ P0 新板/切板 → P1 导器件 → P2 摆放(留装配位) → P3 板框 → 
   每一步的 `next:` 输出就是「默认继续按 workflow 走」的入口,不依赖任何 agent 记忆。
 - **P7 布线 — 三档阶梯(2026-07-09 定型)**:按密度选档,密度预算=layout-lint 的 ratsnest 长度/交叉数。
   > **档位铁律(= 顶层「档位默认」表的展开)**:稀疏板 → ① route-short;**稠密板默认 = ② 人机协作档(停下请用户点原生自动布线),不是 Freerouting**。③ Freerouting 只在**全 headless(无用户可点)**时兜底,**绝不拿它顶替 ② 去图 autonomous**——用户选了 ② 就按 ② 停手交回。(2026-07-09 实测踩过:图省事直接上 Freerouting = 违反本档。)
-  **P7.0 关键网络先行(2026-07-10 定,先于把剩余交人工)** —— 自动布线器最不擅长的两类不丢给它、自己确定性布好并**锁定**,只把剩余普通信号交人工档 ②(是对 ② 的**增强**,不是替代):
+  **P7.0 关键网络先行(2026-07-10 定,先于把剩余交人工)** —— 自动布线器最不擅长的两类不丢给它、自己确定性布好并**锁定**,只把剩余普通信号交人工档 ②(是对 ② 的**增强**,不是替代)。
+  **一条命令承载(#127)**:`easyeda pcb route-critical`(--dry-run 先看识别与计划)= 下面 1-4 步的机械化——电源按层数选 planes/pour → 差分对(块 signals+名字模式双源识别)45° 成对布线并**逐对实测 skew 报预算** → `pcb.track.lock` 锁定;之后只做第 5 步交人工。单步拆做仍可(--skip-power/--skip-diff/--no-lock 或下述手工命令):
   1. **识别关键网**:读块 `signals` map(`easyeda blocks show <id>` 的 `type:diff_pair` / `length_match_mm` / `impedance`,如 USB_D 90Ω、RS485_AB 120Ω)+ 电源网(5V/3V3/12V/VBUS)。
   2. **电源先铜(稳供、低阻)**:**2 层一键 `pcb power-pour`**(GND 双层 pour + 每条电源轨在自身 pad 区局部 pour,全动态铺铜不短路);4 层用 `power-planes` 内电层;主干/大电流也可手工用**大面积填充块** `pcb fill create --net 5V --layer 1`(net-bound,solid/mesh);GND 用 `pour`。**别拿细线穿焊盘阵布电源**(route-short 默认就跳过电源=对的;真要走线时 `route-short` 会**按 net-class 角色给规范宽**——支线 3V3≈10 / 主干 +5V≈15 / 大电流 VBUS≈20mil,见 `pcb net-classes`;`--width-power` 强制全电源同宽)。fill(静态硬块、实、后续信号要留 clearance、**异网相叠即短**)vs pour(会退让障碍、连通性靠 rebuild、异网不短)——大电流/参考平面用 fill/plane,一般电源/多轨并存用 pour。**兜底检查**:`pcb check` 的 **power-not-poured**(裸电源网没铺铜)+ **width-under-spec**(电源线偏细)会逮住漏网的。
   3. **差分/等长先布**:USB D±、RS485 A/B 成对布——本板这类很短(连接器→芯片),**成对并行、尽量短、≤5mil skew 即可,不用蛇形调谐**;`route-short` 或手工 `pcb track`。
-  4. **锁定关键铜**:布完 `pcb track-lock --net 5V --net USB_DP --net USB_DM`(按网锁 track/via/fill;或 `--all` 锁全部已布铜,`--ids` 锁指定,`--unlock` 解锁)把它们锁死,**否则人工自动布线器 / `pour-rebuild` 会把手布的关键线冲掉**——锁是本流程的地基。底层 `primitiveLock` 实测可锁,debug-exec 实现无需重导连接器。
+  4. **锁定关键铜**:布完 `pcb track-lock --net 5V --net USB_DP --net USB_DM`(按网锁 track/**arc**/via/fill;或 `--all` 锁全部已布铜,`--ids` 锁指定,`--unlock` 解锁)把它们锁死,**否则人工自动布线器 / `pour-rebuild` 会把手布的关键线冲掉**——锁是本流程的地基。0.15.2 起走 typed action `pcb.track.lock`(从 debug-exec 版毕业,连 beautify 弧也锁得到);pour 永不锁(要 reflow)。
   5. **交人工档 ②** 布剩余普通信号(避开锁定铜)→ 最后 `pour-rebuild` 让 GND 退让全部已布铜。
   ① **启发式档** `pcb route-short`:稀疏板(esp32-mini 级,交叉 <100)一次布通;
   ② **原生 UI 自动布线(人机协作档,稠密板推荐默认)**:官方 autoRouting API 未放出前(pro-api-sdk #28 卡 web 版本),agent 备好布局/叠层/禁布/规则后**停下来,请用户在 EasyEDA 顶部菜单点「布线 → 自动布线」**,跑完 agent 接手验证(DRC/check)+铺铜+丝印——一次点击换全套官方路由器(推挤/撕绕/规则原生一致),省掉外部 DSN/SES 往返的全部坑;API 放出后此档自动升级为无人值守;

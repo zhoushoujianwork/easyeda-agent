@@ -940,6 +940,18 @@ func AllActions() []ActionSpec {
 			InvalidatesStage: "post_route_checked",
 		},
 		{
+			Name:             "pcb.track.lock",
+			Domain:           DomainPcb,
+			Phase:            2,
+			Mutates:          true,
+			NeedsWindow:      true,
+			Description:      "Lock (or unlock) copper routing primitives — tracks, arcs, vias — by net (string or string[]) and/or explicit primitiveIds (issue #127). The P7.0 critical-net flow routes power + diff pairs FIRST and locks them so a later auto-route / rip-up cannot destroy the hand-guaranteed copper (rip_up skips locked primitives). locked defaults true; pass locked=false to unlock. Refuses an empty filter (no implicit whole-board lock). Idempotent: primitives already in the desired state are counted, not re-written.",
+			Inputs:           []string{"net optional (string or string[])", "primitiveIds optional (string[])", "locked optional (default true)"},
+			Outputs:          []string{"locked", "counts{lines,arcs,vias}", "total", "failures"},
+			VerifyWith:       []string{"pcb.line.list"},
+			InvalidatesStage: "",
+		},
+		{
 			Name:             "pcb.route.delete",
 			Domain:           DomainPcb,
 			Phase:            2,

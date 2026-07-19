@@ -7055,6 +7055,71 @@ const pcbViaList: Handler = async (payload) => {
 	return { result: { vias: list, count: list.length } };
 };
 
+// ─── pcb.track.lock (issue #127) ─────────────────────────────────────
+// Lock (or unlock) copper routing primitives — tracks, arcs, vias — by net
+// and/or explicit primitiveIds. The P7.0 critical-net flow routes power +
+// diff pairs FIRST and locks them so a later auto-route / rip-up pass cannot
+// destroy the hand-guaranteed copper (rip_up already skips locked primitives).
+const pcbTrackLock: Handler = async (payload) => {
+	const locked = optionalBoolean(payload, 'locked') ?? true;
+	const all = optionalBoolean(payload, 'all') === true;
+	const includeFills = optionalBoolean(payload, 'includeFills') ?? true;
+	const rawNet = payload.net ?? payload.nets;
+	let nets: Array<string> | null = null;
+	if (typeof rawNet === 'string') nets = [rawNet];
+	else if (Array.isArray(rawNet) && rawNet.every(n => typeof n === 'string')) nets = rawNet as Array<string>;
+	const want = nets && nets.length > 0 ? new Set(nets.map(n => n.toUpperCase())) : null;
+	const rawIds = payload.primitiveIds;
+	const wantIds = Array.isArray(rawIds) && rawIds.every(i => typeof i === 'string') && rawIds.length > 0
+		? new Set(rawIds as Array<string>) : null;
+	if (!want && !wantIds && !all) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Provide "net" (string or string[]), "primitiveIds", or all=true — refusing to lock the whole board implicitly.');
+	}
+
+	let lines, arcs, vias, fills;
+	try {
+		lines = await eda.pcb_PrimitiveLine.getAll();
+		arcs = await eda.pcb_PrimitiveArc.getAll();
+		vias = await eda.pcb_PrimitiveVia.getAll();
+		fills = includeFills ? await eda.pcb_PrimitiveFill.getAll().catch(() => []) : [];
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read tracks/arcs/vias/fills for lock.');
+	}
+
+	// `all` still requires a NET (net === '' is the board outline / free artwork —
+	// never locked implicitly). Pours are deliberately absent: they are meant to
+	// reflow (pour-rebuild), locking them freezes stale geometry.
+	const matches = (net: string, pid: string) => {
+		if (wantIds !== null && wantIds.has(pid)) return true;
+		if (want !== null) return want.has(net.toUpperCase());
+		return all && net !== '';
+	};
+	const counts = { lines: 0, arcs: 0, vias: 0, fills: 0 };
+	const failures: Array<string> = [];
+	const apply = async (prims: Array<{ getState_PrimitiveId: () => string; getState_Net: () => string; getState_PrimitiveLock: () => boolean; setState_PrimitiveLock: (v: boolean) => unknown; done: () => Promise<unknown> }> | undefined, kind: 'lines' | 'arcs' | 'vias' | 'fills') => {
+		for (const p of prims ?? []) {
+			let pid = '';
+			try {
+				pid = p.getState_PrimitiveId();
+				if (!matches(String(p.getState_Net() ?? ''), pid)) continue;
+				if (p.getState_PrimitiveLock() === locked) { counts[kind]++; continue; } // already in the desired state
+				p.setState_PrimitiveLock(locked);
+				await p.done(); // pending state does not hit the canvas without done() (the #134 lesson)
+				counts[kind]++;
+			}
+			catch {
+				failures.push(pid || kind);
+			}
+		}
+	};
+	await apply(lines as never, 'lines');
+	await apply(arcs as never, 'arcs');
+	await apply(vias as never, 'vias');
+	await apply(fills as never, 'fills');
+	return { result: { locked, counts, total: counts.lines + counts.arcs + counts.vias + counts.fills, failures } };
+};
+
 const pcbRouteRipUp: Handler = async (payload) => {
 	// Optional net filter (string or string[]); no net → rip up ALL routing.
 	const rawNet = payload.net ?? payload.nets;
@@ -7729,6 +7794,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.line.list': pcbLineList,
 	'pcb.via.list': pcbViaList,
 	'pcb.route.rip_up': pcbRouteRipUp,
+	'pcb.track.lock': pcbTrackLock,
 	'pcb.route.delete': pcbRouteDelete,
 	'pcb.route.via_hop': pcbRouteViaHop,
 	'pcb.clear_routing': pcbClearRouting,

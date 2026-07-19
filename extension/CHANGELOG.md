@@ -6,6 +6,16 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-07-19
+
+### Added
+- **#127 `pcb.track.lock`**:按 net(string 或 string[])和/或 primitiveIds 批量**锁定/解锁**
+  铜皮布线图元(track/arc/via)。P7.0 关键网络先行流程的最后一步——电源+差分先布好后锁定,
+  后续自动布线/rip-up 动不了(rip_up 本就跳过 locked)。拒绝空过滤(不隐式锁全板);幂等
+  (已处于目标状态的只计数不重写);逐图元 `setState_PrimitiveLock` + `done()`(#134 教训)。
+  CLI 侧配套:`pcb track-lock` 子命令 + `pcb route-critical`(电源铺铜→差分成对布线+skew
+  实测→锁定,一条命令承载 design-flow P7.0)。
+
 ## [0.15.1] - 2026-07-19
 
 ### Fixed

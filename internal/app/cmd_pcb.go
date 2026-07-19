@@ -1171,11 +1171,12 @@ netless-via-in-pad so you know when it is needed.`,
 	// ── track-lock (lock/unlock routed copper) ─────────────────────────────
 	// The foundation of the P7.0 critical-net-first flow: route power + diff/
 	// length nets ourselves, LOCK them, THEN hand the rest to the human's native
-	// auto-route (which — like pour-rebuild — leaves locked copper alone). Sets
-	// primitiveLock on tracks (pcb_PrimitiveLine) + vias + net-bound fills via
-	// `.modify(id,{primitiveLock:true})` (verified live: false→true persists).
-	// Debug-exec backed → no connector re-import. Pours (覆铜, meant to reflow)
-	// are never touched; the board outline (net="") is skipped by the net filter.
+	// auto-route (which — like pour-rebuild — leaves locked copper alone).
+	// Graduated from the debug.exec_js hatch to the typed `pcb.track.lock`
+	// action (#127, connector 0.15.2 — the exec_js→typed→Cobra dev loop):
+	// tracks + arcs (beautify corners, which the JS version missed) + vias +
+	// net-bound fills. Pours (覆铜, meant to reflow) are never touched; the
+	// board outline (net="") is skipped by the --all net filter.
 	{
 		var nets, ids []string
 		var all, unlock, noFills bool
@@ -1213,9 +1214,17 @@ blocks) are included by default; --no-fills locks only tracks + vias. Pours
 				if modes != 1 {
 					return fmt.Errorf("pass EXACTLY ONE of --net, --ids, or --all")
 				}
-				return dispatchTimed(cfg, "debug.exec_js", window,
-					map[string]any{"code": trackLockJS(nets, ids, all, unlock, !noFills)},
-					40*time.Second, stdout, stderr)
+				payload := map[string]any{"locked": !unlock, "includeFills": !noFills}
+				if len(nets) > 0 {
+					payload["net"] = nets
+				}
+				if len(ids) > 0 {
+					payload["primitiveIds"] = ids
+				}
+				if all {
+					payload["all"] = true
+				}
+				return dispatch(cfg, "pcb.track.lock", window, payload, stdout, stderr)
 			},
 		}
 		c.Flags().StringSliceVar(&nets, "net", nil, "lock copper on these net(s); repeat or comma-separate")
@@ -1930,6 +1939,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	pcb.AddCommand(newPcbStageSnapshotCmd(cfg, &window, stdout, stderr))
 	pcb.AddCommand(newPcbStageCmd(cfg, &window, stdout, stderr))
 	pcb.AddCommand(newPcbZonesCmd(cfg, &window, stdout, stderr))
+	pcb.AddCommand(newPcbRouteCriticalCmd(cfg, &window, stdout, stderr))
 	// ── autoroute: one-command Freerouting round-trip ────────────────────────
 	// export DSN → run an external Freerouting engine → import the routed SES → DRC.
 	// The engine is external (Freerouting needs Java 17+); decoupled via a command
@@ -3681,52 +3691,6 @@ func asBool(v any) bool {
 // takes the BARE config content (passing the {name, config} wrapper from
 // getCurrentRuleConfiguration silently no-ops), and system presets are
 // immutable (a successful write turns the board's config into 自定义配置).
-// trackLockJS builds the debug.exec_js body that sets primitiveLock on routed
-// copper. Scope is one of: by-id (IDS), by-net (NETS, case-insensitive), or --all
-// (any track/via/fill that carries a net; net="" = board outline, skipped). Pours
-// are never enumerated. Each primitive type modifies via its own namespace; a
-// per-item try/catch means an unlockable primitive is counted as *_err, not fatal.
-func trackLockJS(nets, ids []string, all, unlock, includeFills bool) string {
-	lower := make([]string, len(nets))
-	for i, n := range nets {
-		lower[i] = strings.ToLower(strings.TrimSpace(n))
-	}
-	if ids == nil {
-		ids = []string{} // marshal to [] not null → clean `new Set([])`
-	}
-	netsJSON, _ := json.Marshal(lower)
-	idsJSON, _ := json.Marshal(ids)
-	return fmt.Sprintf(`
-const NETS = new Set(%s);
-const IDS = new Set(%s);
-const ALL = %t;
-const LOCK = %t;
-const INCLUDE_FILLS = %t;
-function netOf(p){ try { return (p.getState_Net ? (p.getState_Net() || '') : ''); } catch(e){ return ''; } }
-function want(p){
-  const id = p.getState_PrimitiveId();
-  if (IDS.size) return IDS.has(id);
-  const net = netOf(p);
-  if (NETS.size) return NETS.has(net.toLowerCase());
-  return ALL && net !== '';
-}
-async function pass(getter, modifier, label, counts){
-  let prims;
-  try { prims = await getter(); } catch(e){ return; }
-  for (const p of (prims || [])){
-    if (!want(p)) continue;
-    try { await modifier(p.getState_PrimitiveId(), {primitiveLock: LOCK}); counts[label] = (counts[label]||0) + 1; }
-    catch(e){ counts[label+'_err'] = (counts[label+'_err']||0) + 1; }
-  }
-}
-const counts = {};
-await pass(()=>eda.pcb_PrimitiveLine.getAll(), (id,pr)=>eda.pcb_PrimitiveLine.modify(id,pr), 'track', counts);
-await pass(()=>eda.pcb_PrimitiveVia.getAll(),  (id,pr)=>eda.pcb_PrimitiveVia.modify(id,pr),  'via',   counts);
-if (INCLUDE_FILLS) await pass(()=>eda.pcb_PrimitiveFill.getAll(), (id,pr)=>eda.pcb_PrimitiveFill.modify(id,pr), 'fill', counts);
-const total = (counts.track||0) + (counts.via||0) + (counts.fill||0);
-return JSON.stringify({ action: LOCK ? 'lock' : 'unlock', total, ...counts });
-`, string(netsJSON), string(idsJSON), all, !unlock, includeFills)
-}
 
 func pourClearanceRaiseJS(mil float64) string {
 	mm := mil * 0.0254
