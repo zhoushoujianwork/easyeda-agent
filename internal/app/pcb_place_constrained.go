@@ -357,7 +357,20 @@ func bestConnDelta(c cpComp, edge apEdge) (delta, score float64) {
 
 type cpHole struct{ x, y, r float64 }
 
+// cpZoneClaim binds a designator to its functional zone's board sub-rect
+// (issue #126: S0 modules[].zone made executable at P2).
+type cpZoneClaim struct {
+	rect   cpRect
+	module string
+	zone   string
+}
+
 type cpOptions struct {
+	// zones maps UPPER-case designator → zone claim. Mains/satellites with a
+	// claim are placed INTO the rect; edge-must parts are exempt (the board
+	// edge is a harder constraint than the zone — an interface connector's
+	// zone is advisory only).
+	zones map[string]cpZoneClaim
 	mainPins   int
 	edgeMargin float64 // gap between an edge part's bbox and the board edge
 	partGap    float64 // clearance between any two parts / part-to-hole
@@ -415,6 +428,58 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 	addFixed := func(r cpRect, layer int) {
 		placed = append(placed, r)
 		lplaced = append(lplaced, lrect{r, layer})
+	}
+	clashFixed := func(r cpRect, layer int) bool {
+		for _, h := range holes { // holes cut every layer
+			if (cpRect{h.x - h.r, h.y - h.r, h.x + h.r, h.y + h.r}).overlaps(r) {
+				return true
+			}
+		}
+		for _, lr := range lplaced {
+			if lr.layer == layer && lr.cpRect.overlaps(r) {
+				return true
+			}
+		}
+		return false
+	}
+	inside := func(r cpRect) bool {
+		return !(r.x0 < bx0-20 || r.y0 < by0-20 || r.x1 > bx1+20 || r.y1 > by1+20)
+	}
+	// Zone claims (issue #126): resolve a component's functional zone, if any.
+	zoneFor := func(c cpComp) (cpZoneClaim, bool) {
+		if opt.zones == nil {
+			return cpZoneClaim{}, false
+		}
+		z, ok := opt.zones[strings.ToUpper(c.designator)]
+		return z, ok
+	}
+	rectInsideZone := func(r cpRect, z cpRect) bool {
+		return !(r.x0 < z.x0-20 || r.y0 < z.y0-20 || r.x1 > z.x1+20 || r.y1 > z.y1+20)
+	}
+	// spiralIn finds the nearest non-clashing on-board spot for a hw×hh part,
+	// starting at (sx,sy), optionally constrained to zone rect z.
+	spiralIn := func(sx, sy, hw, hh float64, layer int, z *cpRect) (float64, float64, bool) {
+		for rad := 0.0; rad <= 2200; rad += 25 {
+			steps := 1
+			if rad > 0 {
+				steps = 24
+			}
+			for s := 0; s < steps; s++ {
+				ang := float64(s) * math.Pi / 12
+				px, py := sx+rad*math.Cos(ang), sy+rad*math.Sin(ang)
+				r := cpRect{px - hw - m, py - hh - m, px + hw + m, py + hh + m}
+				if !inside(r) {
+					continue
+				}
+				if z != nil && !rectInsideZone(r, *z) {
+					continue
+				}
+				if !clashFixed(r, layer) {
+					return px, py, true
+				}
+			}
+		}
+		return 0, 0, false
 	}
 
 	// Classify.
@@ -546,6 +611,11 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 		}
 		if alongCenter != nil {
 			reason += ":grouped"
+		}
+		if z, hasZone := zoneFor(c); hasZone {
+			// The board edge is a harder constraint than the functional zone —
+			// an interface connector's zone claim is advisory (issue #126).
+			reason += ":zone-exempt(" + z.module + ")"
 		}
 		diags = append(diags, apDiag{Designator: c.designator, Reason: reason})
 	}
@@ -684,9 +754,28 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 	// spot (e.g. a bus-terminal jumper beside its resistor). Like a main chip we
 	// leave it where it is and add it to the fixed set, so the Tier-4 spiral can
 	// never fling it to a corner.
+	//
+	// Zone-claimed mains (issue #126) that sit OUTSIDE their functional zone are
+	// relocated into it first (spiral from the zone center) — S0's partitioning
+	// beats "keep where imported". A main already inside its zone is untouched.
 	for i, c := range comps {
 		if (kinds[i] != cpMainChip && kinds[i] != cpAnchored) || !c.hasBBox {
 			continue
+		}
+		cx, cy := c.bboxCenter()
+		hw, hh := c.width()/2, c.height()/2
+		if z, hasZone := zoneFor(c); hasZone {
+			if !(cx >= z.rect.x0 && cx <= z.rect.x1 && cy >= z.rect.y0 && cy <= z.rect.y1) {
+				zcx, zcy := (z.rect.x0+z.rect.x1)/2, (z.rect.y0+z.rect.y1)/2
+				if px, py, ok := spiralIn(zcx, zcy, hw, hh, c.layer, &z.rect); ok {
+					addFixed(cpRect{px - hw - m, py - hh - m, px + hw + m, py + hh + m}, c.layer)
+					moves = append(moves, apMove{ID: c.id, Designator: c.designator,
+						NewX: round1(c.x + (px - cx)), NewY: round1(c.y + (py - cy)), Edge: "zone:" + z.zone})
+					diags = append(diags, apDiag{Designator: c.designator, Reason: "main:zoned:" + z.module})
+					continue
+				}
+				diags = append(diags, apDiag{Designator: c.designator, Reason: "main:zone-no-fit:" + z.module})
+			}
 		}
 		addFixed(cpRect{c.minX - m, c.minY - m, c.maxX + m, c.maxY + m}, c.layer)
 		reason := "main:fixed"
@@ -708,22 +797,6 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 		ca, cb := comps[satIdx[a]], comps[satIdx[b]]
 		return ca.width()*ca.height() > cb.width()*cb.height()
 	})
-	clashFixed := func(r cpRect, layer int) bool {
-		for _, h := range holes { // holes cut every layer
-			if (cpRect{h.x - h.r, h.y - h.r, h.x + h.r, h.y + h.r}).overlaps(r) {
-				return true
-			}
-		}
-		for _, lr := range lplaced {
-			if lr.layer == layer && lr.cpRect.overlaps(r) {
-				return true
-			}
-		}
-		return false
-	}
-	inside := func(r cpRect) bool {
-		return !(r.x0 < bx0-20 || r.y0 < by0-20 || r.x1 > bx1+20 || r.y1 > by1+20)
-	}
 	// Net-aware seed source: pads of the FIXED, NON-MOVED parts (mains + anchored).
 	// Tier-2 edge parts DID move, so their pad coords are stale — exclude them.
 	// A satellite that must be relocated is seeded near its nearest electrically-
@@ -775,48 +848,52 @@ func planConstrainedPlace(comps []cpComp, holes []cpHole, opt cpOptions) ([]apMo
 		}
 		cx0, cy0 := c.bboxCenter()
 		hw, hh := c.width()/2, c.height()/2
+		z, hasZone := zoneFor(c)
+		inZone := func(r cpRect) bool { return !hasZone || rectInsideZone(r, z.rect) }
 		// Keep a well-placed satellite EXACTLY where it is (no gratuitous moves —
-		// don't disturb a hand-placed layout). Only relocate one that clashes.
+		// don't disturb a hand-placed layout). Only relocate one that clashes —
+		// or one sitting outside its claimed functional zone (issue #126).
 		cur := cpRect{cx0 - hw - m, cy0 - hh - m, cx0 + hw + m, cy0 + hh + m}
-		if inside(cur) && !clashFixed(cur, c.layer) {
+		if inside(cur) && !clashFixed(cur, c.layer) && inZone(cur) {
 			addFixed(cur, c.layer)
 			continue
 		}
 		// Must relocate. A pure satellite (decoupling cap / resistor) is seeded near
 		// its chip (nearest shared-net fixed pad) so it clusters there; a USER-FACING
 		// part (LED / button) is NOT net-hugged — it should stay where it is visible
-		// / accessible, so it just spirals out from its current position.
+		// / accessible, so it just spirals out from its current position. A zone
+		// claim clamps the seed into the zone so the spiral starts inside it.
 		seedX, seedY := cx0, cy0
 		if kinds[i] == cpSatellite {
 			if sx, sy, ok := netSeed(c, cx0, cy0); ok {
 				seedX, seedY = sx, sy
 			}
 		}
-		var best *[2]float64
-		for rad := 0.0; rad <= 2200 && best == nil; rad += 25 {
-			steps := 1
-			if rad > 0 {
-				steps = 24
-			}
-			for s := 0; s < steps; s++ {
-				ang := float64(s) * math.Pi / 12
-				px, py := seedX+rad*math.Cos(ang), seedY+rad*math.Sin(ang)
-				r := cpRect{px - hw - m, py - hh - m, px + hw + m, py + hh + m}
-				if !inside(r) {
-					continue
-				}
-				if !clashFixed(r, c.layer) {
-					best = &[2]float64{px, py}
-					break
-				}
+		if hasZone {
+			seedX = math.Max(z.rect.x0+hw+m, math.Min(z.rect.x1-hw-m, seedX))
+			seedY = math.Max(z.rect.y0+hh+m, math.Min(z.rect.y1-hh-m, seedY))
+		}
+		var zrect *cpRect
+		if hasZone {
+			zrect = &z.rect
+		}
+		px, py, ok := spiralIn(seedX, seedY, hw, hh, c.layer, zrect)
+		if !ok && hasZone {
+			// Zone full — better placed outside the zone than stranded off-board.
+			// Loud diag: pcb check's zone-violation will keep flagging it.
+			px, py, ok = spiralIn(seedX, seedY, hw, hh, c.layer, nil)
+			if ok {
+				diags = append(diags, apDiag{Designator: c.designator, Reason: "satellite:zone-overflow:" + z.module})
 			}
 		}
-		if best == nil {
+		if !ok {
 			diags = append(diags, apDiag{Designator: c.designator, Reason: "satellite:no-fit"})
 			continue
 		}
-		px, py := best[0], best[1]
 		addFixed(cpRect{px - hw - m, py - hh - m, px + hw + m, py + hh + m}, c.layer)
+		if hasZone {
+			diags = append(diags, apDiag{Designator: c.designator, Reason: "satellite:zoned:" + z.module})
+		}
 		dx, dy := px-cx0, py-cy0
 		if math.Abs(dx) > 1 || math.Abs(dy) > 1 {
 			moves = append(moves, apMove{ID: c.id, Designator: c.designator, NewX: round1(c.x + dx), NewY: round1(c.y + dy), Edge: kinds[i].String()})

@@ -169,8 +169,54 @@ type State struct {
 	// those parts, so tiers invalidate independently: moving a satellite kills
 	// tier 4 only, tiers 1–3 sign-offs survive.
 	PlacementTiers map[int]*TierConfirm `json:"placementTiers,omitempty"`
-	History        []Event              `json:"history,omitempty"`
-	UpdatedAt      string               `json:"updatedAt"`
+	// Zones are the S0 spec's functional-zone claims (issue #126): module name →
+	// {grid zone, designators}. Consumed by `pcb place-constrained` (parts placed
+	// into their zone's board sub-rect) and `pcb check`'s zone-violation rule.
+	Zones     map[string]*ZoneClaim `json:"zones,omitempty"`
+	History   []Event               `json:"history,omitempty"`
+	UpdatedAt string                `json:"updatedAt"`
+}
+
+// ZoneClaim is one functional zone's part claim (issue #126): the S0 spec's
+// modules[].zone made executable. Keyed by module name in State.Zones; the zone
+// value is a shared grid name (left/right/top/bottom/center and their -top/-bottom
+// combos — same vocabulary the schematic autolayout uses), resolved to a board
+// sub-rectangle at check/placement time from the LIVE outline. Zones are a spec
+// contract, not a placement state: they survive placement invalidations and are
+// only removed by `pcb zones clear` / re-set.
+type ZoneClaim struct {
+	Zone  string   `json:"zone"`
+	Parts []string `json:"parts"` // designators, upper-case, sorted
+	At    string   `json:"at"`
+	Note  string   `json:"note,omitempty"`
+}
+
+// SetZones replaces the zone claim table (module name → claim).
+func (s *State) SetZones(z map[string]*ZoneClaim) {
+	s.Zones = z
+	s.History = append(s.History, Event{
+		Stage: "zones", At: time.Now().Format(time.RFC3339), Action: "confirm",
+		Note: fmt.Sprintf("%d module zone claim(s)", len(z)),
+	})
+}
+
+// ZoneOf resolves a designator to (module, zone). Case-insensitive.
+func (s *State) ZoneOf(designator string) (module, zone string, ok bool) {
+	if s == nil {
+		return "", "", false
+	}
+	u := strings.ToUpper(strings.TrimSpace(designator))
+	for name, zc := range s.Zones {
+		if zc == nil {
+			continue
+		}
+		for _, d := range zc.Parts {
+			if strings.ToUpper(d) == u {
+				return name, zc.Zone, true
+			}
+		}
+	}
+	return "", "", false
 }
 
 // TierConfirm is one placement tier's recorded sign-off (issue #125).

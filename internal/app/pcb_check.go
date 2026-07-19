@@ -211,6 +211,7 @@ type pcbCheckSummary struct {
 	ViaInPad          int `json:"viaInPad"`
 	CopperNearEdge    int `json:"copperNearEdge"`
 	FiducialMissing   int `json:"fiducialMissing"`
+	ZoneViolation     int `json:"zoneViolation"`
 	Errors            int `json:"errors"`
 	Warnings          int `json:"warnings"`
 	Total             int `json:"total"`
@@ -1709,6 +1710,25 @@ func gatherPcbCheckReport(cfg *appConfig, window string, couplingW float64, stde
 			for _, f := range findCopperNearEdge(tracks, vias, outline, edgeClr) {
 				rep.Findings = append(rep.Findings, f)
 				rep.Summary.CopperNearEdge++
+				rep.Summary.Warnings++
+				rep.Summary.Total++
+			}
+			rep.Passed = rep.Summary.Total == 0
+		}
+	}
+
+	// Zone-violation is a LIVE-only rule (issue #126): claimed parts must sit in
+	// their S0 functional zone's board sub-rect. Only runs when the project has
+	// zone claims (`pcb zones set`); degrades gracefully on any fetch failure.
+	if zones, _, zerr := loadZoneClaims(cfg, window); zerr == nil && len(zones) > 0 {
+		if board, berr := fetchBoardRect(cfg, window); berr != nil {
+			fmt.Fprintf(stderr, "warning: zone-violation check skipped (%v)\n", berr)
+		} else if parts, perr := fetchZoneParts(cfg, window); perr != nil {
+			fmt.Fprintf(stderr, "warning: zone-violation check skipped (%v)\n", perr)
+		} else {
+			for _, f := range findZoneViolations(zones, board, parts) {
+				rep.Findings = append(rep.Findings, f)
+				rep.Summary.ZoneViolation++
 				rep.Summary.Warnings++
 				rep.Summary.Total++
 			}

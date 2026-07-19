@@ -1929,6 +1929,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	// ── stage-snapshot: recording/demo stage capture (snapshot + data bundle) ──
 	pcb.AddCommand(newPcbStageSnapshotCmd(cfg, &window, stdout, stderr))
 	pcb.AddCommand(newPcbStageCmd(cfg, &window, stdout, stderr))
+	pcb.AddCommand(newPcbZonesCmd(cfg, &window, stdout, stderr))
 	// ── autoroute: one-command Freerouting round-trip ────────────────────────
 	// export DSN → run an external Freerouting engine → import the routed SES → DRC.
 	// The engine is external (Freerouting needs Java 17+); decoupled via a command
@@ -2224,6 +2225,26 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 					opt.board = &cpRect{r[0], r[1], r[2], r[3]}
 					boardSrc = "board-outline"
 				}
+				// Functional zone claims (issue #126): resolve each claimed
+				// designator to its zone's board sub-rect. Best-effort — no
+				// claims (or no outline to partition) just means no zone
+				// constraint, exactly the pre-#126 behavior.
+				zoneSrc := "none"
+				if opt.board != nil {
+					if claims, _, zerr := loadZoneClaims(cfg, window); zerr == nil && len(claims) > 0 {
+						opt.zones = map[string]cpZoneClaim{}
+						for module, zc := range claims {
+							rect, ok := pcbZoneRect(zc.Zone, *opt.board)
+							if !ok {
+								continue
+							}
+							for _, d := range zc.Parts {
+								opt.zones[strings.ToUpper(d)] = cpZoneClaim{rect: rect, module: module, zone: zc.Zone}
+							}
+						}
+						zoneSrc = fmt.Sprintf("%d module(s), %d claimed part(s)", len(claims), len(opt.zones))
+					}
+				}
 				moves, diags := planConstrainedPlace(comps, holes, opt)
 
 				applied := 0
@@ -2254,8 +2275,8 @@ A SEED — verify with 'pcb layout-lint'. --dry-run prints the plan.
 				out := map[string]any{
 					"ok": true, "dryRun": dryRun, "holes": len(holes),
 					"planned": len(moves), "applied": applied,
-					"boardEdges": boardSrc,
-					"moves":      moves, "diags": diags, "failures": failures,
+					"boardEdges": boardSrc, "zones": zoneSrc,
+					"moves": moves, "diags": diags, "failures": failures,
 				}
 				if opt.board != nil {
 					out["board"] = map[string]any{"x0": opt.board.x0, "y0": opt.board.y0, "x1": opt.board.x1, "y1": opt.board.y1}
