@@ -71,4 +71,4 @@
 ## 4. 已覆盖 — 验证方向正确
 
 - **eext-netlist-explorer** (✅full):其核心数据源 `sch_ManufactureData.getNetlistFile()` 与我们 `sch read`/`sch check`/`sch netlist` 完全同一权威 API——证明我们的 netlist 语义快照选对了源头,剩余差异全是我们刻意不做的 web 可视化。
-- **eext-run-api-gateway** (✅full):官方 WS 桥端口扫描 49620-49629 + `/health` 握手 + 心跳重连,与我们 `transport.ts` + Go daemon (`/health`/`/eda`/`/action`) **逐字撞型**。我们当年刻意自建 (connector-architecture-decision),并在其上叠 20 typed actions + Cobra CLI + skill——是它面向 agent 的严格超集。这两个 full 项证明:**架构选型与权威数据源都押对了**。
+- **eext-run-api-gateway** (✅full):官方 WS 桥端口扫描 49620-49629 + `/health` 握手 + 心跳重连,与我们 `transport.ts` + Go daemon (`/health`/`/eda`/`/action`) **逐字撞型**。⚠撞型也撞端口:两家外部工具会抢同一个 49620 绑定——**0.15.0 起我们已迁到专属段 `60832-60841`(`0xEDA0`-`0xEDA9`)**,彻底避开。我们当年刻意自建 (connector-architecture-decision),并在其上叠 20 typed actions + Cobra CLI + skill——是它面向 agent 的严格超集。这两个 full 项证明:**架构选型与权威数据源都押对了**。

@@ -2,7 +2,7 @@
  * EasyEDA Agent Connector — extension entry point.
  *
  * Bridges the easyeda-agent Go daemon to the official `eda.*` API over a local
- * WebSocket. On startup it scans ports 49620-49629, validates the daemon
+ * WebSocket. On startup it scans ports 60832-60841 (0xEDA0-0xEDA9), validates the daemon
  * handshake (service "easyeda-agent"), registers a windowId, sends context, and
  * keeps a heartbeat. Incoming `request` frames are dispatched to typed actions
  * (see ./actions) and answered with `response` frames.

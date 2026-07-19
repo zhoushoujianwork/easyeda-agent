@@ -8,8 +8,13 @@
  *
  *   ┌──────────────┐   WebSocket    ┌──────────────────┐
  *   │ easyeda-agent │ ◄───────────► │  this connector   │
- *   │  Go daemon    │  49620-49629  │  (EasyEDA Pro)    │
+ *   │  Go daemon    │  60832-60841  │  (EasyEDA Pro)    │
  *   └──────────────┘                └──────────────────┘
+ *
+ * Port range is 0xEDA0-0xEDA9 (60832-60841) — "EDA" spelled in hex, and
+ * deliberately far from 49620-49629, which the OFFICIAL eext-run-api-gateway
+ * scans (we originally copied that convention; two ecosystems fighting over
+ * one port bind was the result — see docs/ecosystem-survey.md).
  */
 
 import { buildContextFrame, readEasyEdaVersion } from './eda-context';
@@ -31,8 +36,8 @@ import {
 // ─── Configuration ───────────────────────────────────────────────────
 
 const WS_ID = 'easyeda-agent';
-const PORT_START = 49620;
-const PORT_END = 49629;
+const PORT_START = 0xeda0; // 60832 — "EDA0" in hex; own range, no official-gateway conflict
+const PORT_END = 0xeda9; // 60841
 const RETRY_DELAY_MS = 3000;
 // After MAX_RETRIES fast attempts we DON'T give up — we fall back to this slow
 // background poll so a daemon started/restarted later auto-reconnects with no

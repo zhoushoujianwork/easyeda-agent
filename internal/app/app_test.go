@@ -33,11 +33,11 @@ func TestRunUnknownCommand(t *testing.T) {
 }
 
 func TestParsePortRange(t *testing.T) {
-	start, end, err := parsePortRange("49620-49629")
+	start, end, err := parsePortRange("60832-60841")
 	if err != nil {
 		t.Fatalf("parsePortRange returned error: %v", err)
 	}
-	if start != 49620 || end != 49629 {
+	if start != 60832 || end != 60841 {
 		t.Fatalf("unexpected range: %d-%d", start, end)
 	}
 }

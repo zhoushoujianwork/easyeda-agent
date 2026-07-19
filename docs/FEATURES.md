@@ -275,7 +275,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
     daemon-free — the local companion to the JSON, like `parts-select.py` is for
     parts. Schematic instantiation is the phase-2 write path (see Roadmap →
     `sch block apply`).
-- **Connector self-healing reconnect** — the connector port-scans 49620-49629,
+- **Connector self-healing reconnect** — the connector port-scans 60832-60841,
   validates a handshake, and reconnects on liveness loss. It **never permanently
   gives up**: after 5 fast retries it drops to a quiet 10s background poll, so a
   daemon started/restarted later auto-reconnects with no manual action. A

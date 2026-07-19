@@ -36,7 +36,7 @@ for a in "$@"; do
 done
 PROJ="${POS[0]:-ceshi}"
 HOST="${POS[1]:-127.0.0.1}"
-PS="${POS[2]:-49620}"; PE="${POS[3]:-49629}"
+PS="${POS[2]:-60832}"; PE="${POS[3]:-60841}"
 
 STORE="${EASYEDA_LINT_DIR:-$HOME/.easyeda-agent/lint}/$PROJ"
 SNAP="$STORE/snapshot.json"

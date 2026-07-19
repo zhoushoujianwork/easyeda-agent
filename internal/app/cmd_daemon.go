@@ -59,10 +59,10 @@ dirs that already exist, honors EASYEDA_SKILL_PRESERVE=1, and logs each change.
 The EasyEDA connector .eext has no sideload auto-update (marketplace-only), so a
 stale connector is only DETECTED and logged with a re-import notice — not swapped.
 
-The daemon binds a SINGLE fixed port (49620, the start of --ports) and never
+The daemon binds a SINGLE fixed port (60832, the start of --ports) and never
 spills to the next one — so at most one daemon ever runs and the connector always
 finds it there, instead of several daemons quietly binding 49621/49622… and the
-connector churning between them. If 49620 is already held by another easyeda
+connector churning between them. If 60832 is already held by another easyeda
 daemon it is replaced automatically; if held by a FOREIGN process the daemon asks
 (interactive terminal) or refuses with a clear message (headless) rather than
 starting a second daemon elsewhere.`,
@@ -76,11 +76,11 @@ starting a second daemon elsewhere.`,
 			if err != nil {
 				return err
 			}
-			// The daemon uses a SINGLE fixed port (the start of the range, 49620) —
+			// The daemon uses a SINGLE fixed port (the start of the range, 60832) —
 			// it never spills to the next port. That guarantees at most one daemon
-			// runs and the connector always finds it on 49620, instead of multiple
+			// runs and the connector always finds it on 60832, instead of multiple
 			// daemons quietly binding 49621/49622… and the connector churning between
-			// them. If 49620 is already held, ensurePortAvailable replaces our own
+			// them. If 60832 is already held, ensurePortAvailable replaces our own
 			// stale daemon automatically, or (for a foreign process) asks / refuses.
 			port := portStart
 			if err := ensurePortAvailable(cfg.host, port, stdout); err != nil {

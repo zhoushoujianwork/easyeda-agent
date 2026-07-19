@@ -66,7 +66,7 @@ make dev                 # air live-reload; leave running in a terminal
 ./bin/easyeda daemon health   # status=found; windows[] empty until a connector attaches
 ```
 
-The daemon listens on `127.0.0.1:49620-49629` and speaks the handshake in
+The daemon listens on `127.0.0.1:60832-60841` (`0xEDA0`-`0xEDA9`) and speaks the handshake in
 [connector-contract.md](connector-contract.md).
 
 ## 2. Open a project (this step is manual)
@@ -219,14 +219,14 @@ lands at IndexedDB key `<uuid>|dist/index.js`. Mind that offset.
 - **Network blocks a git host** (e.g. a corporate gateway blocking a mirror) —
   clone from a machine with open egress (a cloud VM) and copy the tree back.
 - **Connector port-scans forever (`WebSocket ... closed before ... established`
-  on every port 49620–49629), `daemon health` shows a daemon but `windows: 0`** —
+  on every port 60832–60841), `daemon health` shows a daemon but `windows: 0`** —
   usually TWO daemons fighting over the port: `air` restarted the daemon after a
   `.go` edit but a previous instance lingered, so `/health` answers on the port
   while the other instance's `/eda` WebSocket never completes the handshake.
   Diagnose + fix:
   ```bash
   pgrep -fl "easyeda daemon"          # >1 line = orphans fighting
-  lsof -iTCP:49620 -sTCP:LISTEN -n    # which PID owns the port
+  lsof -iTCP:60832 -sTCP:LISTEN -n    # which PID owns the port
   pkill -f "easyeda daemon"; sleep 2  # kill all, then start ONE clean:
   nohup ./bin/easyeda daemon start > /tmp/easyeda-daemon.log 2>&1 &
   ```

@@ -16,9 +16,12 @@ import (
 )
 
 const (
-	defaultHost      = "127.0.0.1"
-	defaultPortStart = 49620
-	defaultPortEnd   = 49629
+	defaultHost = "127.0.0.1"
+	// 0xEDA0-0xEDA9 — "EDA" spelled in hex. Deliberately NOT 49620-49629: that
+	// range is what the OFFICIAL eext-run-api-gateway ecosystem scans (we had
+	// copied its convention), so both sides raced to bind the same port.
+	defaultPortStart = 0xeda0 // 60832
+	defaultPortEnd   = 0xeda9 // 60841
 )
 
 // defaultActionTimeout bounds how long the CLI waits for a single /action
@@ -36,7 +39,7 @@ var errActionFailed = errors.New("action returned ok=false")
 // flags so they are populated before any RunE executes.
 type appConfig struct {
 	host    string
-	ports   string // "49620-49629"
+	ports   string // "60832-60841"
 	project string // optional stable routing hint (project name/uuid) → windowId
 	// forceReason, when set by a route command's --force <reason>, is attached to
 	// every action request so the daemon-side workflow stage gate honors the same

@@ -41,7 +41,7 @@ EASYEDA_SKILL_PRESERVE=1             ... | sh   # 升级时保留本地改动
 easyeda daemon start        # 前台阻塞运行,Ctrl-C 退出;建议单开一个终端常驻
 ```
 
-daemon 会在端口段 `49620-49629` 监听,连接器会自动端口扫描并握手连上。
+daemon 会在端口段 `60832-60841`(`0xEDA0`-`0xEDA9`)监听,连接器会自动端口扫描并握手连上。
 
 ### 3. 导入连接器 `.eext`
 

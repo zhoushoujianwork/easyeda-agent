@@ -17,7 +17,7 @@ func TestHealthHandler(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	srv.routes(49620).ServeHTTP(rec, req)
+	srv.routes(60832).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -30,8 +30,8 @@ func TestHealthHandler(t *testing.T) {
 	if body.Service != Service {
 		t.Fatalf("expected service %q, got %q", Service, body.Service)
 	}
-	if body.Port != 49620 {
-		t.Fatalf("expected reported port 49620, got %d", body.Port)
+	if body.Port != 60832 {
+		t.Fatalf("expected reported port 60832, got %d", body.Port)
 	}
 	if body.Version != "0.1.0-test" {
 		t.Fatalf("unexpected version: %q", body.Version)
@@ -46,7 +46,7 @@ func TestHealthHandlerRejectsNonGet(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/health", nil)
-	srv.routes(49620).ServeHTTP(rec, req)
+	srv.routes(60832).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", rec.Code)

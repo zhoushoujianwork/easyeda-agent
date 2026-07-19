@@ -6,7 +6,7 @@ running inside EasyEDA, which calls the official `eda.*` API.
 
 ```
 skill ──▶ Go CLI/daemon ──WebSocket──▶ connector .eext ──▶ eda.* API
-          (typed actions)   49620-49629   (in EasyEDA Pro)
+          (typed actions)   60832-60841   (in EasyEDA Pro)
 ```
 
 ## 官方插件库调研参考
@@ -64,7 +64,7 @@ on `main` by default (user preference). Don't `git checkout -b`; just commit to
 ## Dev workflow
 
 **Keep the daemon hot-reloading while you work** (rebuilds + restarts on any `.go`
-change; the connector auto-reconnects because it port-scans 49620-49629 in the
+change; the connector auto-reconnects because it port-scans 60832-60841 in the
 background):
 
 ```bash
