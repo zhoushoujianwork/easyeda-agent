@@ -22,6 +22,11 @@
 字段完整定义见 `internal/blocks/data/_schema.json`。核心段:`parts` / `internal_nets`
 / `ports` / `schematic_notes`(原理图链接注意)/ 元信息,外加一族**可拓展的约束 map**:
 
+- `schematic_layout` —— **原理图摆放模板**(`{note, roles: {<ROLE>: {dx,dy,rotation}}}`):
+  role 相对块原点(`--at`)的偏移+朝向,y 向下为正,**dx/dy 必须落 5 格**、rotation 限 0/90/180/270、
+  **必须覆盖块内全部 role**(部分覆盖是数据错误,`go test` 校验)。审美约定:信号流左入右出、
+  电源上 GND 下、去耦贴主芯片电源脚。有模板的块 `sch block-apply` 直接按模板落件;没有则退回
+  盲网格——**贡献新块请尽量带模板**(在真板上摆好一次,把实测相对坐标写回来)。
 - `pcb_layout` —— 通用布局规则(列表 `{rule,target,constraint,value,severity}`)。
 - `placement` —— **结构件摆放**(按 `<ROLE>` 键):连接器/端子/USB/天线/按键/指示灯等
   **要不要靠板边、靠哪条边(`edge`)、放哪个铜面(`side` top/bottom)**、朝向。

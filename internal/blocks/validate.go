@@ -137,7 +137,56 @@ func Validate(b Block) []error {
 	if b.Verification != nil {
 		validateVerification(b, add)
 	}
+	validateSchematicLayout(b, add)
 	return errs
+}
+
+// validSchLayoutRotations mirrors what schematic.component.place accepts.
+var validSchLayoutRotations = map[float64]bool{0: true, 90: true, 180: true, 270: true}
+
+// schLayoutGrid is the schematic placement grid (see app.schAnchorGrid): an
+// off-grid template offset would put every pin of that role off-grid and break
+// connect_pin stubs, so it is a data error, not a runtime surprise.
+const schLayoutGrid = 5
+
+// validateSchematicLayout checks the optional schematic placement template:
+// every referenced role must exist, every part role must be covered (a partial
+// template silently mixes template and fallback-grid geometry — an authoring
+// mistake), offsets must land on the placement grid, rotations must be legal.
+func validateSchematicLayout(b Block, add func(string, string)) {
+	layout, err := b.SchematicLayout()
+	if err != nil {
+		add("schematic_layout", err.Error())
+		return
+	}
+	if layout == nil {
+		return
+	}
+	if len(layout.Roles) == 0 {
+		add("schematic_layout.roles", "must contain at least one role")
+		return
+	}
+	onGrid := func(v float64) bool {
+		m := v / schLayoutGrid
+		return m == float64(int64(m))
+	}
+	for role, h := range layout.Roles {
+		field := "schematic_layout.roles." + role
+		if _, ok := b.Parts[role]; !ok {
+			add(field, "references unknown role")
+		}
+		if !onGrid(h.DX) || !onGrid(h.DY) {
+			add(field, fmt.Sprintf("offset (%g,%g) is off the %d-unit placement grid", h.DX, h.DY, schLayoutGrid))
+		}
+		if !validSchLayoutRotations[h.Rotation] {
+			add(field+".rotation", fmt.Sprintf("must be 0/90/180/270, got %g", h.Rotation))
+		}
+	}
+	for role := range b.Parts {
+		if _, ok := layout.Roles[role]; !ok {
+			add("schematic_layout.roles", fmt.Sprintf("role %q not covered — the template must place every part or be omitted", role))
+		}
+	}
 }
 
 // bom_note is prose, but a "共 N 件" claim inside it is a checkable fact: agents

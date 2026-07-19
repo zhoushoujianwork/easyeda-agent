@@ -19,6 +19,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -167,6 +168,19 @@ type bapPlacement struct {
 	LCSC        string  `json:"lcsc,omitempty"`
 	X           float64 `json:"x"`
 	Y           float64 `json:"y"`
+	Rotation    float64 `json:"rotation,omitempty"`
+	Source      string  `json:"layout,omitempty"` // "template" | "grid"
+}
+
+// bapOrigin records where the block actually landed vs where the caller asked,
+// so a silent auto-relocation never reads as "placed at --at".
+type bapOrigin struct {
+	RequestedX float64 `json:"requestedX"`
+	RequestedY float64 `json:"requestedY"`
+	X          float64 `json:"x"`
+	Y          float64 `json:"y"`
+	Relocated  bool    `json:"relocated"`
+	Reason     string  `json:"reason,omitempty"`
 }
 
 // bapNet is one internal net, resolved to placed-pin references.
@@ -184,8 +198,10 @@ type bapPlan struct {
 	BlockID    string         `json:"blockId"`
 	Revision   int            `json:"revision,omitempty"`
 	Instance   string         `json:"instance"`
+	Origin     *bapOrigin     `json:"origin,omitempty"`
 	Placements []bapPlacement `json:"placements"`
 	Nets       []bapNet       `json:"nets"`
+	Warnings   []string       `json:"warnings,omitempty"`
 	// Unconsumed names the block's constraint maps that this command does NOT
 	// execute, so a caller never reads a successful apply as "block fully honoured".
 	Unconsumed []string `json:"unconsumedConstraints,omitempty"`
@@ -206,6 +222,136 @@ type bapInput struct {
 	PerRow   int
 	Bind     map[string]string // PORT → host net
 	KindOver map[string]string // NET → flag kind override
+	// Layout is the block's schematic_layout template (nil → fallback grid).
+	Layout *blocks.SchematicLayout
+	// Obstacles are the existing parts' rendered bboxes on the active page; when
+	// present, the planner auto-relocates a colliding origin (unless AtExplicit).
+	Obstacles  []layoutBBox
+	AtExplicit bool // --at was passed explicitly: the origin is the caller's decision
+}
+
+// bapRoleOffset is one role's resolved offset from the block origin.
+type bapRoleOffset struct {
+	dx, dy, rot float64
+	source      string // "template" | "grid"
+}
+
+// bapPartMargin approximates half a typical small symbol's rendered extent
+// (schematic units) — used only to estimate the block's footprint rectangle for
+// origin collision avoidance, never for exact geometry (real bboxes exist only
+// after placement; `sch layout-lint` remains the post-placement ground truth).
+const bapPartMargin = 50
+
+// bapObstacleGap is the min edge-to-edge clearance the block's estimated
+// footprint keeps from existing parts (mirrors autolayout's PartGap).
+const bapObstacleGap = 20
+
+// bapRoleOffsets resolves every role to an offset: template roles use their
+// authored geometry; roles the template misses (or all roles, when there is no
+// template) fall back to the legacy grid — laid out BELOW the template extent so
+// the two never interleave.
+func bapRoleOffsets(roles []string, layout *blocks.SchematicLayout, spacing float64, perRow int) map[string]bapRoleOffset {
+	out := make(map[string]bapRoleOffset, len(roles))
+	tmplMaxDY := 0.0
+	hasTmpl := false
+	if layout != nil {
+		for _, role := range roles {
+			if h, ok := layout.Roles[role]; ok {
+				out[role] = bapRoleOffset{dx: h.DX, dy: h.DY, rot: h.Rotation, source: "template"}
+				hasTmpl = true
+				if h.DY > tmplMaxDY {
+					tmplMaxDY = h.DY
+				}
+			}
+		}
+	}
+	gridBaseY := 0.0
+	if hasTmpl {
+		gridBaseY = tmplMaxDY + spacing
+	}
+	gi := 0
+	for _, role := range roles {
+		if _, ok := out[role]; ok {
+			continue
+		}
+		out[role] = bapRoleOffset{
+			dx:     float64(gi%perRow) * spacing,
+			dy:     gridBaseY + float64(gi/perRow)*spacing,
+			source: "grid",
+		}
+		gi++
+	}
+	return out
+}
+
+// bapBlockRect is the block's estimated footprint rectangle at a given origin.
+func bapBlockRect(originX, originY float64, offsets map[string]bapRoleOffset) layoutBBox {
+	first := true
+	var minDX, maxDX, minDY, maxDY float64
+	for _, o := range offsets {
+		if first {
+			minDX, maxDX, minDY, maxDY = o.dx, o.dx, o.dy, o.dy
+			first = false
+			continue
+		}
+		minDX = math.Min(minDX, o.dx)
+		maxDX = math.Max(maxDX, o.dx)
+		minDY = math.Min(minDY, o.dy)
+		maxDY = math.Max(maxDY, o.dy)
+	}
+	return layoutBBox{
+		MinX: originX + minDX - bapPartMargin, MinY: originY + minDY - bapPartMargin,
+		MaxX: originX + maxDX + bapPartMargin, MaxY: originY + maxDY + bapPartMargin,
+	}
+}
+
+// bapResolveOrigin collision-checks the requested origin against the existing
+// parts and, when the caller did not pin --at explicitly, spirals the block's
+// footprint rectangle to the nearest free region (reusing autolayout's findSlot).
+// It always returns a usable origin — on failure it keeps the request and says
+// so in the warnings, because a placed-but-overlapping block is diagnosable by
+// layout-lint while a refused apply loses all the work.
+func bapResolveOrigin(in bapInput, offsets map[string]bapRoleOffset) (float64, float64, *bapOrigin, []string) {
+	origin := &bapOrigin{
+		RequestedX: in.OriginX, RequestedY: in.OriginY,
+		X: in.OriginX, Y: in.OriginY,
+	}
+	if len(in.Obstacles) == 0 {
+		return in.OriginX, in.OriginY, origin, nil
+	}
+	collides := func(b layoutBBox) bool {
+		for _, o := range in.Obstacles {
+			if boxesOverlap(b, o) || rectGap(b, o) < bapObstacleGap {
+				return true
+			}
+		}
+		return false
+	}
+	rect := bapBlockRect(in.OriginX, in.OriginY, offsets)
+	if !collides(rect) {
+		return in.OriginX, in.OriginY, origin, nil
+	}
+	if in.AtExplicit {
+		return in.OriginX, in.OriginY, origin, []string{
+			"--at 指定的原点与已有器件重叠 — 按你的坐标照常放置(显式 --at 优先);放完请跑 `sch layout-lint` 确认",
+		}
+	}
+	w, h := bboxSize(rect)
+	step := math.Max(w, h)/2 + 2*bapObstacleGap
+	cx, cy := bboxCenter(rect)
+	slot, _, ok := findSlot(rect, cx, cy, step, true, collides, nil, nil, nil)
+	if !ok {
+		return in.OriginX, in.OriginY, origin, []string{
+			fmt.Sprintf("默认原点与已有器件重叠,且螺旋搜索 %d 个候选后仍无空位 — 按原坐标放置,预期有 overlap,放完必须跑 `sch layout-lint`", alMaxRing*len(alDirsVertical)),
+		}
+	}
+	ncx, ncy := bboxCenter(slot)
+	nx := snapAnchor(in.OriginX + (ncx - cx))
+	ny := snapAnchor(in.OriginY + (ncy - cy))
+	origin.X, origin.Y = nx, ny
+	origin.Relocated = true
+	origin.Reason = "默认原点与已有器件重叠,已自动移到最近空位(显式传 --at 可固定原点)"
+	return nx, ny, origin, nil
 }
 
 // planBlockApply turns a block + a parts library + the current page into a
@@ -254,7 +400,15 @@ func planBlockApply(in bapInput) (bapPlan, error) {
 	if spacing <= 0 {
 		spacing = 100
 	}
-	for i, role := range roles {
+	// Geometry: the block's schematic_layout template wins over the fallback
+	// grid, and the whole block dodges existing parts when the caller left the
+	// origin to us (the old blind 4-column grid at 400,300 was a top overlap
+	// source — every second apply landed on the first).
+	offsets := bapRoleOffsets(roles, in.Layout, spacing, perRow)
+	originX, originY, origin, warns := bapResolveOrigin(in, offsets)
+	plan.Origin = origin
+	plan.Warnings = append(plan.Warnings, warns...)
+	for _, role := range roles {
 		p := in.Block.Parts[role]
 		if p.Qty != 1 {
 			// qty>1 would need one designator per instance; the minimal slice does
@@ -274,6 +428,7 @@ func planBlockApply(in bapInput) (bapPlan, error) {
 		}
 		d := bapNextDesignator(prefix, used, next)
 		roleDesig[role] = d
+		off := offsets[role]
 		plan.Placements = append(plan.Placements, bapPlacement{
 			Role:        role,
 			PartKey:     p.Part,
@@ -281,8 +436,10 @@ func planBlockApply(in bapInput) (bapPlan, error) {
 			LibraryUUID: dev.LibraryUUID,
 			DeviceUUID:  dev.DeviceUUID,
 			LCSC:        dev.LCSC,
-			X:           in.OriginX + float64(i%perRow)*spacing,
-			Y:           in.OriginY + float64(i/perRow)*spacing,
+			X:           snapAnchor(originX + off.dx),
+			Y:           snapAnchor(originY + off.dy),
+			Rotation:    off.rot,
+			Source:      off.source,
 		})
 	}
 

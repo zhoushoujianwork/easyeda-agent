@@ -57,6 +57,39 @@ type Port struct {
 	DefaultNet string `json:"default_net,omitempty"`
 }
 
+// SchematicLayoutHint is one role's schematic placement relative to the block's
+// apply origin (--at). Offsets are schematic units in the same y-DOWN canvas
+// space the autolayout planner uses (+dy places the part LOWER on the sheet),
+// and must land on the 5-unit placement grid — an off-grid anchor puts every
+// symbol pin off-grid and connect_pin stubs then fail (see schAnchorGrid).
+type SchematicLayoutHint struct {
+	DX       float64 `json:"dx"`
+	DY       float64 `json:"dy"`
+	Rotation float64 `json:"rotation,omitempty"` // 0 | 90 | 180 | 270
+}
+
+// SchematicLayout is a block's human-authored schematic placement template: the
+// reviewed-once relative geometry (信号流左入右出、去耦贴主芯片) that replaces the
+// blind fallback grid when present. Roles must cover every part in the block —
+// a partial template is an authoring mistake, not a feature.
+type SchematicLayout struct {
+	Note  string                         `json:"note,omitempty"`
+	Roles map[string]SchematicLayoutHint `json:"roles"`
+}
+
+// SchematicLayout parses the block's optional schematic_layout template out of
+// Raw (nil when the block does not declare one). The typed projection keeps
+// extension maps in Raw, same as internal_nets.
+func (b Block) SchematicLayout() (*SchematicLayout, error) {
+	var doc struct {
+		SchematicLayout *SchematicLayout `json:"schematic_layout"`
+	}
+	if err := json.Unmarshal(b.Raw, &doc); err != nil {
+		return nil, fmt.Errorf("parse schematic_layout: %w", err)
+	}
+	return doc.SchematicLayout, nil
+}
+
 // VerificationStage records one independently reviewable readiness dimension.
 // Status is passed, failed, pending, or not_tested; evidence remains human-readable.
 type VerificationStage struct {

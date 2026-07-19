@@ -33,14 +33,68 @@ type bapManifest struct {
 	Revision   int            `json:"revision,omitempty"`
 	BlockState string         `json:"blockState"` // ready | verified | draft — never let a draft look production-ready
 	Instance   string         `json:"instance"`
+	Origin     *bapOrigin     `json:"origin,omitempty"`
 	Placed     []bapPlacement `json:"placed"`
 	Nets       []bapNet       `json:"nets"`
+	Warnings   []string       `json:"warnings,omitempty"`
 	Unconsumed []string       `json:"unconsumedConstraints,omitempty"`
 	Note       string         `json:"note,omitempty"`
 	// Reconciled is true when the post-apply netlist read-back matched every
 	// planned net (issue #135); Diffs carries the mismatches when it did not.
 	Reconciled bool         `json:"reconciled,omitempty"`
 	Diffs      []bapNetDiff `json:"diffs,omitempty"`
+	// LayoutOverlaps is the post-apply real-bbox overlap read-back (the same
+	// geometry `sch layout-lint` checks), restricted to pairs that involve this
+	// instance's parts — the mechanical answer to "did the block land clean".
+	LayoutOverlaps []layoutFinding `json:"layoutOverlaps,omitempty"`
+}
+
+// fetchSchObstacles pulls the ACTIVE page's real part bboxes (best-effort) so
+// the planner can dodge them when picking the block origin.
+func fetchSchObstacles(cfg *appConfig, window string) []layoutBBox {
+	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"includeBBox": true})
+	if err != nil {
+		return nil
+	}
+	comps, err := parseLayoutComps(res.Result)
+	if err != nil {
+		return nil
+	}
+	kept, _ := filterLayoutComps(comps, false)
+	var out []layoutBBox
+	for _, c := range kept {
+		if c.BBox != nil {
+			out = append(out, *c.BBox)
+		}
+	}
+	return out
+}
+
+// verifyBlockLayout re-reads the page's real bboxes after placement and returns
+// the overlap findings that involve the freshly placed designators. Best-effort:
+// a read failure returns nil (the standalone `sch layout-lint` gate still exists).
+func verifyBlockLayout(cfg *appConfig, window string, placed []bapPlacement) []layoutFinding {
+	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"includeBBox": true})
+	if err != nil {
+		return nil
+	}
+	comps, err := parseLayoutComps(res.Result)
+	if err != nil {
+		return nil
+	}
+	kept, _ := filterLayoutComps(comps, false)
+	rep := analyzeLayout(kept, 0, -1) // overlaps only: minGap 0, pin check off
+	mine := map[string]bool{}
+	for _, p := range placed {
+		mine[strings.ToUpper(p.Designator)] = true
+	}
+	var out []layoutFinding
+	for _, f := range rep.Overlaps {
+		if mine[strings.ToUpper(f.A)] || mine[strings.ToUpper(f.B)] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // loadStandardParts reads the parts library into the role-id → device bridge.
@@ -156,6 +210,11 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 		return err
 	}
 
+	// The block's schematic placement template (nil → fallback grid).
+	if in.Layout, err = b.SchematicLayout(); err != nil {
+		return err
+	}
+
 	// A dry run must not need a window: the point is to inspect the plan. Only
 	// the designator scan needs the page, so fall back to an empty page.
 	if !dryRun || window != "" || cfg.project != "" {
@@ -166,17 +225,27 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 			fmt.Fprintf(stderr, "warn: could not read the page (%v) — planning against an empty page\n", err)
 			in.Existing = map[string]bool{}
 		}
+		// Existing part bboxes (active page) so the block origin dodges them.
+		in.Obstacles = fetchSchObstacles(cfg, window)
 	}
 
 	plan, err := planBlockApply(in)
 	if err != nil {
 		return err
 	}
+	if plan.Origin != nil && plan.Origin.Relocated {
+		fmt.Fprintf(stderr, "origin: %.0f,%.0f → %.0f,%.0f (%s)\n",
+			plan.Origin.RequestedX, plan.Origin.RequestedY, plan.Origin.X, plan.Origin.Y, plan.Origin.Reason)
+	}
+	for _, w := range plan.Warnings {
+		fmt.Fprintf(stderr, "warn: %s\n", w)
+	}
 
 	man := bapManifest{
 		OK: "planned", BlockID: plan.BlockID, Revision: plan.Revision,
-		BlockState: b.Status(), Instance: plan.Instance,
-		Placed: plan.Placements, Nets: plan.Nets, Unconsumed: plan.Unconsumed,
+		BlockState: b.Status(), Instance: plan.Instance, Origin: plan.Origin,
+		Placed: plan.Placements, Nets: plan.Nets, Warnings: plan.Warnings,
+		Unconsumed: plan.Unconsumed,
 	}
 	if len(plan.Unconsumed) > 0 {
 		man.Note = "block-apply v1 executes parts/internal_nets/ports only; the listed constraint maps were NOT applied"
@@ -203,10 +272,26 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 			"y":           p.Y,
 			"designator":  p.Designator,
 		}
+		if p.Rotation != 0 {
+			payload["rotation"] = p.Rotation
+		}
 		if _, err := requestActionTimed(cfg, "schematic.component.place", window, payload, placeTimeout); err != nil {
 			return fmt.Errorf("place %s (%s): %w", p.Designator, p.PartKey, err)
 		}
-		fmt.Fprintf(stderr, "placed %-6s %-18s @ %.0f,%.0f\n", p.Designator, p.PartKey, p.X, p.Y)
+		fmt.Fprintf(stderr, "placed %-6s %-18s @ %.0f,%.0f [%s]\n", p.Designator, p.PartKey, p.X, p.Y, p.Source)
+	}
+
+	// 5b. real-bbox overlap read-back: the estimated-footprint dodge above is a
+	// heuristic; the rendered bboxes are the truth. Overlaps involving this
+	// instance go in the manifest so a dirty landing is never silent.
+	if overlaps := verifyBlockLayout(cfg, window, plan.Placements); len(overlaps) > 0 {
+		man.LayoutOverlaps = overlaps
+		for _, f := range overlaps {
+			fmt.Fprintf(stderr, "layout ✗ overlap %s ↔ %s (%.0f×%.0f) — fix with `sch modify`/`sch autoplace-free`, then `sch layout-lint`\n",
+				f.A, f.B, f.OvX, f.OvY)
+		}
+	} else {
+		fmt.Fprintf(stderr, "layout ✓ no overlap involving this instance\n")
 	}
 
 	// 6. wire — delegate to autoconnect, which owns the stub geometry + idempotency.
@@ -346,9 +431,24 @@ func emitBapManifest(m bapManifest, asJSON bool, stdout io.Writer) error {
 		fmt.Fprintf(stdout, " rev%d", m.Revision)
 	}
 	fmt.Fprintf(stdout, "  [%s]  instance=%s\n", m.BlockState, m.Instance)
-	fmt.Fprintf(stdout, "\n%-6s %-8s %-20s %s\n", "REF", "ROLE", "PART", "AT")
+	if m.Origin != nil && m.Origin.Relocated {
+		fmt.Fprintf(stdout, "origin relocated: %.0f,%.0f → %.0f,%.0f\n",
+			m.Origin.RequestedX, m.Origin.RequestedY, m.Origin.X, m.Origin.Y)
+	}
+	fmt.Fprintf(stdout, "\n%-6s %-8s %-20s %-12s %s\n", "REF", "ROLE", "PART", "AT", "LAYOUT")
 	for _, p := range m.Placed {
-		fmt.Fprintf(stdout, "%-6s %-8s %-20s %.0f,%.0f\n", p.Designator, p.Role, p.PartKey, p.X, p.Y)
+		rot := ""
+		if p.Rotation != 0 {
+			rot = fmt.Sprintf(" r%g", p.Rotation)
+		}
+		fmt.Fprintf(stdout, "%-6s %-8s %-20s %-12s %s%s\n", p.Designator, p.Role, p.PartKey,
+			fmt.Sprintf("%.0f,%.0f", p.X, p.Y), p.Source, rot)
+	}
+	for _, w := range m.Warnings {
+		fmt.Fprintf(stdout, "warn: %s\n", w)
+	}
+	for _, f := range m.LayoutOverlaps {
+		fmt.Fprintf(stdout, "overlap: %s ↔ %s (%.0f×%.0f)\n", f.A, f.B, f.OvX, f.OvY)
 	}
 	fmt.Fprintf(stdout, "\n%-14s %-9s %s\n", "NET", "KIND", "MEMBERS")
 	for _, n := range m.Nets {
@@ -385,6 +485,16 @@ Loads the block from the embedded library, resolves each role to a real device v
 standard-parts.json, places the parts with allocated designators, wires the block's
 internal_nets, binds its boundary ports to host nets, and prints a traceable
 instance manifest.
+
+PLACEMENT GEOMETRY: a block that declares a schematic_layout template places each
+role at its authored offset+rotation from the origin (信号流左入右出、去耦贴芯片
+one-time-reviewed geometry); blocks without one fall back to the legacy
+--per-row/--spacing grid. Either way the ORIGIN dodges existing parts: when --at
+is NOT passed explicitly, the block's estimated footprint spiral-searches the
+nearest free region (existing real bboxes as obstacles); an explicit --at is
+honoured verbatim (with a warning if it collides). After placing, the real
+rendered bboxes are re-read and any overlap involving this instance is reported
+in the manifest (layoutOverlaps) — a dirty landing is never silent.
 
 SCOPE (v1): parts / internal_nets / ports only. A block's pcb_layout, placement,
 signals and silk maps are NOT applied — the manifest lists them under
@@ -429,6 +539,7 @@ idempotent per pin — an already-connected pin is skipped rather than re-flagge
 			in := bapInput{
 				Instance: instance, OriginX: x, OriginY: y,
 				Spacing: spacing, PerRow: perRow, Bind: bind, KindOver: kindOver,
+				AtExplicit: cmd.Flags().Changed("at"),
 			}
 			return runBlockApply(cfg, *window, args[0], in, partsPath, dryRun, asJSON, stdout, stderr)
 		},

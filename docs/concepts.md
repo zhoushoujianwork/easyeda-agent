@@ -128,6 +128,7 @@ ESP32 双三极管自动下载、SY8089 buck、RS-485、GNSS 前端、microSD…
 |---|---|---|
 | `parts.<role>` | role → `standard-parts.json` 的 LCSC/UUID | Agent/人工选型入口；仍按 verification、供应状态和项目适用性判断 |
 | `internal_nets` / `ports` | 块内网表 + 边界端口(功能名) | 原理图实例化(`verification.schematic=passed` 时复用已证拓扑,仍验跨块重绑)|
+| `schematic_layout` | role → `{dx,dy,rotation}` 原理图相对坐标模板(y 向下,5 格对齐,须覆盖全部 role) | `sch block-apply`(模板优先于网格;原点避碰 + 落后 overlap 回读)|
 | `placement.<ref>` | `board_edge` / `edge` / `side` / `orientation` / `severity` / `reason` | T2 边缘件(edge 已消费;side/orientation 待补)|
 | `openings` | `[{match, local}]` 连接器开口本地方向 | T2 朝向(旋到开口朝板外)|
 | `pcb_layout` | `*-adjacency`(去耦/晶振贴脚)/ `rf-keepout` / `ep-*` | T4 贴脚(待消费)/ P4 禁布 / P8 热焊盘 |

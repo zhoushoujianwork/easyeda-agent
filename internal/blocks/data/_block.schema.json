@@ -60,6 +60,7 @@
       "additionalProperties": {"$ref": "#/$defs/port"}
     },
     "schematic_notes": {"type": "array", "items": {"type": "string"}},
+    "schematic_layout": {"$ref": "#/$defs/schematic_layout"},
     "pcb_layout": {"type": "array", "items": {"type": "object"}},
     "placement": {"type": "object"},
     "signals": {"type": "object"},
@@ -70,6 +71,28 @@
   },
   "additionalProperties": true,
   "$defs": {
+    "schematic_layout": {
+      "type": "object",
+      "required": ["roles"],
+      "properties": {
+        "note": {"type": "string"},
+        "roles": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["dx", "dy"],
+            "properties": {
+              "dx": {"type": "number", "multipleOf": 5},
+              "dy": {"type": "number", "multipleOf": 5},
+              "rotation": {"enum": [0, 90, 180, 270]}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "part": {
       "type": "object",
       "required": ["part", "qty"],

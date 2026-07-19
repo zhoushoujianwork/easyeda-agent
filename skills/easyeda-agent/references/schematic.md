@@ -46,6 +46,9 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 > ⚠️ **标准外围先查块(铁律 8):** `easyeda blocks show <id>` 给 `internal_nets`(照抄拓扑,引脚用
 > 功能名零改号)+ `ports`(重绑边界网络)+ `schematic_notes`(落线注意);命中就别手接。ESP32
 > 自动下载(双三极管交叉耦合时序易接反)这类电路尤其照块抄,别凭记忆手连。
+> 块若带 `schematic_layout` 模板,`sch block-apply` 直接按模板相对偏移+朝向落件(否则退回网格);
+> 原点自动避开已有器件真实 bbox(显式 `--at` 优先),落完回读 overlap 写进 manifest——优先用
+> `block-apply` 而不是逐件手放。
 
 Place **real parts from the EasyEDA / 立创(LCSC) library**, then wire them.
 Hand-drawing a custom component symbol is the **fallback**, used only when the

@@ -31,7 +31,9 @@ func ledBlock(t *testing.T) (blocks.Block, [][]string) {
 }
 
 // TestPlanBlockApplyLed pins the whole plan for the canonical simple block: the
-// role→designator allocation, the coordinates, and the three resolved nets.
+// role→designator allocation, the fallback-grid coordinates (bapInput.Layout is
+// deliberately unset here — the template path has its own tests below), and the
+// three resolved nets.
 func TestPlanBlockApplyLed(t *testing.T) {
 	b, topo := ledBlock(t)
 	plan, err := planBlockApply(bapInput{
@@ -49,7 +51,8 @@ func TestPlanBlockApplyLed(t *testing.T) {
 	if len(plan.Placements) != 2 {
 		t.Fatalf("placements = %d, want 2", len(plan.Placements))
 	}
-	// Roles are planned in sorted order: LED then R.
+	// Roles are planned in sorted order: LED then R. Without an in-test template
+	// (bapInput.Layout unset), coordinates follow the fallback grid.
 	if got := plan.Placements[0]; got.Role != "LED" || got.Designator != "LED1" || got.DeviceUUID != "dev-led" {
 		t.Errorf("placement[0] = %+v, want role LED / LED1 / dev-led", got)
 	}
@@ -234,6 +237,137 @@ func TestParseKV(t *testing.T) {
 		if _, err := parseKV([]string{bad}, "--bind"); err == nil {
 			t.Errorf("parseKV(%q) accepted a malformed pair", bad)
 		}
+	}
+}
+
+// ── schematic_layout template + origin avoidance ────────────────────────────
+
+// TestPlanBlockApplyTemplate: a block with a schematic_layout must place every
+// templated role at origin+offset (grid-snapped) with its rotation, and mark
+// the source so the manifest can tell template geometry from grid fallback.
+func TestPlanBlockApplyTemplate(t *testing.T) {
+	b, topo := ledBlock(t)
+	layout, err := b.SchematicLayout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout == nil {
+		t.Fatal("led_indicator_gpio should ship a schematic_layout template")
+	}
+	plan, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4, Layout: layout,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][3]float64{}
+	for _, p := range plan.Placements {
+		if p.Source != "template" {
+			t.Errorf("%s source = %q, want template", p.Role, p.Source)
+		}
+		got[p.Role] = [3]float64{p.X, p.Y, p.Rotation}
+	}
+	// Shipped template: R at +0,+0, LED at +120,+0 (信号流左入右出).
+	if got["R"] != [3]float64{400, 300, 0} {
+		t.Errorf("R placed at %v, want 400,300 r0", got["R"])
+	}
+	if got["LED"] != [3]float64{520, 300, 0} {
+		t.Errorf("LED placed at %v, want 520,300 r0", got["LED"])
+	}
+}
+
+// TestPlanBlockApplyPartialTemplateFallsBack: roles the template misses drop to
+// the grid BELOW the template extent, never interleaved with it.
+func TestPlanBlockApplyPartialTemplateFallsBack(t *testing.T) {
+	b, topo := ledBlock(t)
+	layout := &blocks.SchematicLayout{Roles: map[string]blocks.SchematicLayoutHint{
+		"LED": {DX: 0, DY: 0},
+	}}
+	plan, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4, Layout: layout,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range plan.Placements {
+		switch p.Role {
+		case "LED":
+			if p.Source != "template" || p.Y != 300 {
+				t.Errorf("LED = %+v, want template @ y=300", p)
+			}
+		case "R":
+			// Grid base sits one spacing below the template's max dy (0+100).
+			if p.Source != "grid" || p.Y != 400 || p.X != 400 {
+				t.Errorf("R = %+v, want grid @ 400,400", p)
+			}
+		}
+	}
+}
+
+// TestPlanBlockApplyOriginDodgesObstacles: with existing bboxes squatting on the
+// default origin, a non-explicit --at must relocate the whole block to a free
+// region (deterministically), and record the move in the plan.
+func TestPlanBlockApplyOriginDodgesObstacles(t *testing.T) {
+	b, topo := ledBlock(t)
+	obstacle := layoutBBox{MinX: 300, MinY: 200, MaxX: 600, MaxY: 400} // covers 400,300
+	plan, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4,
+		Obstacles: []layoutBBox{obstacle},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Origin == nil || !plan.Origin.Relocated {
+		t.Fatalf("origin not relocated: %+v", plan.Origin)
+	}
+	if plan.Origin.X == 400 && plan.Origin.Y == 300 {
+		t.Error("relocated origin equals the requested one")
+	}
+	// The relocated placements must actually clear the obstacle (+ margin).
+	for _, p := range plan.Placements {
+		box := layoutBBox{MinX: p.X - bapPartMargin, MinY: p.Y - bapPartMargin, MaxX: p.X + bapPartMargin, MaxY: p.Y + bapPartMargin}
+		if boxesOverlap(box, obstacle) {
+			t.Errorf("%s at %.0f,%.0f still inside the obstacle", p.Designator, p.X, p.Y)
+		}
+		if p.X != snapAnchor(p.X) || p.Y != snapAnchor(p.Y) {
+			t.Errorf("%s at %.0f,%.0f is off the %d-grid", p.Designator, p.X, p.Y, int(schAnchorGrid))
+		}
+	}
+	// Same input → same relocation (determinism).
+	plan2, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4,
+		Obstacles: []layoutBBox{obstacle},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan2.Origin.X != plan.Origin.X || plan2.Origin.Y != plan.Origin.Y {
+		t.Errorf("relocation not deterministic: %v vs %v", plan.Origin, plan2.Origin)
+	}
+}
+
+// TestPlanBlockApplyExplicitAtWins: an explicit --at is the caller's decision —
+// no relocation, but the collision must surface as a warning, never silently.
+func TestPlanBlockApplyExplicitAtWins(t *testing.T) {
+	b, topo := ledBlock(t)
+	plan, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4,
+		Obstacles:  []layoutBBox{{MinX: 300, MinY: 200, MaxX: 600, MaxY: 400}},
+		AtExplicit: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Origin.Relocated {
+		t.Error("explicit --at was relocated — the origin is the caller's decision")
+	}
+	if len(plan.Warnings) == 0 {
+		t.Error("colliding explicit --at produced no warning")
 	}
 }
 
