@@ -236,3 +236,69 @@ func TestParseKV(t *testing.T) {
 		}
 	}
 }
+
+// ── reconcile (issue #135) ──────────────────────────────────────────────────
+
+func reconTestPlan() bapPlan {
+	return bapPlan{
+		Nets: []bapNet{
+			{Net: "VSYS", Members: []string{"R4:2", "U1:VIN-", "U1:VBUS"}},
+			{Net: "INA_ALERT", Members: []string{"R1:1", "U1:Alert"}},
+		},
+	}
+}
+
+func reconTestPins() map[string]map[string]string {
+	return map[string]map[string]string{
+		"R4": {"1": "1", "2": "2"},
+		"R1": {"1": "1", "2": "2"},
+		"U1": {"3": "3", "ALERT": "3", "8": "8", "VBUS": "8", "9": "9", "VIN-": "9"},
+	}
+}
+
+// TestReconcileBlockNets_Match: live nets exactly hold the planned members (plus
+// host extras, which must NOT fail the diff) → no diffs.
+func TestReconcileBlockNets_Match(t *testing.T) {
+	live := map[string]map[string]bool{
+		"VSYS":      {"R4.2": true, "U1.9": true, "U1.8": true, "C9.1": true}, // C9.1 = host extra, allowed
+		"INA_ALERT": {"R1.1": true, "U1.3": true},
+	}
+	diffs := reconcileBlockNets(reconTestPlan(), live, reconTestPins())
+	if len(diffs) != 0 {
+		t.Fatalf("expected no diffs, got %+v", diffs)
+	}
+}
+
+// TestReconcileBlockNets_MergedShort reproduces the #135 incident shape: U1.3
+// (Alert) physically merged into VSYS, INA_ALERT lost it. The diff must name the
+// missing pin AND point at the net it landed in.
+func TestReconcileBlockNets_MergedShort(t *testing.T) {
+	live := map[string]map[string]bool{
+		"VSYS":      {"R4.2": true, "U1.9": true, "U1.8": true, "U1.3": true},
+		"INA_ALERT": {"R1.1": true},
+	}
+	diffs := reconcileBlockNets(reconTestPlan(), live, reconTestPins())
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %+v", diffs)
+	}
+	d := diffs[0]
+	if d.Net != "INA_ALERT" {
+		t.Fatalf("expected diff on INA_ALERT, got %s", d.Net)
+	}
+	if len(d.Missing) != 1 || d.Missing[0] != "U1.3" {
+		t.Fatalf("expected missing [U1.3], got %v", d.Missing)
+	}
+	if d.FoundIn["U1.3"] != "VSYS" {
+		t.Fatalf("expected U1.3 foundIn VSYS, got %v", d.FoundIn)
+	}
+}
+
+// TestReconcileBlockNets_UnresolvedPinRef: a member whose pin ref can't resolve
+// to a number must surface as missing, never silently pass.
+func TestReconcileBlockNets_UnresolvedPinRef(t *testing.T) {
+	plan := bapPlan{Nets: []bapNet{{Net: "X", Members: []string{"U9:NOPE"}}}}
+	diffs := reconcileBlockNets(plan, map[string]map[string]bool{"X": {}}, reconTestPins())
+	if len(diffs) != 1 || len(diffs[0].Missing) != 1 {
+		t.Fatalf("expected the unresolved ref to be reported missing, got %+v", diffs)
+	}
+}

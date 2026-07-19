@@ -6,7 +6,23 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-07-19
+
 ### Fixed
+- **#135 `schematic.bridgeCheck` 线段级锚定**:flag/pin 归树从「顶点邻近」改为「点到线段距离」。
+  EasyEDA 把两条重叠共线 stub 合并成一条线后,被吞的 flag 落在**线段中段**,顶点判定永远锚不上
+  ——一树双网的真短路因此漏报为 0 findings(ina226 块验证实录)。同时新增 **ORPHAN_FLAG** 检测:
+  不挨任何导线的 netflag/netport(删合并线留下的孤儿)单列上报,防止新画的线静默继承其网名。
+- **#136 `schematic.components.list` 跨页撞号免疫**:同一 designator 在文档内解析出多个不同
+  device 身份时(跨页撞号;子部件 U1.A/U1.B 同身份不误伤),该件 pin 的 net 强制置 null 并标
+  `netAmbiguous:true`——netlist 按 designator.pin 全文档取网,撞号时归属被毒化,给错网比不给更糟。
+  CLI 侧配套:`sch block-apply` 分配代号改查**全文档**(不再只看当前页);`sch autoconnect` 对撞号
+  件显式告警;block-apply 收尾新增 **netlist↔plan 对账门**(#135),不一致非零退出。
+- **#137 `schematic.power.connect_pin` 瞬态重试 + 回滚**:建 stub 线瞬态失败自动重试一次(250ms),
+  终错带端点坐标;flag 创建失败时**回滚已建的线**,不再留无 flag 孤儿桩。
+- **#137 `schematic.pin.disconnect` 合并树感知**:定位到的线可能是合并树——flag 搜索从「仅两端点」
+  扩到**全折线(顶点+中段)**,一并删除失宿 flag;新增 `alsoDisconnectedPins` 返回字段,列出因删线
+  被连带断开的其它 pin,调用方可据此重连。
 - **`sch autoconnect` 同批次短桩互斥**(#138,自 #133 Bug 1 拆出):此前每个连接
   只对「既存」图元评分,同一批里刚规划的短桩互相不可见——同器件相邻异网引脚
   (隔离 DC-DC B0512S 类四域脚)会选出共线相触的短桩,被 EasyEDA 合并成隐性

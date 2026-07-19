@@ -37,6 +37,10 @@ type bapManifest struct {
 	Nets       []bapNet       `json:"nets"`
 	Unconsumed []string       `json:"unconsumedConstraints,omitempty"`
 	Note       string         `json:"note,omitempty"`
+	// Reconciled is true when the post-apply netlist read-back matched every
+	// planned net (issue #135); Diffs carries the mismatches when it did not.
+	Reconciled bool         `json:"reconciled,omitempty"`
+	Diffs      []bapNetDiff `json:"diffs,omitempty"`
 }
 
 // loadStandardParts reads the parts library into the role-id → device bridge.
@@ -99,9 +103,14 @@ func parseKV(items []string, flag string) (map[string]string, error) {
 	return out, nil
 }
 
-// existingDesignators reads the page so allocation can skip taken designators.
+// existingDesignators reads the WHOLE document (all schematic pages) so
+// allocation can skip taken designators. Active-page-only scanning caused issue
+// #136: an instance on a fresh page allocated C1/R1/U1 colliding with another
+// page's parts, and the document-wide netlist (keyed by designator.pin) then
+// mis-attributed every collided pin's net. Non-active pages return shallow data
+// but the designator field is always present, which is all this needs.
 func existingDesignators(cfg *appConfig, window string) (map[string]bool, error) {
-	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{})
+	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"allPages": true})
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +231,108 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 		fmt.Fprintf(stderr, "warn: schematic.check failed to run: %v\n", err)
 	}
 
+	// 8. reconcile the live netlist against the plan (issue #135). Per-stub wiring
+	// success is not topology success: EasyEDA merges touching wires, and a merged
+	// short has slipped past BOTH check and bridge-check before. The netlist is
+	// the authority; a mismatch fails the command instead of hiding behind the
+	// green per-stub report.
+	liveNets, pinNumbers, rerr := readLiveNets(cfg, window)
+	if rerr != nil {
+		fmt.Fprintf(stderr, "warn: could not read back the netlist to reconcile (%v) — verify with `easyeda sch read` manually\n", rerr)
+	} else {
+		diffs := reconcileBlockNets(plan, liveNets, pinNumbers)
+		man.Diffs = diffs
+		man.Reconciled = len(diffs) == 0
+		if len(diffs) > 0 {
+			man.OK = "applied-mismatch"
+			for _, d := range diffs {
+				fmt.Fprintf(stderr, "reconcile ✗ net %s: missing %s", d.Net, strings.Join(d.Missing, ", "))
+				for pin, other := range d.FoundIn {
+					fmt.Fprintf(stderr, " (%s landed in %q — likely a merged-wire short)", pin, other)
+				}
+				fmt.Fprintln(stderr)
+			}
+			if err := emitBapManifest(man, asJSON, stdout); err != nil {
+				return err
+			}
+			return fmt.Errorf("block-apply: %d net(s) do not match the plan — run `easyeda sch bridge-check` and fix before trusting this instance", len(diffs))
+		}
+		fmt.Fprintf(stderr, "reconcile ✓ %d net(s) match the live netlist\n", len(plan.Nets))
+	}
+
 	return emitBapManifest(man, asJSON, stdout)
+}
+
+// readLiveNets pulls the post-wiring truth via schematic.read: live net → set of
+// "DESIGNATOR.NUMBER" members, plus each component's pin name/number → number
+// map (plan members reference pins by NAME; the netlist speaks numbers).
+func readLiveNets(cfg *appConfig, window string) (map[string]map[string]bool, map[string]map[string]string, error) {
+	res, err := requestAction(cfg, "schematic.read", window, map[string]any{"includeCheck": false})
+	if err != nil {
+		return nil, nil, err
+	}
+	liveNets := map[string]map[string]bool{}
+	if nets, ok := res.Result["nets"].([]any); ok {
+		for _, n := range nets {
+			m, ok := n.(map[string]any)
+			if !ok {
+				continue
+			}
+			name := asString(m["net"])
+			if name == "" {
+				continue
+			}
+			set := map[string]bool{}
+			if pins, ok := m["pins"].([]any); ok {
+				for _, p := range pins {
+					if s := asString(p); s != "" {
+						set[s] = true
+					}
+				}
+			}
+			liveNets[name] = set
+		}
+	}
+	pinNumbers := map[string]map[string]string{}
+	if comps, ok := res.Result["components"].([]any); ok {
+		for _, c := range comps {
+			m, ok := c.(map[string]any)
+			if !ok {
+				continue
+			}
+			desig := strings.ToUpper(asString(m["designator"]))
+			if desig == "" {
+				continue
+			}
+			byRef := pinNumbers[desig]
+			if byRef == nil {
+				byRef = map[string]string{}
+				pinNumbers[desig] = byRef
+			}
+			if pins, ok := m["pins"].([]any); ok {
+				for _, p := range pins {
+					pm, ok := p.(map[string]any)
+					if !ok {
+						continue
+					}
+					num := asString(pm["number"])
+					if num == "" {
+						num = asString(pm["pinNumber"])
+					}
+					if num == "" {
+						continue
+					}
+					byRef[strings.ToUpper(num)] = num
+					if name := asString(pm["name"]); name != "" {
+						byRef[strings.ToUpper(name)] = num
+					} else if name := asString(pm["pinName"]); name != "" {
+						byRef[strings.ToUpper(name)] = num
+					}
+				}
+			}
+		}
+	}
+	return liveNets, pinNumbers, nil
 }
 
 func emitBapManifest(m bapManifest, asJSON bool, stdout io.Writer) error {
@@ -282,7 +392,9 @@ signals and silk maps are NOT applied — the manifest lists them under
 
 EACH RUN CREATES A NEW INSTANCE — this command is NOT idempotent, by design: two
 LEDs means running it twice. Designators are allocated around whatever is already
-on the page (LED1/R4 → LED2/R5), and each instance's PORT-less internal nets are
+in the DOCUMENT — all schematic pages, not just the active one, because the
+netlist is keyed by designator.pin document-wide and a cross-page collision
+poisons every net attribution (issue #136). Each instance's PORT-less internal nets are
 named after its own first designator (LED1_N2 vs LED2_N2) so instances never
 merge. Re-running after a partial failure therefore does NOT repair that instance,
 it builds another one; fix a half-built instance with ` + "`sch autoconnect`" + ` on the

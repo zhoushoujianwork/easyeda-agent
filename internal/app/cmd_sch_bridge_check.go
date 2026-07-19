@@ -52,6 +52,11 @@ func bridgeRuleType(kind string) (ruleType, level string) {
 		return "wire-bridge", "error"
 	case "ORPHAN":
 		return "orphan-stub", "warn"
+	case "ORPHAN_FLAG":
+		// A netflag/netport attached to NO wire (issue #137): typically left behind
+		// when a merged wire was deleted out from under it. Invisible until a new
+		// wire passes through the point and silently inherits the stray net name.
+		return "orphan-flag", "warn"
 	default:
 		return strings.ToLower(kind), "warn"
 	}
@@ -59,8 +64,9 @@ func bridgeRuleType(kind string) (ruleType, level string) {
 
 type bridgeSummary struct {
 	Trees          int `json:"trees"`
-	Bridges        int `json:"bridges"` // per-type count of wire-bridge trees
-	Orphans        int `json:"orphans"` // per-type count of orphan-stub trees
+	Bridges        int `json:"bridges"`     // per-type count of wire-bridge trees
+	Orphans        int `json:"orphans"`     // per-type count of orphan-stub trees
+	OrphanFlags    int `json:"orphanFlags"` // per-type count of orphan-flag findings (flag on no wire)
 	WireTreesTotal int `json:"wireTreesTotal"`
 }
 
@@ -137,8 +143,8 @@ func parseBridgeReport(result map[string]any) (bridgeReport, error) {
 
 func renderBridgeReport(rep bridgeReport, w io.Writer) {
 	s := rep.Summary
-	fmt.Fprintf(w, "sch bridge-check: %d problem tree(s) — %d wire-bridge(s) (real short), %d orphan-stub(s) (dangling stub) across %d wire tree(s)\n",
-		s.Trees, s.Bridges, s.Orphans, s.WireTreesTotal)
+	fmt.Fprintf(w, "sch bridge-check: %d problem tree(s) — %d wire-bridge(s) (real short), %d orphan-stub(s) (dangling stub), %d orphan-flag(s) (flag on no wire) across %d wire tree(s)\n",
+		s.Trees, s.Bridges, s.Orphans, s.OrphanFlags, s.WireTreesTotal)
 
 	for _, t := range rep.Trees {
 		ruleType, level := t.Type, t.Level
@@ -178,5 +184,8 @@ func renderBridgeReport(rep bridgeReport, w io.Writer) {
 	}
 	if s.Orphans > 0 {
 		fmt.Fprintln(w, "→ orphan (孤儿桩): the tree touches pins but carries no net flag/port — wire it to a real net or clear the stray stub (sch disconnect / prim-delete)")
+	}
+	if s.OrphanFlags > 0 {
+		fmt.Fprintln(w, "→ orphan-flag (孤儿标志): a netflag/netport sits on NO wire — delete it (sch prim-delete <flagId>) before a new wire inherits its stray net name")
 	}
 }

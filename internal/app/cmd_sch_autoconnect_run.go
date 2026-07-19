@@ -135,6 +135,9 @@ func buildScene(result map[string]any) acScene {
 				scene.Parts = append(scene.Parts, *box)
 			}
 			designator := asString(m["designator"])
+			if amb, _ := m["netAmbiguous"].(bool); amb && designator != "" {
+				scene.AmbiguousDesignators = append(scene.AmbiguousDesignators, designator)
+			}
 			hasPins := false
 			if pins, ok := m["pins"].([]any); ok {
 				for _, pp := range pins {
@@ -300,6 +303,15 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 	report := acReport{OK: true, TitleBlockProvisional: scene.TitleBlockProvisional}
 	if scene.TitleBlockProvisional && rules.AvoidTitleBlock {
 		report.Note = "no sheet bbox exposed — title-block keep-out is provisional and was NOT geometrically enforced"
+	}
+	if len(scene.AmbiguousDesignators) > 0 {
+		amb := fmt.Sprintf("designator(s) %s collide across schematic pages — their pin→net state is untrustworthy and treated as unknown; rename to unique designators (issue #136)",
+			strings.Join(scene.AmbiguousDesignators, ", "))
+		if report.Note != "" {
+			report.Note += "; " + amb
+		} else {
+			report.Note = amb
+		}
 	}
 
 	for _, c := range conns {

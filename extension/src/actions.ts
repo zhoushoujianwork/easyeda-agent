@@ -611,9 +611,42 @@ const schematicComponentsList: Handler = async (payload) => {
 	// tell "already connected to the target net" (skip) from "connected to a DIFFERENT
 	// net" (conflict) from "floating" (new connect). See issue #50.
 	let pinNetsByDesignator: Map<string, Map<string, string>> | null = null;
+	// Designators that resolve to MORE THAN ONE distinct device identity across
+	// the whole document (issue #136: cross-page designator collision). The
+	// netlist is keyed by designator.pin DOCUMENT-wide, so a collided designator's
+	// pin→net attribution is poisoned — autoconnect would misread "already
+	// connected to <some other page's net>". For those we report net:null
+	// (unknown) + netAmbiguous:true instead of a confidently-wrong net. Sub-parts
+	// of one physical device (U1.A/U1.B) share the device identity and are NOT
+	// flagged.
+	const ambiguousDesignators = new Set<string>();
 	if (includePins) {
 		try { pinNetsByDesignator = (await collectNetlistPinNets()).byDesignator; }
 		catch { pinNetsByDesignator = null; }
+		if (pinNetsByDesignator) {
+			try {
+				const everywhere = allPages ? components : await eda.sch_PrimitiveComponent.getAll(undefined, true);
+				const identByDesig = new Map<string, Set<string>>();
+				for (const c of everywhere ?? []) {
+					let type = '';
+					try { type = String(c.getState_ComponentType?.() ?? ''); }
+					catch { continue; }
+					if (type !== 'part' && type !== '') continue;
+					const d = String(c.getState_Designator?.() ?? '');
+					if (!d) continue;
+					let ident = '';
+					try { ident = JSON.stringify(c.getState_Component?.() ?? '') || String(c.getState_Name?.() ?? ''); }
+					catch { ident = ''; }
+					const set = identByDesig.get(d) ?? new Set<string>();
+					set.add(ident);
+					identByDesig.set(d, set);
+				}
+				for (const [d, idents] of identByDesig) {
+					if (idents.size > 1) ambiguousDesignators.add(d);
+				}
+			}
+			catch { /* best-effort — no ambiguity info degrades to prior behavior */ }
+		}
 	}
 
 	const serialized: Array<Record<string, unknown>> = [];
@@ -639,10 +672,14 @@ const schematicComponentsList: Handler = async (payload) => {
 					component.getState_PrimitiveId(),
 				);
 				const designator = String(component.getState_Designator?.() ?? '');
-				const netByNumber = pinNetsByDesignator?.get(designator) ?? null;
+				const ambiguous = ambiguousDesignators.has(designator);
+				if (ambiguous) record.netAmbiguous = true;
+				const netByNumber = ambiguous ? null : (pinNetsByDesignator?.get(designator) ?? null);
 				record.pins = (pins ?? []).map((pin) => {
 					const rec = serializePin(pin);
-					// null (not '') distinguishes "known floating" from "netlist unavailable".
+					// null (not '') distinguishes "known floating" from "netlist unavailable"
+					// — and a cross-page-collided designator's nets are FORCED to null
+					// (netAmbiguous) rather than confidently wrong (issue #136).
 					rec.net = netByNumber ? (netByNumber.get(String(rec.pinNumber ?? '')) ?? '') : null;
 					return rec;
 				});
@@ -2241,7 +2278,7 @@ const schematicCheck: Handler = async (payload) => {
 // can be driven by hand or a later --repair pass (issue #73).
 
 interface BridgeTree {
-	kind: 'BRIDGE' | 'ORPHAN';
+	kind: 'BRIDGE' | 'ORPHAN' | 'ORPHAN_FLAG';
 	wireIds: Array<string>;
 	flagIds: Array<string>;
 	pins: Array<string>; // "designator:pin"
@@ -2315,23 +2352,42 @@ const schematicBridgeCheck: Handler = async (payload) => {
 	}
 
 	// ── Aggregate each tree's wires + anchored flags/pins + net names. ──
-	const treeMap = new Map<number, { wireIds: Set<string>; verts: Array<[number, number]> }>();
+	// Anchoring is point-on-SEGMENT, not vertex-proximity (issue #135): when
+	// EasyEDA merges two overlapping collinear stubs into one wire, a swallowed
+	// flag ends up MID-SPAN — a vertex-only test never anchors it, the tree sees
+	// a single net, and a real short reports clean. Same for pins touched
+	// mid-span by a wire running through them.
+	const treeMap = new Map<number, { wireIds: Set<string>; segs: Array<[number, number, number, number]> }>();
 	for (const id of wireList) {
 		const root = find(idx.get(id)!);
-		const t = treeMap.get(root) ?? { wireIds: new Set<string>(), verts: [] };
+		const t = treeMap.get(root) ?? { wireIds: new Set<string>(), segs: [] };
 		t.wireIds.add(id);
-		t.verts.push(...(wireVerts.get(id) ?? []));
 		treeMap.set(root, t);
 	}
+	for (const ws of wireSegs) {
+		if (!ws.wirePrimitiveId) continue;
+		const i = idx.get(ws.wirePrimitiveId);
+		if (i === undefined) continue;
+		treeMap.get(find(i))?.segs.push([ws.seg[0], ws.seg[1], ws.seg[2], ws.seg[3]]);
+	}
+	const distToSeg = (px: number, py: number, x0: number, y0: number, x1: number, y1: number): number => {
+		const dx = x1 - x0, dy = y1 - y0;
+		const len2 = dx * dx + dy * dy;
+		if (len2 === 0) return Math.hypot(px - x0, py - y0);
+		let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+		t = Math.max(0, Math.min(1, t));
+		return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+	};
 
 	const trees: Array<BridgeTree> = [];
+	const anchoredMarkers = new Set<string>();
 	for (const t of treeMap.values()) {
-		const onTree = (x: number, y: number) => t.verts.some(v => Math.hypot(v[0] - x, v[1] - y) <= COINCIDE_TOL);
+		const onTree = (x: number, y: number) => t.segs.some(s => distToSeg(x, y, s[0], s[1], s[2], s[3]) <= COINCIDE_TOL);
 		const flagIds: Array<string> = [];
 		const nets = new Set<string>();
 		for (const m of markers) {
 			if (!onTree(m.x, m.y)) continue;
-			if (m.primitiveId) flagIds.push(m.primitiveId);
+			if (m.primitiveId) { flagIds.push(m.primitiveId); anchoredMarkers.add(m.primitiveId); }
 			if (m.net) nets.add(m.net);
 		}
 		const touchedPins: Array<string> = [];
@@ -2347,10 +2403,29 @@ const schematicBridgeCheck: Handler = async (payload) => {
 		}
 	}
 
+	// ── Orphan FLAGS: a netflag/netport attached to NO wire at all (issue #137).
+	// These are left behind when a merged wire is deleted out from under its flag
+	// (or a half-failed connect). They are invisible boobytraps: the next wire
+	// drawn through that point silently inherits the stray net name.
+	for (const m of markers) {
+		if (!m.primitiveId || anchoredMarkers.has(m.primitiveId)) continue;
+		let onAnyWire = false;
+		for (const t of treeMap.values()) {
+			if (t.segs.some(s => distToSeg(m.x, m.y, s[0], s[1], s[2], s[3]) <= COINCIDE_TOL)) { onAnyWire = true; break; }
+		}
+		if (onAnyWire) continue;
+		// A flag sitting directly ON a pin (no wire) is the classic fake-connection
+		// anti-pattern — report the pin so the fix is obvious.
+		const touchedPins = pins.filter(p => Math.hypot(p.x - m.x, p.y - m.y) <= COINCIDE_TOL)
+			.map(p => `${p.designator}:${p.number}`);
+		trees.push({ kind: 'ORPHAN_FLAG', wireIds: [], flagIds: [m.primitiveId], pins: touchedPins, nets: m.net ? [m.net] : [] });
+	}
+
 	const bridges = trees.filter(t => t.kind === 'BRIDGE').length;
 	const orphans = trees.filter(t => t.kind === 'ORPHAN').length;
-	const summary = { trees: trees.length, bridges, orphans, wireTreesTotal: treeMap.size };
-	return { result: { passed: bridges === 0 && orphans === 0, summary, trees } };
+	const orphanFlags = trees.filter(t => t.kind === 'ORPHAN_FLAG').length;
+	const summary = { trees: trees.length, bridges, orphans, orphanFlags, wireTreesTotal: treeMap.size };
+	return { result: { passed: trees.length === 0, summary, trees } };
 };
 
 // ─── Save ─────────────────────────────────────────────────────────────
@@ -3148,19 +3223,39 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 		);
 	}
 
-	// Stub wire pin → endpoint.
+	// Stub wire pin → endpoint. Creation is observed to fail transiently (issue
+	// #137: "Failed to create pin-stub wire" on the first call, identical retry
+	// succeeds — e.g. right after a batch of deletes, or when a stray primitive
+	// occupies the endpoint) — so retry ONCE after a short settle before failing,
+	// and include the exact endpoint in the terminal error so the caller can
+	// inspect what occupies it.
 	let wire;
-	try {
-		wire = await eda.sch_PrimitiveWire.create([pinX, pinY, endX, endY]);
+	let wireErr: unknown;
+	for (let attempt = 0; attempt < 2 && !wire; attempt++) {
+		if (attempt > 0) await new Promise((r) => setTimeout(r, 250));
+		try {
+			wire = await eda.sch_PrimitiveWire.create([pinX, pinY, endX, endY]);
+			wireErr = undefined;
+		}
+		catch (err) {
+			wireErr = err;
+		}
 	}
-	catch (err) {
-		throw edaError(err, 'Failed to create pin-stub wire.');
+	if (wireErr) {
+		throw edaError(wireErr, `Failed to create pin-stub wire (${pinX},${pinY})→(${endX},${endY}) after retry — check for a primitive already occupying the endpoint.`);
 	}
 	if (!wire) {
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Wire creation returned no primitive.');
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Wire creation returned no primitive for (${pinX},${pinY})→(${endX},${endY}).`);
 	}
 
-	// Netflag/netport at the far end (NOT at the pin — that would be the bug we are preventing).
+	// Netflag/netport at the far end (NOT at the pin — that would be the bug we are
+	// preventing). If the flag fails AFTER the wire was created, ROLL BACK the wire
+	// (issue #137): a half-built stub (wire without its flag) is an orphan-stub the
+	// caller has no id for, and the next retry plans around the debris.
+	const rollbackWire = async () => {
+		try { await deleteSchGroup('wires', [wire.getState_PrimitiveId()]); }
+		catch { /* best-effort — bridge-check's orphan-stub rule is the backstop */ }
+	};
 	let flag;
 	try {
 		if (kind in NET_FLAG_KINDS) {
@@ -3177,11 +3272,13 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 		}
 	}
 	catch (err) {
+		await rollbackWire();
 		if (err instanceof ActionError) throw err;
-		throw edaError(err, 'Failed to create netflag/netport at wire end.');
+		throw edaError(err, 'Failed to create netflag/netport at wire end (stub wire rolled back).');
 	}
 	if (!flag) {
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to create ${kind}.`);
+		await rollbackWire();
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to create ${kind} (stub wire rolled back).`);
 	}
 
 	return {
@@ -3334,20 +3431,67 @@ const schematicPinDisconnect: Handler = async (payload) => {
 		);
 	}
 
-	// Find the flag/port/label sitting on the stub's non-pin endpoint(s).
+	// The located wire may be a MERGED tree (EasyEDA fuses touching collinear
+	// wires): its flags can sit on mid-vertices or mid-SPAN, and it may serve
+	// OTHER pins besides the target (issue #137 — deleting it endpoint-blind left
+	// a swallowed flag orphaned and silently disconnected a neighbour pin). So:
+	// collect every vertex + segment of the wire, sweep flags across the WHOLE
+	// polyline (they lose their host wire either way), and report any other pin
+	// the deletion will disconnect so the caller knows to reconnect it.
+	const wireSegsAll: Array<[number, number, number, number]> = [];
+	for (const w of wires ?? []) {
+		if (String(w.getState_PrimitiveId?.() ?? '') !== stubWire.pid) continue;
+		let line: Array<number> | undefined;
+		try { line = w.getState_Line() as Array<number>; }
+		catch { break; }
+		if (Array.isArray(line)) {
+			for (let i = 0; i + 3 < line.length; i += 2) {
+				wireSegsAll.push([line[i], line[i + 1], line[i + 2], line[i + 3]]);
+			}
+		}
+		break;
+	}
+	const distToSegD = (px: number, py: number, x0: number, y0: number, x1: number, y1: number): number => {
+		const dx = x1 - x0, dy = y1 - y0;
+		const len2 = dx * dx + dy * dy;
+		if (len2 === 0) return Math.hypot(px - x0, py - y0);
+		let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+		t = Math.max(0, Math.min(1, t));
+		return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+	};
+	const onWire = (x: number, y: number): boolean => {
+		if (wireSegsAll.length > 0) return wireSegsAll.some(s => distToSegD(x, y, s[0], s[1], s[2], s[3]) <= TOL);
+		return stubWire!.ends.some(e => Math.hypot(e[0] - x, e[1] - y) <= TOL);
+	};
+
 	const NET_MARKER_TYPES = new Set(['netflag', 'netport', 'netlabel', 'short_symbol']);
 	const flagIds: Array<string> = [];
+	const alsoDisconnectedPins: Array<string> = [];
 	for (const c of components ?? []) {
 		let type: string;
 		try { type = String(c.getState_ComponentType?.() ?? ''); }
 		catch { continue; }
-		if (!NET_MARKER_TYPES.has(type)) continue;
-		let cx: number;
-		let cy: number;
-		try { cx = c.getState_X(); cy = c.getState_Y(); }
+		if (NET_MARKER_TYPES.has(type)) {
+			let cx: number;
+			let cy: number;
+			try { cx = c.getState_X(); cy = c.getState_Y(); }
+			catch { continue; }
+			if (onWire(cx, cy)) flagIds.push(String(c.getState_PrimitiveId?.() ?? ''));
+			continue;
+		}
+		// Component pins riding the same wire — the deletion disconnects them too.
+		let compPins;
+		try { compPins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(c.getState_PrimitiveId()); }
 		catch { continue; }
-		const onEnd = stubWire.ends.some(e => Math.hypot(e[0] - cx, e[1] - cy) <= TOL);
-		if (onEnd) flagIds.push(String(c.getState_PrimitiveId?.() ?? ''));
+		const cDesig = String(c.getState_Designator?.() ?? '');
+		for (const p of compPins ?? []) {
+			let px: number;
+			let py: number;
+			try { px = p.getState_X(); py = p.getState_Y(); }
+			catch { continue; }
+			if (pinX !== undefined && pinY !== undefined && Math.hypot(px - pinX, py - pinY) <= TOL) continue; // the target pin itself
+			if (onWire(px, py)) alsoDisconnectedPins.push(`${cDesig}:${String(p.getState_PinNumber?.() ?? '')}`);
+		}
 	}
 
 	// Delete wire + any flags together via the same routed delete used elsewhere.
@@ -3374,6 +3518,9 @@ const schematicPinDisconnect: Handler = async (payload) => {
 			at: pinX !== undefined && pinY !== undefined ? { x: pinX, y: pinY } : undefined,
 			deletedWires: deleted.wires,
 			deletedFlags: deleted.components,
+			// Non-empty when the deleted wire was a merged tree serving other pins:
+			// those pins are now floating and need reconnecting (issue #137).
+			alsoDisconnectedPins: [...new Set(alsoDisconnectedPins)],
 		},
 	};
 };

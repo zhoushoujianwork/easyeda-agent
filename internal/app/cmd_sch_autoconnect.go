@@ -99,6 +99,10 @@ type acScene struct {
 	Components            []acComponent // every part seen (by designator), even pin-less off-page ones
 	TitleBlock            *layoutBBox   // derived keep-out (nil if not applied)
 	TitleBlockProvisional bool          // true when no sheet bbox was found (keep-out NOT geometrically applied)
+	// AmbiguousDesignators are designators the connector flagged as colliding
+	// across pages (issue #136): their pin→net attribution is untrustworthy, so
+	// their pins arrive with net=null (treated as new) and the report must say why.
+	AmbiguousDesignators []string
 }
 
 // ── candidate + scoring ─────────────────────────────────────────────────────

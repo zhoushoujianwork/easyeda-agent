@@ -370,6 +370,81 @@ func bapNextDesignator(prefix string, used map[string]bool, next map[string]int)
 	}
 }
 
+// ── post-apply reconciliation (issue #135) ──────────────────────────────────
+//
+// Per-stub autoconnect success is NOT proof the block's topology landed:
+// EasyEDA auto-merges touching wires, so a stub can silently fuse into a
+// foreign net AFTER it was "successfully" created — and both check and
+// bridge-check have historically missed the swallowed-flag shape. The netlist
+// is the only authority on what actually connected, so block-apply now closes
+// the loop: read it back and diff every planned net against reality.
+
+// bapNetDiff is one planned net whose live membership does not match the plan.
+type bapNetDiff struct {
+	Net     string            `json:"net"`
+	Missing []string          `json:"missing"`           // planned members absent from the live net (DESIGNATOR.PIN)
+	FoundIn map[string]string `json:"foundIn,omitempty"` // missing member → the net it actually landed in
+}
+
+// bapPinKey resolves a planned member "DESIGNATOR:PINREF" (name or number) to
+// the netlist's "DESIGNATOR.NUMBER" key via the designator→(name|number)→number
+// map from the live component read.
+func bapPinKey(member string, pinNumbers map[string]map[string]string) (string, bool) {
+	desig, ref, ok := strings.Cut(member, ":")
+	if !ok {
+		return "", false
+	}
+	byRef := pinNumbers[strings.ToUpper(desig)]
+	if byRef == nil {
+		return "", false
+	}
+	num, ok := byRef[strings.ToUpper(ref)]
+	if !ok {
+		return "", false
+	}
+	return desig + "." + num, true
+}
+
+// reconcileBlockNets diffs the plan against the live netlist. liveNets maps net
+// name → set of "DESIGNATOR.NUMBER"; pinNumbers maps DESIGNATOR → pin name/number
+// → number. A planned net passes when every planned member is present in that
+// live net — the live net MAY hold extra pins (bound host nets legitimately
+// aggregate the rest of the board).
+func reconcileBlockNets(plan bapPlan, liveNets map[string]map[string]bool, pinNumbers map[string]map[string]string) []bapNetDiff {
+	var diffs []bapNetDiff
+	for _, n := range plan.Nets {
+		live := liveNets[n.Net]
+		var missing []string
+		foundIn := map[string]string{}
+		for _, m := range n.Members {
+			key, ok := bapPinKey(m, pinNumbers)
+			if !ok {
+				// Pin ref did not resolve — count as missing so it can't hide.
+				missing = append(missing, m)
+				continue
+			}
+			if live != nil && live[key] {
+				continue
+			}
+			missing = append(missing, key)
+			for otherNet, pins := range liveNets {
+				if otherNet != n.Net && pins[key] {
+					foundIn[key] = otherNet
+					break
+				}
+			}
+		}
+		if len(missing) > 0 {
+			d := bapNetDiff{Net: n.Net, Missing: missing}
+			if len(foundIn) > 0 {
+				d.FoundIn = foundIn
+			}
+			diffs = append(diffs, d)
+		}
+	}
+	return diffs
+}
+
 // bapUnconsumed lists the constraint maps present in the block that this command
 // does not execute. Honesty surface: `must` constraints that no consumer honours
 // must not hide behind a green exit code.
