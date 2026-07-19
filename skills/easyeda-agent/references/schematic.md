@@ -229,7 +229,19 @@ easyeda sch autolayout --spec p1-layout.json --apply
 
 # structured report
 easyeda sch autolayout --spec p1-layout.json --json
+
+# platform FALLBACK engine (no spec): the official eda.sch_Document.autoLayout()
+# @beta — a LONG op (~2min), rearranges the WHOLE active (foreground) page,
+# connectivity-clustered/radial → messier than a template. For un-templated
+# pages only; refine with `sch align`/`distribute` afterward.
+easyeda sch autolayout --engine official --apply
 ```
+
+**Engine priority (iron rule):** block hit → `sch block-apply` template; else a
+`--spec` → `--engine template` (default); only when neither exists → `--engine
+official` fallback. The official engine graduated `@alpha→@beta` on 3.2.148 and
+now runs, but it produces the scattered generic-algorithm layout our research
+predicted — never prefer it over a template for a known block.
 
 Spec JSON (`--spec`):
 
