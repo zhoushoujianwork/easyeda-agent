@@ -1196,14 +1196,13 @@ const schematicNetflagCreate: Handler = async (payload) => {
 // ─── No-connect flag (非连接标识) ───────────────────────────────────────
 //
 // A no-connect mark is NOT a standalone primitive — it is a PIN STATE.
-// `pin.setState_NoConnected(true)` both renders the X marker on the pin and
-// tells DRC the pin is intentionally unconnected (so it stops reporting the
-// "un-connected pin" error). `setState_NoConnected` is the only @public mutator
-// on a component pin besides pinNumber. Pins are reachable ONLY via
-// getAllPinsByPrimitiveId(component primitiveId), so we resolve the component by
-// designator first, then the pin(s) by pin number — how an engineer names them
-// ("U1 pin 23 is NC"). Pass noConnected=false to clear the mark.
-const schematicPinSetNoConnect: Handler = async (payload) => {
+// `pin.setState_NoConnected(true)` stages the X marker and tells DRC the pin is
+// intentionally unconnected (so it stops reporting the "un-connected pin"
+// error). The staged pin state MUST be committed with `await pin.done()`.
+// Resolve the component by designator, re-fetch its live instance, then obtain
+// its pins through the live-verified `component.getAllPins()` path. Pass
+// noConnected=false to clear.
+export const schematicPinSetNoConnect: Handler = async (payload) => {
 	const designator = requireString(payload, 'designator');
 	const rawPins = payload.pins;
 	if (
@@ -1236,9 +1235,23 @@ const schematicPinSetNoConnect: Handler = async (payload) => {
 	}
 	const cid = target.getState_PrimitiveId();
 
+	let component: SchComponent | undefined;
+	try {
+		component = await eda.sch_PrimitiveComponent.get(cid);
+	}
+	catch (err) {
+		throw edaError(err, `Failed to read component instance "${designator}".`);
+	}
+	if (!component) {
+		throw new ActionError(
+			ErrorCodes.EDA_CALL_FAILED,
+			`Component instance "${designator}" (${cid}) is no longer available.`,
+		);
+	}
+
 	let pins;
 	try {
-		pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(cid);
+		pins = await component.getAllPins();
 	}
 	catch (err) {
 		throw edaError(err, `Failed to read pins of "${designator}".`);
@@ -1255,48 +1268,49 @@ const schematicPinSetNoConnect: Handler = async (payload) => {
 
 	for (const n of wantPins) {
 		try {
-			byNumber.get(n)!.setState_NoConnected(value);
+			const pin = byNumber.get(n)!;
+			pin.setState_NoConnected(value);
+			await pin.done();
 		}
 		catch (err) {
-			throw edaError(err, `Failed to set no-connect on ${designator} pin ${n}.`);
+			throw edaError(err, `Failed to apply no-connect on ${designator} pin ${n}.`);
 		}
 	}
 
-	// Re-pull fresh to confirm the STORED state — an immediate getState off the
-	// just-mutated handle can echo the input (same trap as createNetFlag rotation).
-	let confirmed: Array<{ pin: string; noConnected: boolean | null }>;
+	// Re-fetch the live component and its pins to confirm the STORED state. The
+	// just-mutated pin handle only proves the staged value, not that done() stuck.
+	let freshComponent: SchComponent | undefined;
 	try {
-		const fresh = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(cid);
-		const freshByNumber = new Map((fresh ?? []).map(p => [p.getState_PinNumber(), p]));
-		confirmed = wantPins.map(n => ({
-			pin: n,
-			noConnected: freshByNumber.get(n)?.getState_NoConnected() ?? null,
-		}));
+		freshComponent = await eda.sch_PrimitiveComponent.get(cid);
 	}
-	catch {
-		// Could not re-pull — fall back to the optimistic value, and let the
-		// no-op guard below skip (we can't prove it failed without a read).
-		confirmed = wantPins.map(n => ({ pin: n, noConnected: value }));
+	catch (err) {
+		throw edaError(err, `Failed to verify component instance "${designator}".`);
 	}
+	if (!freshComponent) {
+		throw new ActionError(
+			ErrorCodes.EDA_CALL_FAILED,
+			`Could not re-fetch component instance "${designator}" (${cid}) for verification.`,
+		);
+	}
+	let freshPins;
+	try {
+		freshPins = await freshComponent.getAllPins();
+	}
+	catch (err) {
+		throw edaError(err, `Failed to verify pins of "${designator}".`);
+	}
+	const freshByNumber = new Map((freshPins ?? []).map(p => [p.getState_PinNumber(), p]));
+	const confirmed = wantPins.map(n => ({
+		pin: n,
+		noConnected: freshByNumber.get(n)?.getState_NoConnected() ?? null,
+	}));
 
-	// VERIFY-OR-FAIL. On EasyEDA Pro 3.2.x, pin.setState_NoConnected is a NO-OP:
-	// the pin primitive has no `noConnected` field (sch_PrimitivePin.get exposes
-	// none), the @public setter silently does nothing, and a re-pull / DRC re-run /
-	// canvas snapshot all confirm no NC mark is ever placed. The setter type is
-	// marked @public so this compiles and "succeeds" — which is exactly why it
-	// silently lied before. Detect the no-op and fail loudly instead, naming it as
-	// a platform limitation (not a connector bug) so the caller doesn't trust a
-	// phantom result. If a future EDA build makes the setter real, this guard
-	// passes automatically.
 	const notApplied = confirmed.filter(c => c.noConnected !== value);
 	if (notApplied.length === wantPins.length) {
 		throw new ActionError(
 			ErrorCodes.EDA_CALL_FAILED,
-			`EasyEDA did not apply no-connect to ${designator} pin(s) ${wantPins.join(', ')}: `
-			+ `pin.setState_NoConnected is a no-op on this EDA build (verified by re-pull). The pin `
-			+ `primitive has no noConnected field, so DRC still treats these pins as floating. This is `
-			+ `an EasyEDA platform limitation, not a connector defect — there is no public API to place `
-			+ `a 非连接标识 on this version.`,
+			`EasyEDA did not persist no-connect on ${designator} pin(s) ${wantPins.join(', ')} `
+			+ 'after pin.done() (verified by fresh component readback).',
 		);
 	}
 

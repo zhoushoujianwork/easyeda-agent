@@ -181,7 +181,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 | `schematic.wire.create` | Create a wire polyline (optional net/color/width/lineType). |
 | `schematic.netflag.create` | Power / ground / analog-ground / protective-ground / net-port (IN/OUT/BI) / short-circuit flag. |
 | `schematic.power.connect_pin` | Composite: draw a stub wire out of a pin **and** place a netflag/netport at its far end in one call. Structurally prevents the "netflag overlaps pin" DRC fatal and orients the flag body outward along the stub (顺着导线方向). Default direction inferred from kind, default offset 30u. |
-| `schematic.pin.set_no_connect` | Mark (or clear) a pin's no-connect flag (非连接标识, the X marker) so DRC stops reporting intentionally-floating pins as "un-connected pin". Targets pins by designator + pin number(s); `noConnected=false` clears. A pin state (`pin.setState_NoConnected`), not a standalone primitive. |
+| `schematic.pin.set_no_connect` | Mark (or clear) a pin's no-connect flag (非连接标识, the X marker) so DRC stops reporting intentionally-floating pins as "un-connected pin". Targets pins by designator + pin number(s); `noConnected=false` clears. A pin state, not a standalone primitive: the connector resolves the live component, uses `component.getAllPins()`, commits each `pin.setState_NoConnected(...)` with `pin.done()`, then verifies by fresh readback. |
 
 ### Library search (1 action)
 
