@@ -110,7 +110,7 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 - **块优先(电路块库)**:摆放/接线任何**标准外设模块**前,**先查块库 `easyeda blocks ls`**(离线,无需 daemon/窗口,块库编在二进制里)——现有 **20 块 / 11 类目**(power/rf/usb/usb-serial/comms/storage/sensing/mcu/mcu-support/indicator/button),如 CH340 串口、ESP32 自动下载、buck/LDO/充电、RS-485、GNSS/433M、USB-hub、microSD…;`easyeda blocks search <关键词>`(按**功能**/**芯片**/**端口网**三维轮换搜,一词没中换维度别急着手接)、`blocks ls --category <cat>` 浏览整类、`blocks show <id>` 看完整拓扑。命中就照抄内部网表、只重绑 ports 到主控网络 + 重排位号(引脚用功能名,零改号),按 `schematic_notes` 落线。块的 `parts` 直接给出 `standard-parts.json` 的 role,选型这步都省了。**摆放几何也机械化了**:带 `schematic_layout` 模板的块,`sch block-apply` 按模板的相对偏移+朝向落件(信号流左入右出、去耦贴芯片的几何人审一次终身复用);无模板的块退回网格铺列。两条路**原点都会避开已有器件**(不显式传 `--at` 时,按真实 bbox 螺旋找最近空位;显式 `--at` 尊重你的坐标但碰撞会警告),落完还会**回读真实 bbox 把涉及本实例的 overlap 写进 manifest(`layoutOverlaps`)**——脏落地不会静默。**块还带 PCB 多维约束 map**,各 P 阶段按 `target` 匹配读:`pcb_layout`(`*-adjacency`→P2 贴脚距离、`ep-*`→P8 EP 热过孔/接地缝合、`rf-*`/`balun-mirror`→P4 keepout+P7 RF 布线)、`placement`→P2 板边/朝向、`signals`→P7.0 差分/阻抗、`silk`→P9 逐脚标注。无命中才手接;手接并端到端验证过的新外设,按 [`standard-blocks-contributing.md`](./standard-blocks-contributing.md) 回馈入库(署名 + `validated` 门禁)。
 - **怎么做**:`easyeda sch place` + `sch modify`(设位号);坐标按 S2 的分区。库优先、选型规则见 schematic.md / references。
 - **整组分区摆放优先用 `easyeda sch autolayout`**(模块级放置规划器):把 S2 的分区写成 `--spec`(每个 module 给 `zone`/`core`/`parts` 与规则),它按真实 bbox 把核心芯片放到分区中心、外围环绕核心、碰撞自动重试,并保留引脚 fanout 通道 + A4 标题栏 keep-out,**确定性产出可过 layout-lint 的坐标**。先 `--dry-run` 看方案,确认后再 `--apply`(经 `component.modify` 落子并自检 overlap)。`--apply` 前必须有真实 sheet bbox;无 sheet 只能停在 dry-run/修图纸。**v1 只移动「已放置」的器件**,不创建缺件——所以先 `sch place` 把器件放上页,再用 autolayout 排布。手动 `sch place`/`modify` 仍是逐件微调的兜底。
-- **💾 过门条件**:进入 S4 前**必须先过 S5 的 layout-lint**——本组无覆盖、组内外围紧凑、组间不挤。**有 ERROR 先回 S3 调整**(`sch move`/`align`/`distribute`)。过了就 `easyeda sch save`(整板放置每 ~10 件存一次,别等全放完)。
+- **💾 过门条件**:进入 S4 前**必须先过 S5 的 layout-lint**——本组无覆盖、组内外围紧凑、组间不挤。**有 ERROR 先回 S3 调整**(单件 `sch modify`;成排对齐 `sch align --mode centerx/top…`;等距摊开 `sch distribute --axis x/y`,均默认 dry-run、`--apply` 落地并自检 overlap;整簇平移 `sch group-move`;实在挤不下 `sch autoplace-free`)。过了就 `easyeda sch save`(整板放置每 ~10 件存一次,别等全放完)。
 
 ### S4 — 通道布线(留距离,别压元件)
 - **做什么**:在组**摆放并通过 layout-lint 之后**再布线——信号走元件间的**空通道**,不要让导线压在元件或外围上。
@@ -132,7 +132,7 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 - ⚠️ **判状态看数据(`sch list` / layout-lint / drc),不看截图**(API 改动后画布可能不重绘 → 截图 stale)。
 
 ### S6 — 调整闭环(立刻调,再验)
-- layout-lint 报覆盖 → `sch move`/`align`/`distribute` 把冲突元件挪开 → **重跑 layout-lint**。
+- layout-lint 报覆盖 → `sch modify`(单件)/`sch align`/`sch distribute`(成排)/`sch autoplace-free`(自动找空位)把冲突元件挪开 → **重跑 layout-lint**。
 - DRC 报错 → 补线/补 flag → **重跑 drc**。
 - **💾 循环直到两个门都干净,再 `easyeda sch save` 收尾**。这就是「DRC 后立刻调整」要的闭环。
 - **收尾回流(块库共建)**:本板若含手工搭建且已 `sch check` + 网表核实通过的标准外围(库里没有的),按 [`standard-blocks-contributing.md`](./standard-blocks-contributing.md) 顺手回流一个块(署名 + `validated`)——验证刚过正是入库时机。
