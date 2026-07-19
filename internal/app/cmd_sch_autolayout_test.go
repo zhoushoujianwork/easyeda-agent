@@ -198,12 +198,13 @@ func TestPlanAutolayout_ProvisionalWhenNoSheet(t *testing.T) {
 
 func TestZoneRect_Partitions(t *testing.T) {
 	u := layoutBBox{MinX: 0, MinY: 0, MaxX: 900, MaxY: 600}
+	// y-UP canvas: "top" is the LARGER-y half (visually upper).
 	lt := zoneRect("left-top", u)
-	if lt.MinX != 0 || lt.MaxX != 300 || lt.MinY != 0 || lt.MaxY != 300 {
+	if lt.MinX != 0 || lt.MaxX != 300 || lt.MinY != 300 || lt.MaxY != 600 {
 		t.Errorf("left-top wrong: %+v", lt)
 	}
 	rb := zoneRect("right-bottom", u)
-	if rb.MinX != 600 || rb.MaxX != 900 || rb.MinY != 300 || rb.MaxY != 600 {
+	if rb.MinX != 600 || rb.MaxX != 900 || rb.MinY != 0 || rb.MaxY != 300 {
 		t.Errorf("right-bottom wrong: %+v", rb)
 	}
 	// unknown zone → center, full height

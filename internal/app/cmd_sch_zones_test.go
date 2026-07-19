@@ -8,11 +8,11 @@ func schZoneComps() []layoutComp {
 	box := func(cx, cy float64) *layoutBBox {
 		return &layoutBBox{MinX: cx - 20, MinY: cy - 10, MaxX: cx + 20, MaxY: cy + 10}
 	}
-	// Sheet 0..900 × 0..600 (y-down: top rows are y < 300).
+	// Sheet 0..900 × 0..600 (y-UP canvas: top rows are y > 300).
 	return []layoutComp{
 		{Designator: "U1", ComponentType: "part", BBox: box(450, 300)},  // center
-		{Designator: "U3", ComponentType: "part", BBox: box(100, 100)},  // left-top
-		{Designator: "C5", ComponentType: "part", BBox: box(800, 500)},  // right-bottom — NOT left-top
+		{Designator: "U3", ComponentType: "part", BBox: box(100, 500)},  // left-top (large y = visually up)
+		{Designator: "C5", ComponentType: "part", BBox: box(800, 100)},  // right-bottom — NOT left-top
 		{Designator: "J1", ComponentType: "part", BBox: nil},            // no bbox → skipped
 	}
 }
@@ -34,19 +34,19 @@ func TestFindSchZoneViolations(t *testing.T) {
 	}
 }
 
-// TestFindSchZoneViolationsYDown pins the row semantics: sheet coords are
-// y-DOWN, so "top" is the SMALLER-y half. A part at small y must satisfy a
-// -top claim and violate a -bottom claim.
-func TestFindSchZoneViolationsYDown(t *testing.T) {
+// TestFindSchZoneViolationsYUp pins the row semantics: the canvas is y-UP
+// (probe-proven 2026-07-19), so "top" is the LARGER-y half. A part at large y
+// must satisfy a -top claim and violate a -bottom claim.
+func TestFindSchZoneViolationsYUp(t *testing.T) {
 	sheet := layoutBBox{MinX: 0, MinY: 0, MaxX: 900, MaxY: 600}
 	comps := schZoneComps()
 	top := map[string]*schZoneClaim{"P": {Zone: "left-top", Parts: []string{"U3"}}}
 	if v := findSchZoneViolations(top, sheet, comps); len(v) != 0 {
-		t.Errorf("U3 at y=100 should satisfy left-top on a y-down sheet, got %+v", v)
+		t.Errorf("U3 at y=500 should satisfy left-top on a y-up sheet, got %+v", v)
 	}
 	bottom := map[string]*schZoneClaim{"P": {Zone: "left-bottom", Parts: []string{"U3"}}}
 	if v := findSchZoneViolations(bottom, sheet, comps); len(v) != 1 {
-		t.Errorf("U3 at y=100 should violate left-bottom, got %+v", v)
+		t.Errorf("U3 at y=500 should violate left-bottom, got %+v", v)
 	}
 }
 

@@ -37,8 +37,8 @@ type alignMove struct {
 	Y           float64 `json:"y"`
 }
 
-// alignModes maps mode → which bbox feature lines up. Sheet coords are y-DOWN:
-// "top" aligns the smaller-y edges.
+// alignModes maps mode → which bbox feature lines up. The canvas is y-UP
+// (+y renders higher), so "top" aligns the LARGER-y edges (MaxY).
 var alignModes = map[string]bool{
 	"left": true, "right": true, "top": true, "bottom": true,
 	"centerx": true, "centery": true,
@@ -107,9 +107,9 @@ func planAlign(parts []alPart, mode, ref string) ([]alignMove, error) {
 		case "right":
 			dx = r.BBox.MaxX - p.BBox.MaxX
 		case "top":
-			dy = r.BBox.MinY - p.BBox.MinY
-		case "bottom":
 			dy = r.BBox.MaxY - p.BBox.MaxY
+		case "bottom":
+			dy = r.BBox.MinY - p.BBox.MinY
 		case "centerx":
 			dx = rcx - cx
 		case "centery":
@@ -289,8 +289,8 @@ designator), computed on REAL rendered bboxes and applied as grid-snapped
 anchors (the 5-unit grid wins over pixel-perfect edges — off-grid anchors break
 connect_pin stubs downstream).
 
-Sheet coords are y-DOWN: top aligns the smaller-y edges. centerx lines up
-centers into a vertical column; centery into a horizontal row.
+The canvas is y-UP: top aligns the larger-y (visually upper) edges. centerx
+lines up centers into a vertical column; centery into a horizontal row.
 
 Dry-run by default; --apply moves via schematic.component.modify and re-checks
 overlap among the moved parts.`,

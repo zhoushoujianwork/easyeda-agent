@@ -34,19 +34,19 @@ func TestPlanAlignCenterX(t *testing.T) {
 	}
 }
 
-func TestPlanAlignTopIsYDown(t *testing.T) {
-	// y-DOWN: "top" aligns MinY. C1 (top edge y=390) must move UP to U1's top
-	// edge y=250 → anchor y 400-140=260.
+func TestPlanAlignTopIsYUp(t *testing.T) {
+	// y-UP canvas: "top" aligns MaxY (the visually upper edge). C1 (top edge
+	// y=410) must move to U1's top edge y=350 → anchor y 400-60=340.
 	parts := []alPart{
-		alignPart("U1", 400, 300, 100, 100), // MinY 250
-		alignPart("C1", 600, 400, 40, 20),   // MinY 390
+		alignPart("U1", 400, 300, 100, 100), // MaxY 350
+		alignPart("C1", 600, 400, 40, 20),   // MaxY 410
 	}
 	moves, err := planAlign(parts, "top", "U1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(moves) != 1 || moves[0].Designator != "C1" || moves[0].Y != 260 || moves[0].X != 600 {
-		t.Errorf("moves = %+v, want C1 → 600,260", moves)
+	if len(moves) != 1 || moves[0].Designator != "C1" || moves[0].Y != 340 || moves[0].X != 600 {
+		t.Errorf("moves = %+v, want C1 → 600,340", moves)
 	}
 }
 

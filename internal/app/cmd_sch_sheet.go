@@ -160,12 +160,16 @@ func deriveSheetGeometry(sheet *layoutBBox, showTitleBlock *bool) sheetGeometry 
 			"title-block visibility unknown (showTitleBlock not reported); assuming visible")
 	}
 
+	// The canvas is y-UP (proven live 2026-07-19: probe texts at y=100/700 on
+	// ceshi render bottom/top respectively), so the visual bottom-right corner
+	// the title block occupies is the MaxX/MIN-Y corner. The previous MaxY form
+	// protected the visual TOP-right — a keep-out on the wrong corner.
 	ratio := tmpl.TitleBlock
 	tb := &layoutBBox{
 		MinX: round2(sheet.MaxX - ratio.WidthFrac*w),
-		MinY: round2(sheet.MaxY - ratio.HeightFrac*h),
+		MinY: sheet.MinY,
 		MaxX: sheet.MaxX,
-		MaxY: sheet.MaxY,
+		MaxY: round2(sheet.MinY + ratio.HeightFrac*h),
 	}
 	g.TitleBlock.BBox = tb
 	g.Keepouts = append(g.Keepouts, keepout{Name: "titleBlock", BBox: tb, Hard: true})

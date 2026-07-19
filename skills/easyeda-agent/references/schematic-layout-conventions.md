@@ -145,6 +145,8 @@ EasyEDA 默认 lineWidth = 1。约定：
 >
 > ⚠️ **坐标 y 轴方向是 build-dependent，端点几何按 y-DOWN 处理（EasyEDA Pro 3.2.121 实测，issue #19）**：在 3.2.121 上**较大的 y 在屏幕上更靠下**（y-DOWN）——报告者实测顶部引脚 `(525,320)`、底部引脚 `(560,540)`，底部引脚 y 更大，只有 y-DOWN 才自洽。因此 `schematic.power.connect_pin` 的 `direction='up'` 现在用 `endY = pinY - offset`（视觉向上），`'down'` 用 `endY = pinY + offset`（视觉向下）。**`--direction` 一律按"视觉方向"理解，不是坐标符号。**
 >
+> ⚠️ **2026-07-19 于 3.2.148(web) 探针实测 y-UP**：`eda.sch_PrimitiveText.create` 在 y=100/y=700 各放一个探针文本，y=700 渲染在**上**、y=100 在**下**——y 大=视觉上方；且连接器 `components.list` 的 bbox 与原生 `getPrimitivesBBox` 完全同值（同一空间无转换）。据此 CLI 侧几何统一按 **y-UP** 处理：`zoneRect` 的 top=大 y 半区（此前按 y-DOWN 写反,autolayout/zone-violation/zone-draw 的 top/bottom 曾视觉翻转）、`titleBlockKeepout` 锚 MaxX/**MinY**（视觉右下;此前锚 MaxY 保护的是右上=错角）、`sch align --mode top` 对齐 MaxY 边。**若将来再遇 y-DOWN build（如 3.2.121 报告），应仿照 `detectRotationNegation` 加运行时 y 轴探测,不要硬翻符号。**
+>
 > ⚠️ **历史校准曾记录 y-UP**（更早的 build：R2@y=250 在图纸底部、C1/C2@y=600 在顶部，且 ground rot0 的 bbox 偏移 dy=-14.5=向下）。EasyEDA 构建间会**静默翻转符号约定**（参见同节 createNetFlag 旋转取反的先例），y 轴方向亦然。**flag 旋转表(下表 12 项)不受影响**：它由 `calibrate.js` 对**实际渲染** bbox 校准、按**视觉方向**索引（`rotationFor('port','up')===90` 恰是报告者手动 workaround `--direction down --rotation 90` 用的值），修正端点符号后导线与 flag 朝向自动一致，**无需改那 12 个数字**。**合入前必须在已连接的 3.2.121 窗口跑一遍 `calibrate.js` / ESP32 端到端用例确认 y 轴方向**;若需同时兼容两类 build，应仿照 `detectRotationNegation` 加运行时 y 轴探测而非硬翻符号。
 >
 > ⛔ **走过的弯路（勿重蹈）**：取反是**真的**——实测 `connect_pin(direction=left)` 传 `90` → 存 `270` → 渲染**朝右**（0/180 上下对称，所以只有横向 flag 才暴露,藏了很久）。曾把这个取反当"误判"、撤掉 connect_pin 的补偿(commit `8aace7e`)，那次 **revert 才是 bug**;现已用运行时自探测重新锁死。**不要再据"恒等"撤补偿,除非先用 `connect_pin` 放个 left flag 肉眼确认朝向。** 校准方法：对 flag 调 `sch_Primitive.getPrimitivesBBox([pid])`，bbox 中心相对放置点 (x,y) 的偏移方向 = body 真实朝向（纯数据，不靠截图）。

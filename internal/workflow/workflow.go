@@ -178,9 +178,11 @@ type State struct {
 	// (y-down) by `sch zones` / `sch layout-lint`'s zone-violation rule instead
 	// of the board outline. Kept separate from Zones because the same module
 	// legitimately claims different zones on sheet vs board.
-	SchZones  map[string]*SchZoneClaim `json:"schZones,omitempty"`
-	History   []Event                  `json:"history,omitempty"`
-	UpdatedAt string                   `json:"updatedAt"`
+	SchZones map[string]*SchZoneClaim `json:"schZones,omitempty"`
+	// SchZoneFrameIds are the primitives the last `sch zone-draw` created.
+	SchZoneFrameIds *SchZoneFrames `json:"schZoneFrameIds,omitempty"`
+	History         []Event        `json:"history,omitempty"`
+	UpdatedAt       string         `json:"updatedAt"`
 }
 
 // SchZoneClaim is one module's schematic zone claim. Page records which
@@ -202,6 +204,15 @@ func (s *State) SetSchZones(z map[string]*SchZoneClaim) {
 		Stage: "sch-zones", At: time.Now().Format(time.RFC3339), Action: "confirm",
 		Note: fmt.Sprintf("%d module schematic zone claim(s)", len(z)),
 	})
+}
+
+// SchZoneFrames tracks the visual zone-frame primitives `sch zone-draw` put on
+// the page (dashed rectangles + labels), so redraw/clear can remove exactly
+// what the tool created and never touch user graphics.
+type SchZoneFrames struct {
+	Rects []string `json:"rects,omitempty"`
+	Texts []string `json:"texts,omitempty"`
+	At    string   `json:"at,omitempty"`
 }
 
 // ZoneClaim is one functional zone's part claim (issue #126): the S0 spec's

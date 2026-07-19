@@ -102,7 +102,8 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 ### S2 — 模块编组
 - **做什么**:在每页内,把「芯片 + 其外围电路」定义为一个**组**,并规划各组在页面上的**分区位置**(谁在左、谁在右、信号流向)。
 - **怎么做**:分区/信号流向规则查 conventions 的 `schematic-layout-conventions.md`。此阶段只规划坐标分区,先不落子。布局 spec 里的 `sheet` 默认写 `"A4"`;zone 必须落在 S1 读到的 sheet 可用区内。**组的 page/zone 归属读 S0 方案书 spec 的 `modules[].page` / `modules[].zone`——这里只是把已定的分区落成具体矩形,不重新分配**。
-- **分区落成可校验的认领(新)**:`easyeda sch zones set --spec <s0-spec.json>`(或 `--module NAME=ZONE:D1,D2`)把 modules[].zone 持久化进项目 workflow 状态——此后 **`sch layout-lint` 自动多一条 zone-violation WARN**(被认领的件 bbox 中心落在其分区矩形之外 = S0 拍板的分区没落实),`sch zones status` 随时看认领+活体违规。词汇同 autolayout/pcb zones(left/center/right × top/bottom,sheet y 向下,top=小 y 半区)。原理图和 PCB 的认领各自独立(同一模块在图纸和板上的分区可以不同)。
+- **分区落成可校验的认领(新)**:`easyeda sch zones set --spec <s0-spec.json>`(或 `--module NAME=ZONE:D1,D2`)把 modules[].zone 持久化进项目 workflow 状态——此后 **`sch layout-lint` 自动多一条 zone-violation WARN**(被认领的件 bbox 中心落在其分区矩形之外 = S0 拍板的分区没落实),`sch zones status` 随时看认领+活体违规。词汇同 autolayout/pcb zones(left/center/right × top/bottom;画布 y-UP,top=大 y=视觉上半区)。原理图和 PCB 的认领各自独立(同一模块在图纸和板上的分区可以不同)。
+- **分区框可视化(新)**:`easyeda sch zone-draw` 把认领画成**虚线框+区名标签**(行业规范「先看区、再看线」;注释图元,非电气对象;真机验证过 `eda.sch_PrimitiveRectangle/Text` 全 CRUD)。框的几何与 zone-violation 用同一 `zoneRect`——**所见即所校验**。重跑自动先清旧框;`--clear` 移除;图元 id 记在 workflow 状态,绝不误删用户图形。
 - **过门条件**:每个组有明确的目标矩形区域(已 `sch zones set` 认领),组间预留了通道(不重叠的分区);若模块太多,已经拆到下一页而不是挤压本页。
 
 ### S3 — 按组摆放(芯片 + 外围一起)

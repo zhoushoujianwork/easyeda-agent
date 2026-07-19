@@ -179,8 +179,9 @@ SCHEMATIC side so placement can be mechanically verified against the plan:
 
 Zone names are the shared grid vocabulary (same as autolayout + pcb zones):
 left / center / right × top / bottom (e.g. right-top), or full-height/width
-left / right / top / bottom / center. Sheet coords are y-DOWN ("top" = smaller
-y). The rectangle is resolved from the LIVE sheet bbox at lint time. Claims live
+left / right / top / bottom / center. The canvas is y-UP, and "top" means the
+VISUALLY upper half (larger y — zoneRect owns the mapping). The rectangle is
+resolved from the LIVE sheet bbox at lint time. Claims live
 in the project workflow state (~/.easyeda-agent/workflow/<project>.json),
 separate from the PCB zone claims — the same module may claim different zones
 on sheet vs board.`,

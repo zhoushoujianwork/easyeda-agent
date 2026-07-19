@@ -165,16 +165,19 @@ func unionBoxes(parts []alPart) layoutBBox {
 }
 
 // zoneRect maps a named zone to its sub-rectangle of the usable area. Columns:
-// left [0,1/3], center [1/3,2/3], right [2/3,1]. Rows (y-DOWN, top = smaller y):
-// top [0,0.5], bottom [0.5,1]. Unknown/empty zone → center, full height.
+// left [0,1/3], center [1/3,2/3], right [2/3,1]. Rows: the schematic canvas is
+// y-UP (+y renders HIGHER — proven live 2026-07-19 with two probe texts at
+// y=100/y=700 on ceshi; the CLAUDE.md gotcha was right and this function's old
+// "y-DOWN, top = smaller y" comment was the bug), so "top" is the LARGER-y
+// half: top [0.5,1], bottom [0,0.5]. Unknown/empty zone → center, full height.
 func zoneRect(zone string, u layoutBBox) layoutBBox {
 	w := u.MaxX - u.MinX
 	h := u.MaxY - u.MinY
 	colL := [2]float64{0, 1.0 / 3}
 	colC := [2]float64{1.0 / 3, 2.0 / 3}
 	colR := [2]float64{2.0 / 3, 1.0}
-	rowT := [2]float64{0, 0.5}
-	rowB := [2]float64{0.5, 1.0}
+	rowT := [2]float64{0.5, 1.0}
+	rowB := [2]float64{0, 0.5}
 	full := [2]float64{0, 1.0}
 	col, row := colC, full
 	switch zone {
