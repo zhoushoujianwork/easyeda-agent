@@ -25,18 +25,24 @@ DEFAULT_DTS = os.path.join(
     HERE, '..', '..', 'extension', 'node_modules', '@jlceda', 'pro-api-types', 'index.d.ts')
 DEFAULT_OUT = os.path.join(HERE, 'api-index.json')
 
-CLASS_RE = re.compile(r'^\s*class\s+([A-Za-z0-9_]+)\s*\{')
+# A class header. NO trailing `{` requirement: 57 of the 127 classes carry an
+# `implements ISCH_PrimitiveAPI` / `extends …` clause, and the old brace-anchored
+# regex silently missed every one of them — their methods were then attributed to
+# whichever plain `class X {` came before (368 methods lumped into eda.sch_Netlist,
+# 449 into eda.pcb_Net; issue #133 Bug 2 chased runtime-undefined names because of
+# it). `$` is allowed for the bundler's `X$1` duplicate suffixes.
+CLASS_RE = re.compile(r'^\s*class\s+([A-Za-z0-9_$]+)')
 # A member declaration: `name(...` (method) — capture the name; the rest may span lines.
 METHOD_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(')
 STABILITY_RE = re.compile(r'@(alpha|beta|deprecated|internal)\b')
-
-
-def ns_of(cls):
-    """DMT_Schematic -> eda.dmt_Schematic ; LIB_Device -> eda.lib_Device."""
-    if '_' in cls:
-        prefix, rest = cls.split('_', 1)
-        return f'eda.{prefix.lower()}_{rest}'
-    return f'eda.{cls[:1].lower()}{cls[1:]}'
+# One line of the runtime surface map (`sch_PrimitiveWire: SCH_PrimitiveWire;`)
+# inside the `eda` declaration. The PROPERTY name is the runtime truth — the
+# namespace records must use it, and classes absent from this map (data shapes
+# like ISCH_PrimitiveWire) are not callable and must not pollute the index.
+# The type may be a UNION (`SCH_PrimitiveComponent | SCH_PrimitiveComponent3` —
+# one runtime object documented as two overload classes): capture the whole type
+# expression and merge every member class's methods under the one property.
+EDA_PROP_RE = re.compile(r'^\s*([a-z][A-Za-z0-9_]*):\s*([A-Z][A-Za-z0-9_$|\s]*[A-Za-z0-9_$]);')
 
 
 def main():
@@ -51,8 +57,12 @@ def main():
     with open(dts, encoding='utf-8') as f:
         lines = f.readlines()
 
-    records = []
-    cur_ns = None
+    # Pass output: method records keyed by the CLASS they were declared in; the
+    # runtime property map (collected from `class EDA`) then decides which classes
+    # are callable and under what `eda.<prop>` name.
+    by_class = {}
+    eda_props = []  # (property, ClassName) in declaration order
+    cur_cls = None
     # Pending JSDoc state for the next member.
     doc_summary = None
     doc_stability = None
@@ -68,9 +78,16 @@ def main():
         # Class / namespace boundary.
         m = CLASS_RE.match(line)
         if m:
-            cur_ns = ns_of(m.group(1))
+            cur_cls = m.group(1)
             doc_summary, doc_stability, in_doc, doc_lines = None, None, False, []
             continue
+
+        # Inside `class EDA` every `prop: ClassName;` line IS the runtime surface.
+        if cur_cls == 'EDA':
+            pm = EDA_PROP_RE.match(line)
+            if pm:
+                eda_props.append((pm.group(1), pm.group(2)))
+                continue
 
         # JSDoc block.
         if stripped.startswith('/**'):
@@ -97,7 +114,7 @@ def main():
             continue
 
         # Member declaration inside a class.
-        if cur_ns:
+        if cur_cls:
             mm = METHOD_RE.match(line)
             if mm and mm.group(1) not in skip:
                 method = mm.group(1)
@@ -106,8 +123,7 @@ def main():
                 # If the declaration doesn't end here, leave it as the opening — enough
                 # for search; full multi-line sigs are rare and noisy.
                 sig = re.sub(r'\s+', ' ', sig).rstrip()
-                records.append({
-                    'ns': cur_ns,
+                by_class.setdefault(cur_cls, []).append({
                     'method': method,
                     'sig': sig,
                     'summary': doc_summary or '',
@@ -117,15 +133,35 @@ def main():
             if stripped and not stripped.startswith('*'):
                 doc_summary, doc_stability = None, None
 
-    # De-dup (overloads) by (ns, method, sig).
+    if not eda_props:
+        sys.exit('no `class EDA` surface map found — pro-api-types layout changed, fix gen.py')
+
+    # Emit records ONLY for classes reachable from the runtime surface, named by
+    # their runtime property (`eda.sch_PrimitiveWire`), so `api search` results are
+    # names `debug exec_js` can actually call. De-dup (overloads) by (ns, method, sig).
     seen = set()
     deduped = []
-    for r in records:
-        key = (r['ns'], r['method'], r['sig'])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(r)
+    unmapped_props = []
+    for prop, typeexpr in eda_props:
+        ns = f'eda.{prop}'
+        classes = [c.strip() for c in typeexpr.split('|') if c.strip()]
+        matched = False
+        for cls in classes:
+            members = by_class.get(cls)
+            if members is None:
+                continue
+            matched = True
+            for r in members:
+                key = (ns, r['method'], r['sig'])
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append({'ns': ns, **r})
+        if not matched:
+            unmapped_props.append(f'{prop}: {typeexpr}')
+    if unmapped_props:
+        print(f'warn: {len(unmapped_props)} eda propert(ies) reference classes with no parsed body: '
+              + ', '.join(unmapped_props), file=sys.stderr)
 
     namespaces = sorted({r['ns'] for r in deduped})
     payload = {

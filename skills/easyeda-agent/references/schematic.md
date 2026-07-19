@@ -125,6 +125,13 @@ above doesn't scale. Pipeline (proven on box-v2/110 parts):
 > `--project`; batch many primitives per `debug.exec_js`; chunk each batch to <~20s
 > (long calls die to the heartbeat); heavy-retry + incremental `sch save` per chunk;
 > re-pull fresh pids each chunk.
+>
+> ⚠ **exec_js 建线勿走 create+modify 两步**(#133 Bug 2 实录,Windows 桌面端):批量
+> `sch_PrimitiveWire.create()` 后再 `modify(id,{line,net})`、紧跟 `sch save`,触发过**不可逆
+> 画布状态损坏**(net 全丢、floatingPinCount 爆表)。`create(line, net)` **一步带 net** 创建,
+> 或直接用 typed action(`sch connect`/`sch autoconnect`);批量 exec_js 落线后先 `sch read`
+> 逐网验证再 save。另:查 API 真名用 `easyeda api search`——索引已按**运行时可调用名**归属
+> (0.15.1 修复:此前 57 个带 implements 的类方法被错归到 `sch_Netlist`/`pcb_Net`,照抄会 undefined)。
 
 ## Pin-aware autoconnect — let the planner pick direction/offset
 
