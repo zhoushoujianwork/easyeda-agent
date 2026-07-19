@@ -414,6 +414,19 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 		if rules.StaggerLabels {
 			scene.Flags = append(scene.Flags, labelBox(selected.EndPoint.X, selected.EndPoint.Y))
 		}
+		// Batch mutual exclusion (issue #138): register the just-planned stub as a
+		// scene wire so later connections treat it exactly like existing copper —
+		// a foreign-net stub that would touch or collinear-overlap it is
+		// hard-rejected (or steered to another direction/offset) instead of
+		// letting EasyEDA silently merge the nets. Without this, adjacent pins of
+		// one part on different nets (isolated DC-DC domain pins, B0512S-class)
+		// planned in one batch could pick mutually-touching stubs, because each
+		// candidate was scored against a scene that ignored its batch siblings.
+		scene.Wires = append(scene.Wires, wireSegment{
+			X0: pin.X, Y0: pin.Y,
+			X1: selected.EndPoint.X, Y1: selected.EndPoint.Y,
+			Net: c.Net,
+		})
 
 		report.Connections = append(report.Connections, cr)
 	}

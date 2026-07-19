@@ -138,6 +138,13 @@ pin coords, existing flag/port/label bboxes, title-block keep-out), scores every
 kind-default bonuses), picks the lowest-cost one, and delegates the mutation to
 `connect_pin`. Same schematic state + spec → same selection (deterministic).
 
+**批次内互斥 (issue #138):** 同一批(--spec / 多 --pin)里**已规划的短桩会当作
+既存导线注册回 scene**,后续连接对它做同样的异网硬拒——同器件相邻异网引脚
+(隔离 DC-DC 的 B0512S 类四域脚)不再出现短桩共线相触被 EasyEDA 合并成隐性
+短路;规划器会自动换方向/offset 错开,四向全堵时按 #64 语义响亮报
+"no safe candidate" 拒绝落笔。多域脚器件仍建议 power 上/gnd 下方向分治,给
+规划器留出错开空间。
+
 **Hard rejects (issue #64):** two hazards are never soft penalties — they make a
 candidate *unusable* no matter the offset, because EasyEDA would silently merge
 nets and the post-hoc DRC can't see it: (1) a stub whose endpoint or path touches
