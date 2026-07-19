@@ -44,10 +44,139 @@ fingerprint the route gates re-verify, so out-of-band edits are caught too.`,
 	}
 	stage.AddCommand(newPcbStageStatusCmd(cfg, window, stdout))
 	stage.AddCommand(newPcbStageSetAssemblyCmd(cfg, window, stdout, stderr))
+	stage.AddCommand(newPcbStageConfirmTierCmd(cfg, window, stdout, stderr))
 	stage.AddCommand(newPcbStageConfirmLayoutCmd(cfg, window, stdout, stderr))
 	stage.AddCommand(newPcbStageConfirmOutlineCmd(cfg, window, stdout, stderr))
 	stage.AddCommand(newPcbStageResetCmd(cfg, window, stdout))
 	return stage
+}
+
+// newPcbStageConfirmTierCmd confirms one placement tier (issue #125): the
+// design-flow ladder 档1 孔/结构件 → 档2 边缘接口件 → 档3 主芯片+RF → 档4 卫星件,
+// mechanized. Each tier records its designators + a pose hash of exactly those
+// parts, so tiers invalidate independently and confirm-layout can refuse to
+// seal a placement whose tiers were never reviewed.
+func newPcbStageConfirmTierCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
+	var parts []string
+	var note string
+	var empty bool
+	c := &cobra.Command{
+		Use:   "confirm-tier <1|2|3|4>",
+		Short: "Confirm one placement tier (档1 孔 → 档2 边缘件 → 档3 主芯片+RF → 档4 卫星件, issue #125)",
+		Long: `Record the per-tier placement sign-off the design-flow ladder requires:
+
+  tier 1  孔/结构件        mounting holes & mechanical parts
+  tier 2  边缘接口件        edge connectors — orientation MUST be user-confirmed
+  tier 3  主芯片+RF        main ICs and RF (antenna keep-out reviewed)
+  tier 4  卫星件           satellites (decoupling, pull-ups — auto-place output)
+
+Tier N requires tiers 1..N-1 confirmed first. --parts names the tier's
+designators (tier 4 may omit it: default = every part no earlier tier claimed);
+--empty records a deliberately empty tier (e.g. a board with no RF). Each
+confirm stores a pose hash of exactly that tier's parts — moving them later
+invalidates that tier and everything after it, but NOT the earlier tiers.
+` + "`confirm-layout`" + ` refuses until all 4 tiers are confirmed and every part is
+claimed by a tier (--force <reason> bypasses, audited).`,
+		Args: cobra.ExactArgs(1),
+		Example: `  easyeda pcb stage confirm-tier 1 --parts H1,H2,H3,H4 --note "M3 四角孔"
+  easyeda pcb stage confirm-tier 2 --parts J1,USB1 --note "USB-C 开口朝外,用户已确认"
+  easyeda pcb stage confirm-tier 3 --parts U1,U2 --note "天线 keepout 已留"
+  easyeda pcb stage confirm-tier 4              # 其余全部 = 卫星件
+  easyeda pcb stage confirm-tier 3 --empty --note "无 RF 器件"`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			n := 0
+			if _, err := fmt.Sscanf(strings.TrimSpace(args[0]), "%d", &n); err != nil || n < 1 || n > workflowTierCount {
+				return fmt.Errorf("tier must be 1..%d", workflowTierCount)
+			}
+			return runStageConfirmTier(cfg, *window, n, parts, empty, note, stderr)
+		},
+	}
+	c.Flags().StringArrayVar(&parts, "parts", nil, "designators this tier covers (comma-separated, repeatable); tier 4 default = all unclaimed parts")
+	c.Flags().StringVar(&note, "note", "", "what was reviewed (orientation, keep-out …) — recorded in the audit trail")
+	c.Flags().BoolVar(&empty, "empty", false, "record a deliberately empty tier (e.g. no RF parts on this board)")
+	return c
+}
+
+// runStageConfirmTier implements the per-tier sign-off.
+func runStageConfirmTier(cfg *appConfig, window string, n int, parts []string, empty bool, note string, stderr io.Writer) error {
+	project, err := resolveStageProject(cfg, window)
+	if err != nil {
+		return fmt.Errorf("confirm-tier needs a connected window (the sign-off is fingerprinted against the live placement): %w", err)
+	}
+	st, err := loadPcbStageState(project)
+	if err != nil {
+		return err
+	}
+	for prev := 1; prev < n; prev++ {
+		if st.Tier(prev) == nil {
+			fmt.Fprintf(stderr, "❌ tier %d (%s) is not confirmed yet — the ladder is ordered: confirm it first (`pcb stage confirm-tier %d`)\n",
+				prev, workflowTierName(prev), prev)
+			return errActionFailed
+		}
+	}
+	poses, err := pullLayoutPoses(cfg, window)
+	if err != nil {
+		return fmt.Errorf("confirm-tier: %w", err)
+	}
+	// Drift check on the ALREADY-confirmed earlier tiers: their sign-off must
+	// still describe the live board before stacking a new tier on top.
+	if drift := verifyTierFingerprints(st, poses); len(drift) > 0 {
+		_ = savePcbStageState(st)
+		for _, d := range drift {
+			fmt.Fprintf(stderr, "⚠️  %s\n", d)
+		}
+		fmt.Fprintln(stderr, "❌ earlier tier(s) drifted — re-confirm them before this one")
+		return errActionFailed
+	}
+	live := make([]string, 0, len(poses))
+	for _, p := range poses {
+		if strings.TrimSpace(p.Designator) != "" {
+			live = append(live, p.Designator)
+		}
+	}
+	claimed := st.ClaimedTiers()
+	// Re-confirming tier n replaces its old claim set.
+	for d, t := range claimed {
+		if t == n {
+			delete(claimed, d)
+		}
+	}
+	designators, err := resolveTierParts(n, parts, empty, live, claimed)
+	if err != nil {
+		fmt.Fprintf(stderr, "❌ confirm-tier %d: %v\n", n, err)
+		return errActionFailed
+	}
+	tc := &stageTierConfirm{At: nowRFC3339(), Note: note, Empty: empty}
+	if !empty {
+		hash, missing := tierPoseHash(poses, designators)
+		if len(missing) > 0 { // cannot happen (resolved against live), belt-and-braces
+			return fmt.Errorf("confirm-tier %d: parts vanished mid-flight: %s", n, strings.Join(missing, ","))
+		}
+		tc.Designators = designators
+		tc.Hash = hash
+	}
+	// A (re-)confirmed tier invalidates everything stacked on top of it — later
+	// tiers reviewed the board as it was, and the seal must be re-issued.
+	st.InvalidateTiersFrom(n+1, fmt.Sprintf("tier %d (re)confirmed", n))
+	st.ConfirmTier(n, tc)
+	if err := savePcbStageState(st); err != nil {
+		return err
+	}
+	if empty {
+		fmt.Fprintf(stderr, "✓ tier %d (%s) confirmed EMPTY for %q\n", n, workflowTierName(n), project)
+	} else {
+		fmt.Fprintf(stderr, "✓ tier %d (%s) confirmed for %q — %d part(s): %s\n",
+			n, workflowTierName(n), project, len(designators), strings.Join(designators, ","))
+	}
+	if n == workflowTierCount {
+		if un := unclaimedParts(live, st.ClaimedTiers()); len(un) > 0 {
+			fmt.Fprintf(stderr, "⚠️  %d part(s) claimed by NO tier: %s — confirm-layout will refuse until they are claimed\n",
+				len(un), strings.Join(un, ","))
+		} else {
+			fmt.Fprintln(stderr, "  all parts claimed — ready for `pcb stage confirm-layout`")
+		}
+	}
+	return nil
 }
 
 // stageKeyBestEffort resolves the workflow state key: the live window's project
@@ -84,6 +213,7 @@ func newPcbStageStatusCmd(cfg *appConfig, window *string, stdout io.Writer) *cob
 					"project":            st.Project,
 					"confirmed":          st.Confirmed,
 					"assembly":           st.Assembly,
+					"placementTiers":     st.PlacementTiers,
 					"layoutGate":         st.Layout,
 					"layoutFingerprint":  st.LayoutFP,
 					"outlineFingerprint": st.OutlineFP,
@@ -104,6 +234,20 @@ func newPcbStageStatusCmd(cfg *appConfig, window *string, stdout io.Writer) *cob
 					mark = "●"
 				}
 				fmt.Fprintf(stdout, "  %s %s\n", mark, s)
+				// The tier ladder (issue #125) lives inside the placement stage.
+				if s == stagePlacementConfirmed {
+					for n := 1; n <= workflowTierCount; n++ {
+						tc := st.Tier(n)
+						switch {
+						case tc == nil:
+							fmt.Fprintf(stdout, "      ○ tier %d %s\n", n, workflowTierName(n))
+						case tc.Empty:
+							fmt.Fprintf(stdout, "      ● tier %d %s — EMPTY (%s)\n", n, workflowTierName(n), tc.Note)
+						default:
+							fmt.Fprintf(stdout, "      ● tier %d %s — %d part(s) @ %s\n", n, workflowTierName(n), len(tc.Designators), tc.At)
+						}
+					}
+				}
 			}
 			if st.Layout != nil {
 				fmt.Fprintf(stdout, "  layout gate: score %d (%s), %d crossings, %d tight, %d access-blocked @ %s\n",
@@ -194,7 +338,7 @@ func stageProjectLabel(p string) string {
 // pinned to the CURRENT placement by fingerprint, so a later out-of-band move
 // (GUI drag / exec_js / another agent) is detected and invalidates it.
 func newPcbStageConfirmLayoutCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
-	var note string
+	var note, force string
 	c := &cobra.Command{
 		Use:   "confirm-layout",
 		Short: "Confirm the placement (P2): sets placement_confirmed (pinned by fingerprint)",
@@ -206,19 +350,25 @@ and stores a fingerprint of the live placement (designator/x/y/rotation/layer):
 route gates re-verify it, so any later move invalidates this confirmation.
 It does NOT authorize routing on its own — the outline must also be confirmed and
 the routability gate passed.`,
-		Args:    cobra.NoArgs,
-		Example: `  easyeda pcb stage confirm-layout --project ceshi --note "USB-C opening out, antenna at top edge"`,
+		Args: cobra.NoArgs,
+		Example: `  easyeda pcb stage confirm-layout --project ceshi --note "USB-C opening out, antenna at top edge"
+  easyeda pcb stage confirm-layout --force "两件小板无分档必要" --project ceshi`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runStageConfirmLayout(cfg, *window, note, stderr)
+			return runStageConfirmLayoutForced(cfg, *window, note, force, stderr)
 		},
 	}
 	c.Flags().StringVar(&note, "note", "", "what was reviewed/confirmed (recorded in the audit trail)")
+	c.Flags().StringVar(&force, "force", "", "bypass the tier ladder gate with a reason (audited) — tiers 1-4 normally must be confirmed first (issue #125)")
 	return c
 }
 
 // runStageConfirmLayout is the P2 sign-off implementation, shared by
-// `pcb stage confirm-layout` and `workflow confirm layout`.
+// `pcb stage confirm-layout` and `workflow confirm layout` (no tier bypass).
 func runStageConfirmLayout(cfg *appConfig, window, note string, stderr io.Writer) error {
+	return runStageConfirmLayoutForced(cfg, window, note, "", stderr)
+}
+
+func runStageConfirmLayoutForced(cfg *appConfig, window, note, forceReason string, stderr io.Writer) error {
 	project, err := resolveStageProject(cfg, window)
 	if err != nil {
 		return fmt.Errorf("confirm-layout needs a connected window (the confirmation is fingerprinted against the live placement): %w", err)
@@ -227,6 +377,56 @@ func runStageConfirmLayout(cfg *appConfig, window, note string, stderr io.Writer
 	if err != nil {
 		return err
 	}
+	poses, err := pullLayoutPoses(cfg, window)
+	if err != nil {
+		return fmt.Errorf("confirm-layout: %w", err)
+	}
+	if len(poses) == 0 {
+		fmt.Fprintln(stderr, "❌ the active PCB has no components — nothing to confirm (run `pcb import-changes` first)")
+		return errActionFailed
+	}
+
+	// Tier ladder gate FIRST (issue #125): the 档1-4 sign-offs happen during
+	// placement and are the structural prerequisite for the final seal —
+	// confirm-layout can no longer cover all four tiers in one unreviewed
+	// stroke. --force <reason> bypasses (audited).
+	if drift := verifyTierFingerprints(st, poses); len(drift) > 0 {
+		_ = savePcbStageState(st)
+		for _, d := range drift {
+			fmt.Fprintf(stderr, "⚠️  %s\n", d)
+		}
+	}
+	var tierGaps []string
+	for n := 1; n <= workflowTierCount; n++ {
+		if st.Tier(n) == nil {
+			tierGaps = append(tierGaps, fmt.Sprintf("tier %d (%s)", n, workflowTierName(n)))
+		}
+	}
+	var live []string
+	for _, p := range poses {
+		if strings.TrimSpace(p.Designator) != "" {
+			live = append(live, p.Designator)
+		}
+	}
+	unclaimed := unclaimedParts(live, st.ClaimedTiers())
+	if len(tierGaps) > 0 || len(unclaimed) > 0 {
+		if strings.TrimSpace(forceReason) == "" {
+			if len(tierGaps) > 0 {
+				fmt.Fprintf(stderr, "❌ placement tier ladder incomplete — missing %s; confirm each (`pcb stage confirm-tier <n> --parts …`), or --force <reason> (audited)\n",
+					strings.Join(tierGaps, ", "))
+			}
+			if len(unclaimed) > 0 {
+				fmt.Fprintf(stderr, "❌ %d part(s) claimed by NO tier: %s — assign them (`pcb stage confirm-tier 4` re-claims the rest), or --force <reason>\n",
+					len(unclaimed), strings.Join(unclaimed, ","))
+			}
+			return errActionFailed
+		}
+		st.Confirm(stagePlacementConfirmed, "force", fmt.Sprintf("tier ladder bypassed: %s (missing %s; unclaimed %d)",
+			forceReason, strings.Join(tierGaps, ","), len(unclaimed)))
+		fmt.Fprintf(stderr, "⚠️  tier ladder bypassed on --force (reason: %s) — missing %s, %d unclaimed part(s); recorded in the audit trail\n",
+			forceReason, strings.Join(tierGaps, ","), len(unclaimed))
+	}
+
 	if st.Assembly == nil {
 		fmt.Fprintln(stderr, "❌ set the assembly profile first (`pcb stage set-assembly --profile hand-solder|reflow`)")
 		return errActionFailed
@@ -240,14 +440,8 @@ func runStageConfirmLayout(cfg *appConfig, window, note string, stderr io.Writer
 			st.Layout.AccessBlocked, st.Layout.AccessMil)
 		return errActionFailed
 	}
-	fp, err := pullLayoutFingerprint(cfg, window)
-	if err != nil {
-		return fmt.Errorf("confirm-layout: %w", err)
-	}
-	if fp.Count == 0 {
-		fmt.Fprintln(stderr, "❌ the active PCB has no components — nothing to confirm (run `pcb import-changes` first)")
-		return errActionFailed
-	}
+
+	fp := workflowNewFingerprint(workflowHashLayout(poses), len(poses))
 	st.Confirm(stagePlacementReady, "confirm", note)
 	st.Confirm(stagePlacementConfirmed, "confirm", note)
 	st.LayoutFP = fp

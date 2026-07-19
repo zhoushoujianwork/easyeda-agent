@@ -3,7 +3,9 @@ package app
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/workflow"
 )
@@ -34,7 +36,21 @@ type (
 	routeGate            = workflow.Gate
 	stageFingerprint     = workflow.Fingerprint
 	stageComponentPose   = workflow.ComponentPose
+	stageTierConfirm     = workflow.TierConfirm
 )
+
+// Tier ladder aliases (issue #125).
+const workflowTierCount = workflow.PlacementTierCount
+
+func workflowTierName(n int) string { return workflow.TierNames[n] }
+
+func nowRFC3339() string { return time.Now().Format(time.RFC3339) }
+
+func workflowHashLayout(poses []stageComponentPose) string { return workflow.HashLayout(poses) }
+
+func workflowNewFingerprint(hash string, count int) *stageFingerprint {
+	return workflow.NewFingerprint(hash, count)
+}
 
 const (
 	stageImported           = workflow.StageImported
@@ -281,6 +297,150 @@ func gateRouteCommand(cfg *appConfig, window, cmdName, forceReason, forceUnsafeR
 		}
 	}
 	return nil
+}
+
+// ── placement tiers (issue #125) ────────────────────────────────────────────
+
+// tierPoseHash hashes the poses of exactly the given designators (upper-case
+// set), in HashLayout's canonical order. missing lists claimed designators no
+// longer present on the board (deleted = drift).
+func tierPoseHash(poses []stageComponentPose, designators []string) (hash string, missing []string) {
+	want := map[string]bool{}
+	for _, d := range designators {
+		want[strings.ToUpper(d)] = true
+	}
+	var subset []stageComponentPose
+	seen := map[string]bool{}
+	for _, p := range poses {
+		u := strings.ToUpper(p.Designator)
+		if want[u] {
+			subset = append(subset, p)
+			seen[u] = true
+		}
+	}
+	for _, d := range designators {
+		if !seen[strings.ToUpper(d)] {
+			missing = append(missing, d)
+		}
+	}
+	return workflow.HashLayout(subset), missing
+}
+
+// verifyTierFingerprints re-derives each confirmed tier's pose hash from the
+// live placement. A mismatch (moved / deleted part) invalidates that tier and
+// every later one (and the placement_confirmed seal). Pure over the given
+// poses; the caller persists. Returns human-readable drift notes.
+func verifyTierFingerprints(st *pcbStageState, poses []stageComponentPose) []string {
+	var drift []string
+	for n := 1; n <= workflow.PlacementTierCount; n++ {
+		tc := st.Tier(n)
+		if tc == nil || tc.Empty {
+			continue
+		}
+		hash, missing := tierPoseHash(poses, tc.Designators)
+		if len(missing) > 0 {
+			st.InvalidateTiersFrom(n, fmt.Sprintf("tier %d part(s) deleted: %s", n, strings.Join(missing, ",")))
+			drift = append(drift, fmt.Sprintf(
+				"tier %d (%s) part(s) no longer on the board: %s — re-run `pcb stage confirm-tier %d`",
+				n, workflow.TierNames[n], strings.Join(missing, ","), n))
+			break // later tiers were invalidated with it
+		}
+		if hash != tc.Hash {
+			st.InvalidateTiersFrom(n, fmt.Sprintf("tier %d pose drift", n))
+			drift = append(drift, fmt.Sprintf(
+				"tier %d (%s) placement changed since its sign-off — re-run `pcb stage confirm-tier %d` (later tiers invalidated with it)",
+				n, workflow.TierNames[n], n))
+			break
+		}
+	}
+	return drift
+}
+
+// resolveTierParts decides which designators tier n covers. Pure so it is unit
+// testable: live is the board's designators (original case), claimed maps
+// designator→owning tier.
+//   - empty: declared empty tier — no parts, no hash.
+//   - tiers 1–3: an explicit --parts list is required (the review IS per-part).
+//   - tier 4: --parts optional; default = every live part no earlier tier claimed
+//     (卫星件 = the rest, by definition).
+//
+// Errors: unknown designators, or parts already claimed by a DIFFERENT tier.
+func resolveTierParts(n int, partsFlag []string, empty bool, live []string, claimed map[string]int) ([]string, error) {
+	if empty {
+		if len(partsFlag) > 0 {
+			return nil, fmt.Errorf("--empty and --parts are mutually exclusive")
+		}
+		return nil, nil
+	}
+	liveSet := map[string]string{}
+	for _, d := range live {
+		liveSet[strings.ToUpper(d)] = d
+	}
+	var out []string
+	if len(partsFlag) == 0 {
+		if n != workflow.PlacementTierCount {
+			return nil, fmt.Errorf("tier %d (%s) needs an explicit --parts list (or --empty) — the sign-off is per-part", n, workflow.TierNames[n])
+		}
+		for _, d := range live {
+			u := strings.ToUpper(d)
+			if t, ok := claimed[u]; ok && t != n {
+				continue
+			}
+			out = append(out, u)
+		}
+		if len(out) == 0 {
+			return nil, fmt.Errorf("tier 4 default (all unclaimed parts) resolved to nothing — every part is already claimed; pass --empty to record an empty tier")
+		}
+	} else {
+		var unknown, conflict []string
+		seen := map[string]bool{}
+		for _, raw := range partsFlag {
+			for _, d := range strings.Split(raw, ",") {
+				d = strings.TrimSpace(d)
+				if d == "" {
+					continue
+				}
+				u := strings.ToUpper(d)
+				if seen[u] {
+					continue
+				}
+				seen[u] = true
+				if _, ok := liveSet[u]; !ok {
+					unknown = append(unknown, d)
+					continue
+				}
+				if t, ok := claimed[u]; ok && t != n {
+					conflict = append(conflict, fmt.Sprintf("%s(tier %d)", d, t))
+					continue
+				}
+				out = append(out, u)
+			}
+		}
+		if len(unknown) > 0 {
+			return nil, fmt.Errorf("not on the board: %s (check `pcb list`)", strings.Join(unknown, ", "))
+		}
+		if len(conflict) > 0 {
+			return nil, fmt.Errorf("already claimed by another tier: %s — a part belongs to exactly one tier (re-confirm that tier to change it)", strings.Join(conflict, ", "))
+		}
+		if len(out) == 0 {
+			return nil, fmt.Errorf("--parts resolved to no designators")
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// unclaimedParts lists live designators no confirmed tier covers — a part added
+// AFTER tier sign-offs would otherwise ride into placement_confirmed unreviewed.
+func unclaimedParts(live []string, claimed map[string]int) []string {
+	var out []string
+	for _, d := range live {
+		if _, ok := claimed[strings.ToUpper(d)]; !ok {
+			out = append(out, d)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // invalidatePcbStageFrom loads the project state, clears the given stage and

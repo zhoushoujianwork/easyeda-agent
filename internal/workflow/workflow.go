@@ -161,8 +161,97 @@ type State struct {
 	// the gate deadlocks). The post_route_checked gate reads this list and does
 	// NOT count those findings as blocking; they are still printed as exempt.
 	PlanePouredNets []string `json:"planePouredNets,omitempty"`
-	History         []Event  `json:"history,omitempty"`
-	UpdatedAt       string   `json:"updatedAt"`
+	// PlacementTiers are the per-tier placement sign-offs (issue #125): the
+	// design-flow ladder 档1 孔/结构件 → 档2 边缘接口件 → 档3 主芯片+RF → 档4 卫星件
+	// was prose-only ("agent 自觉"), so it got skipped — confirm-layout could seal
+	// all four tiers in one stroke without any tier ever being reviewed. Each
+	// tier now records WHICH designators it covers and a pose hash of exactly
+	// those parts, so tiers invalidate independently: moving a satellite kills
+	// tier 4 only, tiers 1–3 sign-offs survive.
+	PlacementTiers map[int]*TierConfirm `json:"placementTiers,omitempty"`
+	History        []Event              `json:"history,omitempty"`
+	UpdatedAt      string               `json:"updatedAt"`
+}
+
+// TierConfirm is one placement tier's recorded sign-off (issue #125).
+type TierConfirm struct {
+	At          string   `json:"at"`
+	Note        string   `json:"note,omitempty"`
+	Designators []string `json:"designators,omitempty"` // normalized upper-case, sorted
+	Hash        string   `json:"hash,omitempty"`        // HashLayout over exactly these parts
+	Empty       bool     `json:"empty,omitempty"`       // deliberately empty tier (e.g. no RF parts)
+}
+
+// PlacementTierCount is the ladder length; TierNames documents each rung.
+const PlacementTierCount = 4
+
+// TierNames labels the placement ladder (design-flow P2 分档).
+var TierNames = map[int]string{
+	1: "孔/结构件",
+	2: "边缘接口件(朝向须确认)",
+	3: "主芯片+RF",
+	4: "卫星件",
+}
+
+// Tier returns tier n's confirmation, nil when unconfirmed.
+func (s *State) Tier(n int) *TierConfirm {
+	if s == nil || s.PlacementTiers == nil {
+		return nil
+	}
+	return s.PlacementTiers[n]
+}
+
+// ConfirmTier records tier n's sign-off (and the audit event).
+func (s *State) ConfirmTier(n int, tc *TierConfirm) {
+	if s.PlacementTiers == nil {
+		s.PlacementTiers = map[int]*TierConfirm{}
+	}
+	s.PlacementTiers[n] = tc
+	s.History = append(s.History, Event{
+		Stage: Stage(fmt.Sprintf("placement_tier%d", n)),
+		At:    time.Now().Format(time.RFC3339), Action: "confirm", Note: tc.Note,
+	})
+}
+
+// InvalidateTiersFrom clears tier n and every later tier (a tier's parts moved,
+// so its sign-off — and everything staged on top of it — is stale), plus the
+// placement_confirmed seal downstream. Returns the cleared tier numbers.
+func (s *State) InvalidateTiersFrom(n int, cause string) []int {
+	if s == nil || s.PlacementTiers == nil {
+		return nil
+	}
+	var cleared []int
+	for t := n; t <= PlacementTierCount; t++ {
+		if s.PlacementTiers[t] != nil {
+			delete(s.PlacementTiers, t)
+			cleared = append(cleared, t)
+		}
+	}
+	if len(cleared) > 0 {
+		s.History = append(s.History, Event{
+			Stage: Stage(fmt.Sprintf("placement_tier%d", n)),
+			At:    time.Now().Format(time.RFC3339), Action: "invalidate", Note: cause,
+		})
+		s.InvalidateFrom(StagePlacementConfirmed, cause)
+	}
+	return cleared
+}
+
+// ClaimedTiers maps designator (upper-case) → owning tier number.
+func (s *State) ClaimedTiers() map[string]int {
+	out := map[string]int{}
+	if s == nil {
+		return out
+	}
+	for n, tc := range s.PlacementTiers {
+		if tc == nil {
+			continue
+		}
+		for _, d := range tc.Designators {
+			out[strings.ToUpper(d)] = n
+		}
+	}
+	return out
 }
 
 // SetPowerTracksNets records power-planes' "route these as tracks, don't pour
@@ -295,6 +384,14 @@ func (s *State) InvalidateFrom(from Stage, cause string) []Stage {
 	}
 	if Rank(StageOutlineConfirmed) >= fromRank {
 		s.OutlineFP = nil
+	}
+	// A reset back to placement_ready (or earlier) restarts placement from
+	// scratch — the per-tier sign-offs (issue #125) go with it. A
+	// placement_confirmed-level invalidation deliberately KEEPS them: tiers
+	// carry their own pose hashes and invalidate individually on drift, so an
+	// unrelated move only costs the tier it touched, not the whole ladder.
+	if Rank(StagePlacementReady) >= fromRank {
+		s.PlacementTiers = nil
 	}
 	if len(cleared) > 0 {
 		s.History = append(s.History, Event{
