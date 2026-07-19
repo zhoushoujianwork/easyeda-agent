@@ -1286,6 +1286,7 @@ The keepouts[] format is what sch autoconnect / autolayout consume.`,
 	// ── block-apply ──────────────────────────────────────────────────────
 	// Circuit-block instantiation: the executable path for internal/blocks.
 	sch.AddCommand(newSchBlockApplyCmd(cfg, &window, stdout, stderr))
+	sch.AddCommand(newSchZonesCmd(cfg, &window, stdout, stderr))
 
 	return sch
 }

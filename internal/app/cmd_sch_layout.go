@@ -98,8 +98,11 @@ type layoutReport struct {
 	Overlaps        []layoutFinding `json:"overlaps"`
 	TightPairs      []layoutFinding `json:"tightSpacing"`
 	PinCoincidences []layoutFinding `json:"pinCoincidences"`
-	PinEps          float64         `json:"pinEps"`
-	Summary         string          `json:"summary"`
+	// ZoneViolations are claimed parts sitting outside their `sch zones` claim
+	// (WARN — a plan deviation, not a physical defect, so it never flips OK).
+	ZoneViolations []layoutFinding `json:"zoneViolations,omitempty"`
+	PinEps         float64         `json:"pinEps"`
+	Summary        string          `json:"summary"`
 }
 
 // analyzeLayout is the pure core: given components and a min-gap threshold,
@@ -282,6 +285,16 @@ func runLayoutLint(cfg *appConfig, window string, minGap, pinEps float64, allPag
 	rep := analyzeLayout(parts, minGap, pinEps)
 	rep.SkippedNonParts = skipped
 
+	// Zone-violation (WARN): best-effort — needs persisted `sch zones` claims
+	// AND a sheet bbox on the page. Absence of either silently skips the rule;
+	// it never blocks the physical overlap gate.
+	if zones, _, zerr := loadSchZoneClaims(cfg, window); zerr == nil && len(zones) > 0 {
+		if sheet := sheetBBoxOf(comps); sheet != nil {
+			realParts, _ := filterLayoutComps(comps, false)
+			rep.ZoneViolations = findSchZoneViolations(zones, *sheet, realParts)
+		}
+	}
+
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
@@ -373,6 +386,10 @@ func renderLayoutReport(rep layoutReport, w io.Writer) {
 	}
 	for _, f := range rep.TightPairs {
 		fmt.Fprintf(w, "  WARN   spacing  %s ↔ %s   (gap %.2fmm < %.2fmm)\n", f.A, f.B, f.Gap, rep.MinGap)
+	}
+	for _, f := range rep.ZoneViolations {
+		fmt.Fprintf(w, "  WARN   zone-violation  %s at %.0f,%.0f outside its claimed zone %s — S0 拍板的分区没有落实(`sch zones status` 看认领)\n",
+			f.A, f.X, f.Y, f.B)
 	}
 	if rep.SkippedNonParts > 0 {
 		fmt.Fprintf(w, "  note: %d non-part primitive(s) excluded (sheet/title-frame, netflag/netport/…); pass --include-non-parts to include\n", rep.SkippedNonParts)

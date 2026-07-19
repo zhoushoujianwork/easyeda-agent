@@ -102,7 +102,8 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 ### S2 — 模块编组
 - **做什么**:在每页内,把「芯片 + 其外围电路」定义为一个**组**,并规划各组在页面上的**分区位置**(谁在左、谁在右、信号流向)。
 - **怎么做**:分区/信号流向规则查 conventions 的 `schematic-layout-conventions.md`。此阶段只规划坐标分区,先不落子。布局 spec 里的 `sheet` 默认写 `"A4"`;zone 必须落在 S1 读到的 sheet 可用区内。**组的 page/zone 归属读 S0 方案书 spec 的 `modules[].page` / `modules[].zone`——这里只是把已定的分区落成具体矩形,不重新分配**。
-- **过门条件**:每个组有明确的目标矩形区域,组间预留了通道(不重叠的分区);若模块太多,已经拆到下一页而不是挤压本页。
+- **分区落成可校验的认领(新)**:`easyeda sch zones set --spec <s0-spec.json>`(或 `--module NAME=ZONE:D1,D2`)把 modules[].zone 持久化进项目 workflow 状态——此后 **`sch layout-lint` 自动多一条 zone-violation WARN**(被认领的件 bbox 中心落在其分区矩形之外 = S0 拍板的分区没落实),`sch zones status` 随时看认领+活体违规。词汇同 autolayout/pcb zones(left/center/right × top/bottom,sheet y 向下,top=小 y 半区)。原理图和 PCB 的认领各自独立(同一模块在图纸和板上的分区可以不同)。
+- **过门条件**:每个组有明确的目标矩形区域(已 `sch zones set` 认领),组间预留了通道(不重叠的分区);若模块太多,已经拆到下一页而不是挤压本页。
 
 ### S3 — 按组摆放(芯片 + 外围一起)
 - **做什么**:**逐组**放置——先放该组核心芯片,再把它的外围**就近**放在芯片周围(去耦贴电源脚、晶振贴时钟脚…),放完一组再下一组。
@@ -122,6 +123,7 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 1. **布局门** `easyeda sch layout-lint`(可加 `--min-gap`、`--all-pages`)
    - **任何 `overlap` ERROR = 必须修**(命令非零退出,可直接当 gate)。
    - `spacing` WARN = 评估是否太挤,外围贴芯片可接受、模块间过近要拉开。
+   - `zone-violation` WARN = 被 `sch zones set` 认领的件跑出了它的功能分区(需先在 S2 落认领 + 页面有 sheet bbox;这是"分区计划落实没落实"的门,不是物理缺陷,不翻 ERROR)。
    - **默认只检真实器件**:图框/标题栏(sheet)与 netflag/netport 等非器件原语已自动排除,不会再误报"器件压图框"(issue #13);要连这些一起检查才加 `--include-non-parts`。
 2. **电气门** `easyeda sch drc` + `easyeda sch check`(+ `scripts/lint.sh <project>` 数据 lint)
    - `sch drc` 调 EasyEDA SDK 的 `sch_Drc.check`;当前 EasyEDA build 可能只返回聚合/布尔结果,**不等于 UI DRC 面板的全部 warning**。

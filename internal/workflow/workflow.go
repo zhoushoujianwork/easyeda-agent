@@ -172,9 +172,36 @@ type State struct {
 	// Zones are the S0 spec's functional-zone claims (issue #126): module name →
 	// {grid zone, designators}. Consumed by `pcb place-constrained` (parts placed
 	// into their zone's board sub-rect) and `pcb check`'s zone-violation rule.
-	Zones     map[string]*ZoneClaim `json:"zones,omitempty"`
-	History   []Event               `json:"history,omitempty"`
-	UpdatedAt string                `json:"updatedAt"`
+	Zones map[string]*ZoneClaim `json:"zones,omitempty"`
+	// SchZones are the SCHEMATIC-side functional-zone claims: the same S0
+	// modules[].zone contract, but resolved against the page's sheet bbox
+	// (y-down) by `sch zones` / `sch layout-lint`'s zone-violation rule instead
+	// of the board outline. Kept separate from Zones because the same module
+	// legitimately claims different zones on sheet vs board.
+	SchZones  map[string]*SchZoneClaim `json:"schZones,omitempty"`
+	History   []Event                  `json:"history,omitempty"`
+	UpdatedAt string                   `json:"updatedAt"`
+}
+
+// SchZoneClaim is one module's schematic zone claim. Page records which
+// schematic page the module lives on (from S0 modules[].page); violation checks
+// only see parts present on the ACTIVE page, so Page is documentation + future
+// --all-pages routing, not a hard filter.
+type SchZoneClaim struct {
+	Zone  string   `json:"zone"`
+	Page  string   `json:"page,omitempty"`
+	Parts []string `json:"parts"` // designators, upper-case, sorted
+	At    string   `json:"at"`
+	Note  string   `json:"note,omitempty"`
+}
+
+// SetSchZones replaces the schematic zone claim table (module name → claim).
+func (s *State) SetSchZones(z map[string]*SchZoneClaim) {
+	s.SchZones = z
+	s.History = append(s.History, Event{
+		Stage: "sch-zones", At: time.Now().Format(time.RFC3339), Action: "confirm",
+		Note: fmt.Sprintf("%d module schematic zone claim(s)", len(z)),
+	})
 }
 
 // ZoneClaim is one functional zone's part claim (issue #126): the S0 spec's
