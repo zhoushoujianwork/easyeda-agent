@@ -6,6 +6,8 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-07-19
+
 ### Fixed
 - **`schematic.pin.set_no_connect` 真正生成非连接 X 标识(订正 0.5.14 的平台 no-op 误诊)**:
   真机复现确认 `setState_NoConnected(...)` 只修改当前 pin 句柄的待提交状态,必须再
@@ -14,6 +16,13 @@ follow [SemVer](https://semver.org/).
   `sch_PrimitiveComponent.get(id) → component.getAllPins()`,逐脚 setter + `done()`,再用
   新器件实例回读验证。Pro 3.2.149 真机已确认绿色 X 出现、`noConnected:true`,且
   `sch check` 的 floating-pin 计数同步减少;`--clear` 同路径持久化清除。
+  (#133 Bug 3 / #134, 感谢 @zhiqiangme 贡献)
+- **skill 脚本 Windows 中文环境 GBK 解码崩溃**(#133 Bug 4):bulk-connect /
+  bulk-place / sch / diff 四脚本的 `subprocess.run` 显式 `encoding='utf-8',
+  errors='replace'`——CLI 输出恒为 UTF-8,此前 `text=True` 在 Windows 中文环境
+  按系统 GBK 解码,器件描述含中文时 `UnicodeDecodeError` 崩溃。
+- **文档**:environment-setup.md 新增 PowerShell 5.1 吞 JSON 参数双引号的说明
+  与绕行(`--%` / 反引号转义 / CSV 形式 / PowerShell 7+)(#133 Bug 5)。
 
 ## [0.14.0] - 2026-07-18
 
