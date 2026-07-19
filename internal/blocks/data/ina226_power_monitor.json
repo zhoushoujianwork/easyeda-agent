@@ -7,11 +7,11 @@
   "added": "v0.14.1",
   "updated": "v0.14.1",
   "source": "datasheet:INA226 (TI SBOS547) 外围明文(VS 0.1µF 去耦/地址表/CAL 公式 0.00512/(Current_LSB×Rshunt)) + design-pattern:Flipper Zero 电源监测(BQ25896 充电 + BQ27220 库仑计电量计,shunt 串电池负极低侧)的通用化——改用高侧 shunt+INA226 使 GND 不被抬升、任意轨可测。选型与脚名 2026-07-19 ceshi 真机核对",
-  "validated": null,
+  "validated": "ceshi 2026-07-19 by @zhoushoujianwork: sch block-apply 孤立单放(6件/20连接全成)→sch read 7/7 网逐pin对账 0 差异(VBAT/VSYS/+3V3/SDA/SCL/INA_ALERT/GND)→sch check(0 findings)→layout-lint(0 overlap)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)→save。过程曾踩规划器同排对向 stub 线段重叠短路(Alert↔R4.2 被 EasyEDA 自动合并进 VSYS,net 对账才暴露,check/bridge-check 当时均漏报)——已改 R4.2 向下出线修复,块数据本身无改动。诚实:pcb_drc 未跑;未实板 bring-up,INA226 读数/CAL 换算需固件实测才算证实。",
   "verification": {
     "schematic": {
-      "status": "pending",
-      "evidence": "U 全部 10 脚名(1=A1/2=A0/3=Alert/4=SDA/5=SCL/6=VS+/7=GND/8=VBUS/9=VIN-/10=VIN+)经 ceshi 真机 sch place→sch read 实测核对全命中(2026-07-19,C49851 官方符号);完整 place→wire→sch check 尚未跑"
+      "status": "passed",
+      "evidence": "2026-07-19 ceshi 孤立单放全流程:块实例化 20/20 连接、7 网逐 pin 与 internal_nets 完全一致、0 悬空、sch check 0 findings、layout-lint 0 重叠、bridge-check 0/0、官方 sch drc 0 fatal/0 error(1 warn 为 SDK 聚合无明细)。脚名 10/10 实测命中(1=A1/2=A0/3=Alert/4=SDA/5=SCL/6=VS+/7=GND/8=VBUS/9=VIN-/10=VIN+)。验收铁律:netlist 逐网对账是唯一可信判据——本次 check+bridge-check 双引擎曾同时漏报一处线段重叠短路,只有对账抓到"
     },
     "component_selection": {
       "status": "passed",
