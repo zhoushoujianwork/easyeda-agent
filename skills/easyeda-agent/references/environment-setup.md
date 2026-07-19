@@ -116,6 +116,14 @@ extensionUuid 在 `extension/extension.json`。IndexedDB 结构非官方稳定 A
   用户就知道何时该看/刷。
 - **headless 环境(CI / ClawFlow operator)不能做运行时验收**:没有编辑器就
   没有 DRC/check 的运行时产物;正确行为是失败并说明,绝不伪造通过。
+- **Windows / PowerShell 5.1 会吞 JSON 参数的双引号**(issue #133 Bug 5):
+  `easyeda sch prim-delete --ids '["abc"]'` 经 PowerShell 原生传参到 exe 变成
+  `[abc]` → JSON 解析失败。所有吃 JSON 数组/对象的参数(`--ids`、`--spec` 等)
+  同理。**修法任选**:① 用 `--%` 停止解析符:`easyeda --% sch prim-delete --ids ["a","b"]`;
+  ② 反引号转义 `` `" ``;③ 改用 CSV 形式(接受 CSV 的参数如 `--ids a,b` 优先);
+  ④ 换 cmd 或 PowerShell 7+(行为已修正)。Windows 中文环境另注意:调用 CLI 的
+  外层脚本读输出必须显式 `encoding='utf-8'`(CLI 输出恒 UTF-8,系统默认 GBK
+  会解码崩溃,#133 Bug 4,skill 自带脚本已修)。
 
 ## 4. 一次完整自举的实测时间线(2026-07-07,ceshi)
 

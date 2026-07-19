@@ -37,7 +37,9 @@ def _cli(args, timeout=90, retries=5):
     proj = ['--project=' + PROJECT] if PROJECT else []
     for _ in range(retries):
         try:
-            p = subprocess.run([EASYEDA] + args + proj, capture_output=True, text=True, timeout=timeout)
+            # utf-8 固定编码:Windows 中文环境 text=True 会走 GBK 解码崩溃(issue #133 Bug 4)
+            p = subprocess.run([EASYEDA] + args + proj, capture_output=True,
+                               encoding='utf-8', errors='replace', timeout=timeout)
             out = p.stdout.strip()
             if not out:
                 time.sleep(1.5); continue

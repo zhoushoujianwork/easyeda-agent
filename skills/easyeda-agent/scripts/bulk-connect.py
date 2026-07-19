@@ -39,7 +39,10 @@ PROJECT = os.environ.get("EASYEDA_PROJECT", "")
 def run(args, timeout=120, retries=3):
     proj = ["--project", PROJECT] if PROJECT else []
     for attempt in range(retries):
-        p = subprocess.run(["easyeda"] + proj + args, capture_output=True, text=True, timeout=timeout)
+        # encoding 固定 utf-8:easyeda CLI 输出恒为 UTF-8,text=True 在 Windows
+        # 中文环境会用系统 GBK 解码而崩溃(issue #133 Bug 4)
+        p = subprocess.run(["easyeda"] + proj + args, capture_output=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
         if p.returncode == 0 or attempt == retries - 1:
             return p.returncode, p.stdout, p.stderr
         time.sleep(1.5)

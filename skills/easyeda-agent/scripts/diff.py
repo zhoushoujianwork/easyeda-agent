@@ -87,8 +87,9 @@ def primitive_diff(base, cur):
 
 
 def findings_of(path):
+    # utf-8 固定编码:Windows 中文环境 text=True 会走 GBK 解码崩溃(issue #133 Bug 4)
     out = subprocess.run([sys.executable, LINT, path, '--json'],
-                         capture_output=True, text=True)
+                         capture_output=True, encoding='utf-8', errors='replace')
     if out.returncode != 0:
         raise SystemExit(f"lint failed on {path}:\n{out.stderr}")
     return json.loads(out.stdout)['findings']
