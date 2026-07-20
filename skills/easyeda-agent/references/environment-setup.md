@@ -52,6 +52,14 @@ profile 里持久化)。
    easyeda doc switch PCB1 --project <name> 切到目标文档。
 ```
 
+**多页/切页防误操作用 `--doc <uuid|name>`(机制,别靠人工轮询)**:所有命令默认对
+**当前前台文档**操作,而 `doc switch` 是异步的——长命令(autoLayout ~2min)或跨命令
+时前台会漂移,编辑就落到**错误的页**(2026-07-20 P1/P2 反复被打散的祸根)。**修法是
+机制不是记忆**:给任意变更命令加 `--doc <目标页 uuid 或名>`,分发咽喉点(`ensureActiveDoc`)
+会在**变更动作落地前**切到该页并用**实时 `document.current`** 确认(不看缓存 /health),
+确认不了就**拒绝**而不是编辑错页。例:`easyeda sch block-apply <blk> --doc P1 --project ceshi`
+——前台就算停在 P2 也会自动切 P1 落子、P2 不受影响。多页工程/长操作**一律带 --doc**。
+
 前提(一次性,人工):该 profile 里已装过连接器 —— **侧载** GitHub Release 的
 `.eext`(与 CLI 严格同版)**或**从[立创官方插件市场](https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector)
 一键装(平台可原地自动更新,但市场版本可能滞后 CLI);并开了 **允许外部交互**、

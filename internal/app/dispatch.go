@@ -48,6 +48,13 @@ type appConfig struct {
 	// forceUnsafe escalates forceReason past a fully-unconfirmed mechanical
 	// skeleton (issue #132) — set only by --force-unsafe.
 	forceUnsafe bool
+	// doc, when set (--doc <uuid|name>), PINS every mutating action to that
+	// document: the daemon-choke-point guard (ensureActiveDoc) switches to it and
+	// confirms via LIVE document.current BEFORE the edit dispatches, and refuses
+	// rather than land the edit on whatever page happens to be foreground. This
+	// is the mechanism that removes the doc-switch race — a long op (autoLayout)
+	// can no longer scatter the wrong page because the foreground drifted.
+	doc string
 }
 
 // portRange parses the ports string and returns (start, end, err).
@@ -386,9 +393,76 @@ func warnConcurrentWriter(respBody []byte, stderr io.Writer) {
 	fmt.Fprintf(stderr, "⚠ concurrentWriter: %s\n", parsed.ConcurrentWriter)
 }
 
+// ── --doc guard: pin mutating actions to a chosen document ───────────────────
+//
+// Every action that MOVES/creates/deletes primitives operates on whatever
+// document is foreground. doc switch is async, so a long op (autoLayout, ~2min)
+// or a follow-up command could land its edit on the WRONG page after the
+// foreground drifted — the real cause of the 2026-07-20 P1/P2 thrash. `--doc`
+// removes that class of bug MECHANICALLY: before a mutating action dispatches,
+// ensureActiveDoc switches to the requested page and confirms it via LIVE
+// document.current, refusing rather than editing the wrong page.
+
+// docGuardCatalog caches the typed-action catalog for the mutating-action lookup.
+var docGuardCatalog = sync.OnceValue(actionCatalog)
+
+// actionMutates reports whether an action edits the document (drives the guard).
+func actionMutates(action string) bool {
+	spec, ok := docGuardCatalog()[action]
+	return ok && spec.Mutates
+}
+
+// docGuardExempt are actions the guard must NEVER gate: its own navigation/read
+// tools. They are non-mutating today (so the guard skips them anyway), but the
+// explicit set keeps a future Mutates flip from causing infinite recursion.
+var docGuardExempt = map[string]bool{
+	"document.current": true, "document.open": true, "schematic.page.open": true,
+	"schematic.pages.list": true, "pcb.documents.list": true,
+}
+
+// ensureActiveDoc makes cfg.doc the active document before a mutating action.
+// No-op when --doc is unset. Verifies via LIVE document.current (never the
+// cached /health snapshot, which is what fooled the hand-rolled checks), and
+// returns an error rather than proceed on the wrong page.
+func ensureActiveDoc(cfg *appConfig, window string) error {
+	if cfg.doc == "" {
+		return nil
+	}
+	docs, activeUUID, rw, err := discoverDocs(cfg, window)
+	if err != nil {
+		return fmt.Errorf("--doc guard: %w", err)
+	}
+	target, err := resolveDoc(docs, cfg.doc)
+	if err != nil {
+		return fmt.Errorf("--doc %q: %w", cfg.doc, err)
+	}
+	if activeUUID == target.UUID {
+		return nil
+	}
+	for i := 0; i < 6; i++ {
+		if _, oerr := requestAction(cfg, "document.open", rw, map[string]any{"uuid": target.UUID}); oerr != nil {
+			return fmt.Errorf("--doc guard: open %s: %w", target.Name, oerr)
+		}
+		time.Sleep(1200 * time.Millisecond)
+		cur, cerr := requestAction(cfg, "document.current", rw, nil)
+		if cerr == nil && cur.Context != nil && cur.Context.DocumentUUID == target.UUID {
+			return nil
+		}
+	}
+	return fmt.Errorf("--doc %q: could not confirm it is the active page after retries — refusing to run a mutating action on the wrong page", cfg.doc)
+}
+
 // postAction is the shared HTTP core: find a live daemon, POST the typed action,
 // and return the raw response body.
 func postAction(cfg *appConfig, action, window string, payload any, timeout time.Duration) ([]byte, error) {
+	// --doc guard: pin a mutating action to the requested page first. Skipped for
+	// the guard's own navigation actions (docGuardExempt) so it never recurses.
+	if cfg.doc != "" && actionMutates(action) && !docGuardExempt[action] {
+		if err := ensureActiveDoc(cfg, window); err != nil {
+			return nil, err
+		}
+	}
+
 	portStart, portEnd, err := cfg.portRange()
 	if err != nil {
 		return nil, err

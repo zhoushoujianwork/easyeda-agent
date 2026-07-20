@@ -58,6 +58,8 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		"daemon port range (start-end)")
 	root.PersistentFlags().StringVar(&cfg.project, "project", "",
 		"route by project name/uuid instead of --window (survives windowId churn)")
+	root.PersistentFlags().StringVar(&cfg.doc, "doc", "",
+		"pin every mutating action to this schematic page / PCB (uuid or name): the CLI switches to it and confirms via live document.current before editing, refusing rather than land the edit on whatever page is foreground — removes the doc-switch race")
 
 	root.AddCommand(
 		newVersionCmd(stdout),
