@@ -32,6 +32,20 @@ follow [SemVer](https://semver.org/).
   `document.current`** 确认(不看缓存 /health),确认不了**拒绝**而非编辑错页;导航动作豁免防递归。
   真机验证:前台停 P2 时 `block-apply --doc P1` 稳稳落 P1、P2 不动。**多页/长操作一律带 `--doc`。**
 
+### Added — PCB SVG 丝印导入 (issue #139)
+- **`pcb.silk.import_svg` / `pcb silk-import-svg`**:把 SVG(LOGO / 品牌标 / 图形)作为**填充**
+  丝印图元导入(`eda.pcb_PrimitiveImage.create`)——**无需 `debug.exec_js`** 的 typed 路径。新增
+  Go 侧 SVG 解析器 `internal/pcb/svgimport`:解析 path(`M/L/H/V/C/S/Q/T/A/Z`)、`polygon`/
+  `polyline`/`rect`/`circle`/`ellipse`/`line`、嵌套 `transform`、viewBox,**曲线全部扁平化为线段**,
+  输出 EDA 复杂多边形命令数组(轮廓 + **even-odd 挖孔**,LOGO 的孔洞如 "o" 中空自动镂空)。
+  Flag:`--file`/`--svg`、`--x/--y`(或 `--at`)=图形左上角、`--width`/`--height`/`--keep-aspect`、
+  `--layer`(3 顶 / 4 底自动镜像)、`--rotation`/`--mirror`,以及 **`--dry-run`**(CLI 侧,打印目标
+  bbox / 轮廓数 / 顶点数 / 最小特征 + 低于 `--min-line-width`≈6mil 的 DFM 告警)。**ceshi 真机验证**:
+  顶/底丝印可建、孔洞镂空、旋转+镜像生效、**扛过 `doc reload` + `pcb save`**(同 primitiveId/bbox)、
+  `pcb check` 干净。关键判据:`pcb_PrimitiveImage` 直接吃丝印层的复杂多边形,填充 LOGO **无需**描边化
+  或光栅化(推翻初始范围风险)。填充规则为 even-odd,纯描边图形按填充处理。星火计划 LOGO 品牌素材
+  示例待授权确认(下载链接 + SHA-256,不再分发)。
+
 ### Fixed
 - **原理图坐标系 y-UP 定音**:双探针文本实测 3.2.148 画布为 y-UP(y 大=视觉上方),修正 `zoneRect`
   的 top/bottom 映射(此前按 y-DOWN 写反,autolayout/zone-violation/zone-draw 上下翻转)、标题栏

@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/blocks"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/pcb/svgimport"
 )
 
 // pcbClearScopes is the canonical set of `pcb clear --only` values, mirrored in
@@ -3595,7 +3597,167 @@ Pair with 'pcb snapshot' for visual QA. Agent Skill can analyze pins and choose 
 		pcb.AddCommand(c)
 	}
 
+	// pcb.silk.import_svg — import an SVG logo/artwork as a FILLED silkscreen image.
+	{
+		var file, svgStr, at string
+		var x, y, width, height, rotation, minLineWidth, flattenTol float64
+		var layer int
+		var keepAspect, mirror, dryRun bool
+		c := &cobra.Command{
+			Use:   "silk-import-svg",
+			Short: "Import an SVG logo/artwork as a FILLED silkscreen graphic",
+			Long: `Import an SVG (logo / brand mark / artwork) as a FILLED silkscreen primitive
+(eda.pcb_PrimitiveImage) — the typed path for placing a vector graphic on a PCB
+without debug.exec_js.
+
+The CLI parses the SVG, flattens every curve (Bézier/arc) to line segments,
+applies viewBox→mil scaling, and sends the resulting complex polygon (contours +
+even-odd holes, so a logo's counters punch through) to the connector, which
+creates ONE image primitive on the silk layer.
+
+PLACEMENT: --x/--y (or --at "x,y") is where the artwork's TOP-LEFT lands (mil).
+SIZE: --width and/or --height in mil; --keep-aspect forces uniform scaling. With
+only --width (or only --height) aspect is always preserved.
+LAYER: --layer 3=TOP_SILKSCREEN (default), 4=BOTTOM_SILKSCREEN (auto-mirrors).
+--rotation (deg), --mirror (horizontal), --flatten-tol (curve tolerance, mil).
+
+--dry-run parses + scales WITHOUT touching the editor and prints target bbox,
+contour count, vertex count and the min-feature size (a DFM proxy); it warns when
+min-feature < --min-line-width (JLCPCB silk minimum ≈ 6 mil).
+
+Fill rule is even-odd; stroke-only art is not stroked (all geometry is filled).
+After a real import, follow reload → pcb.silk.list / pcb check → pcb save.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb silk-import-svg --file ./logo.svg --x 1000 --y -1000 --width 600 --dry-run
+  easyeda pcb silk-import-svg --file ./logo.svg --at "1000,-1000" --width 600 --keep-aspect
+  easyeda pcb silk-import-svg --file ./logo.svg --x 1000 --y -1000 --width 400 --layer 4`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if file == "" && svgStr == "" {
+					return fmt.Errorf("provide --file <path> or --svg <string>")
+				}
+				var data []byte
+				if file != "" {
+					b, err := os.ReadFile(file)
+					if err != nil {
+						return fmt.Errorf("read --file: %w", err)
+					}
+					data = b
+				} else {
+					data = []byte(svgStr)
+				}
+
+				res, err := svgimport.Parse(strings.NewReader(string(data)), svgimport.Options{
+					TargetWidth:  width,
+					TargetHeight: height,
+					KeepAspect:   keepAspect,
+					FlattenTol:   flattenTol,
+				})
+				if err != nil {
+					return fmt.Errorf("parse svg: %w", err)
+				}
+
+				// --at "x,y" overrides --x/--y when given.
+				if at != "" {
+					ax, ay, err := parseXYPair(at)
+					if err != nil {
+						return err
+					}
+					x, y = ax, ay
+				}
+
+				// Bottom silk (layer 4) mirrors by convention unless --mirror was set explicitly.
+				if layer == 4 && !cmd.Flags().Changed("mirror") {
+					mirror = true
+				}
+
+				// EDA is y-up; the artwork's top-left lands at (x,y) and extends DOWNWARD
+				// (screen_y = y − local_y), so the rendered bbox runs y-height … y.
+				bbox := map[string]any{
+					"minX": x, "maxX": x + res.Width,
+					"minY": y - res.Height, "maxY": y,
+				}
+				dfmWarn := minLineWidth > 0 && res.MinFeature > 0 && res.MinFeature < minLineWidth
+
+				if dryRun {
+					out := map[string]any{
+						"dryRun":     true,
+						"width":      res.Width,
+						"height":     res.Height,
+						"contours":   res.PathCount,
+						"vertices":   res.PointCount,
+						"minFeature": res.MinFeature,
+						"layer":      layer,
+						"x":          x,
+						"y":          y,
+						"rotation":   rotation,
+						"mirror":     mirror,
+						"bbox":       bbox,
+					}
+					if dfmWarn {
+						out["dfmWarning"] = fmt.Sprintf("min-feature %.2f mil < %.2f mil (JLCPCB silk minimum) — thin features may be clipped in fab", res.MinFeature, minLineWidth)
+					}
+					enc := json.NewEncoder(stdout)
+					enc.SetIndent("", "  ")
+					return enc.Encode(out)
+				}
+
+				if dfmWarn {
+					fmt.Fprintf(stderr, "WARN: min-feature %.2f mil < %.2f mil (JLCPCB silk minimum) — thin features may be clipped in fab\n", res.MinFeature, minLineWidth)
+				}
+
+				payload := map[string]any{
+					"polygons": res.Polygons,
+					"x":        x,
+					"y":        y,
+					"layer":    layer,
+					"rotation": rotation,
+					"mirror":   mirror,
+				}
+				if res.Width > 0 {
+					payload["width"] = res.Width
+				}
+				if res.Height > 0 {
+					payload["height"] = res.Height
+				}
+				return dispatch(cfg, "pcb.silk.import_svg", window, payload, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&file, "file", "", "path to an SVG file")
+		c.Flags().StringVar(&svgStr, "svg", "", "inline SVG string (alternative to --file)")
+		c.Flags().Float64Var(&x, "x", 0, "artwork top-left X (mil)")
+		c.Flags().Float64Var(&y, "y", 0, "artwork top-left Y (mil)")
+		c.Flags().StringVar(&at, "at", "", `artwork top-left as "x,y" (mil; overrides --x/--y)`)
+		c.Flags().Float64Var(&width, "width", 0, "target width (mil; 0 = intrinsic)")
+		c.Flags().Float64Var(&height, "height", 0, "target height (mil; 0 = derive from aspect)")
+		c.Flags().BoolVar(&keepAspect, "keep-aspect", false, "force uniform scaling when both width & height are given")
+		c.Flags().Float64Var(&rotation, "rotation", 0, "rotation (deg)")
+		c.Flags().BoolVar(&mirror, "mirror", false, "horizontal mirror (auto-true for --layer 4)")
+		c.Flags().IntVar(&layer, "layer", 3, "silk layer: 3=TOP_SILKSCREEN, 4=BOTTOM_SILKSCREEN")
+		c.Flags().Float64Var(&flattenTol, "flatten-tol", 2, "curve flattening tolerance (mil)")
+		c.Flags().Float64Var(&minLineWidth, "min-line-width", 6, "DFM min silk feature (mil); warns below this")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "parse + scale only; print bbox/contours/min-feature without editing")
+		pcb.AddCommand(c)
+	}
+
 	return pcb
+}
+
+// parseXYPair parses an "x,y" string into two floats (mil), used by
+// silk-import-svg's --at shortcut.
+func parseXYPair(s string) (float64, float64, error) {
+	parts := strings.Split(s, ",")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("expected \"x,y\", got %q", s)
+	}
+	x, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid x in %q: %w", s, err)
+	}
+	y, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid y in %q: %w", s, err)
+	}
+	return x, y, nil
 }
 
 // parseRoutedNets extracts the set of nets that already have copper tracks from a

@@ -9,11 +9,30 @@ planned. Ground truth for the action catalog is `make actions`
 > [`ecosystem-survey.md`](ecosystem-survey.md) 系统对比了官方开源扩展用到的 API、我们的盲区,
 > 以及一份带优先级的可吸收功能清单(A1–A9),是下一阶段 roadmap 的主要输入。
 
-**93 typed actions** total — 48 `pcb`, 26 `schematic`, 7 `board`, 6 `document`,
+**94 typed actions** total — 49 `pcb`, 26 `schematic`, 7 `board`, 6 `document`,
 2 `system`, 2 `artifact`, and one each in `project`, `debug`.
 All but `system.health` are dispatched to the connector; `system.health` is
 answered by the daemon itself (daemon/connector liveness, no window required).
 (Run `make actions` for the authoritative list — this prose count can lag.)
+
+> **2026-07-20 — SVG 丝印导入 (issue #139).** New typed action **`pcb.silk.import_svg`**
+> (`pcb silk-import-svg`): import an SVG logo / brand mark / artwork as a **FILLED**
+> silkscreen primitive via `eda.pcb_PrimitiveImage.create` — the typed path, no
+> `debug.exec_js`. A new Go SVG parser (`internal/pcb/svgimport`) handles path
+> (`M/L/H/V/C/S/Q/T/A/Z`), `polygon`/`polyline`/`rect`/`circle`/`ellipse`/`line`, nested
+> `transform`, and viewBox; **flattens every curve to line segments** and emits the EDA
+> complex-polygon command arrays (contours + **even-odd holes**, so logo counters punch
+> through). Flags: `--file`/`--svg`, `--x/--y` (or `--at`) = artwork top-left, `--width`/
+> `--height`/`--keep-aspect`, `--layer` (3 top / 4 bottom auto-mirror), `--rotation`/
+> `--mirror`, and **`--dry-run`** (CLI-side; prints bbox / contour count / vertices /
+> min-feature + a DFM warning below `--min-line-width` ≈ 6 mil). **Real-machine verified on
+> ceshi**: creates on top/bottom silk, holes punch, rotation+mirror honored, **persists
+> across `doc reload` + `pcb save`** (same primitiveId/bbox), `pcb check` clean. The
+> **make-or-break** finding that unblocked the approach: `pcb_PrimitiveImage` takes a
+> complex polygon directly on the silk layer, so a filled logo needs **no** stroke-outline
+> or rasterization (correcting the original scoping risk). Fill rule is even-odd; stroke-only
+> art is filled, not stroked. Branding-asset example (星火计划 LOGO) deferred pending
+> licensing (download-link + SHA-256 approach, not re-distributed).
 
 > **2026-07-06 — `pcb check` via-crosses-plane 守护 + PLANE 工作流文档统一 (issue #30).**
 > New `pcb check` rule **via-crosses-plane**: reads the stackup (`pcb.layers.list`,

@@ -4302,6 +4302,55 @@ const pcbSilkAdd: Handler = async (payload) => {
 	return { result: { primitiveId: id, layer: Number(layer), x, y, fontSize, lineWidth, rotation, bbox } };
 };
 
+// pcb.silk.import_svg — create a FILLED silkscreen graphic from a pre-parsed
+// complex polygon (an SVG flattened to contours by the Go CLI). The connector is
+// deliberately thin: all SVG parsing / curve flattening / viewBox scaling happens
+// CLI-side (internal/pcb/svgimport), and here we just hand the contour arrays to
+// eda.pcb_PrimitiveImage.create on the silk layer. `polygons` is the complex
+// polygon (array of TPCB_PolygonSourceArray, each [x0,y0,'L',x1,y1,…] in mil, with
+// even-odd holes). (x,y) is where the artwork's top-left lands.
+const pcbSilkImportSvg: Handler = async (payload) => {
+	const raw = payload.polygons;
+	if (!Array.isArray(raw) || raw.length === 0) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'polygons must be a non-empty array of contour arrays.');
+	}
+	for (const c of raw) {
+		if (!Array.isArray(c) || c.length < 3) {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each contour must be an array like [x0,y0,"L",x1,y1,…].');
+		}
+	}
+	const x = requireNumber(payload, 'x');
+	const y = requireNumber(payload, 'y');
+	const layer = (optionalNumber(payload, 'layer') ?? PCB_TOP_SILK) as unknown as TPCB_LayersOfImage;
+	const width = optionalNumber(payload, 'width');
+	const height = optionalNumber(payload, 'height');
+	const rotation = optionalNumber(payload, 'rotation') ?? 0;
+	const mirror = optionalBoolean(payload, 'mirror') === true;
+
+	// A single contour is passed as one TPCB_PolygonSourceArray; multiple contours
+	// (outer + holes / disjoint shapes) are passed as an Array<TPCB_PolygonSourceArray>.
+	const complexPolygon = (raw.length === 1 ? raw[0] : raw) as unknown as TPCB_PolygonSourceArray | Array<TPCB_PolygonSourceArray>;
+
+	let img;
+	try {
+		img = await eda.pcb_PrimitiveImage.create(
+			x, y, complexPolygon, layer,
+			width, height, rotation, mirror,
+		);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create silkscreen image from SVG.');
+	}
+	if (!img) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'pcb_PrimitiveImage.create returned no primitive (check the polygon contours are valid closed shapes).');
+	}
+	const id = img.getState_PrimitiveId();
+	let bbox;
+	try { bbox = await eda.pcb_Primitive.getPrimitivesBBox([id]); }
+	catch { /* bbox optional */ }
+	return { result: { primitiveId: id, layer: Number(layer), x, y, rotation, mirror, contours: raw.length, bbox } };
+};
+
 // pcb.silk.set — reconfigure existing silkscreen primitive(s) in one batch:
 // designator/value ATTRIBUTES and free STRINGS. Any of x/y/rotation/fontSize/
 // lineWidth/text may be set; only the provided keys change. Uses the reliable
@@ -7762,6 +7811,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.silk.align': pcbSilkAlign,
 	'pcb.silk.list': pcbSilkList,
 	'pcb.silk.add': pcbSilkAdd,
+	'pcb.silk.import_svg': pcbSilkImportSvg,
 	'pcb.silk.set': pcbSilkSet,
 	'pcb.silk.netnames': pcbSilkNetnames,
 	'pcb.silk.label_pads': pcbSilkLabelPads,

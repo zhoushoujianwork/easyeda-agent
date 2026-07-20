@@ -593,6 +593,17 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.snapshot"},
 		},
 		{
+			Name:        "pcb.silk.import_svg",
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Import an SVG (logo / artwork / brand mark) as a FILLED silkscreen primitive (eda.pcb_PrimitiveImage) — the typed path for placing a vector graphic on a PCB without debug.exec_js. The CLI (easyeda pcb silk-import-svg) parses the SVG, flattens every curve (Bézier/arc) to line segments, applies viewBox→mil scaling, and sends the resulting complex polygon (contours + even-odd holes, so a logo's counters punch through) here; the connector creates ONE image primitive on the silk layer and returns its primitiveId + rendered bbox. Placement: (x,y) is where the artwork's TOP-LEFT lands; layer 3=TOP_SILKSCREEN (default) / 4=BOTTOM_SILKSCREEN; rotation + horizontal mirror supported. Persists across doc reload + pcb save (probe-verified). Fill rule is even-odd; stroke-only art is not stroked (all geometry is filled). Use --dry-run (CLI-side, no editor call) to preview target bbox / contour count / min-feature before committing. Verify with pcb.silk.list + pcb check; follow the reload/read/check/save workflow.",
+			Inputs:      []string{"polygons (required: complex polygon = array of TPCB_PolygonSourceArray, each [x0,y0,\"L\",x1,y1,…] in mil)", "x (mil, required — artwork top-left)", "y (mil, required)", "layer optional (3|4, default 3)", "width optional (mil — image width hint)", "height optional (mil — image height hint)", "rotation optional (deg, default 0)", "mirror optional (bool, default false — horizontal mirror; auto-true convention for bottom silk handled CLI-side)"},
+			Outputs:     []string{"primitiveId", "layer", "x", "y", "rotation", "mirror", "contours", "bbox"},
+			VerifyWith:  []string{"pcb.silk.list", "pcb.snapshot"},
+		},
+		{
 			Name:        "pcb.nets.list",
 			Domain:      DomainPcb,
 			Phase:       2,
