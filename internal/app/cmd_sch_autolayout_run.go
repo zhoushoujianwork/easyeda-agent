@@ -248,7 +248,7 @@ func newAutolayoutCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) 
 	var (
 		spec                                            string
 		engine                                          string
-		dryRun, apply                                   bool
+		dryRun, apply, rewire                           bool
 		allPages, asJSON                                bool
 		avoidTitleBlock, preserveFanout, preferVertical bool
 		moduleGap, channelGap, partGap                  float64
@@ -276,6 +276,15 @@ TWO ENGINES (--engine):
             connectivity-clustered FALLBACK for un-templated pages. No spec, but
             it is a LONG op (~2min), rearranges the WHOLE active schematic page,
             and is messier than a template. Needs the target page foreground.
+            It is DESTRUCTIVE: it moves parts without their wires (leaving them
+            dangling) and places off-grid. So it REFUSES an already-wired page
+            unless --rewire, always snaps to grid after, and self-checks wiring
+            (sch check) not just overlap.
+
+  --rewire  (official only) after layout, delete the now-broken wiring and
+            rebuild it from the netlist captured BEFORE the run. Best-effort: a
+            scattered layout can leave stub-collision shorts. Required to run
+            official on a page that is already wired.
 
   --dry-run  return proposed coordinates + warnings, mutate nothing (default)
   --apply    move parts via schematic.component.modify, then self-check overlaps
@@ -296,7 +305,8 @@ Spec shape:
 		Example: `  easyeda sch autolayout --spec p1-layout.json --dry-run
   easyeda sch autolayout --spec p1-layout.json --apply
   easyeda sch autolayout --spec p1-layout.json --json
-  easyeda sch autolayout --engine official --apply   # platform fallback, whole active page`,
+  easyeda sch autolayout --engine official --apply             # unwired page: place only
+  easyeda sch autolayout --engine official --apply --rewire    # wired page: layout + rebuild wiring`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun && apply {
 				return fmt.Errorf("--dry-run and --apply are mutually exclusive")
@@ -308,7 +318,7 @@ Spec shape:
 				if spec != "" {
 					fmt.Fprintln(stderr, "note: --spec is ignored by --engine official (the platform lays out the whole active page)")
 				}
-				return runOfficialAutolayout(cfg, *window, apply, stdout, stderr)
+				return runOfficialAutolayout(cfg, *window, apply, rewire, stdout, stderr)
 			case "", "template":
 				// fall through to the spec-driven planner below
 			default:
@@ -364,6 +374,7 @@ Spec shape:
 	}
 	c.Flags().StringVar(&spec, "spec", "", "layout spec JSON file (required for --engine template)")
 	c.Flags().StringVar(&engine, "engine", "template", "placement engine: template (our spec-driven planner) | official (platform eda.sch_Document.autoLayout fallback)")
+	c.Flags().BoolVar(&rewire, "rewire", false, "official only: after layout, delete broken wiring and rebuild it from the pre-run netlist (required for an already-wired page)")
 	c.Flags().BoolVar(&dryRun, "dry-run", false, "plan and print proposed coordinates without mutating (default behavior)")
 	c.Flags().BoolVar(&apply, "apply", false, "move parts via schematic.component.modify, then self-check overlaps")
 	c.Flags().BoolVar(&allPages, "all-pages", false, "build the scene from all schematic pages")
