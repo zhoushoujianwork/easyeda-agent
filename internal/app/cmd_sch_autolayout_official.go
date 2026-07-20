@@ -50,6 +50,14 @@ func runOfficialAutolayout(cfg *appConfig, window string, apply, rewire bool, st
 	if err != nil {
 		return err
 	}
+	// This command READS the page (part/wire counts, netlist for --rewire) BEFORE
+	// it mutates, so the generic mutating-action guard is not enough: the reads
+	// must land on the SAME page as the layout. Pin the whole command to --doc up
+	// front so a foreground on the wrong page can't make it capture page A's
+	// netlist and lay out page B.
+	if err := ensureActiveDoc(cfg, win); err != nil {
+		return err
+	}
 	cur, err := requestAction(cfg, "document.current", win, nil)
 	if err != nil {
 		return fmt.Errorf("read active document: %w", err)
