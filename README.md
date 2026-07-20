@@ -142,6 +142,19 @@ clawhub install easyeda-agent
 
 > 上面 GIF 和截图都来自回归板真机流程(原理图 → 导入 PCB → 4 层叠层 → 布局 → GND 内电层/VCC 信号 plane → 天线禁区+检查 → 丝印/LED 极性 → 挖槽),非 mockup。这也是项目的固定端到端回归用例(拿原始需求从零跑),见 [esp32MiniRequire.md](esp32MiniRequire.md)。
 
+### 原理图自动放置:两个引擎(模板 vs 官方)
+
+同一个 ESP32-S3R8 最小系统块,两种放置引擎的真机对比(都 `sch check` 0 悬空导线、已连线):
+
+| `--engine template`(默认,推荐) | `--engine official`(官方 autoLayout 兜底) |
+|---|---|
+| <img src="docs/assets/demo-sch-template.png" width="420" alt="模板引擎:功能分组、去耦贴芯片、紧凑可读"/> | <img src="docs/assets/demo-sch-official.png" width="420" alt="官方引擎:连通性放射状散布、已连线"/> |
+| 块 `schematic_layout` 模板驱动:**去耦帽贴电源脚一字排开、上拉靠引脚、晶振/FLASH 分列**,信号流左入右出,**功能分组、紧凑可读**;原点自动避碰、落后真实 bbox 自检 | 平台 `eda.sch_Document.autoLayout()`(@beta):**连通性聚类放射状**,较散、留白大;是**破坏性**长操作(移件不移线),封装加了安全管线(已连线守卫/吸附 5 格/`--rewire` 重连/`sch check` 自检) |
+
+两版都能用、都还有少量重叠(模板版当前还会碰标题栏右下角,官方版散件间距不均),**放置的正确性由机械门禁保证**:`sch layout-lint`(真实 bbox 查重叠)+ `sch check`/`bridge-check`(查断线/短路)。多页工程/长操作用 `--doc <page>` flag **机制性地钉住目标页**,不再靠人工切页(避免长命令落错页)。
+
+> **优先级铁律**:命中电路块 → `sch block-apply` 模板;有 S0 分区 spec → `--engine template`;都没有才 `--engine official` 兜底。功能分组的模板版是首选,官方引擎只作未建模页面的起点。**下版优化**:放置避让标题栏 keep-out、分区区域线 + 文本注释(`sch zone-draw` 已提供,待接入自动放置流程)。
+
 ## 能力清单(已支持)
 
 均以 typed CLI 子命令暴露(`easyeda <domain> <verb>`),每项都在固定的 ESP32-S3 回归板上真机验证过。

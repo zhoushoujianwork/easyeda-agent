@@ -6,6 +6,37 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-20
+
+### Added — 原理图放置方法论(一套自己的摆放方法)
+- **块 `schematic_layout` 模板**:电路块 JSON 新增 `schematic_layout`(role → `{dx,dy,rotation}`
+  相对坐标模板,y-UP、5 格对齐、须覆盖全部 role,schema + `go test` 双校验)。`sch block-apply`
+  优先按模板落件(去耦贴电源脚一字排开/上拉靠引脚/晶振·FLASH 分列,信号流左入右出,人审一次
+  终身复用),无模板才退回网格;**原点自动避碰**(不显式 `--at` 时按已有器件真实 bbox 螺旋找空位)、
+  落后回读真实 bbox 把 overlap 写进 manifest。esp32s3r8_chip_minsys / led_indicator_gpio 首批带模板。
+- **`sch zones` 功能分区认领 + `layout-lint` zone-violation**:S0 spec 的 `modules[].zone` 持久化,
+  `sch layout-lint` 新增"认领件落在分区矩形外"的 WARN(与 PCB zones 独立)。
+- **`sch zone-draw` 分区框可视化**:把认领画成虚线区域框 + 区名文本(`eda.sch_PrimitiveRectangle/Text`),
+  与 zone-violation 同一几何,所见即所校验;`--clear` 精确移除,不碰用户图形。
+- **`sch align` / `sch distribute`**:按真实渲染 bbox 对齐(left/right/top/bottom/centerx/centery)/
+  等距摊开,默认 dry-run、`--apply` 落地自检;补齐 design-flow S6 一直引用却不存在的命令。
+- **`sch autolayout --engine official` 官方 autoLayout 兜底引擎**:包装平台 `eda.sch_Document.autoLayout()`
+  (@beta,3.2.148 起可用)。它对已连线页是**破坏性**的(移件不移线 → 断线、落 off-grid),故加安全管线:
+  **已连线守卫**(无 `--rewire` 拒绝)、**跑后吸附 5 格**、`--rewire`(跑前捕获网表 → autoLayout → 吸附 →
+  删断线 → 重连)、自检用 `sch check`(查断线)不止 `layout-lint`(查重叠)。定位:模板未命中页的兜底起点。
+
+### Added — 机制
+- **`--doc <uuid|name>` 全局 flag**:根治 doc-switch racing。所有命令默认对"当前前台文档"操作而
+  `doc switch` 异步,长命令(autoLayout ~2min)/跨命令时前台漂移会把编辑落到错误的页。`--doc` 在
+  `postAction` 咽喉点加守卫:变更动作(catalog `Mutates`)落地前 `ensureActiveDoc` 切目标页并用**实时
+  `document.current`** 确认(不看缓存 /health),确认不了**拒绝**而非编辑错页;导航动作豁免防递归。
+  真机验证:前台停 P2 时 `block-apply --doc P1` 稳稳落 P1、P2 不动。**多页/长操作一律带 `--doc`。**
+
+### Fixed
+- **原理图坐标系 y-UP 定音**:双探针文本实测 3.2.148 画布为 y-UP(y 大=视觉上方),修正 `zoneRect`
+  的 top/bottom 映射(此前按 y-DOWN 写反,autolayout/zone-violation/zone-draw 上下翻转)、标题栏
+  keep-out 锚点(此前保护右上角,实际标题栏在右下)、`sch align --mode top/bottom` 语义。
+
 ## [0.15.2] - 2026-07-19
 
 ### Added

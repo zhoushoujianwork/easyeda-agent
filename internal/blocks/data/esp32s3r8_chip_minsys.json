@@ -93,8 +93,8 @@
   },
   "_internal_nets_note": "全部脚名 2026-07-15 ceshi 临时页 sch read 核实。U 符号:LNA_IN(1)/VDD3P3(2,3 同名双脚)/CHIP_PU(4)/GPIO0(5)/VDD3P3_RTC(20)/VDD_SPI(29)/SPIHD(30)/SPIWP(31)/SPICS0(32)/SPICLK(33)/SPIQ(34)/SPID(35)/VDD3P3_CPU(46)/U0TXD(49)/U0RXD(50)/XTAL_N(53)/XTAL_P(54)/VDDA(55,56 同名双脚)/GND(57=EPAD 热焊盘,符号真实名就叫 GND 不是 EPAD)。同名多物理脚(VDD3P3/VDDA/GND)写一个功能名 = tie 全部。FLASH 符号:CS#(1)/DO(IO1)(2)/WP#(IO2)(3)/GND(4)/DI(IO0)(5)/CLK(6)/HOLD#orRESET#(IO3)(7)/VCC(8),括号是脚名一部分。X 符号:1/3=晶体,GND(2,4)=壳脚。",
   "internal_nets": [
-    ["U.VDD3P3", "U.VDD3P3_RTC", "U.VDD3P3_CPU", "U.VDDA", "C_BULK.1", "C_VDD3P3.1", "C_VDDA.1", "C_RTC.1", "C_CPU.1", "R_EN.2", "R_IO0.2", "PORT:3V3"],
-    ["U.GND", "FLASH.GND", "X.GND", "C_BULK.2", "C_VDD3P3.2", "C_VDDA.2", "C_RTC.2", "C_CPU.2", "C_SPI.2", "C_FLASH.2", "C_EN.2", "C_X1.2", "C_X2.2", "PORT:GND"],
+    ["U.2", "U.3", "U.VDD3P3_RTC", "U.VDD3P3_CPU", "U.55", "U.56", "C_BULK.1", "C_VDD3P3.1", "C_VDDA.1", "C_RTC.1", "C_CPU.1", "R_EN.2", "R_IO0.2", "PORT:3V3"],
+    ["U.GND", "FLASH.GND", "X.2", "X.4", "C_BULK.2", "C_VDD3P3.2", "C_VDDA.2", "C_RTC.2", "C_CPU.2", "C_SPI.2", "C_FLASH.2", "C_EN.2", "C_X1.2", "C_X2.2", "PORT:GND"],
     ["U.VDD_SPI", "FLASH.VCC", "C_SPI.1", "C_FLASH.1", "R_CS.2"],
     ["U.CHIP_PU", "R_EN.1", "C_EN.1", "PORT:EN"],
     ["U.GPIO0", "R_IO0.1", "PORT:IO0"],
@@ -113,7 +113,7 @@
   "ports": {
     "3V3": {
       "dir": "in",
-      "at": "U.VDD3P3",
+      "at": "U.2",
       "desc": "3.3V 主供电(来自 LDO/buck),须扛 WiFi 发射瞬态 ≥500mA",
       "default_net": "3V3"
     },
@@ -152,6 +152,27 @@
       "at": "U.LNA_IN",
       "desc": "2.4GHz RF 收发脚 → 接天线匹配块(block.ant_2g4_ceramic_pi 的 RF_IN);50Ω 馈线,勿在本块内接任何东西",
       "default_net": "RF_ANT"
+    }
+  },
+  "schematic_layout": {
+    "note": "y-UP(+dy=上)。审美依据 conventions:5 颗电源去耦贴 U 顶排一字排开(bulk 在最左靠 VDD3P3 入口);EN RC + IO0 上拉在左列(CHIP_PU/GPIO0 均左侧脚);晶振+负载帽贴右侧 XTAL_P/N 脚;FLASH 及其去耦/CS 上拉在右列(SPI0 六线右侧出)。偏移按 ceshi P1 实测符号 bbox 校核:U ±76×(-140..+150), FLASH 140×52, X 40×40, C0402 20×16, R0402 20×8——0 overlap by construction",
+    "roles": {
+      "U":        { "dx": 0,    "dy": 0 },
+      "C_BULK":   { "dx": -120, "dy": 190 },
+      "C_VDD3P3": { "dx": -60,  "dy": 190 },
+      "C_VDDA":   { "dx": 0,    "dy": 190 },
+      "C_RTC":    { "dx": 60,   "dy": 190 },
+      "C_CPU":    { "dx": 120,  "dy": 190 },
+      "R_IO0":    { "dx": -220, "dy": 60 },
+      "R_EN":     { "dx": -220, "dy": 0 },
+      "C_EN":     { "dx": -220, "dy": -60 },
+      "X":        { "dx": 180,  "dy": -80 },
+      "C_X1":     { "dx": 260,  "dy": -40 },
+      "C_X2":     { "dx": 260,  "dy": -120 },
+      "FLASH":    { "dx": 340,  "dy": 100 },
+      "C_FLASH":  { "dx": 340,  "dy": 180 },
+      "C_SPI":    { "dx": 240,  "dy": 180 },
+      "R_CS":     { "dx": 340,  "dy": 40 }
     }
   },
   "schematic_notes": [
