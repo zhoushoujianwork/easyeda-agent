@@ -72,6 +72,10 @@ internal/blocks/data/
 2. **必须跑过一次全流程验证,`validated` 才能填、块才能标为「已入库」。**
    验证 = 在真实工程(用 `ceshi`)跑 `place → wire → sch check → DRC = 0`,并**读回网表逐网核实合并**,
    `validated` 记成 `ceshi <date> by @you: place→wire→check→DRC=0 + netlist proof`。
+   ⚠️ **先跑 `make blocks-audit`**(离线,不用连编辑器):把块每条引脚引用对**真实符号引脚表**
+   逐条判定,`FANOUT`=该加 `*`、`MISSING`=名字根本不存在(附真实候选名)。全库首次审出
+   **14 个块 41 处错**(739 条引用里 14 fanout + 27 错名),全是 ready 状态的块。
+   换了器件/新块进库后用 `--probe` 刷新引脚表快照(`references/symbol-pins.json`,需连编辑器)。
    ⚠️ **验证必须由 `sch block-apply` 端到端产生,不能手工连线代替(#145 教训)。**
    手工连线是照着拓扑**用眼睛**连的,会绕过块自己的引脚引用,块数据里的错(引脚名歧义/错名/
    漏脚)因此全被掩盖 —— `ch340c_usb_serial` 就这样带着「VBUS 根本没接上」的缺陷挂了

@@ -24,6 +24,9 @@ test: ## go test ./...
 lint-test: ## linter rule-trust harness (orientation + fixtures)
 	python3 skills/easyeda-agent/scripts/tests/run.py
 
+blocks-audit: ## check every block pin ref against real symbol pins (offline; --probe to refresh)
+	python3 skills/easyeda-agent/scripts/blocks-pin-audit.py
+
 fmt: ## gofmt cmd + internal
 	gofmt -w cmd internal
 

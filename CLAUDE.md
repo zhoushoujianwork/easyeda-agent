@@ -91,6 +91,7 @@ make install      # build + install to /usr/local/bin (PREFIX overridable; sudo 
 make daemon       # one-shot daemon (no reload) — prefer `make dev`
 make test         # go test ./...
 make lint-test    # linter rule-trust harness (orientation consistency + fixtures)
+make blocks-audit # 块引脚引用 vs 真实符号引脚表(离线;首审揪出 14 个块 41 处错)
 make actions      # print the typed action catalog
 make eext         # bump PATCH + build importable .eext, STABLE uuid (update in place: uninstall old → import)
 make eext-fresh   # fallback: bump PATCH + FRESH uuid (imports as a new entry; delete the old one) — for when the installed one won't uninstall
@@ -137,6 +138,11 @@ skills/easyeda-agent/scripts/calibrate.js   # 读 getPrimitivesBBox 实测锚点
 
 # lint 规则信任测试
 make lint-test    # = python3 skills/easyeda-agent/scripts/tests/run.py
+
+# 块引脚引用审计 —— 块按功能名引用引脚,此前无人对过真实符号,导致块标着
+# verified 却静默错接(ch340c 的 USB 口根本没供电)。离线判定,非零退出可 gate。
+skills/easyeda-agent/scripts/blocks-pin-audit.py            # 审全库(离线,用引脚表快照)
+skills/easyeda-agent/scripts/blocks-pin-audit.py --probe    # 刷新快照(需连编辑器)
 ```
 
 `skills/easyeda-agent/references/standard-parts.json` — 标准器件库（libraryUuid + deviceUuid + LCSC C 号）。放置前先查这里；新选型后写回。
