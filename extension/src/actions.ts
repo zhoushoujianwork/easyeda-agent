@@ -803,14 +803,32 @@ const schematicComponentDelete: Handler = async (payload) => {
 			'Missing required field "primitiveIds" (string or string[]).',
 		);
 	}
-	let deleted;
+	// Chunked + verified: the platform's delete silently no-ops on a large batch and
+	// returns true anyway (see SCH_DELETE_BATCH), so neither the call nor its return
+	// value can be trusted — only a re-read can say what actually went away.
+	const ids = typeof primitiveIds === 'string' ? [primitiveIds] : primitiveIds;
 	try {
-		deleted = await eda.sch_PrimitiveComponent.delete(primitiveIds);
+		for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
+			await eda.sch_PrimitiveComponent.delete(ids.slice(i, i + SCH_DELETE_BATCH));
+		}
 	}
 	catch (err) {
 		throw edaError(err, 'Failed to delete components.');
 	}
-	return { result: { deleted } };
+	let survived: Array<string> = [];
+	try {
+		const alive = new Set((await eda.sch_PrimitiveComponent.getAll()).map(c => c.getState_PrimitiveId()));
+		survived = ids.filter(id => alive.has(id));
+	}
+	catch { /* verification is best-effort; fall through reporting what we asked for */ }
+	return {
+		result: {
+			deleted: survived.length === 0,
+			requested: ids.length,
+			removed: ids.length - survived.length,
+			...(survived.length ? { survived } : {}),
+		},
+	};
 };
 
 // ─── Page clear / generalized primitive delete ────────────────────────
@@ -859,10 +877,23 @@ function warnText(label: string, err: unknown): string {
 }
 
 /** Delete a group of ids via its owning class (components fall through to the component class). */
+// SCH_DELETE_BATCH caps how many ids go into one delete call. The platform's
+// delete SILENTLY NO-OPS on a large batch: it returns true having removed nothing.
+// Measured on one page: 1/5/20/50 ids → every one removed; 58 → all removed;
+// 134 in a single call → ZERO removed, return value still `true`. It is a size
+// ceiling, not a poison-id problem (the 58 that survived the failed 134-call
+// deleted fine on their own). Chunking is the only reliable way to delete a page's
+// worth of primitives — and since the call lies about success, callers must
+// re-read to confirm rather than trust the return.
+const SCH_DELETE_BATCH = 50;
+
 async function deleteSchGroup(key: string, ids: Array<string>): Promise<void> {
 	const kind = SCH_PAGE_PRIMITIVE_KINDS.find(k => k.key === key);
-	if (kind) await kind.del(ids);
-	else await eda.sch_PrimitiveComponent.delete(ids);
+	for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
+		const batch = ids.slice(i, i + SCH_DELETE_BATCH);
+		if (kind) await kind.del(batch);
+		else await eda.sch_PrimitiveComponent.delete(batch);
+	}
 }
 
 /**
@@ -873,15 +904,26 @@ async function deleteSchGroup(key: string, ids: Array<string>): Promise<void> {
  * (default true) keeps the sheet/title block; `dryRun` counts without deleting.
  * No undo.
  */
-const schematicPageClear: Handler = async (payload) => {
-	const preserveSheet = optionalBoolean(payload, 'preserveSheet') !== false;
-	const dryRun = optionalBoolean(payload, 'dryRun') === true;
+// MAX_CLEAR_PASSES bounds the clear→re-enumerate loop below. One pass is NOT
+// enough: deleting a component cascades into primitives that were enumerated in
+// the same sweep (their ids go stale mid-delete), so a single pass reliably leaves
+// debris behind — measured on a 92-primitive page, pass 1 left 58 alive while still
+// reporting "total: 92" (that number was the ENUMERATED count, never the deleted
+// one). Callers reasonably read a successful clear as "the page is empty", and a
+// sweep script that clears between runs silently accumulated three blocks' parts.
+const MAX_CLEAR_PASSES = 6;
 
+// enumerateSchPagePrimitives lists every deletable page primitive, grouped by the
+// delete-group key. Enumeration failures are collected as warnings rather than
+// thrown so one bad class cannot block clearing the rest.
+async function enumerateSchPagePrimitives(
+	preserveSheet: boolean,
+	warnings: Array<string>,
+): Promise<Record<string, Array<string>>> {
 	const idsByKey: Record<string, Array<string>> = {};
-	const warnings: Array<string> = [];
 
-	// 1) Components — net flags/ports/labels are components too, so this single
-	//    class covers them all. Honor preserveSheet by skipping the sheet.
+	// Components — net flags/ports/labels are components too, so this single class
+	// covers them all. Honor preserveSheet by skipping the sheet.
 	let components;
 	try {
 		components = await eda.sch_PrimitiveComponent.getAll();
@@ -896,7 +938,7 @@ const schematicPageClear: Handler = async (payload) => {
 		(idsByKey[key] ??= []).push(c.getState_PrimitiveId());
 	}
 
-	// 2) Wires, buses, and graphics — each its own class.
+	// Wires, buses, and graphics — each its own class.
 	for (const kind of SCH_PAGE_PRIMITIVE_KINDS) {
 		try {
 			for (const p of await kind.getAll()) (idsByKey[kind.key] ??= []).push(p.getState_PrimitiveId());
@@ -905,29 +947,78 @@ const schematicPageClear: Handler = async (payload) => {
 			warnings.push(warnText(`enumerate ${kind.key}`, err));
 		}
 	}
+	return idsByKey;
+}
 
-	// 3) Delete (unless dryRun).
-	if (!dryRun) {
-		for (const [key, ids] of Object.entries(idsByKey)) {
+function countIds(idsByKey: Record<string, Array<string>>): number {
+	let n = 0;
+	for (const ids of Object.values(idsByKey)) n += ids.length;
+	return n;
+}
+
+const schematicPageClear: Handler = async (payload) => {
+	const preserveSheet = optionalBoolean(payload, 'preserveSheet') !== false;
+	const dryRun = optionalBoolean(payload, 'dryRun') === true;
+	const warnings: Array<string> = [];
+
+	const firstPass = await enumerateSchPagePrimitives(preserveSheet, warnings);
+	const initialTotal = countIds(firstPass);
+
+	if (dryRun) {
+		const planned: Record<string, number> = {};
+		for (const [key, ids] of Object.entries(firstPass)) planned[key] = ids.length;
+		return {
+			result: {
+				deleted: planned, total: initialTotal, deletedIds: firstPass,
+				passes: 0, remaining: initialTotal, preserveSheet, dryRun,
+				...(warnings.length ? { warnings } : {}),
+			},
+		};
+	}
+
+	// Delete → RE-ENUMERATE → repeat until the page stops shrinking. Re-reading is
+	// the whole point: it is the only way to tell "cleared" from "the delete call
+	// returned without throwing".
+	let live = firstPass;
+	let passes = 0;
+	while (countIds(live) > 0 && passes < MAX_CLEAR_PASSES) {
+		passes++;
+		const before = countIds(live);
+		for (const [key, ids] of Object.entries(live)) {
 			if (!ids.length) continue;
 			try {
 				await deleteSchGroup(key, ids);
 			}
 			catch (err) {
-				warnings.push(warnText(`delete ${key}`, err));
+				warnings.push(warnText(`delete ${key} (pass ${passes})`, err));
 			}
 		}
+		live = await enumerateSchPagePrimitives(preserveSheet, warnings);
+		// No progress means retrying cannot help — something is genuinely undeletable
+		// (a locked primitive, a platform refusal). Stop rather than spin.
+		if (countIds(live) >= before) break;
 	}
 
+	const remaining = countIds(live);
+	if (remaining > 0) {
+		warnings.push(`page NOT fully cleared: ${remaining} primitive(s) survived ${passes} pass(es) `
+			+ `— they may be locked or platform-protected; inspect with \`easyeda sch list\``);
+	}
+
+	// deleted/total report what actually went away, per group.
 	const deleted: Record<string, number> = {};
-	let total = 0;
-	for (const [key, ids] of Object.entries(idsByKey)) { deleted[key] = ids.length; total += ids.length; }
+	for (const [key, ids] of Object.entries(firstPass)) {
+		deleted[key] = ids.length - (live[key]?.length ?? 0);
+	}
 
 	return {
 		result: {
 			deleted,
-			total,
-			deletedIds: idsByKey,
+			total: initialTotal - remaining,
+			enumerated: initialTotal,
+			remaining,
+			passes,
+			deletedIds: firstPass,
 			preserveSheet,
 			dryRun,
 			...(warnings.length ? { warnings } : {}),

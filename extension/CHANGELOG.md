@@ -6,6 +6,20 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — 批量删除静默失效:`sch clear` 一直在谎报清空
+- **根因是平台的 `eda.sch_Primitive*.delete(ids)` 在大批量上静默 no-op 并返回 `true`。**
+  实测同一页:1/5/20/50 个 → 全删掉;58 个 → 全删掉;**134 个一次调用 → 一个没删,返回值照样 `true`**。
+  是**尺寸上限**而非「某个图元删不掉」——那次失败的 134 里剩下的 58 个单独删就干净。
+- **`schematic.page.clear` 此前把「枚举到 N 个」当成「删除了 N 个」上报**:一次 232 图元的 clear
+  报 `total: 232` 成功,实际只删掉 5 个、227 个存活。调用方合理地把成功读成「页面已空」,
+  于是一个逐块回归脚本在 clear 之间静默累积了三个块的元件,污染了整轮测量数据。
+- 三处修复:① `deleteSchGroup` **分批 50/批**(clear 与所有图元类删除共用);
+  ② `schematic.page.clear` 改为 delete→**重新枚举**→循环收敛(上限 6 轮,无进展即停),
+  并诚实上报 `enumerated` / `total`(真正消失的数量)/ `remaining` / `passes`,没清干净时带 warning;
+  ③ `schematic.component.delete` 同样分批,并**回读校验**,返回 `requested` / `removed` / `survived`
+  而不是那个会撒谎的布尔。真机验证:538 图元一次 clear → `passes: 1, remaining: 0`。
+- **通用教训**:平台的删除类 API 返回值不可信,批量操作后必须回读确认。
+
 ### Added — `sch extract-layout` 反向导出块模板 (issue #140)
 - **`easyeda sch extract-layout <block-id>`**:block-apply 模板步骤的**逆操作**——读活动页上一个摆好的
   块实例,按每个 role 的实测 anchor + rotation 反算出块的 `schematic_layout` 模板(role→{dx,dy,rotation},
