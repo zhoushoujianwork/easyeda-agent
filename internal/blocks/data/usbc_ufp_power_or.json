@@ -42,7 +42,7 @@
   },
   "internal_nets": [
     [
-      "J.VBUS",
+      "J.VBUS*",
       "D_OR.A",
       "TVS.K",
       "ESD.VBUS"
@@ -72,8 +72,8 @@
       "PORT:USB_DM"
     ],
     [
-      "J.GND",
-      "J.EP",
+      "J.GND*",
+      "J.EP*",
       "TVS.A",
       "ESD.GND",
       "R_CC1.2",

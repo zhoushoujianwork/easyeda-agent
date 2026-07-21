@@ -450,3 +450,73 @@ func TestBuildScene_OffPageComponentIsPinlessWithPage(t *testing.T) {
 
 // deref is a tiny test helper: turn the *layoutBBox from bb() into a value.
 func (p *layoutBBox) deref() layoutBBox { return *p }
+
+// ── same-name pin fan-out ("J1:VBUS*", issue #145) ──────────────────────────
+
+// usbcScene mirrors a USB-C 16P: VBUS and GND on two pins each, the shield tab on
+// four, plus uniquely-named data pins.
+func usbcScene() acScene {
+	return acScene{Pins: []acPin{
+		{Designator: "J1", PinNumber: "A4", PinName: "VBUS"},
+		{Designator: "J1", PinNumber: "B4", PinName: "VBUS"},
+		{Designator: "J1", PinNumber: "A1", PinName: "GND"},
+		{Designator: "J1", PinNumber: "B1", PinName: "GND"},
+		{Designator: "J1", PinNumber: "A6", PinName: "DP1"},
+		{Designator: "U1", PinNumber: "16", PinName: "VCC"},
+	}}
+}
+
+func TestExpandPinFanouts(t *testing.T) {
+	got := expandPinFanouts(usbcScene(), []acConnSpec{
+		{PinRef: "J1:VBUS*", Net: "5V", Kind: "power"},
+		{PinRef: "U1:VCC", Net: "5V", Kind: "power"},
+	})
+	if len(got) != 3 {
+		t.Fatalf("expected VBUS* to fan out to 2 pins + 1 untouched, got %d: %+v", len(got), got)
+	}
+	// Fan-out keys each connection by pin NUMBER so nothing downstream re-resolves
+	// an ambiguous name, and the net/kind ride along unchanged.
+	if got[0].PinRef != "J1:A4" || got[1].PinRef != "J1:B4" {
+		t.Fatalf("fanned refs = %q,%q; want J1:A4,J1:B4", got[0].PinRef, got[1].PinRef)
+	}
+	if got[0].Net != "5V" || got[0].Kind != "power" {
+		t.Fatalf("net/kind not carried: %+v", got[0])
+	}
+	if got[2].PinRef != "U1:VCC" {
+		t.Fatalf("non-wildcard spec was rewritten to %q", got[2].PinRef)
+	}
+}
+
+// A star that matches nothing must degrade to the plain name so resolvePinCoord
+// produces its canonical "not found" message naming a real pin.
+func TestExpandPinFanoutsNoMatch(t *testing.T) {
+	got := expandPinFanouts(usbcScene(), []acConnSpec{{PinRef: "J1:SHIELD*"}})
+	if len(got) != 1 || got[0].PinRef != "J1:SHIELD" {
+		t.Fatalf("got %+v, want a single J1:SHIELD", got)
+	}
+	if _, err := resolvePinCoord(usbcScene(), got[0].PinRef); err == nil {
+		t.Fatal("expected the degraded ref to still fail resolution")
+	}
+}
+
+// A single-pin function is the common case: the star must be an identity there, so
+// blocks can mark "bond them all" without knowing the part's pin count.
+func TestExpandPinFanoutsSinglePinIsIdentity(t *testing.T) {
+	got := expandPinFanouts(usbcScene(), []acConnSpec{{PinRef: "U1:VCC*"}})
+	if len(got) != 1 || got[0].PinRef != "U1:16" {
+		t.Fatalf("got %+v, want a single U1:16", got)
+	}
+}
+
+// The ambiguity error must teach the fix, not just refuse.
+func TestResolvePinCoordAmbiguousSuggestsFanout(t *testing.T) {
+	_, err := resolvePinCoord(usbcScene(), "J1:VBUS")
+	if err == nil {
+		t.Fatal("expected an ambiguity error")
+	}
+	for _, want := range []string{"A4 B4", `"J1:VBUS*"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %s", err, want)
+		}
+	}
+}

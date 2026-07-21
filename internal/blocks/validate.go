@@ -103,10 +103,15 @@ func Validate(b Block) []error {
 			if _, ok := b.Parts[role]; !ok {
 				add(field, fmt.Sprintf("references unknown role %q", role))
 			}
-			if previous, ok := pinNet[member]; ok && previous != i {
+			// Index by the bare pin ref: a trailing "*" (bond EVERY pin sharing this
+			// function name — a connector's redundant VBUS/GND/shield) names the same
+			// boundary as the plain ref, so "J.VBUS*" and "J.VBUS" must not read as two
+			// different pins here.
+			key := strings.TrimSuffix(member, pinFanoutSuffix)
+			if previous, ok := pinNet[key]; ok && previous != i {
 				add(field, fmt.Sprintf("pin %q already belongs to internal_nets[%d]", member, previous))
 			} else {
-				pinNet[member] = i
+				pinNet[key] = i
 			}
 		}
 	}
@@ -128,7 +133,7 @@ func Validate(b Block) []error {
 		// A direct one-pin boundary need not appear in internal_nets. When a PORT:
 		// marker is present, however, its declared anchor must be on that same net.
 		if usedPorts[name] {
-			if _, exists := pinNet[p.At]; !exists {
+			if _, exists := pinNet[strings.TrimSuffix(p.At, pinFanoutSuffix)]; !exists {
 				add(field+".at", "PORT marker exists but anchor is absent from internal_nets")
 			}
 		}
@@ -214,6 +219,15 @@ func validateBomNoteCount(b Block, add func(string, string)) {
 		add("bom_note", fmt.Sprintf("claims 共 %d 件 but parts qty sums to %d", claimed, total))
 	}
 }
+
+// pinFanoutSuffix marks a pin ref that bonds EVERY pin sharing that function name
+// on the part — "J.VBUS*" for a USB-C's two VBUS pins, its two GNDs, its four EP
+// tabs. It exists because referring to such a pin by name alone is genuinely
+// ambiguous (and `sch autoconnect` rightly refuses to pick one), while the intent
+// for power/ground/shield is invariably "all of them"; USB-C's dual orientation in
+// fact REQUIRES both the A- and B-side pins be connected. Blocks declare it
+// explicitly rather than letting the planner infer it from the net's kind.
+const pinFanoutSuffix = "*"
 
 func splitPinRef(ref string) (role, pin string, ok bool) {
 	i := strings.IndexByte(ref, '.')

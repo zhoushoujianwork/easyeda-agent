@@ -9,11 +9,11 @@
   "added": "v0.6.0",
   "updated": "v0.6.0",
   "source": "datasheet:CH340C (南京沁恒) + 立创常见参考电路",
-  "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(7件)→wire(34 netflag/netport)→sch check(0 geom-net/0 net-marker mismatch, 仅未用脚 WARN)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)。netlist 逐网核实:5V=4 / GND=12 / V3=2 / USB_DP=4 / USB_DM=4 / CC1=CC2=2 / MCU_RX=MCU_TX=DTR=RTS=1,合并全对。",
+  "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(7件)→wire(34 netflag/netport)→sch check(0 geom-net/0 net-marker mismatch, 仅未用脚 WARN)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)。netlist 逐网核实:5V=4 / GND=12 / V3=2 / USB_DP=4 / USB_DM=4 / CC1=CC2=2 / MCU_RX=MCU_TX=DTR=RTS=1,合并全对。 | ceshi 2026-07-21 复验(#145):首次用 `sch block-apply` 端到端跑,暴露上次手工连线掩盖的数据缺陷——J_USB 的 VBUS/GND/EP 按功能名引用在 usb_c_16p 上歧义(2/2/4 个同名脚),autoconnect 正确拒绝,导致 5V 只 2pin(VBUS 根本没接,USB 口不供电)、GND 只 6pin。改用 `*` 全并联语法后:autoconnect 30/30 全连 0 conflict,netlist 逐网 5V=4 / GND=12 / V3=2 / USB_DP=4 / USB_DM=4 / CC1=CC2=2 全部命中,bridge-check 0 bridge/0 orphan(30 树),layout-lint 0 overlap。",
   "verification": {
     "schematic": {
       "status": "passed",
-      "evidence": "ceshi 2026-07-09: place(7件)→wire→sch check(0 geom-net/0 net-marker mismatch)→bridge-check(0 bridge/0 orphan)→sch drc(0 fatal/0 error)，netlist 逐网核实通过"
+      "evidence": "ceshi 2026-07-09 手工连线通过；2026-07-21 改用 sch block-apply 端到端复验(#145 修同名脚引用后)：30/30 全连 0 conflict，netlist 逐网 5V=4/GND=12/V3=2/USB_DP=4/USB_DM=4/CC1=CC2=2 全部命中，bridge-check 0 bridge/0 orphan"
     },
     "component_selection": {
       "status": "failed",
@@ -70,8 +70,8 @@
   },
   "_internal_nets_note": "引脚用真实符号功能名(验证过)。USB-C 的 VBUS/GND/EP 各是多物理脚:tie 该名下所有脚(VBUS=A4B9+B4A9,GND=A1B12+B1A12,EP=8/9/10/11)。D_ESD 脚名符号里冲突(两 line 都叫 A1),故用脚号 1/2/3 引用。",
   "internal_nets": [
-    ["J_USB.VBUS", "U.VCC", "C_VCC.1", "PORT:VBUS_5V"],
-    ["J_USB.GND", "J_USB.EP", "U.GND", "C_VCC.2", "C_V3.2", "D_ESD.3", "R_CC1.2", "R_CC2.2", "PORT:GND"],
+    ["J_USB.VBUS*", "U.VCC", "C_VCC.1", "PORT:VBUS_5V"],
+    ["J_USB.GND*", "J_USB.EP*", "U.GND", "C_VCC.2", "C_V3.2", "D_ESD.3", "R_CC1.2", "R_CC2.2", "PORT:GND"],
     ["U.V3", "C_V3.1"],
     ["U.D+", "J_USB.DP1", "J_USB.DP2", "D_ESD.1"],
     ["U.D-", "J_USB.DN1", "J_USB.DN2", "D_ESD.2"],

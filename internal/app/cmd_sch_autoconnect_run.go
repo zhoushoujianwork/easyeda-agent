@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -229,6 +230,51 @@ func titleBlockKeepout(sheet *layoutBBox) (*layoutBBox, bool) {
 	return g.TitleBlock.BBox, false
 }
 
+// acPinFanoutSuffix marks a pin reference that must fan out to EVERY pin sharing
+// that FUNCTION NAME on the component: "J1:VBUS*".
+//
+// Connectors legitimately carry the same function on several pins — USB-C 16P has
+// 2×VBUS, 2×GND and 4×EP; headers and shield tabs do the same. Referring to them by
+// name is ambiguous and correctly rejected (autoconnect must not pick one for you),
+// but for these the intent is invariably "bond them ALL to this net" — USB-C's dual
+// orientation in fact REQUIRES both the A- and B-side pins be connected. The star is
+// how a block says that out loud, instead of the planner guessing from the net's kind.
+const acPinFanoutSuffix = "*"
+
+// expandPinFanouts rewrites every "DESIG:NAME*" spec into one spec per matching pin,
+// keyed by pin NUMBER so each is unambiguous downstream. A star that matches nothing
+// keeps the plain name so resolvePinCoord issues its canonical "not found" diagnosis
+// (naming a real pin, not the wildcard). Order is deterministic: pins sort by number.
+func expandPinFanouts(scene acScene, conns []acConnSpec) []acConnSpec {
+	out := make([]acConnSpec, 0, len(conns))
+	for _, c := range conns {
+		desig, name, ok := strings.Cut(c.PinRef, ":")
+		if !ok || !strings.HasSuffix(name, acPinFanoutSuffix) {
+			out = append(out, c)
+			continue
+		}
+		want := strings.TrimSuffix(name, acPinFanoutSuffix)
+		var numbers []string
+		for _, p := range scene.Pins {
+			if p.Designator == desig && (p.PinName == want || p.PinNumber == want) {
+				numbers = append(numbers, p.PinNumber)
+			}
+		}
+		if len(numbers) == 0 {
+			c.PinRef = desig + ":" + want
+			out = append(out, c)
+			continue
+		}
+		sort.Strings(numbers)
+		for _, n := range numbers {
+			exp := c
+			exp.PinRef = desig + ":" + n
+			out = append(out, exp)
+		}
+	}
+	return out
+}
+
 // resolvePinCoord finds a pin's coordinate from a "designator:pinNumberOrName"
 // reference against the scene's pins.
 func resolvePinCoord(scene acScene, ref string) (acPin, error) {
@@ -259,7 +305,14 @@ func resolvePinCoord(scene acScene, ref string) (acPin, error) {
 		}
 		return acPin{}, fmt.Errorf("no pin %q found (component %q not placed, or pin number/name mismatch — check `easyeda sch list --include-pins`)", ref, desig)
 	default:
-		return acPin{}, fmt.Errorf("pin reference %q is ambiguous (%d matches); use the pin NUMBER instead of name", ref, len(matches))
+		nums := make([]string, 0, len(matches))
+		for _, m := range matches {
+			nums = append(nums, m.PinNumber)
+		}
+		sort.Strings(nums)
+		return acPin{}, fmt.Errorf("pin reference %q is ambiguous (%d matches: %s); use the pin NUMBER, "+
+			"or %q to bond ALL of them to the net (right for a connector's redundant VBUS/GND/shield pins)",
+			ref, len(matches), strings.Join(nums, " "), ref+acPinFanoutSuffix)
 	}
 }
 
@@ -299,6 +352,10 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 		return err
 	}
 	scene := buildScene(res.Result)
+	// "DESIG:NAME*" fans out to every pin carrying that function name (a connector's
+	// redundant VBUS/GND/shield pins) before anything is planned, so each resulting
+	// connection is an ordinary unambiguous pin-number spec.
+	conns = expandPinFanouts(scene, conns)
 
 	report := acReport{OK: true, TitleBlockProvisional: scene.TitleBlockProvisional}
 	if scene.TitleBlockProvisional && rules.AvoidTitleBlock {
@@ -646,7 +703,9 @@ unless you pass --replace, which deletes the old flag+wire and reconnects.`,
 			return runAutoconnect(cfg, *window, conns, rules, allPages, dryRun, replace, asJSON, stdout, stderr)
 		},
 	}
-	c.Flags().StringVar(&pin, "pin", "", "pin reference DESIGNATOR:PIN (number or name), e.g. U1:41 or U1:3V3")
+	c.Flags().StringVar(&pin, "pin", "", "pin reference DESIGNATOR:PIN (number or name), e.g. U1:41 or U1:3V3; "+
+		"a trailing * bonds EVERY pin sharing that function name (J1:VBUS* → a USB-C's two VBUS pins) — "+
+		"the right answer for a connector's redundant power/ground/shield pins, and an identity for single-pin functions")
 	c.Flags().Float64Var(&x, "x", 0, "explicit pin X coordinate (use with --y instead of --pin)")
 	c.Flags().Float64Var(&y, "y", 0, "explicit pin Y coordinate (use with --x instead of --pin)")
 	c.Flags().StringVar(&kind, "kind", "", netflagKindHelp)

@@ -180,6 +180,11 @@ failed — resolve the layout (move the part / clear the wire) and retry.
 easyeda sch autoconnect --pin U1:41 --kind gnd --net GND
 easyeda sch autoconnect --pin U1:3V3 --kind power --net +3V3
 
+# 同名多脚:尾缀 * 一次连全部(连接器的冗余 VBUS/GND/屏蔽脚,#145)。
+# 光写功能名会被判歧义并拒绝——autoconnect 不该替你挑一个;* 是你说"全接"。
+# 对单脚是恒等,所以电源/地/屏蔽脚可放心加星。
+easyeda sch autoconnect --pin J1:VBUS* --kind power --net 5V   # → J1:A4B9 + J1:B4A9
+
 # explicit coordinates (compat with existing flows)
 easyeda sch autoconnect --x 720 --y 670 --kind gnd --net GND
 
