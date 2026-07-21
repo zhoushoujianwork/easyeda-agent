@@ -24,6 +24,7 @@ package app
 // re-import), same as `sch zone-draw`.
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -106,8 +107,19 @@ func runOfficialAutolayout(cfg *appConfig, window string, apply, rewire bool, st
 		fmt.Fprintf(stderr, "captured %d net(s) → %d pin connection(s) to rebuild after layout\n", countNets(liveNets), len(conns))
 	}
 
-	fmt.Fprintln(stderr, "running platform autoLayout — this is a LONG operation (~2min); the editor shows a progress bar…")
+	// Feed the platform a designator→device-type map (issue #143): autoLayout is
+	// role-aware (resistor/capacitor/inductive/diode/triode/oscillator/chip/
+	// otherDevice) and clusters far smarter with it than the bare call. Built from
+	// the page's real designators; an empty map degrades to the bare call. Passing
+	// an extra props object is harmless on builds that ignore it (JS).
+	dtMap := buildDeviceTypeMap(fetchSchPartDesignators(cfg, win))
 	code := "await eda.sch_Document.autoLayout(); return {done:true};"
+	if len(dtMap) > 0 {
+		mapJSON, _ := json.Marshal(dtMap)
+		code = fmt.Sprintf("await eda.sch_Document.autoLayout({designatorDeviceTypeMap: %s}); return {done:true};", mapJSON)
+		fmt.Fprintf(stderr, "feeding designatorDeviceTypeMap for %d part(s) (role-aware layout)\n", len(dtMap))
+	}
+	fmt.Fprintln(stderr, "running platform autoLayout — this is a LONG operation (~2min); the editor shows a progress bar…")
 	if _, err := requestActionTimed(cfg, "debug.exec_js", win,
 		map[string]any{"code": code}, officialAutolayoutTimeout); err != nil {
 		return fmt.Errorf("platform autoLayout failed (it needs the schematic foreground; a background page can hang): %w", err)
@@ -263,6 +275,75 @@ func countNets(liveNets map[string]map[string]bool) int {
 		}
 	}
 	return n
+}
+
+// fetchSchPartDesignators returns the ACTIVE page's real part designators
+// (best-effort; a read failure yields nil → the bare autoLayout call).
+func fetchSchPartDesignators(cfg *appConfig, win string) []string {
+	res, err := requestAction(cfg, "schematic.components.list", win, nil)
+	if err != nil {
+		return nil
+	}
+	comps, err := parseLayoutComps(res.Result)
+	if err != nil {
+		return nil
+	}
+	kept, _ := filterLayoutComps(comps, false)
+	var out []string
+	for _, c := range kept {
+		if c.Designator != "" {
+			out = append(out, c.Designator)
+		}
+	}
+	return out
+}
+
+// deviceTypeForDesignator maps a reference-designator prefix to the device-type
+// bucket the platform autoLayout(designatorDeviceTypeMap) understands (issue
+// #143). The valid buckets are resistor/capacitor/inductive/diode/triode/
+// oscillator/chip/otherDevice; any unrecognised prefix falls back to otherDevice
+// so the map never carries an invalid value.
+func deviceTypeForDesignator(desig string) string {
+	i := 0
+	for i < len(desig) {
+		c := desig[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			i++
+			continue
+		}
+		break
+	}
+	switch strings.ToUpper(desig[:i]) {
+	case "R", "RN", "RV", "RT", "RP":
+		return "resistor"
+	case "C", "CN":
+		return "capacitor"
+	case "L", "FB":
+		return "inductive"
+	case "D", "LED", "ZD", "DZ", "BR":
+		return "diode"
+	case "Q", "T":
+		return "triode"
+	case "Y", "X", "XTAL", "OSC":
+		return "oscillator"
+	case "U", "IC":
+		return "chip"
+	default: // J/SW/K/FL/TP/… and anything unknown
+		return "otherDevice"
+	}
+}
+
+// buildDeviceTypeMap turns a designator list into the designator→device-type map
+// the platform autoLayout consumes. Empty designators are skipped.
+func buildDeviceTypeMap(desigs []string) map[string]string {
+	m := make(map[string]string, len(desigs))
+	for _, d := range desigs {
+		if d == "" {
+			continue
+		}
+		m[d] = deviceTypeForDesignator(d)
+	}
+	return m
 }
 
 // schCheckSummary runs schematic.check and returns its summary (floating pins,

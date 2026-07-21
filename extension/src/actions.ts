@@ -1806,6 +1806,17 @@ const CHECK_EPS = 0.05;
 // and a 10-snap would move endY off the pin → a diagonal stub that fails to create.
 const SCH_GRID = 5;
 
+// FP residue tolerance for the on-grid test (issue #143). A pin coordinate is
+// anchor + a rotated offset; the rotation math introduces floating-point noise
+// (a pin that should be 650 reads back 649.9999999). Distinct from CHECK_EPS
+// (0.05, a geometric coincidence tolerance): this is strictly for grid
+// snap-back and must stay << SCH_GRID/2 so a genuinely off-grid pin (half-grid,
+// 2.5 away) is never swallowed.
+const GRID_EPS = 0.01;
+
+// nearestGrid rounds v to the closest SCH_GRID multiple.
+const nearestGrid = (v: number): number => Math.round(v / SCH_GRID) * SCH_GRID;
+
 // True if (px,py) lies on the segment (x1,y1)-(x2,y2) — endpoints included.
 function pointOnSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {
 	if (px < Math.min(x1, x2) - CHECK_EPS || px > Math.max(x1, x2) + CHECK_EPS) return false;
@@ -3199,10 +3210,19 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	// Snapping the perpendicular axis too is safe because a pin sits ON the grid (this
 	// is why 5 not 10: ESP32 pins at y=-385 stay put under a 5-snap, but a 10-snap
 	// would jog endY to -380 → a diagonal stub EasyEDA refuses to create).
-	endX = Math.round(endX / SCH_GRID) * SCH_GRID;
-	endY = Math.round(endY / SCH_GRID) * SCH_GRID;
+	endX = nearestGrid(endX);
+	endY = nearestGrid(endY);
 
-	if (endX === pinX && endY === pinY) {
+	// Snap the pin-side vertex to the exact grid too (issue #143). The pin coord
+	// carries rotation FP residue (e.g. 649.9999999); the stub end is on the grid
+	// (650), so a raw (649.9999999 → 650) vertex makes the stub a 0.0001 diagonal
+	// — EasyEDA refuses it or the flag floats. Snapping the pin vertex to the same
+	// grid keeps the stub perfectly axis-aligned while staying < GRID_EPS from the
+	// real pin, so EasyEDA still treats it as connected to the pin.
+	const pinGX = nearestGrid(pinX);
+	const pinGY = nearestGrid(pinY);
+
+	if (endX === pinGX && endY === pinGY) {
 		throw new ActionError(
 			ErrorCodes.MISSING_PAYLOAD_FIELD,
 			`offset must be non-zero (got ${offset}); pin and netflag would overlap.`,
@@ -3213,9 +3233,11 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	// the perpendicular axis, turning the stub diagonal (EasyEDA refuses to
 	// create it) — and un-snapping would leave the flag floating instead. Fail
 	// with the actionable cause (probe round #3: autolayout's fractional zone
-	// centers put every pin off-grid → 53/64 cryptic stub failures).
-	const offGridX = pinX !== Math.round(pinX / SCH_GRID) * SCH_GRID;
-	const offGridY = pinY !== Math.round(pinY / SCH_GRID) * SCH_GRID;
+	// centers put every pin off-grid → 53/64 cryptic stub failures). The test
+	// tolerates FP residue (GRID_EPS): a pin within 0.01 of a grid point is
+	// on-grid (rotation noise), only a genuinely off-grid pin (≥ half-grid) fails.
+	const offGridX = Math.abs(pinX - pinGX) > GRID_EPS;
+	const offGridY = Math.abs(pinY - pinGY) > GRID_EPS;
 	if ((direction === 'left' || direction === 'right') ? offGridY : offGridX) {
 		throw new ActionError(
 			ErrorCodes.EDA_CALL_FAILED,
@@ -3234,7 +3256,7 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 	for (let attempt = 0; attempt < 2 && !wire; attempt++) {
 		if (attempt > 0) await new Promise((r) => setTimeout(r, 250));
 		try {
-			wire = await eda.sch_PrimitiveWire.create([pinX, pinY, endX, endY]);
+			wire = await eda.sch_PrimitiveWire.create([pinGX, pinGY, endX, endY]);
 			wireErr = undefined;
 		}
 		catch (err) {
@@ -3242,10 +3264,10 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 		}
 	}
 	if (wireErr) {
-		throw edaError(wireErr, `Failed to create pin-stub wire (${pinX},${pinY})→(${endX},${endY}) after retry — check for a primitive already occupying the endpoint.`);
+		throw edaError(wireErr, `Failed to create pin-stub wire (${pinGX},${pinGY})→(${endX},${endY}) after retry — check for a primitive already occupying the endpoint.`);
 	}
 	if (!wire) {
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Wire creation returned no primitive for (${pinX},${pinY})→(${endX},${endY}).`);
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Wire creation returned no primitive for (${pinGX},${pinGY})→(${endX},${endY}).`);
 	}
 
 	// Netflag/netport at the far end (NOT at the pin — that would be the bug we are

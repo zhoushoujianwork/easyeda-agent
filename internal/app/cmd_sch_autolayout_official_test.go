@@ -56,6 +56,40 @@ func TestConnsFromLiveNets(t *testing.T) {
 	}
 }
 
+// TestDeviceTypeForDesignator (issue #143): prefix → platform device-type bucket,
+// unknown prefixes fall back to otherDevice (never an invalid enum value).
+func TestDeviceTypeForDesignator(t *testing.T) {
+	cases := map[string]string{
+		"R1": "resistor", "RN2": "resistor", "RV1": "resistor",
+		"C10": "capacitor", "CN1": "capacitor",
+		"L1": "inductive", "FB3": "inductive",
+		"D2": "diode", "LED1": "diode", "ZD1": "diode",
+		"Q1": "triode",
+		"Y1": "oscillator", "X1": "oscillator",
+		"U7": "chip", "IC3": "chip",
+		"J1": "otherDevice", "SW2": "otherDevice", "TP1": "otherDevice",
+		"r1": "resistor", // case-insensitive
+		"FL1": "otherDevice", "?": "otherDevice",
+	}
+	for desig, want := range cases {
+		if got := deviceTypeForDesignator(desig); got != want {
+			t.Errorf("deviceTypeForDesignator(%q) = %q, want %q", desig, got, want)
+		}
+	}
+}
+
+// TestBuildDeviceTypeMap: empty designators are skipped; every value is a valid
+// bucket keyed by designator.
+func TestBuildDeviceTypeMap(t *testing.T) {
+	m := buildDeviceTypeMap([]string{"R1", "U1", "", "C2"})
+	if len(m) != 3 {
+		t.Fatalf("map size = %d, want 3 (empty skipped): %+v", len(m), m)
+	}
+	if m["R1"] != "resistor" || m["U1"] != "chip" || m["C2"] != "capacitor" {
+		t.Errorf("unexpected map: %+v", m)
+	}
+}
+
 func TestCountNets(t *testing.T) {
 	live := map[string]map[string]bool{
 		"A": {"U1.1": true, "U2.1": true},

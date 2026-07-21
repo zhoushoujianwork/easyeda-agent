@@ -6,6 +6,20 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — `--engine official` 兜底增强 (issue #143)
+- **`connect_pin` 网格判定容忍浮点残差**:吸附把件 anchor 修到整 5 格,但引脚坐标 = anchor +
+  旋转偏移,旋转数学引入 FP 噪声(引脚落 649.9999999 而非 650),旧的严格相等网格判定把合法引脚
+  误判为 off-grid 而拒连(官方 `--rewire` 残留 ~7 条失败连接)。现引入 `GRID_EPS=0.01`:先 round
+  到最近格、与网格点距离 <0.01 即视为 on-grid;并把**桩的引脚侧顶点吸到整格**(`pinGX/pinGY`),使
+  短桩真正轴对齐(0.0001 的斜桩会让 flag 悬空/EasyEDA 拒建)同时仍 <0.01 贴合真实引脚→照常连通。
+  `GRID_EPS` 远 < 半格,真正 off-grid(半格 2.5)仍正确拒绝。顺带修好 `offset==0` 重叠检查(旧逻辑
+  在 FP 引脚下漏判)。
+- **官方 `autoLayout` 喂 `designatorDeviceTypeMap`**:此前裸调无参;现从页面真实位号前缀分类
+  (R→resistor / C→capacitor / L·FB→inductive / D·LED→diode / Q→triode / Y·X→oscillator /
+  U·IC→chip / 其余→otherDevice)构建 designator→type map 注入,官方算法按角色更聚拢地摆放。空 map
+  降级为裸调;传多余 props 对忽略它的旧构建无害。Go 单测覆盖分类器 + map 构建;真机连通率/布局效果
+  待活体编辑器验收。
+
 ### Fixed — block-apply 消费标题栏 keep-out (issue #141)
 - **`sch block-apply` 原点避碰纳入 A4 标题栏图签**:此前 `bapResolveOrigin` 只把已有器件的
   真实 bbox 当障碍,块落在纸面偏右下会压到 A4 右下角图签/明细表。现在从 `bapResolveOrigin`
