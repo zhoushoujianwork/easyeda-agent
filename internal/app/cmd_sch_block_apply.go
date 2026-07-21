@@ -254,16 +254,30 @@ const bapObstacleGap = 20
 // on purpose — real bboxes exist only after placement — but it must not UNDER-shoot,
 // because the grid uses it to decide how far apart to put parts.
 func bapRoleHalfExtent(partKey string) float64 {
+	k := strings.ToLower(partKey)
 	switch {
-	// Multi-pin silicon: an MCU/QFN symbol is a tall box with pins on both sides.
-	// CH334F (QFN24) measured ~70 from anchor to its right-hand pin column.
-	case strings.HasPrefix(partKey, "mcu."), strings.HasPrefix(partKey, "ic."),
-		strings.HasPrefix(partKey, "buck."), strings.HasPrefix(partKey, "buckboost."),
-		strings.HasPrefix(partKey, "ldo."), strings.HasPrefix(partKey, "charger."),
-		strings.HasPrefix(partKey, "pmu."), strings.HasPrefix(partKey, "esd."):
+	// High-pin-count silicon: the symbol is a tall box with two pin columns, and
+	// its half width grows with the pin count. ESP32-S3 (QFN56, 57 pins) overlapped
+	// its neighbour by 126 at the 100 estimate below, so these get their own tier.
+	case strings.HasPrefix(k, "mcu."),
+		strings.Contains(k, "qfn56"), strings.Contains(k, "qfn48"),
+		strings.Contains(k, "lqfp"), strings.Contains(k, "bga"),
+		strings.Contains(k, "wroom"), strings.Contains(k, "wrover"):
+		// 250, not 200: at 200 the ESP32-S3 chip symbol still overlapped its
+		// neighbouring SOP-8 by 26. These numbers are MEASURED corrections, not
+		// theory — the estimate can only ever be a floor, which is why blocks that
+		// care about geometry should ship a schematic_layout template instead.
+		return 250
+	// Ordinary ICs: CH334F (QFN24) measured ~70 anchor-to-pin-column.
+	case strings.HasPrefix(k, "ic."),
+		strings.HasPrefix(k, "buck."), strings.HasPrefix(k, "buckboost."),
+		strings.HasPrefix(k, "ldo."), strings.HasPrefix(k, "charger."),
+		strings.HasPrefix(k, "pmu."), strings.HasPrefix(k, "esd."),
+		strings.HasPrefix(k, "opto."), strings.HasPrefix(k, "gnss."),
+		strings.HasPrefix(k, "storage."):
 		return 100
 	// Connectors and sockets are wide too (USB-C 16P, microSD, SIM).
-	case strings.HasPrefix(partKey, "conn."):
+	case strings.HasPrefix(k, "conn."):
 		return 90
 	}
 	return float64(bapPartMargin) // discretes: R/C/L/D/crystal
@@ -292,7 +306,14 @@ func bapGridSpacing(roles []string, b blocks.Block) float64 {
 // authored geometry; roles the template misses (or all roles, when there is no
 // template) fall back to the legacy grid — laid out BELOW the template extent so
 // the two never interleave.
-func bapRoleOffsets(roles []string, layout *blocks.SchematicLayout, spacing float64, perRow int) map[string]bapRoleOffset {
+// halfOf gives each role's estimated half extent; nil means "uniform spacing"
+// (an explicit --spacing). Per-part sizing matters: one IC in the block used to
+// widen EVERY cell, so a 21-part block at the IC's 220 pitch ran to y=1400 on an
+// 825-tall A4 sheet. Sizing each cell to its own part keeps the decoupling caps
+// tight and only pays the wide pitch where a wide part actually sits.
+func bapRoleOffsets(roles []string, layout *blocks.SchematicLayout, spacing float64, perRow int,
+	halfOf map[string]float64) map[string]bapRoleOffset {
+
 	out := make(map[string]bapRoleOffset, len(roles))
 	tmplMaxDY := 0.0
 	hasTmpl := false
@@ -311,17 +332,43 @@ func bapRoleOffsets(roles []string, layout *blocks.SchematicLayout, spacing floa
 	if hasTmpl {
 		gridBaseY = tmplMaxDY + spacing
 	}
-	gi := 0
+
+	grid := make([]string, 0, len(roles))
 	for _, role := range roles {
-		if _, ok := out[role]; ok {
-			continue
+		if _, ok := out[role]; !ok {
+			grid = append(grid, role)
 		}
-		out[role] = bapRoleOffset{
-			dx:     float64(gi%perRow) * spacing,
-			dy:     gridBaseY + float64(gi/perRow)*spacing,
-			source: "grid",
+	}
+
+	half := func(role string) float64 {
+		if halfOf == nil {
+			return spacing / 2
 		}
-		gi++
+		if h, ok := halfOf[role]; ok {
+			return h
+		}
+		return float64(bapPartMargin)
+	}
+
+	// Walk row by row, advancing x by the two neighbours' half extents plus a gap,
+	// and dropping y by the tallest part in the row just finished.
+	x, y := 0.0, gridBaseY
+	rowMaxHalf, prevHalf := 0.0, 0.0
+	for i, role := range grid {
+		h := half(role)
+		if i%perRow == 0 {
+			if i > 0 {
+				y += rowMaxHalf + h + float64(bapObstacleGap)
+			}
+			x, rowMaxHalf, prevHalf = 0, h, h
+		} else {
+			x += prevHalf + h + float64(bapObstacleGap)
+			prevHalf = h
+			if h > rowMaxHalf {
+				rowMaxHalf = h
+			}
+		}
+		out[role] = bapRoleOffset{dx: x, dy: y, source: "grid"}
 	}
 	return out
 }
@@ -443,15 +490,25 @@ func planBlockApply(in bapInput) (bapPlan, error) {
 	if perRow < 1 {
 		perRow = 4
 	}
+	// An explicit --spacing means "uniform cells, caller's choice"; otherwise each
+	// cell is sized to its own part (halfOf), so one wide IC no longer inflates the
+	// whole grid off the sheet.
 	spacing := in.Spacing
+	var halfOf map[string]float64
 	if spacing <= 0 {
 		spacing = bapGridSpacing(roles, in.Block)
+		halfOf = make(map[string]float64, len(roles))
+		for _, role := range roles {
+			if p, ok := in.Block.Parts[role]; ok {
+				halfOf[role] = bapRoleHalfExtent(p.Part)
+			}
+		}
 	}
 	// Geometry: the block's schematic_layout template wins over the fallback
 	// grid, and the whole block dodges existing parts when the caller left the
 	// origin to us (the old blind 4-column grid at 400,300 was a top overlap
 	// source — every second apply landed on the first).
-	offsets := bapRoleOffsets(roles, in.Layout, spacing, perRow)
+	offsets := bapRoleOffsets(roles, in.Layout, spacing, perRow, halfOf)
 	originX, originY, origin, warns := bapResolveOrigin(in, offsets)
 	plan.Origin = origin
 	plan.Warnings = append(plan.Warnings, warns...)

@@ -52,12 +52,15 @@ func TestPlanBlockApplyLed(t *testing.T) {
 		t.Fatalf("placements = %d, want 2", len(plan.Placements))
 	}
 	// Roles are planned in sorted order: LED then R. Without an in-test template
-	// (bapInput.Layout unset), coordinates follow the fallback grid.
+	// (bapInput.Layout unset), coordinates follow the fallback grid — whose cells
+	// are sized per part: two discretes sit 2×bapPartMargin + bapObstacleGap apart
+	// (50+50+20 = 120), not the old fixed 100.
 	if got := plan.Placements[0]; got.Role != "LED" || got.Designator != "LED1" || got.DeviceUUID != "dev-led" {
 		t.Errorf("placement[0] = %+v, want role LED / LED1 / dev-led", got)
 	}
-	if got := plan.Placements[1]; got.Role != "R" || got.Designator != "R1" || got.X != 500 {
-		t.Errorf("placement[1] = %+v, want role R / R1 / x=500", got)
+	wantX := 400 + 2*float64(bapPartMargin) + float64(bapObstacleGap)
+	if got := plan.Placements[1]; got.Role != "R" || got.Designator != "R1" || got.X != wantX {
+		t.Errorf("placement[1] = %+v, want role R / R1 / x=%v", got, wantX)
 	}
 
 	want := map[string]string{
@@ -641,5 +644,38 @@ func TestBapGridSpacingFollowsLargestPart(t *testing.T) {
 	// CH334F measured ~70 anchor-to-pin, so neighbours must sit >140 apart.
 	if got < 140 {
 		t.Fatalf("spacing %v does not clear a QFN24's measured 70-unit half extent", got)
+	}
+}
+
+// Per-part cell sizing: one wide IC must not inflate the cells of the discretes
+// around it. Before this, a 21-part block at the IC's pitch ran to y=1400 on an
+// 825-tall A4 sheet.
+func TestBapRoleOffsets_PerPartCellSizing(t *testing.T) {
+	roles := []string{"C1", "C2", "U", "C3"}
+	halfOf := map[string]float64{
+		"C1": float64(bapPartMargin), "C2": float64(bapPartMargin),
+		"U": 100, "C3": float64(bapPartMargin),
+	}
+	off := bapRoleOffsets(roles, nil, 220, 4, halfOf)
+
+	gap := float64(bapObstacleGap)
+	// C1 anchors the row; C2 clears it by half+half+gap = 120, NOT the IC's 220.
+	if got := off["C2"].dx; got != 2*float64(bapPartMargin)+gap {
+		t.Fatalf("C2 dx = %v, want %v (discrete pitch, not the IC's)", got, 2*float64(bapPartMargin)+gap)
+	}
+	// The IC pays its own width...
+	wantU := off["C2"].dx + float64(bapPartMargin) + 100 + gap
+	if got := off["U"].dx; got != wantU {
+		t.Fatalf("U dx = %v, want %v", got, wantU)
+	}
+	// ...and the discrete after it clears the IC, then goes back to being narrow.
+	if got := off["C3"].dx; got != wantU+100+float64(bapPartMargin)+gap {
+		t.Fatalf("C3 dx = %v, want %v", got, wantU+100+float64(bapPartMargin)+gap)
+	}
+	// All on one row.
+	for _, r := range roles {
+		if off[r].dy != 0 {
+			t.Fatalf("%s dy = %v, want 0 (single row of 4)", r, off[r].dy)
+		}
 	}
 }

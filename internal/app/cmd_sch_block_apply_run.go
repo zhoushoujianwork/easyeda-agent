@@ -57,7 +57,7 @@ type bapManifest struct {
 // fetchSchObstacles pulls the ACTIVE page's real part bboxes (best-effort) so
 // the planner can dodge them when picking the block origin.
 func fetchSchObstacles(cfg *appConfig, window string) []layoutBBox {
-	parts, _ := fetchSchObstaclesAndKeepout(cfg, window)
+	parts, _, _ := fetchSchObstaclesAndKeepout(cfg, window)
 	return parts
 }
 
@@ -68,14 +68,14 @@ func fetchSchObstacles(cfg *appConfig, window string) []layoutBBox {
 // with autoconnect/autolayout) yields the bottom-right 图签/明细表 rectangle so
 // bapResolveOrigin never drops a block onto it. A missing/underivable sheet
 // bbox degrades to nil (no keep-out enforced), matching the other callers.
-func fetchSchObstaclesAndKeepout(cfg *appConfig, window string) ([]layoutBBox, *layoutBBox) {
+func fetchSchObstaclesAndKeepout(cfg *appConfig, window string) ([]layoutBBox, *layoutBBox, *layoutBBox) {
 	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"includeBBox": true})
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	comps, err := parseLayoutComps(res.Result)
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	var sheet *layoutBBox
 	for _, c := range comps {
@@ -92,7 +92,7 @@ func fetchSchObstaclesAndKeepout(cfg *appConfig, window string) ([]layoutBBox, *
 		}
 	}
 	tb, _ := titleBlockKeepout(sheet)
-	return out, tb
+	return out, tb, sheet
 }
 
 // verifyBlockLayout re-reads the page's real bboxes after placement and returns
@@ -276,6 +276,7 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 
 	// A dry run must not need a window: the point is to inspect the plan. Only
 	// the designator scan needs the page, so fall back to an empty page.
+	var sheetBBox *layoutBBox
 	if !dryRun || window != "" || cfg.project != "" {
 		if in.Existing, err = existingDesignators(cfg, window); err != nil {
 			if !dryRun {
@@ -287,12 +288,33 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 		// Existing part bboxes (active page) so the block origin dodges them,
 		// plus the A4 title-block keep-out so a right/bottom origin never lands
 		// on the 图签 (issue #141).
-		in.Obstacles, in.TitleBlock = fetchSchObstaclesAndKeepout(cfg, window)
+		in.Obstacles, in.TitleBlock, sheetBBox = fetchSchObstaclesAndKeepout(cfg, window)
 	}
 
 	plan, err := planBlockApply(in)
 	if err != nil {
 		return err
+	}
+	// A big block on a small sheet silently ran off the page (a 21-part block at
+	// 220 pitch reached y=1400 on an 825-tall A4). Parts off the frame still wire
+	// up and still net-reconcile, so nothing downstream catches it — say it out loud
+	// instead. Not an error: the sheet size is the caller's decision, and the fix
+	// (bigger sheet / split across pages / a schematic_layout template) is theirs too.
+	if sheetBBox != nil {
+		var off []string
+		for _, p := range plan.Placements {
+			if p.X < sheetBBox.MinX || p.X > sheetBBox.MaxX || p.Y < sheetBBox.MinY || p.Y > sheetBBox.MaxY {
+				off = append(off, fmt.Sprintf("%s(%.0f,%.0f)", p.Designator, p.X, p.Y))
+			}
+		}
+		if len(off) > 0 {
+			w := fmt.Sprintf("%d part(s) land OUTSIDE the sheet frame [%.0f,%.0f]-[%.0f,%.0f]: %s "+
+				"— they wire up and reconcile normally but are off the printed page; use a bigger sheet, "+
+				"split the block across pages, or give the block a schematic_layout template",
+				len(off), sheetBBox.MinX, sheetBBox.MinY, sheetBBox.MaxX, sheetBBox.MaxY, strings.Join(off, " "))
+			plan.Warnings = append(plan.Warnings, w)
+			fmt.Fprintf(stderr, "warn: %s\n", w)
+		}
 	}
 	if plan.Origin != nil && plan.Origin.Relocated {
 		fmt.Fprintf(stderr, "origin: %.0f,%.0f → %.0f,%.0f (%s)\n",
