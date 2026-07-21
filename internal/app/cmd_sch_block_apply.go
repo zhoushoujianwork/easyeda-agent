@@ -536,6 +536,66 @@ func bapNextDesignator(prefix string, used map[string]bool, next map[string]int)
 	}
 }
 
+// bapRemapDesignators rewrites a plan in place after EasyEDA assigned designators
+// different from the planned ones (issue #144).
+//
+// The platform re-numbers on create to dodge designators it already knows about —
+// INCLUDING ones on schematic pages we cannot see. `sch_PrimitiveComponent.getAll(_,
+// allPages)` only returns pages that are LOADED, so a never-visited page is invisible
+// to the pre-flight scan yet still steers the platform's numbering: planning C1 and
+// landing C11 is NORMAL, not an error. What is fatal is leaving the plan's downstream
+// references on the planned name — wiring then resolves "C1:VCC" against whatever C1
+// exists elsewhere in the document (the netlist is keyed by designator.pin
+// document-wide), silently connecting another page's part.
+//
+// renames maps PLANNED (upper-cased) → ACTUAL. It rewrites:
+//   - each placement's designator
+//   - every net member's "DESIGNATOR:PIN" reference
+//   - the instance id and the "<INSTANCE>_N<i>" internal net names derived from it,
+//     so two instances never share an internal net name (a same-named internal net
+//     on another page would MERGE with this one)
+//
+// Port-bound nets carry HOST net names and are never rewritten.
+func bapRemapDesignators(plan *bapPlan, renames map[string]string) {
+	if plan == nil || len(renames) == 0 {
+		return
+	}
+	lookup := func(d string) (string, bool) {
+		n, ok := renames[strings.ToUpper(strings.TrimSpace(d))]
+		return n, ok
+	}
+
+	for i := range plan.Placements {
+		if n, ok := lookup(plan.Placements[i].Designator); ok {
+			plan.Placements[i].Designator = n
+		}
+	}
+
+	// The instance id defaults to the first placement's designator, so it follows
+	// that rename; an explicit --instance matches no designator and is left alone.
+	oldPrefix := strings.ToUpper(plan.Instance) + "_N"
+	if n, ok := lookup(plan.Instance); ok {
+		plan.Instance = n
+	}
+	newPrefix := strings.ToUpper(plan.Instance) + "_N"
+
+	for i := range plan.Nets {
+		for j, m := range plan.Nets[i].Members {
+			desig, pin, ok := strings.Cut(m, ":")
+			if !ok {
+				continue
+			}
+			if n, ok := lookup(desig); ok {
+				plan.Nets[i].Members[j] = n + ":" + pin
+			}
+		}
+		if plan.Nets[i].Port == "" && oldPrefix != newPrefix &&
+			strings.HasPrefix(plan.Nets[i].Net, oldPrefix) {
+			plan.Nets[i].Net = newPrefix + strings.TrimPrefix(plan.Nets[i].Net, oldPrefix)
+		}
+	}
+}
+
 // ── post-apply reconciliation (issue #135) ──────────────────────────────────
 //
 // Per-stub autoconnect success is NOT proof the block's topology landed:

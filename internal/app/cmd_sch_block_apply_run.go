@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -47,6 +48,10 @@ type bapManifest struct {
 	// geometry `sch layout-lint` checks), restricted to pairs that involve this
 	// instance's parts — the mechanical answer to "did the block land clean".
 	LayoutOverlaps []layoutFinding `json:"layoutOverlaps,omitempty"`
+	// Renames records PLANNED → ACTUAL designators when EasyEDA re-numbered on
+	// create (issue #144). Non-empty is normal, not a failure; it exists so the
+	// manifest never claims a designator the board does not carry.
+	Renames map[string]string `json:"designatorRenames,omitempty"`
 }
 
 // fetchSchObstacles pulls the ACTIVE page's real part bboxes (best-effort) so
@@ -183,8 +188,17 @@ func parseKV(items []string, flag string) (map[string]string, error) {
 // page's parts, and the document-wide netlist (keyed by designator.pin) then
 // mis-attributed every collided pin's net. Non-active pages return shallow data
 // but the designator field is always present, which is all this needs.
+//
+// allPages alone is NOT enough: EasyEDA loads page data lazily, so
+// getAll(_, allPages) returns only pages that have been OPENED this session — a
+// never-visited page stays invisible here while still steering the platform's own
+// numbering, which is how issue #144 planned C1 against a page already holding
+// C1-C10. tagPages makes the connector visit every page (and restore the original)
+// before the scan, which loads them; the remaining drift is caught by the
+// post-place designator read-back in runBlockApply.
 func existingDesignators(cfg *appConfig, window string) (map[string]bool, error) {
-	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"allPages": true})
+	res, err := requestAction(cfg, "schematic.components.list", window,
+		map[string]any{"allPages": true, "tagPages": true})
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +214,22 @@ func existingDesignators(cfg *appConfig, window string) (map[string]bool, error)
 		}
 	}
 	return out, nil
+}
+
+// bapPlacedDesignator digs the authoritative designator out of a
+// schematic.component.place response ({component:{designator}}). Empty means the
+// response did not carry one — the caller then keeps the planned name rather than
+// guessing, so an older connector degrades to the previous behaviour instead of
+// silently clearing designators.
+func bapPlacedDesignator(res *actionResult) string {
+	if res == nil {
+		return ""
+	}
+	comp, _ := res.Result["component"].(map[string]any)
+	if comp == nil {
+		return ""
+	}
+	return strings.TrimSpace(asString(comp["designator"]))
 }
 
 // runBlockApply is the command core.
@@ -286,6 +316,16 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 	}
 
 	// 5. place
+	//
+	// The placement response carries the AUTHORITATIVE post-assignment component
+	// (the connector assigns the designator via modify and returns that state), so
+	// every planned designator is verified against what the board actually took.
+	// EasyEDA re-numbers on create to dodge designators it knows about — including
+	// ones on pages our pre-flight scan cannot see, because getAll(_, allPages)
+	// only returns LOADED pages (issue #144). Planning C1 and landing C11 is normal;
+	// carrying "C1" into the wiring stage is what silently connects another page's
+	// part, so the plan is remapped onto reality before anything downstream runs.
+	renames := map[string]string{}
 	for _, p := range plan.Placements {
 		payload := map[string]any{
 			"libraryUuid": p.LibraryUUID,
@@ -297,10 +337,33 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 		if p.Rotation != 0 {
 			payload["rotation"] = p.Rotation
 		}
-		if _, err := requestActionTimed(cfg, "schematic.component.place", window, payload, placeTimeout); err != nil {
+		res, err := requestActionTimed(cfg, "schematic.component.place", window, payload, placeTimeout)
+		if err != nil {
 			return fmt.Errorf("place %s (%s): %w", p.Designator, p.PartKey, err)
 		}
+		actual := bapPlacedDesignator(res)
+		if actual != "" && !strings.EqualFold(actual, p.Designator) {
+			renames[strings.ToUpper(p.Designator)] = actual
+			fmt.Fprintf(stderr, "placed %-6s %-18s @ %.0f,%.0f [%s] → platform renumbered to %s\n",
+				p.Designator, p.PartKey, p.X, p.Y, p.Source, actual)
+			continue
+		}
 		fmt.Fprintf(stderr, "placed %-6s %-18s @ %.0f,%.0f [%s]\n", p.Designator, p.PartKey, p.X, p.Y, p.Source)
+	}
+	if len(renames) > 0 {
+		bapRemapDesignators(&plan, renames)
+		man.Instance, man.Placed, man.Nets, man.Renames = plan.Instance, plan.Placements, plan.Nets, renames
+		pairs := make([]string, 0, len(renames))
+		for planned, actual := range renames {
+			pairs = append(pairs, planned+"→"+actual)
+		}
+		sort.Strings(pairs)
+		w := fmt.Sprintf("EasyEDA renumbered %d designator(s) on create (%s) — it dodges designators "+
+			"on pages our pre-flight scan cannot see (getAll only returns LOADED pages). The plan, its "+
+			"net members and instance-scoped net names were remapped onto the real designators.",
+			len(renames), strings.Join(pairs, ", "))
+		man.Warnings = append(man.Warnings, w)
+		fmt.Fprintf(stderr, "warn: %s\n", w)
 	}
 
 	// 5b. real-bbox overlap read-back: the estimated-footprint dodge above is a

@@ -61,9 +61,9 @@ func TestPlanBlockApplyLed(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"IO2":     "R1:1",       // port CTRL, bound to the host net
+		"IO2":     "R1:1",        // port CTRL, bound to the host net
 		"LED1_N2": "R1:2 LED1:+", // purely internal
-		"GND":     "LED1:-",     // port GND
+		"GND":     "LED1:-",      // port GND
 	}
 	if len(plan.Nets) != 3 {
 		t.Fatalf("nets = %d, want 3", len(plan.Nets))
@@ -482,5 +482,102 @@ func TestReconcileBlockNets_UnresolvedPinRef(t *testing.T) {
 	diffs := reconcileBlockNets(plan, map[string]map[string]bool{"X": {}}, reconTestPins())
 	if len(diffs) != 1 || len(diffs[0].Missing) != 1 {
 		t.Fatalf("expected the unresolved ref to be reported missing, got %+v", diffs)
+	}
+}
+
+// ── designator renumbering (issue #144) ─────────────────────────────────────
+
+// remapTestPlan is the shape block-apply produces for a two-part instance whose
+// internal net is instance-scoped and whose second net is bound to a host rail.
+func remapTestPlan() *bapPlan {
+	return &bapPlan{
+		Instance: "C1",
+		Placements: []bapPlacement{
+			{Role: "C_V3", Designator: "C1"},
+			{Role: "U", Designator: "U1"},
+			{Role: "D_ESD", Designator: "D1"},
+		},
+		Nets: []bapNet{
+			{Net: "C1_N3", Members: []string{"U1:V3", "C1:1"}},
+			{Net: "5V", Port: "VBUS_5V", Bound: true, Members: []string{"U1:VCC", "D1:3"}},
+		},
+	}
+}
+
+func TestBapRemapDesignators(t *testing.T) {
+	plan := remapTestPlan()
+	// D1 was NOT renumbered — the platform only dodges what it knows is taken.
+	bapRemapDesignators(plan, map[string]string{"C1": "C11", "U1": "U3"})
+
+	if got := []string{plan.Placements[0].Designator, plan.Placements[1].Designator, plan.Placements[2].Designator}; got[0] != "C11" || got[1] != "U3" || got[2] != "D1" {
+		t.Fatalf("placements not remapped: %v", got)
+	}
+	// The instance id follows the first placement, and the instance-scoped net
+	// name follows it — otherwise this instance's C1_N3 merges with the C1_N3 of
+	// the OTHER page's C1 instance (the netlist is designator-keyed document-wide).
+	if plan.Instance != "C11" {
+		t.Fatalf("instance = %q, want C11", plan.Instance)
+	}
+	if plan.Nets[0].Net != "C11_N3" {
+		t.Fatalf("internal net = %q, want C11_N3", plan.Nets[0].Net)
+	}
+	if got := plan.Nets[0].Members; got[0] != "U3:V3" || got[1] != "C11:1" {
+		t.Fatalf("members not remapped: %v", got)
+	}
+	// A port-bound net carries a HOST net name: renaming it would silently move
+	// the block onto a different rail.
+	if plan.Nets[1].Net != "5V" {
+		t.Fatalf("bound net was rewritten to %q", plan.Nets[1].Net)
+	}
+	if got := plan.Nets[1].Members; got[0] != "U3:VCC" || got[1] != "D1:3" {
+		t.Fatalf("bound-net members not remapped: %v", got)
+	}
+}
+
+func TestBapRemapDesignatorsNoop(t *testing.T) {
+	plan := remapTestPlan()
+	bapRemapDesignators(plan, nil)
+	if plan.Instance != "C1" || plan.Nets[0].Net != "C1_N3" || plan.Nets[0].Members[0] != "U1:V3" {
+		t.Fatalf("empty rename set mutated the plan: %+v", plan)
+	}
+}
+
+// An explicit --instance is not a designator, so no rename may touch it (and the
+// nets named after it must stay put).
+func TestBapRemapDesignatorsExplicitInstance(t *testing.T) {
+	plan := remapTestPlan()
+	plan.Instance = "usb1"
+	plan.Nets[0].Net = "USB1_N3"
+	bapRemapDesignators(plan, map[string]string{"C1": "C11", "U1": "U3"})
+	if plan.Instance != "usb1" {
+		t.Fatalf("explicit instance was renamed to %q", plan.Instance)
+	}
+	if plan.Nets[0].Net != "USB1_N3" {
+		t.Fatalf("explicit-instance net renamed to %q", plan.Nets[0].Net)
+	}
+	if plan.Nets[0].Members[1] != "C11:1" {
+		t.Fatalf("members should still remap: %v", plan.Nets[0].Members)
+	}
+}
+
+func TestBapPlacedDesignator(t *testing.T) {
+	cases := []struct {
+		name string
+		res  *actionResult
+		want string
+	}{
+		{"nil", nil, ""},
+		{"no component", &actionResult{Result: map[string]any{}}, ""},
+		{"present", &actionResult{Result: map[string]any{
+			"component": map[string]any{"designator": " C11 "}}}, "C11"},
+		// An older connector that omits the field must degrade to "keep the
+		// planned name", never to "clear the designator".
+		{"absent field", &actionResult{Result: map[string]any{
+			"component": map[string]any{}}}, ""},
+	}
+	for _, tc := range cases {
+		if got := bapPlacedDesignator(tc.res); got != tc.want {
+			t.Fatalf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

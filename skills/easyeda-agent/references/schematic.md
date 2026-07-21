@@ -49,6 +49,15 @@ Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a 
 > 块若带 `schematic_layout` 模板,`sch block-apply` 直接按模板相对偏移+朝向落件(否则退回网格);
 > 原点自动避开已有器件真实 bbox(显式 `--at` 优先),落完回读 overlap 写进 manifest——优先用
 > `block-apply` 而不是逐件手放。
+>
+> 🔢 **多页工程的位号真相(#144):** EasyEDA **页数据懒加载**——`getAll(_, allPages)` 只返回
+> **本会话打开过**的页,没访问过的页对我们隐形,却照样参与平台自己的位号避让。曾因此规划 `C1`
+> 落地却成 `C11`,而 wiring 仍拿 `C1` 去解析 → **跨页连到另一页的 C1 上**(netlist 按
+> designator.pin 全文档索引),13 条连线全废且报出本页不存在的网络。现已双层兜底:预扫描
+> `tagPages` 强制遍历各页把数据加载进来;放置后再**回读平台实际赋予的位号**,不一致就把
+> placements / net members / `<INSTANCE>_N<i>` 内部网名一并 remap(manifest 里
+> `designatorRenames` + 警告)。**内部网名必须跟着位号走**,否则两个实例的 `C1_N3` 会跨页同名合并。
+> ⚠️ 由此推论:**任何按位号引用图元的批量流程,都别信规划值,以放置回读为准**。
 
 Place **real parts from the EasyEDA / 立创(LCSC) library**, then wire them.
 Hand-drawing a custom component symbol is the **fallback**, used only when the
