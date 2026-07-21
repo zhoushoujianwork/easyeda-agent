@@ -72,6 +72,11 @@ internal/blocks/data/
 2. **必须跑过一次全流程验证,`validated` 才能填、块才能标为「已入库」。**
    验证 = 在真实工程(用 `ceshi`)跑 `place → wire → sch check → DRC = 0`,并**读回网表逐网核实合并**,
    `validated` 记成 `ceshi <date> by @you: place→wire→check→DRC=0 + netlist proof`。
+   ⚠️ **验证必须由 `sch block-apply` 端到端产生,不能手工连线代替(#145 教训)。**
+   手工连线是照着拓扑**用眼睛**连的,会绕过块自己的引脚引用,块数据里的错(引脚名歧义/错名/
+   漏脚)因此全被掩盖 —— `ch340c_usb_serial` 就这样带着「VBUS 根本没接上」的缺陷挂了
+   `verified` 十几天,直到首次用 `block-apply` 跑才现形。**手工验过的只能证明电路对,
+   证明不了块数据对。**
    未验证的块允许提交但标 draft(`validated: null`):可带一份**来自官方 ref 的候选 `internal_nets`**
    (脚名待 `sch read` 核实),拓扑本身还没定就把 `internal_nets` 写成字符串 `"pending"`。
 3. **器件先入 `standard-parts.json` 再进块。** 块里用到的新料,先补器件库(带真实 C 号),
