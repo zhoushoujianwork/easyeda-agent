@@ -43,7 +43,7 @@
       "PORT:VIN_5V"
     ],
     [
-      "U.VOUT",
+      "U.VOUT*",
       "C_OUT.1",
       "C_BYP.1",
       "PORT:3V3"
@@ -65,7 +65,7 @@
     },
     "3V3": {
       "dir": "out",
-      "at": "U.VOUT",
+      "at": "U.VOUT*",
       "desc": "稳压 3.3V 输出, 供 MCU 模组及 3V3 外设(接 block.esp32s3_wroom1_module 的 3V3 port)",
       "default_net": "+3V3"
     },

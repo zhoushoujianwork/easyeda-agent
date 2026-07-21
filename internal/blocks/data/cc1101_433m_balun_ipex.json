@@ -201,10 +201,7 @@
       "C601.1",
       "U.DVDD",
       "U.DGUARD",
-      "U.AVDD_9",
-      "U.AVDD_11",
-      "U.AVDD_14",
-      "U.AVDD_15",
+      "U.AVDD*",
       "C641.1",
       "C661.1",
       "C691.1",
@@ -213,9 +210,7 @@
       "C694.1"
     ],
     [
-      "U.GND_16",
-      "U.GND_19",
-      "U.EP",
+      "U.GND*",
       "C601.2",
       "C641.2",
       "C651.2",
@@ -233,7 +228,7 @@
       "C624.1",
       "C622.2",
       "C623.2",
-      "J_ANT2.SHIELD",
+      "J_ANT2.GND*",
       "PORT:GND"
     ],
     [
@@ -249,11 +244,11 @@
       "PORT:MOSI"
     ],
     [
-      "U.SO",
+      "U.SO(GDO1)",
       "PORT:MISO"
     ],
     [
-      "U.GDO0",
+      "U.GDO0(ATEST)",
       "PORT:GDO0"
     ],
     [
@@ -282,13 +277,13 @@
     },
     "MISO": {
       "dir": "out",
-      "at": "U.SO",
+      "at": "U.SO(GDO1)",
       "desc": "SPI 主入从出(CC1101 SO 串行数据出,与 GDO1 复用),到 MCU",
       "default_net": "CC_MISO"
     },
     "GDO0": {
       "dir": "out",
-      "at": "U.GDO0",
+      "at": "U.GDO0(ATEST)",
       "desc": "通用数字输出/中断(收发状态/包就绪),到 MCU GPIO",
       "default_net": "CC_GDO0"
     },
@@ -306,7 +301,7 @@
     },
     "GND": {
       "dir": "bidir",
-      "at": "U.GND_16",
+      "at": "U.GND*",
       "desc": "地(GND_16/GND_19/外露焊盘 EP + 全部去耦/滤波下极),接地平面",
       "default_net": "GND"
     },

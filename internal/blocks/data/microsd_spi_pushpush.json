@@ -52,12 +52,12 @@
   },
   "internal_nets": [
     [
-      "J_SD.DAT3",
+      "J_SD.CD/DAT3",
       "R_CS.1",
       "PORT:SD_CS"
     ],
     [
-      "J_SD.CLK",
+      "J_SD.CLX",
       "PORT:SD_SCK"
     ],
     [
@@ -71,7 +71,7 @@
       "PORT:SD_MISO"
     ],
     [
-      "J_SD.DAT1",
+      "J_SD.CAT1",
       "R_DAT1.1"
     ],
     [
@@ -99,13 +99,13 @@
   "ports": {
     "SD_CS": {
       "dir": "in",
-      "at": "J_SD.DAT3",
+      "at": "J_SD.CD/DAT3",
       "desc": "主机 SPI 片选 (CS/SS) → 卡 DAT3;块内已 10k 上拉到 3V3",
       "default_net": "SD_CS"
     },
     "SD_SCK": {
       "dir": "in",
-      "at": "J_SD.CLK",
+      "at": "J_SD.CLX",
       "desc": "主机 SPI 时钟 → 卡 CLK;Espressif 不要求 SCK 上拉,本块未装(要对齐 Adafruit 再补 10k)",
       "default_net": "SD_SCK"
     },

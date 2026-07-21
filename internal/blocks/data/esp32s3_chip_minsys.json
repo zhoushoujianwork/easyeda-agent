@@ -118,15 +118,15 @@
   },
   "_internal_nets_note": "脚名可信度分两级,勿混:(1) **U / FLASH / X 已核实** —— 沿用同族 block.esp32s3r8_chip_minsys(2026-07-15 在 ceshi 临时页 sch read 逐脚核实,同芯片族同符号族):U 符号 LNA_IN(1)/VDD3P3(2,3 同名双脚)/CHIP_PU(4)/GPIO0(5)/VDD3P3_RTC(20)/SPICS1(28)/VDD_SPI(29)/SPIHD(30)/SPIWP(31)/SPICS0(32)/SPICLK(33)/SPIQ(34)/SPID(35)/VDD3P3_CPU(46)/U0TXD(49)/U0RXD(50)/XTAL_N(53)/XTAL_P(54)/VDDA(55,56 同名双脚)/GND(57=EPAD,符号真实名就叫 GND);FLASH 符号 CS#(1)/DO(IO1)(2)/WP#(IO2)(3)/GND(4)/DI(IO0)(5)/CLK(6)/HOLD#orRESET#(IO3)(7)/VCC(8),括号是脚名的一部分;X 符号 1/3=晶体,GND(2,4)=壳脚。同名多物理脚(VDD3P3/VDDA/GND)写一个功能名 = tie 全部。 (2) **PSRAM 未核实、SPICS1 半核实** —— PSRAM 脚名取自 APS6404L datasheet §3.1/§6 原文:/CE(1)、SO/SIO[1](2)、SIO[2](3)、VSS(4)、SI/SIO[0](5)、SCLK(6)、SIO[3](7)、VDD(8);EasyEDA 符号(C5333729)实际可能写成 CE#/SIO0/SIO1 等变体,**验证时必须先 sch read 核对再落线**。U.SPICS1 来自同族块正文注记(pin28)而非其逐脚核实清单,同样需 sch read 确认。此外 mcu.esp32s3_chip 与 mcu.esp32s3r8_chip 是两个不同 deviceUuid,符号虽同族仍须重核。",
   "internal_nets": [
-    ["U.VDD3P3", "U.VDD3P3_RTC", "U.VDD3P3_CPU", "U.VDDA", "C_BULK.1", "C_VDD3P3.1", "C_VDDA.1", "C_RTC.1", "C_CPU.1", "R_EN.2", "R_IO0.2", "PORT:3V3"],
-    ["U.GND", "FLASH.GND", "PSRAM.VSS", "X.GND", "C_BULK.2", "C_VDD3P3.2", "C_VDDA.2", "C_RTC.2", "C_CPU.2", "C_SPI.2", "C_SPI_HF.2", "C_FLASH.2", "C_PSRAM.2", "C_PSRAM_HF.2", "C_EN.2", "C_X1.2", "C_X2.2", "PORT:GND"],
+    ["U.VDD3P3*", "U.VDD3P3_RTC", "U.VDD3P3_CPU", "U.VDDA*", "C_BULK.1", "C_VDD3P3.1", "C_VDDA.1", "C_RTC.1", "C_CPU.1", "R_EN.2", "R_IO0.2", "PORT:3V3"],
+    ["U.EP", "FLASH.GND", "PSRAM.VSS", "X.GND*", "C_BULK.2", "C_VDD3P3.2", "C_VDDA.2", "C_RTC.2", "C_CPU.2", "C_SPI.2", "C_SPI_HF.2", "C_FLASH.2", "C_PSRAM.2", "C_PSRAM_HF.2", "C_EN.2", "C_X1.2", "C_X2.2", "PORT:GND"],
     ["U.VDD_SPI", "FLASH.VCC", "PSRAM.VDD", "C_SPI.1", "C_SPI_HF.1", "C_FLASH.1", "C_PSRAM.1", "C_PSRAM_HF.1", "R_CS0.2", "R_CS1.2"],
     ["U.CHIP_PU", "R_EN.1", "C_EN.1", "PORT:EN"],
     ["U.GPIO0", "R_IO0.1", "PORT:IO0"],
     ["U.XTAL_P", "X.1", "C_X1.1"],
     ["U.XTAL_N", "X.3", "C_X2.1"],
     ["U.SPICS0", "FLASH.CS#", "R_CS0.1"],
-    ["U.SPICS1", "PSRAM./CE", "R_CS1.1"],
+    ["U.SPICS1", "PSRAM.CE#", "R_CS1.1"],
     ["U.SPICLK", "FLASH.CLK", "PSRAM.SCLK"],
     ["U.SPID", "FLASH.DI(IO0)", "PSRAM.SI/SIO[0]"],
     ["U.SPIQ", "FLASH.DO(IO1)", "PSRAM.SO/SIO[1]"],
@@ -139,13 +139,13 @@
   "ports": {
     "3V3": {
       "dir": "in",
-      "at": "U.VDD3P3",
+      "at": "U.VDD3P3*",
       "desc": "3.3V 主供电(来自 LDO/buck),须扛 WiFi 发射瞬态 ≥500mA",
       "default_net": "3V3"
     },
     "GND": {
       "dir": "bidir",
-      "at": "U.GND",
+      "at": "U.EP",
       "desc": "系统地(含 QFN-56 EPAD 热焊盘,符号名 GND)",
       "default_net": "GND"
     },

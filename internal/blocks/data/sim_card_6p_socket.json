@@ -87,9 +87,9 @@
     ["R_RST.1", "PORT:SIM_RST"],
     ["J.CLK", "R_CLK.2", "C_CLK.1", "D_CLK.1"],
     ["R_CLK.1", "PORT:SIM_CLK"],
-    ["J.IO", "R_DAT.2", "C_DAT.1", "D_DAT.1", "R_PU.1"],
+    ["J.I/O", "R_DAT.2", "C_DAT.1", "D_DAT.1", "R_PU.1"],
     ["R_DAT.1", "PORT:SIM_DATA"],
-    ["J.GND", "C_VDD.2", "C_VDD_HF.2", "C_RST.2", "C_CLK.2", "C_DAT.2", "D_VDD.2", "D_RST.2", "D_CLK.2", "D_DAT.2", "PORT:GND"]
+    ["J.GND*", "C_VDD.2", "C_VDD_HF.2", "C_RST.2", "C_CLK.2", "C_DAT.2", "D_VDD.2", "D_RST.2", "D_CLK.2", "D_DAT.2", "PORT:GND"]
   ],
   "ports": {
     "SIM_VDD": {
@@ -118,7 +118,7 @@
     },
     "GND": {
       "dir": "bidir",
-      "at": "J.GND",
+      "at": "J.GND*",
       "desc": "地。EC20 §3.9:若板上地平面完整,卡座地可直接接系统地(『If the ground is complete on customers' PCB, USIM_GND can be connected to PCB ground directly』);模组若有专用 USIM_GND 脚则优先接过去",
       "default_net": "GND"
     }

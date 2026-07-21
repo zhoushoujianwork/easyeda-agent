@@ -49,8 +49,8 @@
   },
   "internal_nets": [
     ["U.IN", "C_IN1.1", "C_IN2.1", "PORT:VIN"],
-    ["U.OUT", "C_OUT.1", "C_OUT_HF.1", "U.EN2", "PORT:VSYS"],
-    ["U.BAT", "J_BAT.1", "C_BAT.1", "PORT:VBATT"],
+    ["U.OUT*", "C_OUT.1", "C_OUT_HF.1", "U.EN2", "PORT:VSYS"],
+    ["U.BAT*", "J_BAT.1", "C_BAT.1", "PORT:VBATT"],
     ["U.TS", "C_TS.1", "R_TS.1", "J_BAT.3"],
     ["U.ILIM", "R_ILIM.1"],
     ["U.ISET", "R_ISET.1"],
@@ -68,13 +68,13 @@
     },
     "VSYS": {
       "dir": "out",
-      "at": "U.OUT",
+      "at": "U.OUT*",
       "desc": "power-path 系统轨: 输入在位≈4.4-5V,断电无缝切电池≈VBATT。下游 buck/buck-boost 从这里取电",
       "default_net": "VSYS"
     },
     "VBATT": {
       "dir": "bidir",
-      "at": "U.BAT",
+      "at": "U.BAT*",
       "desc": "单节锂电(经 J_BAT)。可再分压做电池电压采样",
       "default_net": "VBATT"
     },

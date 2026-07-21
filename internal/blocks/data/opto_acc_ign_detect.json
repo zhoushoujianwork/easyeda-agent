@@ -47,7 +47,7 @@
   },
   "internal_nets": [
     ["PORT:IGN_12V", "F_ACC.1"],
-    ["F_ACC.2", "R_LIM.1", "D_ACC.K"],
+    ["F_ACC.2", "R_LIM.1", "D_ACC.C"],
     ["R_LIM.2", "U_OPT.1"],
     ["U_OPT.4", "R_PU.1", "R_S.1"],
     ["R_PU.2", "PORT:VPULL"],

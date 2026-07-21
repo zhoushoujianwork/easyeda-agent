@@ -82,7 +82,7 @@
     [
       "L501.2",
       "C502.+",
-      "U5.FEEDBACK",
+      "U5.FB",
       "PORT:+5V"
     ],
     [
@@ -91,11 +91,11 @@
       "C503.2",
       "D501.A",
       "C502.-",
-      "U5.GND",
+      "U5.GND*",
       "PORT:GND"
     ],
     [
-      "U5.ON_OFF",
+      "U5.ON/OFF",
       "PORT:ONOFF"
     ]
   ],
@@ -114,13 +114,13 @@
     },
     "GND": {
       "dir": "bidir",
-      "at": "U5.GND",
+      "at": "U5.GND*",
       "desc": "功率地/参考地(汇集输入输出电容负端、续流管阳极、端子 GND)",
       "default_net": "GND"
     },
     "ONOFF": {
       "dir": "in",
-      "at": "U5.ON_OFF",
+      "at": "U5.ON/OFF",
       "desc": "低有效使能:常态直连 GND=常开(default_net=GND);拉高>1.4V 关断,悬空默认开。切勿接 VIN(会关断变换器)",
       "default_net": "GND"
     }
@@ -167,7 +167,7 @@
     },
     {
       "rule": "ground-path-separation",
-      "target": "U5.GND",
+      "target": "U5.GND*",
       "constraint": "GND 引脚回流路径与'肖特基→输出电容'的地路径分开(datasheet Fig.5/Table1 pin5-8 note),避免地弹污染反馈",
       "value": "",
       "severity": "should"

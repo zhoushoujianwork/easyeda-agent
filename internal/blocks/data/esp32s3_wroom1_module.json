@@ -45,7 +45,7 @@
   "_internal_nets_note": "引脚用模组真实符号功能名(已 sch read 核实)。GND 是多物理脚:pin1 + pin40 + 热焊盘 EPAD(pin41,真实名 EPAD 非 EP),tie 全部。",
   "internal_nets": [
     ["U.3V3", "C_BULK.1", "C_VDD.1", "R_EN.2", "R_IO0.2", "PORT:3V3"],
-    ["U.GND", "U.EPAD", "C_BULK.2", "C_VDD.2", "C_EN.2", "PORT:GND"],
+    ["U.GND*", "U.EPAD", "C_BULK.2", "C_VDD.2", "C_EN.2", "PORT:GND"],
     ["U.EN", "R_EN.1", "C_EN.1", "PORT:EN"],
     ["U.IO0", "R_IO0.1", "PORT:IO0"]
   ],
@@ -58,7 +58,7 @@
     },
     "GND": {
       "dir": "bidir",
-      "at": "U.GND",
+      "at": "U.GND*",
       "desc": "系统地(含 EP 散热焊盘)",
       "default_net": "GND"
     },

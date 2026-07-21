@@ -62,13 +62,13 @@
     [
       "J.DP1",
       "J.DP2",
-      "ESD.I/O2",
+      "ESD.I/O2*",
       "PORT:USB_DP"
     ],
     [
       "J.DN1",
       "J.DN2",
-      "ESD.I/O1",
+      "ESD.I/O1*",
       "PORT:USB_DM"
     ],
     [

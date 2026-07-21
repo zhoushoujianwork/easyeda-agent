@@ -132,8 +132,8 @@
       "PORT:RESET_N"
     ],
     [
-      "U.GND",
-      "ANT.GND",
+      "U.GND*",
+      "ANT.GND*",
       "D_ESD.2",
       "C_PI1.2",
       "C_PI2.2",
@@ -183,7 +183,7 @@
     },
     "GND": {
       "dir": "bidir",
-      "at": "U.GND",
+      "at": "U.GND*",
       "desc": "地(4 脚同名一并;天线座地一并)",
       "default_net": "GND"
     }
