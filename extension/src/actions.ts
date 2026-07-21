@@ -981,6 +981,7 @@ const schematicPageClear: Handler = async (payload) => {
 	// returned without throwing".
 	let live = firstPass;
 	let passes = 0;
+	let stalls = 0;
 	while (countIds(live) > 0 && passes < MAX_CLEAR_PASSES) {
 		passes++;
 		const before = countIds(live);
@@ -994,9 +995,17 @@ const schematicPageClear: Handler = async (payload) => {
 			}
 		}
 		live = await enumerateSchPagePrimitives(preserveSheet, warnings);
-		// No progress means retrying cannot help — something is genuinely undeletable
-		// (a locked primitive, a platform refusal). Stop rather than spin.
-		if (countIds(live) >= before) break;
+		if (countIds(live) >= before) {
+			// No progress. Primitives created moments ago can briefly resist deletion
+			// while the page settles after a batch of edits — clearing immediately
+			// after `block-apply` reproducibly stalled with ~20 survivors, while the
+			// same clear run by hand seconds later emptied the page. So pause and try
+			// once more before giving up, but never spin: two consecutive stalls means
+			// something is genuinely undeletable (locked / platform-protected).
+			if (++stalls >= 2) break;
+			await new Promise(resolve => setTimeout(resolve, 600));
+		}
+		else stalls = 0;
 	}
 
 	const remaining = countIds(live);
