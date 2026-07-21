@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/workflow"
 )
 
 // ── autolayout orchestration (I/O side; the planner in cmd_sch_autolayout.go is pure) ──
@@ -115,7 +116,7 @@ func parseAutolayoutParts(result map[string]any) ([]alPart, *layoutBBox) {
 }
 
 // runAutolayout pulls real geometry, plans, optionally applies, and renders.
-func runAutolayout(cfg *appConfig, window string, spec alSpec, rules autolayoutRules, apply, allPages, asJSON bool, stdout, stderr io.Writer) error {
+func runAutolayout(cfg *appConfig, window string, spec alSpec, rules autolayoutRules, apply, allPages, asJSON, zoneDraw bool, stdout, stderr io.Writer) error {
 	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{
 		"includeBBox": true,
 		"includePins": true,
@@ -138,6 +139,13 @@ func runAutolayout(cfg *appConfig, window string, spec alSpec, rules autolayoutR
 
 	if apply {
 		applyAutolayout(cfg, window, &rep, stderr)
+		// Zone-draw as a first-class step of the placement flow (issue #142): once
+		// parts land cleanly, auto-draw the functional partition frames + labels
+		// from the spec's modules[].zone — the "先看区、再看线" visualization stops
+		// being a manual follow-up. Best-effort; never fails the layout.
+		if zoneDraw && rep.OK {
+			drawAutolayoutZones(cfg, window, buildAutolayoutZoneClaims(spec.Modules, stderr), sheet, stdout, stderr)
+		}
 	}
 
 	if asJSON {
@@ -153,6 +161,83 @@ func runAutolayout(cfg *appConfig, window string, spec alSpec, rules autolayoutR
 		return fmt.Errorf("autolayout: incomplete (%d error(s), %d overlap(s))", len(rep.Errors), rep.Validation.PartOverlaps)
 	}
 	return nil
+}
+
+// buildAutolayoutZoneClaims converts the spec's zoned modules into schematic zone
+// claims (issue #142). Modules without a zone or parts are skipped; an unknown
+// zone name is skipped with a warning — planning already ran, so a bad zone must
+// not abort the drawing step.
+func buildAutolayoutZoneClaims(modules []alSpecModule, stderr io.Writer) map[string]*schZoneClaim {
+	out := map[string]*schZoneClaim{}
+	for i, m := range modules {
+		zone := strings.ToLower(strings.TrimSpace(m.Zone))
+		if zone == "" || len(m.Parts) == 0 {
+			continue
+		}
+		if !pcbZoneNames[zone] {
+			fmt.Fprintf(stderr, "autolayout: zone-draw skipping module %q — unknown zone %q\n", m.Name, m.Zone)
+			continue
+		}
+		name := strings.TrimSpace(m.Name)
+		if name == "" {
+			name = fmt.Sprintf("module%d", i+1)
+		}
+		out[name] = &schZoneClaim{Zone: zone, Parts: normalizeDesignators(m.Parts), Note: "autolayout"}
+	}
+	return out
+}
+
+// drawAutolayoutZones persists the spec's zone claims and draws them as dashed
+// frames + labels on the active sheet after a successful apply (issue #142). It
+// reuses the exact zone-draw geometry (buildZoneDrawJS) so the frames match the
+// layout-lint zone-violation gate, and records the primitive ids in workflow
+// state so `sch zone-draw --clear` removes precisely what it drew. Best-effort:
+// every failure warns but the layout itself is already applied.
+func drawAutolayoutZones(cfg *appConfig, window string, claims map[string]*schZoneClaim, sheet *layoutBBox, stdout, stderr io.Writer) {
+	if len(claims) == 0 {
+		return
+	}
+	if sheet == nil {
+		fmt.Fprintln(stderr, "autolayout: zone-draw skipped — no sheet bbox on the active page")
+		return
+	}
+	project, err := resolveStageProject(cfg, window)
+	if err != nil {
+		fmt.Fprintf(stderr, "autolayout: zone-draw skipped — %v\n", err)
+		return
+	}
+	st, err := loadPcbStageState(project)
+	if err != nil {
+		fmt.Fprintf(stderr, "autolayout: zone-draw skipped — %v\n", err)
+		return
+	}
+	// Persist the partition so `sch zones status` and layout-lint see the same claims.
+	st.SetSchZones(claims)
+	// Clear previously drawn frames first so a redraw never orphans graphics.
+	if st.SchZoneFrameIds != nil && (len(st.SchZoneFrameIds.Rects) > 0 || len(st.SchZoneFrameIds.Texts) > 0) {
+		if _, derr := execZoneJS(cfg, window, buildZoneClearJS(st.SchZoneFrameIds)); derr != nil {
+			fmt.Fprintf(stderr, "autolayout: clearing previous zone frames failed (%v)\n", derr)
+		}
+		st.SchZoneFrameIds = nil
+	}
+	v, err := execZoneJS(cfg, window, buildZoneDrawJS(claims, *sheet, "#AA00AA"))
+	if err != nil {
+		fmt.Fprintf(stderr, "autolayout: zone-draw failed (%v) — layout applied, frames not drawn\n", err)
+		_ = savePcbStageState(st) // still persist the claims for status/lint
+		return
+	}
+	frames := &workflow.SchZoneFrames{
+		Rects: asStringSlice(v["rects"]),
+		Texts: asStringSlice(v["texts"]),
+		At:    nowRFC3339(),
+	}
+	st.SchZoneFrameIds = frames
+	if err := savePcbStageState(st); err != nil {
+		fmt.Fprintf(stderr, "autolayout: zone state save failed (%v)\n", err)
+		return
+	}
+	fmt.Fprintf(stdout, "autolayout: drew %d functional zone frame(s) + %d label(s) — `sch zone-draw --clear` removes them\n",
+		len(frames.Rects), len(frames.Texts))
 }
 
 // applyAutolayout mutates the page (schematic.component.modify per placement),
@@ -250,6 +335,7 @@ func newAutolayoutCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) 
 		engine                                          string
 		dryRun, apply, rewire                           bool
 		allPages, asJSON                                bool
+		zoneDraw                                        bool
 		avoidTitleBlock, preserveFanout, preferVertical bool
 		moduleGap, channelGap, partGap                  float64
 	)
@@ -369,7 +455,7 @@ Spec shape:
 				rules.PartGap = partGap
 			}
 
-			return runAutolayout(cfg, *window, s, rules, apply, allPages, asJSON, stdout, stderr)
+			return runAutolayout(cfg, *window, s, rules, apply, allPages, asJSON, zoneDraw, stdout, stderr)
 		},
 	}
 	c.Flags().StringVar(&spec, "spec", "", "layout spec JSON file (required for --engine template)")
@@ -379,6 +465,7 @@ Spec shape:
 	c.Flags().BoolVar(&apply, "apply", false, "move parts via schematic.component.modify, then self-check overlaps")
 	c.Flags().BoolVar(&allPages, "all-pages", false, "build the scene from all schematic pages")
 	c.Flags().BoolVar(&asJSON, "json", false, "emit the report as JSON")
+	c.Flags().BoolVar(&zoneDraw, "zone-draw", true, "template --apply: auto-draw functional zone frames + labels from modules[].zone after placement (issue #142; --zone-draw=false to skip)")
 	c.Flags().BoolVar(&avoidTitleBlock, "avoid-titleblock", true, "treat the title block as a hard keep-out")
 	c.Flags().BoolVar(&preserveFanout, "preserve-pin-fanout", true, "keep peripherals out of core pin lead-out lanes")
 	c.Flags().BoolVar(&preferVertical, "prefer-vertical", true, "try vertical peripheral placement before horizontal")

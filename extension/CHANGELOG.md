@@ -6,6 +6,18 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — 分区自动画框接入自动放置流程 (issue #142)
+- **`sch autolayout --engine template --apply` 落完自动 `zone-draw`**:此前功能分区可视化
+  (虚线区域框+区名)是 `sch zones set` + `sch zone-draw` 两步手动跟进;现在模板引擎 `--apply`
+  成功后,按 `--spec` 的 `modules[].zone` 自动持久化分区认领(`SetSchZones`,`sch zones status`/
+  layout-lint 可见)并用**与 zone-violation 同一 `zoneRect` 几何**画出区域框+区名——「先看区、
+  再看线」成为放置流程一等公民。复用既有 `buildZoneDrawJS`,frame primitive id 记入 workflow
+  state,`sch zone-draw --clear` 精确移除、不碰用户图形。新 flag `--zone-draw`(默认开,
+  `--zone-draw=false` 关闭);无 sheet bbox / 无 zoned module 时静默跳过,best-effort 不影响布局。
+  纯函数单测覆盖(`TestBuildAutolayoutZoneClaims`);真机「多块页自动出现分区框」待活体编辑器验收。
+  block-apply 的 category→zone 自动分区 + 去耦分组文本注释(需先定 category→zone 映射/`default_zone`
+  方案)留作后续,不在本次范围。
+
 ### Fixed — `--engine official` 兜底增强 (issue #143)
 - **`connect_pin` 网格判定容忍浮点残差**:吸附把件 anchor 修到整 5 格,但引脚坐标 = anchor +
   旋转偏移,旋转数学引入 FP 噪声(引脚落 649.9999999 而非 650),旧的严格相等网格判定把合法引脚
