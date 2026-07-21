@@ -6,6 +6,15 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — block-apply 消费标题栏 keep-out (issue #141)
+- **`sch block-apply` 原点避碰纳入 A4 标题栏图签**:此前 `bapResolveOrigin` 只把已有器件的
+  真实 bbox 当障碍,块落在纸面偏右下会压到 A4 右下角图签/明细表。现在从 `bapResolveOrigin`
+  的同一次 `components.list(includeBBox)` 里顺手取 `"sheet"` bbox,复用 `titleBlockKeepout`
+  (autoconnect/autolayout 共用的 keep-out 单一几何源)派生标题栏矩形,追加进螺旋找空位的障碍集
+  ——不显式 `--at` 时自动避开图签;显式 `--at` 仍尊重坐标但碰撞(器件或图签)会 warn。无 sheet
+  bbox 时降级为不强制(与其它调用方一致)。纯函数单测覆盖(`TestPlanBlockApplyOriginDodgesTitleBlock`
+  / `…ExplicitAtOverTitleBlock`);真机 0-overlap 且块 bbox 不与图签相交待活体编辑器验收。
+
 ## [0.17.0] - 2026-07-21
 
 ### Added — PCB SVG 丝印导入 (issue #139)

@@ -228,6 +228,10 @@ type bapInput struct {
 	// present, the planner auto-relocates a colliding origin (unless AtExplicit).
 	Obstacles  []layoutBBox
 	AtExplicit bool // --at was passed explicitly: the origin is the caller's decision
+	// TitleBlock is the A4 图签/明细表 keep-out rectangle (bottom-right), when the
+	// sheet bbox is known; nil → not enforced. Treated as an extra obstacle so the
+	// block origin never lands on the title block (issue #141).
+	TitleBlock *layoutBBox
 }
 
 // bapRoleOffset is one role's resolved offset from the block origin.
@@ -316,10 +320,15 @@ func bapResolveOrigin(in bapInput, offsets map[string]bapRoleOffset) (float64, f
 		RequestedX: in.OriginX, RequestedY: in.OriginY,
 		X: in.OriginX, Y: in.OriginY,
 	}
-	if len(in.Obstacles) == 0 {
+	if len(in.Obstacles) == 0 && in.TitleBlock == nil {
 		return in.OriginX, in.OriginY, origin, nil
 	}
 	collides := func(b layoutBBox) bool {
+		if in.TitleBlock != nil {
+			if boxesOverlap(b, *in.TitleBlock) || rectGap(b, *in.TitleBlock) < bapObstacleGap {
+				return true
+			}
+		}
 		for _, o := range in.Obstacles {
 			if boxesOverlap(b, o) || rectGap(b, o) < bapObstacleGap {
 				return true
@@ -333,7 +342,7 @@ func bapResolveOrigin(in bapInput, offsets map[string]bapRoleOffset) (float64, f
 	}
 	if in.AtExplicit {
 		return in.OriginX, in.OriginY, origin, []string{
-			"--at 指定的原点与已有器件重叠 — 按你的坐标照常放置(显式 --at 优先);放完请跑 `sch layout-lint` 确认",
+			"--at 指定的原点与已有器件或标题栏图签重叠 — 按你的坐标照常放置(显式 --at 优先);放完请跑 `sch layout-lint` 确认",
 		}
 	}
 	w, h := bboxSize(rect)

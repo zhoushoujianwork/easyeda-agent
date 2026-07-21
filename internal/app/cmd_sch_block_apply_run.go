@@ -52,13 +52,32 @@ type bapManifest struct {
 // fetchSchObstacles pulls the ACTIVE page's real part bboxes (best-effort) so
 // the planner can dodge them when picking the block origin.
 func fetchSchObstacles(cfg *appConfig, window string) []layoutBBox {
+	parts, _ := fetchSchObstaclesAndKeepout(cfg, window)
+	return parts
+}
+
+// fetchSchObstaclesAndKeepout is fetchSchObstacles plus the A4 title-block
+// keep-out derived from the same components.list round-trip (issue #141). The
+// "sheet" component spans the whole page and carries the frame bbox; feeding it
+// through titleBlockKeepout (the single source of the keep-out geometry, shared
+// with autoconnect/autolayout) yields the bottom-right 图签/明细表 rectangle so
+// bapResolveOrigin never drops a block onto it. A missing/underivable sheet
+// bbox degrades to nil (no keep-out enforced), matching the other callers.
+func fetchSchObstaclesAndKeepout(cfg *appConfig, window string) ([]layoutBBox, *layoutBBox) {
 	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"includeBBox": true})
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	comps, err := parseLayoutComps(res.Result)
 	if err != nil {
-		return nil
+		return nil, nil
+	}
+	var sheet *layoutBBox
+	for _, c := range comps {
+		if c.ComponentType == "sheet" && c.BBox != nil {
+			sheet = c.BBox
+			break
+		}
 	}
 	kept, _ := filterLayoutComps(comps, false)
 	var out []layoutBBox
@@ -67,7 +86,8 @@ func fetchSchObstacles(cfg *appConfig, window string) []layoutBBox {
 			out = append(out, *c.BBox)
 		}
 	}
-	return out
+	tb, _ := titleBlockKeepout(sheet)
+	return out, tb
 }
 
 // verifyBlockLayout re-reads the page's real bboxes after placement and returns
@@ -225,8 +245,10 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 			fmt.Fprintf(stderr, "warn: could not read the page (%v) — planning against an empty page\n", err)
 			in.Existing = map[string]bool{}
 		}
-		// Existing part bboxes (active page) so the block origin dodges them.
-		in.Obstacles = fetchSchObstacles(cfg, window)
+		// Existing part bboxes (active page) so the block origin dodges them,
+		// plus the A4 title-block keep-out so a right/bottom origin never lands
+		// on the 图签 (issue #141).
+		in.Obstacles, in.TitleBlock = fetchSchObstaclesAndKeepout(cfg, window)
 	}
 
 	plan, err := planBlockApply(in)

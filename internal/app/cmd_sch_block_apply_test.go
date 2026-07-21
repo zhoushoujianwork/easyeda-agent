@@ -371,6 +371,54 @@ func TestPlanBlockApplyExplicitAtWins(t *testing.T) {
 	}
 }
 
+// TestPlanBlockApplyOriginDodgesTitleBlock (issue #141): with NO part obstacles
+// but a title-block keep-out squatting on the default origin, a non-explicit --at
+// must relocate the block clear of the 图签 — the title block is a first-class
+// obstacle, not just other parts.
+func TestPlanBlockApplyOriginDodgesTitleBlock(t *testing.T) {
+	b, topo := ledBlock(t)
+	titleBlock := layoutBBox{MinX: 300, MinY: 200, MaxX: 600, MaxY: 400} // covers 400,300
+	plan, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4,
+		TitleBlock: &titleBlock, // no part obstacles at all
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Origin == nil || !plan.Origin.Relocated {
+		t.Fatalf("origin not relocated off the title block: %+v", plan.Origin)
+	}
+	// Every placement must clear the title-block rectangle (+ margin).
+	for _, p := range plan.Placements {
+		box := layoutBBox{MinX: p.X - bapPartMargin, MinY: p.Y - bapPartMargin, MaxX: p.X + bapPartMargin, MaxY: p.Y + bapPartMargin}
+		if boxesOverlap(box, titleBlock) {
+			t.Errorf("%s at %.0f,%.0f still overlaps the title block", p.Designator, p.X, p.Y)
+		}
+	}
+}
+
+// TestPlanBlockApplyExplicitAtOverTitleBlock: an explicit --at over the title
+// block is honoured (no relocation) but must warn — same contract as parts.
+func TestPlanBlockApplyExplicitAtOverTitleBlock(t *testing.T) {
+	b, topo := ledBlock(t)
+	titleBlock := layoutBBox{MinX: 300, MinY: 200, MaxX: 600, MaxY: 400}
+	plan, err := planBlockApply(bapInput{
+		Block: b, Topology: topo, Devices: fixtureDevices(), Existing: map[string]bool{},
+		OriginX: 400, OriginY: 300, Spacing: 100, PerRow: 4,
+		TitleBlock: &titleBlock, AtExplicit: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Origin.Relocated {
+		t.Error("explicit --at over the title block was relocated")
+	}
+	if len(plan.Warnings) == 0 {
+		t.Error("explicit --at over the title block produced no warning")
+	}
+}
+
 // ── reconcile (issue #135) ──────────────────────────────────────────────────
 
 func reconTestPlan() bapPlan {
