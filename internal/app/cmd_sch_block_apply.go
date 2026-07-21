@@ -615,20 +615,33 @@ type bapNetDiff struct {
 // bapPinKey resolves a planned member "DESIGNATOR:PINREF" (name or number) to
 // the netlist's "DESIGNATOR.NUMBER" key via the designator→(name|number)→number
 // map from the live component read.
-func bapPinKey(member string, pinNumbers map[string]map[string]string) (string, bool) {
+// A "NAME*" member fans out to EVERY pin carrying that name, so it resolves to
+// SEVERAL netlist keys and reconciliation must find all of them — a `GND*` that
+// landed on only half the ground pins is exactly the silent half-connection this
+// whole mechanism exists to catch.
+func bapPinKeys(member string, pinNumbers map[string]map[string][]string) ([]string, bool) {
 	desig, ref, ok := strings.Cut(member, ":")
 	if !ok {
-		return "", false
+		return nil, false
 	}
 	byRef := pinNumbers[strings.ToUpper(desig)]
 	if byRef == nil {
-		return "", false
+		return nil, false
 	}
-	num, ok := byRef[strings.ToUpper(ref)]
-	if !ok {
-		return "", false
+	nums, ok := byRef[strings.ToUpper(strings.TrimSuffix(ref, acPinFanoutSuffix))]
+	if !ok || len(nums) == 0 {
+		return nil, false
 	}
-	return desig + "." + num, true
+	if !strings.HasSuffix(ref, acPinFanoutSuffix) {
+		// A plain ref names one pin; if the symbol has several with that name the
+		// planner never resolved it either, so take the first deterministically.
+		return []string{desig + "." + nums[0]}, true
+	}
+	keys := make([]string, 0, len(nums))
+	for _, n := range nums {
+		keys = append(keys, desig+"."+n)
+	}
+	return keys, true
 }
 
 // reconcileBlockNets diffs the plan against the live netlist. liveNets maps net
@@ -636,27 +649,29 @@ func bapPinKey(member string, pinNumbers map[string]map[string]string) (string, 
 // → number. A planned net passes when every planned member is present in that
 // live net — the live net MAY hold extra pins (bound host nets legitimately
 // aggregate the rest of the board).
-func reconcileBlockNets(plan bapPlan, liveNets map[string]map[string]bool, pinNumbers map[string]map[string]string) []bapNetDiff {
+func reconcileBlockNets(plan bapPlan, liveNets map[string]map[string]bool, pinNumbers map[string]map[string][]string) []bapNetDiff {
 	var diffs []bapNetDiff
 	for _, n := range plan.Nets {
 		live := liveNets[n.Net]
 		var missing []string
 		foundIn := map[string]string{}
 		for _, m := range n.Members {
-			key, ok := bapPinKey(m, pinNumbers)
+			keys, ok := bapPinKeys(m, pinNumbers)
 			if !ok {
 				// Pin ref did not resolve — count as missing so it can't hide.
 				missing = append(missing, m)
 				continue
 			}
-			if live != nil && live[key] {
-				continue
-			}
-			missing = append(missing, key)
-			for otherNet, pins := range liveNets {
-				if otherNet != n.Net && pins[key] {
-					foundIn[key] = otherNet
-					break
+			for _, key := range keys {
+				if live != nil && live[key] {
+					continue
+				}
+				missing = append(missing, key)
+				for otherNet, pins := range liveNets {
+					if otherNet != n.Net && pins[key] {
+						foundIn[key] = otherNet
+						break
+					}
 				}
 			}
 		}

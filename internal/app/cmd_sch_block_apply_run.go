@@ -436,7 +436,7 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 // readLiveNets pulls the post-wiring truth via schematic.read: live net → set of
 // "DESIGNATOR.NUMBER" members, plus each component's pin name/number → number
 // map (plan members reference pins by NAME; the netlist speaks numbers).
-func readLiveNets(cfg *appConfig, window string) (map[string]map[string]bool, map[string]map[string]string, error) {
+func readLiveNets(cfg *appConfig, window string) (map[string]map[string]bool, map[string]map[string][]string, error) {
 	res, err := requestAction(cfg, "schematic.read", window, map[string]any{"includeCheck": false})
 	if err != nil {
 		return nil, nil, err
@@ -463,7 +463,7 @@ func readLiveNets(cfg *appConfig, window string) (map[string]map[string]bool, ma
 			liveNets[name] = set
 		}
 	}
-	pinNumbers := map[string]map[string]string{}
+	pinNumbers := map[string]map[string][]string{}
 	if comps, ok := res.Result["components"].([]any); ok {
 		for _, c := range comps {
 			m, ok := c.(map[string]any)
@@ -476,7 +476,7 @@ func readLiveNets(cfg *appConfig, window string) (map[string]map[string]bool, ma
 			}
 			byRef := pinNumbers[desig]
 			if byRef == nil {
-				byRef = map[string]string{}
+				byRef = map[string][]string{}
 				pinNumbers[desig] = byRef
 			}
 			if pins, ok := m["pins"].([]any); ok {
@@ -492,11 +492,20 @@ func readLiveNets(cfg *appConfig, window string) (map[string]map[string]bool, ma
 					if num == "" {
 						continue
 					}
-					byRef[strings.ToUpper(num)] = num
+					add := func(k string) {
+						k = strings.ToUpper(k)
+						for _, existing := range byRef[k] {
+							if existing == num {
+								return
+							}
+						}
+						byRef[k] = append(byRef[k], num)
+					}
+					add(num)
 					if name := asString(pm["name"]); name != "" {
-						byRef[strings.ToUpper(name)] = num
+						add(name)
 					} else if name := asString(pm["pinName"]); name != "" {
-						byRef[strings.ToUpper(name)] = num
+						add(name)
 					}
 				}
 			}

@@ -430,11 +430,13 @@ func reconTestPlan() bapPlan {
 	}
 }
 
-func reconTestPins() map[string]map[string]string {
-	return map[string]map[string]string{
-		"R4": {"1": "1", "2": "2"},
-		"R1": {"1": "1", "2": "2"},
-		"U1": {"3": "3", "ALERT": "3", "8": "8", "VBUS": "8", "9": "9", "VIN-": "9"},
+func reconTestPins() map[string]map[string][]string {
+	return map[string]map[string][]string{
+		"R4": {"1": {"1"}, "2": {"2"}},
+		"R1": {"1": {"1"}, "2": {"2"}},
+		"U1": {"3": {"3"}, "ALERT": {"3"}, "8": {"8"}, "VBUS": {"8"}, "9": {"9"}, "VIN-": {"9"},
+			// GND on two physical pins — what a `GND*` member must fan out to.
+			"10": {"10"}, "11": {"11"}, "GND": {"10", "11"}},
 	}
 }
 
@@ -579,5 +581,38 @@ func TestBapPlacedDesignator(t *testing.T) {
 		if got := bapPlacedDesignator(tc.res); got != tc.want {
 			t.Fatalf("%s: got %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// A `NAME*` member must reconcile against EVERY pin sharing that name: landing on
+// only half the ground pins is precisely the silent half-connection the fan-out
+// syntax exists to prevent, so a partial match must still be reported missing.
+func TestReconcileBlockNets_FanoutMember(t *testing.T) {
+	plan := bapPlan{Nets: []bapNet{{Net: "GND", Members: []string{"U1:GND*"}}}}
+
+	full := map[string]map[string]bool{"GND": {"U1.10": true, "U1.11": true}}
+	if d := reconcileBlockNets(plan, full, reconTestPins()); len(d) != 0 {
+		t.Fatalf("both ground pins present, want no diff, got %+v", d)
+	}
+
+	half := map[string]map[string]bool{"GND": {"U1.10": true}}
+	d := reconcileBlockNets(plan, half, reconTestPins())
+	if len(d) != 1 || len(d[0].Missing) != 1 || d[0].Missing[0] != "U1.11" {
+		t.Fatalf("half-connected fan-out must report U1.11 missing, got %+v", d)
+	}
+}
+
+func TestBapPinKeysFanout(t *testing.T) {
+	pins := reconTestPins()
+	got, ok := bapPinKeys("U1:GND*", pins)
+	if !ok || len(got) != 2 || got[0] != "U1.10" || got[1] != "U1.11" {
+		t.Fatalf("fan-out keys = %v (ok=%v), want [U1.10 U1.11]", got, ok)
+	}
+	// A plain ref still resolves to exactly one key.
+	if got, ok := bapPinKeys("U1:VBUS", pins); !ok || len(got) != 1 || got[0] != "U1.8" {
+		t.Fatalf("plain ref = %v (ok=%v), want [U1.8]", got, ok)
+	}
+	if _, ok := bapPinKeys("U1:NOSUCH", pins); ok {
+		t.Fatal("unknown pin must not resolve")
 	}
 }
