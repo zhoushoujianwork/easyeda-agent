@@ -520,3 +520,50 @@ func TestResolvePinCoordAmbiguousSuggestsFanout(t *testing.T) {
 		}
 	}
 }
+
+// ── endpoint grid snap (merged-wire short prevention) ───────────────────────
+
+// The planner must score the coordinate the board will actually hold. An
+// un-snapped endpoint let a stub planned at (545,272) read as "clear" of a
+// foreign-net wire at y=270, then land at (545,270) — ON it — merging two nets.
+func TestEndpointForSnapsToGrid(t *testing.T) {
+	cases := []struct {
+		dir            string
+		px, py, offset float64
+		wantX, wantY   float64
+	}{
+		// 290-18 = 272 → snaps to 270; x stays exactly on the pin.
+		{"up", 545, 290, 18, 545, 270},
+		{"down", 545, 290, 18, 545, 310},
+		{"left", 560, 270, 18, 540, 270},
+		{"right", 560, 270, 18, 580, 270},
+		// Already on-grid endpoints are untouched.
+		{"up", 500, 300, 20, 500, 280},
+		// A pin on the ODD 5-grid keeps its perpendicular coordinate: snapping it
+		// would pull the stub off the pin axis into a diagonal that fails to create.
+		{"left", 600, 385, 18, 580, 385},
+	}
+	for _, c := range cases {
+		x, y := endpointFor(c.px, c.py, c.offset, c.dir)
+		if x != c.wantX || y != c.wantY {
+			t.Fatalf("%s from (%v,%v)+%v = (%v,%v), want (%v,%v)",
+				c.dir, c.px, c.py, c.offset, x, y, c.wantX, c.wantY)
+		}
+		// Whatever the snap does, the stub must stay orthogonal.
+		if x != c.px && y != c.py {
+			t.Fatalf("%s produced a diagonal stub: (%v,%v) → (%v,%v)", c.dir, c.px, c.py, x, y)
+		}
+	}
+}
+
+// With the snap in place, a candidate whose SNAPPED endpoint lands on a
+// foreign-net wire must be hard-rejected — the check that silently passed before.
+func TestForeignWireRejectUsesSnappedEndpoint(t *testing.T) {
+	// The J1:CC1 wire from the real failure: y=270, x 540→560, net D1_N3.
+	wires := []wireSegment{{X0: 540, Y0: 270, X1: 560, Y1: 270, Net: "D1_N3"}}
+	// D2:4 sits at (545,290); "up" with offset 18 snaps to (545,270) — on that wire.
+	ex, ey := endpointFor(545, 290, 18, "up")
+	if !stubTouchesForeignWire(545, 290, ex, ey, "USB_HOST_DP", wires) {
+		t.Fatalf("snapped endpoint (%v,%v) lies on a foreign-net wire but was not rejected", ex, ey)
+	}
+}

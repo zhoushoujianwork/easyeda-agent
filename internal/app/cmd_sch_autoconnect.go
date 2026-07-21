@@ -161,16 +161,32 @@ const (
 // direction/offset. MUST match the connector's switch (extension/src/actions.ts,
 // schematicPowerConnectPin): y-DOWN coords — 'up' decreases y, 'down' increases
 // y — so the planned geometry equals the geometry connect_pin actually creates.
+// acSchGrid mirrors the connector's SCH_GRID: EasyEDA Pro snaps a created
+// netflag/netport's connection pin to a 5-unit grid, and connect_pin aligns the
+// stub endpoint to the same grid so the two coincide. The planner MUST snap too —
+// scoring an un-snapped endpoint means the geometry checks run on coordinates the
+// board will never hold. That cost a real short: a stub planned to (545,272)
+// scored "clear" of a foreign-net wire lying at y=270, then landed at (545,270)
+// — ON that wire — merging USB_DP into the CC1 net. 5, not 10: many footprints
+// have pins on the odd 5-grid, and a 10-snap would pull the endpoint off the pin
+// axis into a diagonal stub.
+const acSchGrid = 5
+
+func acSnapGrid(v float64) float64 { return math.Round(v/acSchGrid) * acSchGrid }
+
+// endpointFor returns the stub's far end. Only the coordinate ALONG the stub is
+// snapped; the perpendicular one stays exactly on the pin, keeping the stub
+// orthogonal (a diagonal stub fails to create).
 func endpointFor(pinX, pinY, offset float64, dir string) (x, y float64) {
 	switch dir {
 	case "up":
-		return pinX, pinY - offset
+		return pinX, acSnapGrid(pinY - offset)
 	case "down":
-		return pinX, pinY + offset
+		return pinX, acSnapGrid(pinY + offset)
 	case "left":
-		return pinX - offset, pinY
+		return acSnapGrid(pinX - offset), pinY
 	case "right":
-		return pinX + offset, pinY
+		return acSnapGrid(pinX + offset), pinY
 	}
 	return pinX, pinY
 }
