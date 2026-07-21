@@ -6,6 +6,18 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — `sch extract-layout` 反向导出块模板 (issue #140)
+- **`easyeda sch extract-layout <block-id>`**:block-apply 模板步骤的**逆操作**——读活动页上一个摆好的
+  块实例,按每个 role 的实测 anchor + rotation 反算出块的 `schematic_layout` 模板(role→{dx,dy,rotation},
+  相对确定性锚点,自动吸 5 格、rotation 归一到 {0,90,180,270})。把「在真板上把外设摆漂亮一次→固化模板」
+  从肉眼盯板手写 dx/dy 变成数据管线(20 块里 18 块还缺模板就是因为纯手工)。**两个设计决策确定性落定**:
+  ① role→designator 用 `--role ROLE=DESIG` 显式(优先)+ `--from D1,D2,…` 按**唯一前缀**自动匹配,歧义/未命中
+  直接报错绝不瞎猜;② 锚点=按 role 名排序后首个前缀为 "U"(芯片/MCU)的 role,否则排序首个 role,重复导出稳定不漂。
+  **v1 只 PRINT 模板 JSON 供复审**(不写回 go:embed 数据——回写要保 JSON 键序,Go map 序列化会打乱全部键→不可读 diff),
+  复审后粘进 `internal/blocks/data/<id>.json` 再跑 `go test ./internal/blocks/...` 过全 role 覆盖 + on-grid + 合法
+  rotation 校验。纯函数单测覆盖(前缀提取/rotation 归一/role 反查歧义与缺失/相对偏移计算);`--write` 就地回写待
+  保序写入器就位后加。真机 extract→回写→新页 block-apply→layout-lint 一致性待活体编辑器验收。
+
 ### Added — 分区自动画框接入自动放置流程 (issue #142)
 - **`sch autolayout --engine template --apply` 落完自动 `zone-draw`**:此前功能分区可视化
   (虚线区域框+区名)是 `sch zones set` + `sch zone-draw` 两步手动跟进;现在模板引擎 `--apply`
