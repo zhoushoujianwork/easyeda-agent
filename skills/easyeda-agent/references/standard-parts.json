@@ -915,11 +915,14 @@
       "value": "B360A 60V/3A",
       "mpn": "B360A 60V/3A",
       "lcsc": "C94193",
-      "deviceUuid": null,
+      "deviceUuid": "3f67036da881438fbe4926f374f8c07c",
+      "manufacturer": "DIODES(美台)",
+      "mfrPart": "B360A-13-F",
+      "footprint": "SMA_L4.4-W2.6-LS5.0-RD",
       "package": "SMA",
       "class": "diode",
       "basic": false,
-      "desc": "60V 肖特基续流/OR(符号带 A/K 名);40V 件在 33V TVS 钳位系统会击穿——选它。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版)"
+      "desc": "60V 肖特基续流/OR(符号带 A/K 名);40V 件在 33V TVS 钳位系统会击穿——选它。auto-added from 车机V2-fable realization 2026-07-09 (box-v2 评审修正版);deviceUuid 2026-07-21 经 `lib by-lcsc` 解析补齐——此前为 null,导致 block.vehicle_input_tps54360_5v 一件都放不下去(block-apply 在 place 阶段直接报错退出)"
     },
     "zener.bzt52c12_sod123": {
       "value": "BZT52C12 12V",

@@ -99,7 +99,14 @@ func fetchSchObstaclesAndKeepout(cfg *appConfig, window string) ([]layoutBBox, *
 // the overlap findings that involve the freshly placed designators. Best-effort:
 // a read failure returns nil (the standalone `sch layout-lint` gate still exists).
 func verifyBlockLayout(cfg *appConfig, window string, placed []bapPlacement) []layoutFinding {
-	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"includeBBox": true})
+	// includePins is load-bearing: PIN COINCIDENCE is the failure this check exists
+	// for. Two parts can sit at a clean bbox distance and still land a pin of one
+	// exactly on a pin of the other — an implicit short with no wire to show for it,
+	// invisible to an overlap-only scan. Real case: the grid fallback put CH334F's
+	// U3:20 (VDD33) and the crystal's X2:4 (GND) both at (470,510), so the GND stub
+	// bonded straight onto VDD33 while this check happily printed "✓ no overlap".
+	res, err := requestAction(cfg, "schematic.components.list", window,
+		map[string]any{"includeBBox": true, "includePins": true})
 	if err != nil {
 		return nil
 	}
@@ -108,13 +115,15 @@ func verifyBlockLayout(cfg *appConfig, window string, placed []bapPlacement) []l
 		return nil
 	}
 	kept, _ := filterLayoutComps(comps, false)
-	rep := analyzeLayout(kept, 0, -1) // overlaps only: minGap 0, pin check off
+	// minGap 0 → true overlaps only (tight spacing is not this gate's business);
+	// pinEps 0 → strict pin equality, the same default `sch layout-lint` uses.
+	rep := analyzeLayout(kept, 0, 0)
 	mine := map[string]bool{}
 	for _, p := range placed {
 		mine[strings.ToUpper(p.Designator)] = true
 	}
 	var out []layoutFinding
-	for _, f := range rep.Overlaps {
+	for _, f := range append(append([]layoutFinding{}, rep.Overlaps...), rep.PinCoincidences...) {
 		if mine[strings.ToUpper(f.A)] || mine[strings.ToUpper(f.B)] {
 			out = append(out, f)
 		}
@@ -366,17 +375,25 @@ func runBlockApply(cfg *appConfig, window, blockID string, in bapInput, partsPat
 		fmt.Fprintf(stderr, "warn: %s\n", w)
 	}
 
-	// 5b. real-bbox overlap read-back: the estimated-footprint dodge above is a
-	// heuristic; the rendered bboxes are the truth. Overlaps involving this
-	// instance go in the manifest so a dirty landing is never silent.
-	if overlaps := verifyBlockLayout(cfg, window, plan.Placements); len(overlaps) > 0 {
-		man.LayoutOverlaps = overlaps
-		for _, f := range overlaps {
+	// 5b. real-geometry read-back: the estimated-footprint dodge above is a
+	// heuristic; the rendered bboxes and pin coordinates are the truth. Findings
+	// involving this instance go in the manifest so a dirty landing is never silent.
+	// A pin coincidence reports OvX/OvY 0 (it is a point, not an area) — call it out
+	// by name, because it shorts two nets with no wire to show for it and is far more
+	// dangerous than the bbox overlap it hides behind.
+	if findings := verifyBlockLayout(cfg, window, plan.Placements); len(findings) > 0 {
+		man.LayoutOverlaps = findings
+		for _, f := range findings {
+			if f.OvX == 0 && f.OvY == 0 {
+				fmt.Fprintf(stderr, "layout ✗ PIN COINCIDENCE %s ↔ %s — two pins share one point = implicit short; "+
+					"move a part (`sch modify`/`sch autoplace-free`) and re-run, then `sch layout-lint`\n", f.A, f.B)
+				continue
+			}
 			fmt.Fprintf(stderr, "layout ✗ overlap %s ↔ %s (%.0f×%.0f) — fix with `sch modify`/`sch autoplace-free`, then `sch layout-lint`\n",
 				f.A, f.B, f.OvX, f.OvY)
 		}
 	} else {
-		fmt.Fprintf(stderr, "layout ✓ no overlap involving this instance\n")
+		fmt.Fprintf(stderr, "layout ✓ no overlap or pin coincidence involving this instance\n")
 	}
 
 	// 6. wire — delegate to autoconnect, which owns the stub geometry + idempotency.
@@ -639,7 +656,9 @@ idempotent per pin — an already-connected pin is skipped rather than re-flagge
 		},
 	}
 	c.Flags().StringVar(&at, "at", "400,300", "origin coordinate x,y for the first part")
-	c.Flags().Float64Var(&spacing, "spacing", 100, "grid spacing between placed parts")
+	c.Flags().Float64Var(&spacing, "spacing", 0, "fallback-grid spacing between placed parts; "+
+		"0 = auto-size from the block's biggest part (an IC needs ~220, a discrete ~120 — a fixed 100 "+
+		"put a QFN's power pin exactly on a neighbouring crystal's ground pin)")
 	c.Flags().IntVar(&perRow, "per-row", 4, "parts per row before wrapping")
 	c.Flags().StringArrayVar(&binds, "bind", nil, "bind a block PORT to a host net: --bind CTRL=IO2 (repeatable)")
 	c.Flags().StringArrayVar(&kinds, "kind", nil, "override a net's flag kind: --kind LED_CTRL=netport (repeatable)")

@@ -250,6 +250,44 @@ const bapPartMargin = 50
 // footprint keeps from existing parts (mirrors autolayout's PartGap).
 const bapObstacleGap = 20
 
+// bapRoleHalfExtent estimates half a symbol's rendered width by part class. Crude
+// on purpose — real bboxes exist only after placement — but it must not UNDER-shoot,
+// because the grid uses it to decide how far apart to put parts.
+func bapRoleHalfExtent(partKey string) float64 {
+	switch {
+	// Multi-pin silicon: an MCU/QFN symbol is a tall box with pins on both sides.
+	// CH334F (QFN24) measured ~70 from anchor to its right-hand pin column.
+	case strings.HasPrefix(partKey, "mcu."), strings.HasPrefix(partKey, "ic."),
+		strings.HasPrefix(partKey, "buck."), strings.HasPrefix(partKey, "buckboost."),
+		strings.HasPrefix(partKey, "ldo."), strings.HasPrefix(partKey, "charger."),
+		strings.HasPrefix(partKey, "pmu."), strings.HasPrefix(partKey, "esd."):
+		return 100
+	// Connectors and sockets are wide too (USB-C 16P, microSD, SIM).
+	case strings.HasPrefix(partKey, "conn."):
+		return 90
+	}
+	return float64(bapPartMargin) // discretes: R/C/L/D/crystal
+}
+
+// bapGridSpacing sizes the fallback grid from the BIGGEST part in the block. The
+// old fixed 100 equalled one small symbol's full width (2×bapPartMargin), leaving
+// literally zero gap — fine for discretes, but an IC's pins then reach into the
+// neighbouring cell. That is not a cosmetic overlap: CH334F's U3:20 (VDD33) landed
+// on exactly the same point as the crystal's X2:4 (GND), an implicit short with no
+// wire to show for it. Blocks that ship a schematic_layout template never come
+// here; this is the floor for the 24 blocks that still lack one.
+func bapGridSpacing(roles []string, b blocks.Block) float64 {
+	maxHalf := float64(bapPartMargin)
+	for _, role := range roles {
+		if p, ok := b.Parts[role]; ok {
+			if h := bapRoleHalfExtent(p.Part); h > maxHalf {
+				maxHalf = h
+			}
+		}
+	}
+	return 2*maxHalf + float64(bapObstacleGap)
+}
+
 // bapRoleOffsets resolves every role to an offset: template roles use their
 // authored geometry; roles the template misses (or all roles, when there is no
 // template) fall back to the legacy grid — laid out BELOW the template extent so
@@ -407,7 +445,7 @@ func planBlockApply(in bapInput) (bapPlan, error) {
 	}
 	spacing := in.Spacing
 	if spacing <= 0 {
-		spacing = 100
+		spacing = bapGridSpacing(roles, in.Block)
 	}
 	// Geometry: the block's schematic_layout template wins over the fallback
 	// grid, and the whole block dodges existing parts when the caller left the

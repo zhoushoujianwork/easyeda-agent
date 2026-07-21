@@ -616,3 +616,30 @@ func TestBapPinKeysFanout(t *testing.T) {
 		t.Fatal("unknown pin must not resolve")
 	}
 }
+
+// ── fallback-grid spacing (pin-coincidence prevention) ──────────────────────
+
+// The old fixed 100 equalled one small symbol's full width, leaving zero gap, so
+// an IC's pins reached into the neighbouring cell — CH334F's VDD33 landed on the
+// crystal's GND pin, an implicit short. Spacing must follow the biggest part.
+func TestBapGridSpacingFollowsLargestPart(t *testing.T) {
+	discretes := blocks.Block{Parts: map[string]blocks.Part{
+		"R1": {Part: "res.10k_0402"}, "C1": {Part: "cap.100nf_0402"},
+	}}
+	if got := bapGridSpacing([]string{"R1", "C1"}, discretes); got != 2*float64(bapPartMargin)+float64(bapObstacleGap) {
+		t.Fatalf("all-discrete spacing = %v, want %v", got, 2*float64(bapPartMargin)+float64(bapObstacleGap))
+	}
+
+	// One IC in the block widens the whole grid — the crystal must clear it.
+	withIC := blocks.Block{Parts: map[string]blocks.Part{
+		"U": {Part: "ic.ch334f_qfn24"}, "X": {Part: "xtal.12mhz_3225"},
+	}}
+	got := bapGridSpacing([]string{"U", "X"}, withIC)
+	if got <= 100 {
+		t.Fatalf("spacing with an IC = %v, must exceed the old fixed 100", got)
+	}
+	// CH334F measured ~70 anchor-to-pin, so neighbours must sit >140 apart.
+	if got < 140 {
+		t.Fatalf("spacing %v does not clear a QFN24's measured 70-unit half extent", got)
+	}
+}

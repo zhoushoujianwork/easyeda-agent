@@ -567,3 +567,29 @@ func TestForeignWireRejectUsesSnappedEndpoint(t *testing.T) {
 		t.Fatalf("snapped endpoint (%v,%v) lies on a foreign-net wire but was not rejected", ex, ey)
 	}
 }
+
+// A stub that STOPS exactly on a neighbouring pin is shorted just as surely as one
+// that passes through it. Grid snapping makes this the common case, not the corner
+// case: XL1509's pins sit 20 apart, so an 18-offset stub snaps right onto the next
+// pin (this chained three nets into one wire tree on a real board).
+func TestScoreCandidate_StubEndingOnNeighbourPinHardRejects(t *testing.T) {
+	// U3 pins 2/3/4 stacked vertically at x=645, 20 apart.
+	scene := acScene{Pins: []acPin{
+		{X: 645, Y: 410, Designator: "U3", PinNumber: "2"},
+		{X: 645, Y: 390, Designator: "U3", PinNumber: "3"},
+		{X: 645, Y: 370, Designator: "U3", PinNumber: "4"},
+	}}
+	rules := defaultAutoconnectRules()
+	pin := acPin{X: 645, Y: 410, Designator: "U3", PinNumber: "2"}
+
+	// "up" with offset 18 snaps to (645,390) — exactly pin 3.
+	up := scoreCandidate(pin, "up", 18, "netport", "C11_N3", scene, rules)
+	if up.Score < costPinCross {
+		t.Fatalf("stub ending on pin 3 must be hard-rejected, got score %v (%v)", up.Score, up.Reasons)
+	}
+	// A direction with no pin in the way stays viable.
+	left := scoreCandidate(pin, "left", 18, "netport", "C11_N3", scene, rules)
+	if left.Score >= costPinCross {
+		t.Fatalf("clear direction must not be rejected, got %v (%v)", left.Score, left.Reasons)
+	}
+}

@@ -394,7 +394,15 @@ func scoreCandidate(pin acPin, dir string, offset float64, canonicalKind, target
 		if math.Abs(op.X-pin.X) < acCoordEps && math.Abs(op.Y-pin.Y) < acCoordEps {
 			continue // the target pin itself
 		}
-		if pinOnSegment(pin.X, pin.Y, endX, endY, op.X, op.Y) {
+		// pinOnSegment tests the segment's INTERIOR (endpoints excluded), so it misses
+		// a stub that STOPS exactly on a neighbouring pin — which is just as shorted,
+		// and which grid snapping makes common: pins sit on the grid, so a snapped
+		// endpoint lands on one whenever the pin pitch is near the stub offset. Real
+		// case: XL1509's pins 1-4 are 20 apart at x=645; pin2's "up" stub (offset 18 →
+		// snapped to 390) ended ON pin3, whose own "up" stub ended ON pin4, chaining
+		// three nets (C11_N3 + +5V + GND) into one wire tree.
+		endsOnPin := math.Abs(op.X-endX) < acCoordEps && math.Abs(op.Y-endY) < acCoordEps
+		if endsOnPin || pinOnSegment(pin.X, pin.Y, endX, endY, op.X, op.Y) {
 			reasons = append(reasons, acReason{costPinCross, "stub crosses a non-target pin (hard reject)"})
 			break
 		}
