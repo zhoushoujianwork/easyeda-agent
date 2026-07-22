@@ -52,7 +52,15 @@ type sheetTemplate struct {
 // defaultTitleBlockRatio is applied when no template matches (fallback). The
 // rightmost ~22% width × bottom ~14% height is the usual EasyEDA A-series
 // title-block footprint — the same numbers sch autoconnect used to hardcode.
-var defaultTitleBlockRatio = titleBlockRatio{WidthFrac: 0.22, HeightFrac: 0.14}
+// defaultTitleBlockRatio is the bottom-right title-block table's footprint as a
+// fraction of an A-series LANDSCAPE sheet (also the generic fallback). Calibrated
+// against the real 立创EDA 3.2.148 A4 title block by overlay-measuring the rendered
+// table on ceshi (2026-07-22): the earlier 0.22×0.14 covered only the RIGHT date
+// columns, leaving the 原理图/Schematic1/Board1/ceshi left half UNPROTECTED — so
+// autoconnect markers (#147) and partition frames (#149) could land on it while
+// every keep-out check read "clear". The real table spans ~60% of the width ×
+// ~20% of the height.
+var defaultTitleBlockRatio = titleBlockRatio{WidthFrac: 0.6, HeightFrac: 0.2}
 
 // sheetTemplates is the known sheet → title-block ratio table. Mirrored for
 // humans/skills in skills/easyeda-agent/references/sheet-templates.json;
