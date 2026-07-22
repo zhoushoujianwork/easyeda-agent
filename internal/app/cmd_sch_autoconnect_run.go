@@ -103,7 +103,15 @@ type acRejected struct {
 
 // acReport is the whole autoconnect run.
 type acReport struct {
-	OK                    bool           `json:"ok"`
+	OK bool `json:"ok"`
+	// Partial-run bookkeeping (issue #146): when a batch is interrupted mid-way
+	// (connector drop) some pins connect and some fail. Partial=true then, with the
+	// pin refs split into Succeeded/Failed so a retry re-does ONLY the failures
+	// instead of replaying the whole spec (which stacks duplicate markers — caught
+	// by `sch check`'s duplicate-net-marker rule).
+	Partial               bool           `json:"partial,omitempty"`
+	Succeeded             []string       `json:"succeeded,omitempty"`
+	Failed                []string       `json:"failed,omitempty"`
 	Connections           []acConnResult `json:"connections"`
 	TitleBlockProvisional bool           `json:"titleBlockProvisional,omitempty"`
 	Note                  string         `json:"note,omitempty"`
@@ -452,7 +460,7 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 		// silent-short hazard. Refuse to place a stub — report it as a failure so a
 		// human resolves the layout instead of the tool creating a wrong connection.
 		if candidateHardRejected(selected) {
-			cr.Error = fmt.Sprintf("no safe candidate: every direction/offset would short (%s) — resolve the layout (move the part, clear the wire) and retry", dominantReason(selected))
+			cr.Error = fmt.Sprintf("no safe candidate: every direction/offset is unsafe (%s) — resolve the layout (move the part, clear the wire, or free the title-block corner) and retry", dominantReason(selected))
 			report.OK = false
 			report.Connections = append(report.Connections, cr)
 			continue
@@ -500,6 +508,10 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 		report.Connections = append(report.Connections, cr)
 	}
 
+	// Partial-run bookkeeping (issue #146): split the pins into succeeded/failed so a
+	// caller retrying an interrupted batch re-does ONLY the failures.
+	report.Succeeded, report.Failed, report.Partial = splitConnResults(report.Connections, dryRun)
+
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
@@ -533,6 +545,27 @@ func summarizeRejected(all []acCandidate, selected acCandidate) []acRejected {
 		})
 	}
 	return out
+}
+
+// splitConnResults partitions a batch's per-connection results into succeeded and
+// failed pin refs (a pin that was already-connected — an idempotent skip — counts
+// as succeeded, nothing to re-do). partial = a real (non-dry-run) batch that both
+// connected some pins and failed others, i.e. an interrupted run a caller should
+// resume by retrying ONLY the failures. See issue #146. Pure for unit testing.
+func splitConnResults(conns []acConnResult, dryRun bool) (succeeded, failed []string, partial bool) {
+	for _, c := range conns {
+		ref := c.Pin
+		if ref == "" {
+			ref = fmt.Sprintf("%s@(%.2f,%.2f)", c.Net, c.PinX, c.PinY)
+		}
+		if c.Error != "" {
+			failed = append(failed, ref)
+		} else {
+			succeeded = append(succeeded, ref)
+		}
+	}
+	partial = !dryRun && len(failed) > 0 && len(succeeded) > 0
+	return succeeded, failed, partial
 }
 
 func countFailed(r acReport) int {
@@ -572,6 +605,12 @@ func renderAutoconnectReport(r acReport, dryRun bool, w io.Writer) {
 		len(r.Connections), mode, nNew, nSkip, nConflict)
 	if r.Note != "" {
 		fmt.Fprintf(w, "  note: %s\n", r.Note)
+	}
+	if r.Partial {
+		// Interrupted batch (issue #146): tell the caller to re-do ONLY the failures,
+		// not replay the whole spec (which stacks duplicate markers).
+		fmt.Fprintf(w, "  ⚠ PARTIAL: %d succeeded, %d failed — retry ONLY the failed pins (%s), then `sch check` for duplicate-net-marker\n",
+			len(r.Succeeded), len(r.Failed), strings.Join(r.Failed, ", "))
 	}
 	for _, c := range r.Connections {
 		id := c.Pin

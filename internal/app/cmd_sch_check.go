@@ -41,6 +41,24 @@ type checkPinDetail struct {
 	Y      float64 `json:"y"`
 }
 
+// checkPoint is a finding's anchor coordinate. Named (not an anonymous struct) so
+// the Go-side geometric rules can construct it, while the JSON shape stays exactly
+// what the connector emits for `at`.
+type checkPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// checkOverlapSide describes the OTHER primitive in a pairwise geometric finding
+// (marker-overlap), so a caller has both primitive IDs + types to act on. See #148.
+type checkOverlapSide struct {
+	PrimitiveId   string      `json:"primitiveId"`
+	ComponentType string      `json:"componentType,omitempty"`
+	Designator    string      `json:"designator,omitempty"`
+	Net           string      `json:"net,omitempty"`
+	BBox          *layoutBBox `json:"bbox,omitempty"`
+}
+
 type checkFinding struct {
 	Type              string           `json:"type"`
 	Level             string           `json:"level"`
@@ -55,10 +73,18 @@ type checkFinding struct {
 	PinDetails        []checkPinDetail `json:"pinDetails,omitempty"`
 	Count             int              `json:"count,omitempty"`
 	Message           string           `json:"message,omitempty"`
-	At                *struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	} `json:"at,omitempty"`
+	At                *checkPoint      `json:"at,omitempty"`
+	// Geometric marker rules (issues #146/#147/#148), computed Go-side from the
+	// components.list bboxes/anchors — the electrical check never sees them.
+	ComponentType    string            `json:"componentType,omitempty"`    // primary primitive's type
+	PrimitiveIds     []string          `json:"primitiveIds,omitempty"`     // duplicate-net-marker: ALL coincident ids; marker-overlap: [a,b]
+	SuggestKeepId    string            `json:"suggestKeepId,omitempty"`    // duplicate-net-marker: id to keep
+	SuggestDeleteIds []string          `json:"suggestDeleteIds,omitempty"` // duplicate-net-marker: ids to prim-delete
+	BBox             *layoutBBox       `json:"bbox,omitempty"`             // primary primitive bbox (titleblock/marker overlap)
+	Keepout          *layoutBBox       `json:"keepout,omitempty"`         // titleblock-overlap: the keep-out rect
+	Other            *checkOverlapSide `json:"other,omitempty"`           // marker-overlap: the B side
+	OverlapX         float64           `json:"overlapX,omitempty"`        // overlap extent (marker/titleblock)
+	OverlapY         float64           `json:"overlapY,omitempty"`
 }
 
 type checkSummary struct {
@@ -71,7 +97,11 @@ type checkSummary struct {
 	WireOverPins           int `json:"wireOverPins"`
 	ZeroLengthWires        int `json:"zeroLengthWires"`
 	DanglingWires          int `json:"danglingWires"`
-	Total                  int `json:"total"`
+	// Go-side geometric marker rules (issues #146/#147/#148).
+	DuplicateNetMarkers int `json:"duplicateNetMarkers"`
+	TitleblockOverlaps  int `json:"titleblockOverlaps"`
+	MarkerOverlaps      int `json:"markerOverlaps"`
+	Total               int `json:"total"`
 }
 
 type checkReport struct {
@@ -83,7 +113,7 @@ type checkReport struct {
 // runSchCheck runs the reconstructed design check, renders it, and (only with
 // strict) returns a non-zero exit when there are findings. By default it is
 // informational — floating IO pins are normal on an MCU board until NC-marked.
-func runSchCheck(cfg *appConfig, window string, allPages, strict, asJSON bool, stdout, stderr io.Writer) error {
+func runSchCheck(cfg *appConfig, window string, allPages, strict, asJSON bool, overlapEps float64, stdout, stderr io.Writer) error {
 	payload := map[string]any{}
 	if allPages {
 		payload["allPages"] = true
@@ -101,6 +131,15 @@ func runSchCheck(cfg *appConfig, window string, allPages, strict, asJSON bool, s
 		}
 		return perr
 	}
+
+	// Go-side geometric marker rules (issues #146/#147/#148): the connector's
+	// electrical schematic.check can't see coincident net markers, a netport that
+	// landed on the A4 title block, or a marker body overlapping a part/marker —
+	// those are pure bbox/anchor geometry. Compute them here from the SAME
+	// components.list `sch layout-lint` uses, and fold the findings into the report
+	// so `sch check` is the single delivery gate. Best-effort: a components.list
+	// failure leaves the electrical findings intact.
+	mergeMarkerGeomFindings(cfg, window, allPages, overlapEps, &rep, stderr)
 
 	if asJSON {
 		// Wrap the reconstructed report in the same {id,type,version,ok,result}
@@ -151,8 +190,8 @@ func checkLevelTag(level string) string {
 
 func renderCheckReport(rep checkReport, w io.Writer) {
 	s := rep.Summary
-	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d geom-net mismatch(es), %d net-marker mismatch(es), %d multi-net wire(s), %d wire-crossing(s), %d wire-over-pin(s), %d zero-length wire(s), %d dangling wire(s)\n",
-		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.GeomNetMismatches, s.NetMarkerMismatches, s.MultiNetWires, s.WireCrossings, s.WireOverPins, s.ZeroLengthWires, s.DanglingWires)
+	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d geom-net mismatch(es), %d net-marker mismatch(es), %d multi-net wire(s), %d wire-crossing(s), %d wire-over-pin(s), %d zero-length wire(s), %d dangling wire(s), %d duplicate-net-marker(s), %d titleblock-overlap(s), %d marker-overlap(s)\n",
+		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.GeomNetMismatches, s.NetMarkerMismatches, s.MultiNetWires, s.WireCrossings, s.WireOverPins, s.ZeroLengthWires, s.DanglingWires, s.DuplicateNetMarkers, s.TitleblockOverlaps, s.MarkerOverlaps)
 
 	for _, f := range rep.Findings {
 		tag := checkLevelTag(f.Level)
@@ -221,5 +260,14 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 	}
 	if s.ZeroLengthWires > 0 || s.DanglingWires > 0 {
 		fmt.Fprintln(w, "→ stray wires: delete the zero-length/dangling segments (sch prim-delete <wirePrimitiveId>)")
+	}
+	if s.DuplicateNetMarkers > 0 {
+		fmt.Fprintln(w, "→ duplicate markers: a partial autoconnect stacked coincident flags/ports — sch prim-delete the suggested IDs (keep one)")
+	}
+	if s.TitleblockOverlaps > 0 {
+		fmt.Fprintln(w, "→ title-block: a part/marker intrudes the A4 图签 keep-out — move it out or pick another connect direction")
+	}
+	if s.MarkerOverlaps > 0 {
+		fmt.Fprintln(w, "→ marker overlap: net markers cover a part/each other — stagger the labels or re-run autoconnect with more offset")
 	}
 }

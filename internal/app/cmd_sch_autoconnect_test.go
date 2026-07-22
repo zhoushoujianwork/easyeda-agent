@@ -77,6 +77,30 @@ func TestScoreCandidate_StubCrossesPin(t *testing.T) {
 	}
 }
 
+// TestScoreCandidate_TitleBlockIsHardReject (issue #147): a label landing in the
+// A4 title-block keep-out must be a HARD reject, not a soft cost — otherwise a
+// netport dropped on the 图签 wins whenever every other direction is hard-rejected.
+func TestScoreCandidate_TitleBlockIsHardReject(t *testing.T) {
+	pin := acPin{X: 1025, Y: 95}
+	// keep-out from issue #147: {912.6,0,1170,115.5}.
+	scene := acScene{TitleBlock: bb(912.6, 0, 1170, 115.5)}
+	c := scoreCandidate(pin, "down", 12, "ground", "MOTOR_G", scene, rulesFor())
+	if !candidateHardRejected(c) {
+		t.Fatalf("title-block intrusion must hard-reject, reasons=%+v score=%.2f", c.Reasons, c.Score)
+	}
+}
+
+// TestScoreCandidate_TitleBlockClearNotRejected: a label safely OUTSIDE the title
+// block is not rejected (the hard reject is scoped to real intrusions).
+func TestScoreCandidate_TitleBlockClearNotRejected(t *testing.T) {
+	pin := acPin{X: 300, Y: 400}
+	scene := acScene{TitleBlock: bb(912.6, 0, 1170, 115.5)}
+	c := scoreCandidate(pin, "up", 18, "power", "VCC", scene, rulesFor())
+	if candidateHardRejected(c) {
+		t.Fatalf("a label clear of the title block must not hard-reject, reasons=%+v", c.Reasons)
+	}
+}
+
 // TestScoreCandidate_PinCrossIsHardReject: a stub crossing a non-target pin must
 // be a HARD reject (issue #64), not a soft penalty a long offset could out-vote.
 func TestScoreCandidate_PinCrossIsHardReject(t *testing.T) {

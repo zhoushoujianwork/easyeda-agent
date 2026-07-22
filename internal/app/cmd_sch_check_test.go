@@ -51,10 +51,7 @@ func TestParseAndRenderCheck_Floating(t *testing.T) {
 
 // Wire-crossing + wire-over-pin: render shows the type, coords, and routing hint.
 func TestRenderCheck_Routing(t *testing.T) {
-	at := &struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	}{X: 90, Y: 135}
+	at := &checkPoint{X: 90, Y: 135}
 	rep := checkReport{
 		Passed:  false,
 		Summary: checkSummary{WireCrossings: 1, WireOverPins: 1, Total: 2},
@@ -74,10 +71,7 @@ func TestRenderCheck_Routing(t *testing.T) {
 }
 
 func TestRenderCheck_NetNames(t *testing.T) {
-	at := &struct {
-		X float64 `json:"x"`
-		Y float64 `json:"y"`
-	}{X: 545, Y: 295}
+	at := &checkPoint{X: 545, Y: 295}
 	rep := checkReport{
 		Passed: false,
 		Summary: checkSummary{

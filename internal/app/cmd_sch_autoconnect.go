@@ -137,7 +137,7 @@ const (
 	// foreign-net wire, stub crossing a non-target pin). See issue #64.
 	costHardReject  = 1e9
 	costPartOverlap = 10000 // endpoint/label bbox overlaps a real part bbox
-	costTitleBlock  = 10000 // endpoint/label bbox enters the title-block keep-out
+	// (title-block intrusion is now a HARD reject, not a soft cost — see scoreCandidate, issue #147)
 	// costPinCross is a HARD reject (issue #64 rec 2): a stub crossing a non-target
 	// pin gets trimmed+connected by EasyEDA, and the post-hoc wire-over-pin rule
 	// exempts endpoints on pins, so the short goes unnoticed. Never a soft penalty.
@@ -382,9 +382,15 @@ func scoreCandidate(pin acPin, dir string, offset float64, canonicalKind, target
 		}
 	}
 
-	// +10000 endpoint/label enters the title-block keep-out (only when applied).
+	// HARD REJECT: endpoint/label enters the title-block keep-out (issue #147). The
+	// title block (图签/明细表) is a hard boundary, not a soft cost — a netport dropped
+	// on it passes every existing gate (layout-lint is part-only, the electrical
+	// check is geometry-blind). Scoring it like costPartOverlap let it WIN when every
+	// other direction was itself hard-rejected (all pins toward the sheet corner). As
+	// a hard reject it steers to a safe direction, or — when every candidate enters
+	// the keep-out — makes runAutoconnect refuse to place rather than intrude it.
 	if rules.AvoidTitleBlock && scene.TitleBlock != nil && boxesOverlap(lbl, *scene.TitleBlock) {
-		reasons = append(reasons, acReason{costTitleBlock, "label enters title-block keep-out"})
+		reasons = append(reasons, acReason{costHardReject, "label enters title-block keep-out (hard reject)"})
 	}
 
 	// HARD REJECT: stub crosses a non-target pin (issue #64). EasyEDA trims and

@@ -986,6 +986,7 @@ still surfacing warnings for review.`,
 	{
 		var allPages, strict, asJSON, stay bool
 		var page string
+		var overlapEps float64
 		c := &cobra.Command{
 			Use:   "check",
 			Short: "Reconstructed per-item design check the SDK DRC can't itemize",
@@ -1026,7 +1027,7 @@ prior versions emitted a bare {passed,summary,findings}).`,
 					}
 					window = scope.window
 				}
-				return runSchCheck(cfg, window, allPages, strict, asJSON, stdout, stderr)
+				return runSchCheck(cfg, window, allPages, strict, asJSON, overlapEps, stdout, stderr)
 			},
 		}
 		c.Flags().BoolVar(&allPages, "all-pages", false, "check components across all schematic pages (WARNING: non-active pages return shallow data — pins/bbox may be empty; use `doc switch` to that page for accurate data)")
@@ -1034,6 +1035,7 @@ prior versions emitted a bare {passed,summary,findings}).`,
 		c.Flags().BoolVar(&stay, "stay", false, "with --page, stay on the target page after checking instead of switching back")
 		c.Flags().BoolVar(&strict, "strict", false, "exit non-zero when there are findings (gate mode)")
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the report in the {id,type,version,ok,result} envelope (findings under result.findings)")
+		c.Flags().Float64Var(&overlapEps, "overlap-eps", 0.5, "min positive-area extent (mm, smaller axis) for the marker-overlap/titleblock-overlap rules — below it, edge grazing and parallel-port float noise are ignored (issue #148)")
 		sch.AddCommand(c)
 	}
 

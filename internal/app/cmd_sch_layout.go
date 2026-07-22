@@ -40,8 +40,17 @@ type layoutComp struct {
 	ID            string
 	Designator    string
 	ComponentType string // "part" | "sheet" | "netflag" | "netport" | … (from the connector)
-	BBox          *layoutBBox
-	Pins          []layoutPin
+	// Net is the marker's net name (netflag/netport/netlabel carry it). Used by the
+	// duplicate-net-marker rule to avoid merging two same-anchor markers of DIFFERENT
+	// nets. See issue #146.
+	Net string
+	// X, Y is the component anchor (for a marker, its connection anchor). The
+	// duplicate-net-marker rule quantizes this so coincident markers hash together
+	// even with sub-unit float drift, without depending on a bbox (present on the
+	// active page only). See issue #146.
+	X, Y float64
+	BBox *layoutBBox
+	Pins []layoutPin
 }
 
 // schLayoutPartType is the componentType of a real placed device. Only these
@@ -329,6 +338,9 @@ func parseLayoutComps(result map[string]any) ([]layoutComp, error) {
 			ID:            asString(m["primitiveId"]),
 			Designator:    asString(m["designator"]),
 			ComponentType: asString(m["componentType"]),
+			Net:           asString(m["net"]),
+			X:             asFloat(m["x"]),
+			Y:             asFloat(m["y"]),
 		}
 		if bm, ok := m["bbox"].(map[string]any); ok {
 			c.BBox = &layoutBBox{

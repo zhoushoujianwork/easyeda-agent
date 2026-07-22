@@ -130,6 +130,7 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 2. **电气门** `easyeda sch drc` + `easyeda sch check`(+ `scripts/lint.sh <project>` 数据 lint)
    - `sch drc` 调 EasyEDA SDK 的 `sch_Drc.check`;当前 EasyEDA build 可能只返回聚合/布尔结果,**不等于 UI DRC 面板的全部 warning**。
    - `sch check` 是对 UI 面板缺失项的重建式补强:悬空脚、导线交叉/穿脚、网络标识与导线名不一致、同一导线多网络名等。**生产门禁必须同时跑 `sch drc` 和 `sch check`——两引擎规则集不重叠,谁也不是谁的超集**(实证:「引脚端点重叠且未连接」是 DRC 独有;孤儿旗端点压 pin 会给 check 制造"已连接"假象,check 三页全绿时 DRC 仍报 6 致命)。更险的镜像形态:重合端点**有线**相连时两网真短路,DRC 反而不报——大修后建议加跑端点重合扫描(getAllPinsByPrimitiveId 读元件+flag 全端点→坐标聚类→跨 owner 重合点按有无 wire 分级)。
+   - **`sch check` 现在还含三条 Go 侧几何 marker 规则(#146/#147/#148)——电气引擎的盲区**:`duplicate-net-marker`(同类同网同锚点的重合 netflag/netport;批量 autoconnect 中断重试会叠出重复 GND/电源标识,电气全绿但页面叠着一对——finding 直接给 `suggestKeepId`/`suggestDeleteIds` 喂 `sch prim-delete`)、`titleblock-overlap`(marker/part 侵入 A4 标题栏图签)、`marker-overlap`(marker body 压住 part 或另一 marker,不可读)。**批量 autoconnect / official `--rewire` 之后必须立刻跑一次 `sch check`**:它是抓「重复标识」的唯一门(#146),`layout-lint` 只检 part 看不见 marker。marker 几何是 WARN(默认不阻断,`--strict` 才 gate);`--overlap-eps` 调重叠噪声下限。
    - fatal/error 必须修;`net-marker-mismatch` / 不同网络名同线属于必须修;悬空 IO 只有明确设计为 NC/备用并记录后才可接受;供应商编号/标准化 warning 属 BOM 门禁,交付前修。
 - ⚠️ **判状态看数据(`sch list` / layout-lint / drc),不看截图**(API 改动后画布可能不重绘 → 截图 stale)。
 

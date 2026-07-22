@@ -171,9 +171,19 @@ an existing **foreign-net wire** (endpoint-on-wire = junction = net merge), and
 (2) a stub **crossing a non-target pin** (EasyEDA trims+connects there, and the
 wire-over-pin rule exempts pin endpoints). autoconnect now pulls existing wire
 geometry into the scene automatically; a wire already on the target net is fine
-(that's the connection point). If EVERY direction/offset is a
+(that's the connection point). **Title-block intrusion is now a THIRD hard reject
+(#147)**: a label landing in the A4 图签 keep-out steers to a safe direction, or —
+when every candidate enters it — fails rather than dropping a netport on the
+明细表 (which layout-lint, part-only, and the geometry-blind electrical check both
+miss). If EVERY direction/offset is a
 hard reject, autoconnect refuses to place the stub and reports the connection as
-failed — resolve the layout (move the part / clear the wire) and retry.
+failed — resolve the layout (move the part / clear the wire / free the title-block
+corner) and retry. **Partial-run bookkeeping (#146):** a batch interrupted mid-way
+returns `partial:true` + `succeeded[]`/`failed[]` pin lists — **retry ONLY the
+failed pins, never replay the whole spec** (a blind re-run stacks duplicate markers
+on the already-connected pins, which `NetKnown=false` after a connector drop can't
+detect). **Always run `sch check` right after a batch autoconnect** — its new
+`duplicate-net-marker` rule is the guard that catches those stacked markers.
 
 ```bash
 # single pin by designator:pin (number OR name)
@@ -364,7 +374,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 - `schematic.select`
 - `schematic.snapshot` — 截图。**产物保存在 CLI 运行目录下的隐藏目录 `<cwd>/.easyeda/artifacts/`,文件名带本地时间戳**(`<YYYYMMDD-HHMMSS>-<kind>-<短id>.png`,便于排序/查找);响应里的 `artifacts[].path` 是绝对路径。netlist/BOM 等其他产物同此规则。
 - `schematic.drc.check` — 用 `easyeda sch drc` 跑 EasyEDA SDK 的 `sch_Drc.check`。**注意:当前 EasyEDA build 可能只返回布尔/聚合结果,不会暴露 UI DRC 面板里的逐条 warning**(例如网络标识与导线名不一致、悬空脚明细)。所以它只能作为 SDK DRC 门,不能单独宣称“官方 DRC 干净”。
-- `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(补 SDK DRC 暴露不全)。**每条 finding 带 kebab-case 规则类型名 `type`(与 `pcb check` 同约定,可按类型统计/gate),summary 每类一个计数字段**。规则清单(全部 WARN):**floating-pin**(引脚悬空)、**geom-net-mismatch**(导线触碰引脚但网表未归入任何 net——疑漏报)、**net-marker-mismatch**(网络标识/端口/标签名与所连导线 net 名不一致)、**multi-net-wire**(同一导线多个网络名)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)、**zero-length-wire**(零长度残线)、**dangling-wire**(悬挂导线/孤儿 stub)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
+- `schematic.check` — 用 `easyeda sch check` 跑的**重建式逐条设计检查**(补 SDK DRC 暴露不全)。**每条 finding 带 kebab-case 规则类型名 `type`(与 `pcb check` 同约定,可按类型统计/gate),summary 每类一个计数字段**。规则清单(全部 WARN):**floating-pin**(引脚悬空)、**geom-net-mismatch**(导线触碰引脚但网表未归入任何 net——疑漏报)、**net-marker-mismatch**(网络标识/端口/标签名与所连导线 net 名不一致)、**multi-net-wire**(同一导线多个网络名)、**wire-crossing**(导线交叉)、**wire-over-pin**(导线穿过引脚)、**zero-length-wire**(零长度残线)、**dangling-wire**(悬挂导线/孤儿 stub)。**几何 marker 规则(Go 侧,消费 `components.list` 的真实 bbox/锚点,电气引擎看不见的三类,#146/#147/#148)**:**duplicate-net-marker**(同类型+同网+同锚点的重合 netflag/netport ≥2 个——批量 autoconnect 中断重试留下的重复 GND/电源/端口标识,连接器会把同名重合旗合并掉网,故所有电气规则全绿而页面叠着一对;finding 带全部 `primitiveIds` + `suggestKeepId`/`suggestDeleteIds`,直接喂 `sch prim-delete`)、**titleblock-overlap**(part/marker 的 bbox 侵入 A4 标题栏图签 keep-out——autoconnect 会把 netport 落进明细表而 layout-lint 只检 part、电气检查几何盲)、**marker-overlap**(marker body 正面积压住 part 或另一 marker——电气正确但不可读;`--overlap-eps` 默认 0.5 调噪声下限,平行同侧端口的 ~1 unit 天然相交仍会报,靠 stagger/换 offset 治)。`floating-pin` 现在带 `primitiveId` 与 `pinDetails[]`(每个悬空脚的 `number`/`name`/`x`/`y`),文本报告逐脚打印脚名+坐标、designator 为空时回退打印 `primitiveId`,可直接喂给 `sch no-connect`。`wire-over-pin` 会**排除落在导线端点或 netflag/netport/netlabel 锚点上的引脚**——那是 `sch connect` 短 stub 的合法终点(EasyEDA 把共线相邻 stub 自动合并成一条长导线时,内部引脚会落进合并后导线的内部,但官方 DRC 视为合法,故不再误报)。`--json`、`--strict`(有 finding 即非零退出)、`--all-pages`。
 - `schematic.bridgeCheck` — 用 `easyeda sch bridge-check` 跑的**树粒度网络-铜皮一致性门**(补 `sch check` 逐 wire 检查的盲区:EasyEDA 把共线相邻异网 stub 合并成一条 wire 树后,单条 wire 不再同时带两个网名)。按共享顶点把 wire 并成树(union-find),聚合树上锚定的 netflag/netport 网名——**锚定按点到线段距离**(0.15.1/#135 修复:合并会把被吞 flag 留在线段**中段**,旧的顶点邻近判定永远锚不上,一树双网真短路曾漏报为 0)。规则类型(kebab-case,同 `sch check`/`pcb check` 约定):**wire-bridge**(一棵 wire 树带 ≥2 个网名 = 真实短路,ERROR,非零退出可 gate)、**orphan-stub**(树触碰引脚但无任何网络标识,WARN)、**orphan-flag**(netflag/netport 不挨任何导线,WARN——删合并线留下的孤儿,新画的线穿过该点会静默继承其网名,发现即 `sch prim-delete` 清掉)。JSON 里每棵问题树带 `type`/`level`(`kind` 大写枚举保留兼容),summary 的 `bridges`/`orphans`/`orphanFlags` 即按类型计数。`--json`、`--all-pages`。**注意:即便 check+bridge-check 双绿,布线后的最终判据仍是 netlist 逐网对账**(`sch read` 对拓扑,`sch block-apply` 已内建此对账门,不一致非零退出)。
 - `schematic.read` — **一次拿到整张电路的语义快照**(`easyeda sch read`),省得分别跑 `components.list`+`netlist`+`check` 再自己拼。返回:`components[]`(designator/type/name 值/footprint/supplierId=LCSC/坐标 + 每脚 `{number,name,net}`)、`nets[]`(net→所连 `designator.pin` 列表 + `degree` + `isGlobal` 电源地标志)、`floatingPins[]`(未连脚)、`check`(同 `sch check` 的几何检查)。**脚→net 取自官方网表 `sch_ManufactureData.getNetlistFile()` 的 JSON,权威非几何猜测**,与 `sch check` 同源。`--all-pages`;`--no-check` 跳过设计检查更快。读电路状态/做决策前优先用它。**不要改走 `sch_Netlist.getNetlist()`**:官方 prodocs 已标 obsolete 并要求改用 `SCH_ManufactureData.getNetlistFile()`,且 [easyeda/pro-api-sdk#30](https://github.com/easyeda/pro-api-sdk/issues/30) 记录了它在含悬空引脚原理图上无限卡死。
 - `schematic.save`
