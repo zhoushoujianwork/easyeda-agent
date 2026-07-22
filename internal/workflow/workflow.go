@@ -179,9 +179,15 @@ type State struct {
 	// of the board outline. Kept separate from Zones because the same module
 	// legitimately claims different zones on sheet vs board.
 	SchZones map[string]*SchZoneClaim `json:"schZones,omitempty"`
-	// SchZoneFrameIds are the primitives the last `sch zone-draw` created.
+	// SchZoneFrameIds are the primitives the last `sch zone-draw` created (legacy
+	// zones-grid mode — project-level single record).
 	SchZoneFrameIds *SchZoneFrames `json:"schZoneFrameIds,omitempty"`
-	History         []Event        `json:"history,omitempty"`
+	// SchZoneFrameIdsByPage keys the partition-planner frames (`zone-draw --mode
+	// partition`) by documentUuid so per-page redraw/clear never wipes another
+	// page's frames (issue #149 — the legacy single record串页 across a 4-page
+	// schematic).
+	SchZoneFrameIdsByPage map[string]*SchZoneFrames `json:"schZoneFrameIdsByPage,omitempty"`
+	History               []Event                   `json:"history,omitempty"`
 	UpdatedAt       string         `json:"updatedAt"`
 }
 

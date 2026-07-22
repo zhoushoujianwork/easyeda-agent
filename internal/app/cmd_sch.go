@@ -1291,6 +1291,7 @@ The keepouts[] format is what sch autoconnect / autolayout consume.`,
 	sch.AddCommand(newSchExtractLayoutCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchZonesCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchZoneDrawCmd(cfg, &window, stdout, stderr))
+	sch.AddCommand(newSchZonePlanCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchAlignCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchDistributeCmd(cfg, &window, stdout, stderr))
 

@@ -178,7 +178,11 @@ when every candidate enters it — fails rather than dropping a netport on the
 miss). If EVERY direction/offset is a
 hard reject, autoconnect refuses to place the stub and reports the connection as
 failed — resolve the layout (move the part / clear the wire / free the title-block
-corner) and retry. **Partial-run bookkeeping (#146):** a batch interrupted mid-way
+corner) and retry. **Create-after backstop (#147 DoD2):** the plan hard-rejects a
+title-block hit using a NOMINAL box, but a marker whose real rendered width (net-name
+text) still spills into the 图签 is caught by a post-batch real-bbox re-read — the
+intruding wire+marker is DELETED and that pin failed, so the command never returns
+success with a marker on the title block. **Partial-run bookkeeping (#146):** a batch interrupted mid-way
 returns `partial:true` + `succeeded[]`/`failed[]` pin lists — **retry ONLY the
 failed pins, never replay the whole spec** (a blind re-run stacks duplicate markers
 on the already-connected pins, which `NetKnown=false` after a connector drop can't

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -508,6 +509,16 @@ func runAutoconnect(cfg *appConfig, window string, conns []acConnSpec, rules aut
 		report.Connections = append(report.Connections, cr)
 	}
 
+	// Create-after real-bbox backstop (issue #147 DoD2): the scorer hard-rejects a
+	// title-block intrusion using a NOMINAL label box, but the REAL rendered marker
+	// (its width scales with the net-name text) can still spill into the hard
+	// keep-out even when the plan looked clear. Read the created markers' real bboxes
+	// back; delete any that intrude the title block and fail that connection — the
+	// command must never RETURN SUCCESS while leaving a marker on the 图签.
+	if !dryRun && scene.TitleBlock != nil {
+		backstopTitleBlockIntrusion(cfg, window, scene.TitleBlock, &report, stderr)
+	}
+
 	// Partial-run bookkeeping (issue #146): split the pins into succeeded/failed so a
 	// caller retrying an interrupted batch re-does ONLY the failures.
 	report.Succeeded, report.Failed, report.Partial = splitConnResults(report.Connections, dryRun)
@@ -545,6 +556,67 @@ func summarizeRejected(all []acCandidate, selected acCandidate) []acRejected {
 		})
 	}
 	return out
+}
+
+// backstopTitleBlockIntrusion re-reads the just-created markers' real rendered
+// bboxes and deletes (wire + flag) any whose body actually intrudes the title-block
+// hard keep-out, failing that connection. Best-effort I/O: a components.list failure
+// leaves the report as-is (the plan-time hard reject is still the primary guard).
+func backstopTitleBlockIntrusion(cfg *appConfig, window string, titleBlock *layoutBBox, report *acReport, stderr io.Writer) {
+	// Index the created flags by primitive id → their connection result.
+	byFlag := map[string]*acConnResult{}
+	for i := range report.Connections {
+		cr := &report.Connections[i]
+		if cr.Error == "" && cr.FlagPrimitiveID != "" {
+			byFlag[cr.FlagPrimitiveID] = cr
+		}
+	}
+	if len(byFlag) == 0 {
+		return
+	}
+	res, err := requestAction(cfg, "schematic.components.list", window, map[string]any{"includeBBox": true})
+	if err != nil {
+		fmt.Fprintf(stderr, "autoconnect: title-block create-after recheck skipped — components.list failed: %v\n", err)
+		return
+	}
+	comps, perr := parseLayoutComps(res.Result)
+	if perr != nil {
+		return
+	}
+	bboxByID := map[string]*layoutBBox{}
+	for _, c := range comps {
+		if c.BBox != nil {
+			bboxByID[c.ID] = c.BBox
+		}
+	}
+	var toDelete []any
+	deleted := 0
+	for flagID, cr := range byFlag {
+		bb := bboxByID[flagID]
+		if bb == nil {
+			continue
+		}
+		ox, oy, ov := overlapExtent(*bb, *titleBlock)
+		if !ov || math.Min(ox, oy) <= acCoordEps {
+			continue
+		}
+		cr.Error = fmt.Sprintf("created marker's real bbox intrudes the title-block keep-out (%.1f×%.1f) — deleted; free the corner and retry", round2(ox), round2(oy))
+		report.OK = false
+		toDelete = append(toDelete, flagID)
+		if cr.WirePrimitiveID != "" {
+			toDelete = append(toDelete, cr.WirePrimitiveID)
+		}
+		cr.FlagPrimitiveID = ""
+		cr.WirePrimitiveID = ""
+		deleted++
+	}
+	if len(toDelete) > 0 {
+		if _, derr := requestAction(cfg, "schematic.primitives.delete", window, map[string]any{"primitiveIds": toDelete}); derr != nil {
+			fmt.Fprintf(stderr, "autoconnect: WARN could not delete %d title-block-intruding primitive(s): %v\n", len(toDelete), derr)
+		} else {
+			fmt.Fprintf(stderr, "autoconnect: deleted %d marker(s) whose real bbox intruded the title block — retry the failed pin(s)\n", deleted)
+		}
+	}
 }
 
 // splitConnResults partitions a batch's per-connection results into succeeded and

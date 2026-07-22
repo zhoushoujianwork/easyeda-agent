@@ -112,6 +112,8 @@ func asStringSlice(v any) []string {
 func newSchZoneDrawCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
 	var color string
 	var clear bool
+	var mode string
+	var fontSize, margin, gutter, titleBand float64
 	c := &cobra.Command{
 		Use:   "zone-draw",
 		Short: "Draw the claimed functional zones as dashed frames + labels on the sheet (--clear removes them)",
@@ -128,6 +130,13 @@ the schematic page to be the ACTIVE document.`,
   easyeda sch zone-draw --project ceshi
   easyeda sch zone-draw --clear --project ceshi`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Partition mode (issue #149): whole-sheet data-driven functional partitions
+			// via the planner + per-page frame persistence, instead of the fixed
+			// zones-grid rectangles below.
+			if mode == "partition" {
+				return runPartitionDraw(cfg, *window,
+					partitionOptsFrom(margin, gutter, titleBand, 3, 2), fontSize, color, clear, stdout, stderr)
+			}
 			zones, project, err := loadSchZoneClaims(cfg, *window)
 			if err != nil {
 				return err
@@ -194,6 +203,11 @@ the schematic page to be the ACTIVE document.`,
 		},
 	}
 	c.Flags().StringVar(&color, "color", "#AA00AA", "frame + label color")
-	c.Flags().BoolVar(&clear, "clear", false, "remove the frames drawn by the last zone-draw")
+	c.Flags().BoolVar(&clear, "clear", false, "remove the frames drawn by the last zone-draw (this page for --mode partition)")
+	c.Flags().StringVar(&mode, "mode", "zones", "zones = fixed-grid claim rectangles; partition = data-driven whole-sheet functional partitions (issue #149)")
+	c.Flags().Float64Var(&fontSize, "font-size", 22, "title font size for --mode partition (big functional-region titles)")
+	c.Flags().Float64Var(&margin, "margin", 20, "--mode partition: page margin inset from the sheet edge")
+	c.Flags().Float64Var(&gutter, "gutter", 12, "--mode partition: gutter between adjacent partitions")
+	c.Flags().Float64Var(&titleBand, "title-band", 30, "--mode partition: height of each partition's title band")
 	return c
 }
