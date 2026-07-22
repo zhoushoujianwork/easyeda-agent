@@ -338,11 +338,15 @@ func buildPartitionDrawJS(plan partitionPlan, fontSize float64, color string) st
 			continue
 		}
 		title, _ := json.Marshal(strings.Join(p.Modules, " / "))
+		// sch_PrimitiveRectangle.create anchors at the TOP-LEFT corner (min x, MAX y
+		// on the y-UP canvas) and extends toward -y by the height — passing MinY as
+		// the anchor drops the whole frame one height down (confirmed by bbox
+		// readback). Anchor at MaxY so the document bbox equals the planned rect.
 		fmt.Fprintf(&b, "{ const rc = await eda.sch_PrimitiveRectangle.create(%g, %g, %g, %g, 0, 0, %s, null, 1, 1);\n",
-			p.BBox.MinX, p.BBox.MinY, w, h, colorJS)
+			p.BBox.MinX, p.BBox.MaxY, w, h, colorJS)
 		b.WriteString("  if (rc) rects.push(rc.getState_PrimitiveId());\n")
-		// Title sits inside the band at the top-left, dropped ~fontSize/2 below the
-		// band top so the rendered glyph box stays inside the frame (issue #149:
+		// Title baseline sits fontSize below the band top (larger y = higher on the
+		// y-up canvas) so the rendered glyph box stays inside the frame (issue #149:
 		// a 22pt title anchored at the very top spilled ~6 units over the edge).
 		tx := p.TitleBBox.MinX + 4
 		ty := p.TitleBBox.MaxY - fontSize
