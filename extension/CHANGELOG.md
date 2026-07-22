@@ -6,6 +6,49 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-22
+
+### Added — `sch check` 三条几何 marker 规则 (issue #146/#147/#148)
+- 电气检查(连接器 `schematicCheck`)看不见纯几何缺陷。新增三条 **Go 侧**规则,消费
+  `components.list --include-bbox` 已流入的真实 bbox/锚点(零连接器改动、纯离线单测可验收):
+  - **`duplicate-net-marker`**(#146):同类型+同网+量化锚点的重合 netflag/netport ≥2 报 WARN,
+    finding 带全部 `primitiveIds` + `suggestKeepId`/`suggestDeleteIds`,直接喂 `sch prim-delete`;
+    量化容忍 1384.9999 类浮点漂移,跨页/跨网/跨类型不误合并。
+  - **`titleblock-overlap`**(#147):part/marker bbox 正面积侵入 A4 图签 keep-out。
+  - **`marker-overlap`**(#148):marker×part / marker×marker 正面积相交(part×part 是 layout-lint
+    的活),`--overlap-eps` 调噪声下限(默认 0.5),抑制已被 duplicate 规则报过的重合对。
+  真机验证:ceshi P1 真实板报出 28 组 marker 重叠(含平行同侧端口 31×1 天然相交)。
+
+### Added — 数据驱动 A4 分区规划器 `sch zone-plan` / `zone-draw --mode partition` (issue #149)
+- 固定九宫格 `zoneRect` 表达不了「按整纸切功能区 + 右下图签留缺口」的行业版式。新 planner
+  从活体几何求解:usable sheet(减 margin)按**模块 bbox 之间的自然空隙**切列/行分割线
+  (edge-gap 而非中心 midpoint——高模块跨过中心线会跑出分区;空隙需 ≥ gutter),每个分区抬到
+  图签 keep-out 之上、顶部留 title band 放大字号区名。模块 bbox = `sch zones` 认领各件 live bbox
+  并集。`zone-plan --json` 落盘前出方案 + validation 五项(sheetOverflow/partitionOverlap/
+  titleBlockHits/moduleOutsideZone/labelCollisions)。partition frame id **按 documentUuid 分页
+  持久化**(`SchZoneFrameIdsByPage`,逐页 redraw/clear 不串页)。真机 validation 全 0 + 落笔 bbox
+  与 plan 一致。纯函数 `planPartitions` 用 issue 真实 6 模块 A4 数据单测。
+
+### Fixed — autoconnect 标题栏硬约束 + 创建后兜底 + partial + 真实尺寸 stagger (issue #146/#147/#148)
+- **标题栏软惩罚→硬拒绝**(#147):`scoreCandidate` 里图签命中从 `costTitleBlock=10000` 改
+  `costHardReject`,四方向全进图签时明确失败,否则主动转向安全方向(不再把 netport 落进明细表)。
+- **创建后真实 bbox 兜底**(#147 DoD2):批量后回读真实 bbox,凡侵入图签 keep-out 的 marker 连
+  wire 一并删除并判失败——绝不「返回成功且图签上留 marker」。
+- **partial 报告**(#146):`acReport` 加 `partial`/`succeeded`/`failed`,批量中断后只补失败 pin,
+  不重放整份 spec(避免在已连 pin 上叠重复标识)。
+- **真实尺寸 stagger**(#148 Phase-2):打分用的 `labelBox` 从固定 8×8 换成贴近实测的 marker 框
+  (~24×11);旧 8×8 在 10-pitch 平行脚永不与邻居相交、stagger 从不触发,真实 11-高框相交 →
+  规划器自动挑不同 offset 错开。真机 ch340c:相邻 GND 脚 offset 交替 18/36,marker-overlap 24-28→9。
+
+### Fixed — A4 图签 keep-out 只圈住右半的根因 + A4 优先标定
+- **根因**:`deriveSheetGeometry` 的 A4 横版比例只有 `{0.22,0.14}` → keep-out `(912.6,0)..(1170,115.5)`
+  只覆盖图签**右半的日期列**,左半(原理图/Schematic1/Board1/ceshi)全露在外。所有吃这个 keep-out
+  的检查(#147 硬拒绝/门、#149 分区抬升、#141 避让)一致误报「0 覆盖」而真实图签左半持续被压。
+- 真机 overlay 标定实测真实图签 ≈ 宽 60%×高 20%,改 `{0.6,0.2}` → `(468,0)..(1170,165)` 完整框住整表。
+- **A4 优先**:图签是**定尺寸表格**不随页面等比缩放,故该比例只对 A4 准。新增 `isA4LandscapeSize`,
+  非 A4 A 系列横版(A3+)仍给 best-effort keep-out 但**降级 `source:fallback-ratio` + warn「calibrated
+  for A4 landscape only」**,让非 A4 的 keep-out 永不被当硬门静默信任。
+
 ### Fixed — 批量删除静默失效:`sch clear` 一直在谎报清空
 - **根因是平台的 `eda.sch_Primitive*.delete(ids)` 在大批量上静默 no-op 并返回 `true`。**
   实测同一页:1/5/20/50 个 → 全删掉;58 个 → 全删掉;**134 个一次调用 → 一个没删,返回值照样 `true`**。
