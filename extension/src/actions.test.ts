@@ -84,7 +84,7 @@ test('normalizeDeviceRef: non-string uuid/libraryUuid coerced to empty', () => {
 	assert.deepEqual(ref, { libraryUuid: '', uuid: '', name: 'X' });
 });
 
-import { schematicComponentPlace, schematicPinSetNoConnect } from './actions';
+import { schematicComponentModify, schematicComponentPlace, schematicPinSetNoConnect } from './actions';
 
 /** Install a fake `eda.sch_PrimitiveComponent` on the global for one test.
  *  create() returns a placeholder-designator component; modify() records its
@@ -123,6 +123,73 @@ test('place without designator: no modify call, keeps placeholder (issue #68)', 
 	});
 	assert.equal(calls.modify.length, 0);
 	assert.equal((res.result.component as any).designator, 'C?');
+	delete (globalThis as any).eda;
+});
+
+// ─── schematic.component.modify 自定义属性兼容与回读校验 ───────────────
+
+function installComponentModifyStub(options: { apply?: boolean } = {}) {
+	let otherProperty: Record<string, string | number | boolean> = {
+		Description: 'keep me',
+		Value: '',
+	};
+	const calls: Array<{ id: string; patch: Record<string, unknown> }> = [];
+	const current = () => mockComponent({
+		PrimitiveId: 'r2-pid',
+		Designator: 'R2',
+		OtherProperty: { ...otherProperty },
+	});
+	(globalThis as any).eda = {
+		sch_PrimitiveComponent: {
+			get: async (id: string) => id === 'r2-pid' ? current() : undefined,
+			modify: async (id: string, patch: Record<string, unknown>) => {
+				calls.push({ id, patch });
+				if (options.apply !== false && patch.otherProperty) {
+					otherProperty = { ...(patch.otherProperty as Record<string, string | number | boolean>) };
+				}
+				return current();
+			},
+		},
+	};
+	return { calls, getOtherProperty: () => ({ ...otherProperty }) };
+}
+
+test('modify: maps customAttributes to SDK otherProperty and preserves existing fields', async () => {
+	const fx = installComponentModifyStub();
+	const res: any = await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		patch: { customAttributes: { Value: '10kΩ' } },
+	});
+
+	assert.deepEqual(fx.calls[0], {
+		id: 'r2-pid',
+		patch: { otherProperty: { Description: 'keep me', Value: '10kΩ' } },
+	});
+	assert.deepEqual(fx.getOtherProperty(), { Description: 'keep me', Value: '10kΩ' });
+	assert.equal(res.result.component.otherProperty.Value, '10kΩ');
+	delete (globalThis as any).eda;
+});
+
+test('modify: partial otherProperty also merges instead of clearing metadata', async () => {
+	const fx = installComponentModifyStub();
+	await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		patch: { otherProperty: { Value: '4.7kΩ' } },
+	});
+
+	assert.deepEqual(fx.getOtherProperty(), { Description: 'keep me', Value: '4.7kΩ' });
+	delete (globalThis as any).eda;
+});
+
+test('modify: rejects SDK success when requested properties were silently ignored', async () => {
+	installComponentModifyStub({ apply: false });
+	await assert.rejects(
+		() => schematicComponentModify({
+			primitiveId: 'r2-pid',
+			patch: { customAttributes: { Value: '10kΩ' } },
+		}),
+		/returned success but did not apply properties: Value/,
+	);
 	delete (globalThis as any).eda;
 });
 

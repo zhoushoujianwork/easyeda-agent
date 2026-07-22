@@ -206,6 +206,10 @@ follow [SemVer](https://semver.org/).
 ## [0.14.1] - 2026-07-19
 
 ### Fixed
+- **`schematic.component.modify` 自定义属性静默 no-op**:CLI 文档使用
+  `customAttributes`,但 EasyEDA SDK 实际只接受 `otherProperty`,导致命令返回成功却不更新
+  `Value` 等属性。连接器现在将兼容别名转换为 SDK 字段、与现有属性合并后写入,并用新器件
+  句柄逐字段回读验证;平台再次静默忽略时会明确报错,不再假报成功。
 - **`schematic.pin.set_no_connect` 真正生成非连接 X 标识(订正 0.5.14 的平台 no-op 误诊)**:
   真机复现确认 `setState_NoConnected(...)` 只修改当前 pin 句柄的待提交状态,必须再
   `await pin.done()` 才会写回画布;此前 handler 漏掉 `done()`,fresh readback 因而恢复

@@ -769,18 +769,71 @@ export const schematicComponentPlace: Handler = async (payload) => {
 	};
 };
 
-const schematicComponentModify: Handler = async (payload) => {
+type SchematicPropertyValue = string | number | boolean;
+
+/**
+ * 校验原理图器件自定义属性补丁，避免 SDK 静默忽略不支持的嵌套值。
+ */
+function requireSchematicPropertyPatch(
+	value: unknown,
+	field: 'customAttributes' | 'otherProperty',
+): Record<string, SchematicPropertyValue> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			`Component patch field "${field}" must be an object.`,
+		);
+	}
+	const out: Record<string, SchematicPropertyValue> = {};
+	for (const [key, item] of Object.entries(value)) {
+		if (typeof item !== 'string' && typeof item !== 'number' && typeof item !== 'boolean') {
+			throw new ActionError(
+				ErrorCodes.MISSING_PAYLOAD_FIELD,
+				`Component property "${field}.${key}" must be a string, number, or boolean.`,
+			);
+		}
+		out[key] = item;
+	}
+	return out;
+}
+
+export const schematicComponentModify: Handler = async (payload) => {
 	const primitiveId = requireString(payload, 'primitiveId');
 	const patch = payload.patch;
-	if (typeof patch !== 'object' || patch === null) {
+	if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
 		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required object field "patch".');
+	}
+
+	const normalizedPatch = { ...(patch as Record<string, unknown>) };
+	const hasCustomAttributes = Object.prototype.hasOwnProperty.call(normalizedPatch, 'customAttributes');
+	const hasOtherProperty = Object.prototype.hasOwnProperty.call(normalizedPatch, 'otherProperty');
+	if (hasCustomAttributes && hasOtherProperty) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			'Use either "customAttributes" or "otherProperty" in one component patch, not both.',
+		);
+	}
+
+	let expectedProperties: Record<string, SchematicPropertyValue> | undefined;
+	if (hasCustomAttributes || hasOtherProperty) {
+		const field = hasCustomAttributes ? 'customAttributes' : 'otherProperty';
+		expectedProperties = requireSchematicPropertyPatch(normalizedPatch[field], field);
+
+		// EasyEDA SDK 只接受 otherProperty，而且会整体替换该对象；先合并现有值，
+		// 使 CLI 文档中的 customAttributes 别名可用，同时避免修改 Value 时清空其他属性。
+		const current = await getComponentOrThrow(primitiveId);
+		const existing = cleanOtherProperty(
+			current.getState_OtherProperty() as Record<string, unknown> | undefined,
+		) ?? {};
+		normalizedPatch.otherProperty = { ...existing, ...expectedProperties };
+		delete normalizedPatch.customAttributes;
 	}
 
 	let component;
 	try {
 		component = await eda.sch_PrimitiveComponent.modify(
 			primitiveId,
-			patch as Parameters<typeof eda.sch_PrimitiveComponent.modify>[1],
+			normalizedPatch as Parameters<typeof eda.sch_PrimitiveComponent.modify>[1],
 		);
 	}
 	catch (err) {
@@ -788,6 +841,24 @@ const schematicComponentModify: Handler = async (payload) => {
 	}
 	if (!component) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to modify component "${primitiveId}".`);
+	}
+
+	if (expectedProperties) {
+		// SDK 某些未知字段会返回成功但静默 no-op；必须用新句柄回读实际画布状态。
+		const fresh = await getComponentOrThrow(primitiveId);
+		const actual = cleanOtherProperty(
+			fresh.getState_OtherProperty() as Record<string, unknown> | undefined,
+		) ?? {};
+		const notApplied = Object.entries(expectedProperties)
+			.filter(([key, value]) => actual[key] !== value)
+			.map(([key]) => key);
+		if (notApplied.length > 0) {
+			throw new ActionError(
+				ErrorCodes.EDA_CALL_FAILED,
+				`Component "${primitiveId}" modify returned success but did not apply properties: ${notApplied.join(', ')}.`,
+			);
+		}
+		component = fresh;
 	}
 	return { result: { component: serializeComponent(component) } };
 };

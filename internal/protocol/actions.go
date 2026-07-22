@@ -240,7 +240,7 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Modify component position, designator, name, BOM flags, or custom properties.",
+			Description: "Modify component position, designator, name, BOM flags, or custom properties. customAttributes is a compatibility alias for the EasyEDA SDK otherProperty field; property patches are merged with existing values and verified by readback so SDK success/no-op is reported as an error.",
 			Inputs:      []string{"primitiveId", "patch"},
 			Outputs:     []string{"component state"},
 			VerifyWith:  []string{"schematic.component.get"},
