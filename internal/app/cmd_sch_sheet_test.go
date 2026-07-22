@@ -57,6 +57,27 @@ func TestDeriveSheetGeometry_KnownTemplateA4Landscape(t *testing.T) {
 	}
 }
 
+// A non-A4 A-series landscape (A3: A4 × √2) still matches the aspect, but the
+// title-block ratio is calibrated for A4 only — so it emits a best-effort keep-out
+// with DOWNGRADED provenance + a calibration warning (issue: fixed-size title block
+// over-reserves on bigger sheets; support A4 first).
+func TestDeriveSheetGeometry_NonA4LandscapeWarns(t *testing.T) {
+	sheet := bb(0, 0, 1654, 1167) // A3 landscape ≈ A4 × √2, aspect ≈ 1.417
+	g := deriveSheetGeometry(sheet, boolPtr(true))
+	if g.Sheet.Template != "a-series-landscape" {
+		t.Fatalf("A3 should still match a-series-landscape aspect, got %q", g.Sheet.Template)
+	}
+	if g.TitleBlock.BBox == nil {
+		t.Fatal("expected a best-effort title-block bbox on a non-A4 sheet")
+	}
+	if g.TitleBlock.Source != sheetSourceFallback {
+		t.Errorf("non-A4 landscape must downgrade provenance to fallback, got %q", g.TitleBlock.Source)
+	}
+	if !hasWarningContaining(g.Warnings, "calibrated for A4 landscape only") {
+		t.Errorf("expected an A4-only calibration warning, got %v", g.Warnings)
+	}
+}
+
 // Unknown template: a square-ish sheet matches no known aspect → fallback ratio,
 // keep-out still emitted, but provenance downgraded and a warning surfaced.
 func TestDeriveSheetGeometry_UnknownTemplate(t *testing.T) {

@@ -39,9 +39,10 @@ type titleBlockRatio struct {
 }
 
 // sheetTemplate maps a recognizable sheet (by aspect ratio) to its title-block
-// footprint. A-series sheets all share the √2 aspect, so one landscape + one
-// portrait entry covers A4/A3/A2/A1/A0 — the title block is proportionally the
-// same fraction of the page.
+// footprint. A-series sheets all share the √2 aspect. NOTE: the real title block
+// is a FIXED-SIZE table, NOT a constant fraction of the page — so the ratio below
+// is calibrated for A4 and OVER-estimates on larger A3+ sheets (deriveSheetGeometry
+// warns + downgrades provenance there; A4 is supported first, see isA4LandscapeSize).
 type sheetTemplate struct {
 	Name       string
 	Aspect     float64 // sheet width / height
@@ -49,9 +50,6 @@ type sheetTemplate struct {
 	TitleBlock titleBlockRatio
 }
 
-// defaultTitleBlockRatio is applied when no template matches (fallback). The
-// rightmost ~22% width × bottom ~14% height is the usual EasyEDA A-series
-// title-block footprint — the same numbers sch autoconnect used to hardcode.
 // defaultTitleBlockRatio is the bottom-right title-block table's footprint as a
 // fraction of an A-series LANDSCAPE sheet (also the generic fallback). Calibrated
 // against the real 立创EDA 3.2.148 A4 title block by overlay-measuring the rendered
@@ -105,6 +103,16 @@ type sheetGeometry struct {
 	Warnings   []string       `json:"warnings"`
 }
 
+// isA4LandscapeSize reports whether a landscape sheet is A4-sized — the size the
+// title-block ratio was calibrated against (~1170×825 in EasyEDA schematic units,
+// overlay-measured on 3.2.148). A ±20% band absorbs version/template variation
+// without reaching A3 (×√2 ≈ 1654 wide) or A5 (÷√2 ≈ 827 wide), which share A4's
+// aspect but carry the same fixed-size title block at a different fraction.
+func isA4LandscapeSize(w, h float64) bool {
+	const a4W, a4H, tol = 1170.0, 825.0, 0.2
+	return math.Abs(w-a4W) <= a4W*tol && math.Abs(h-a4H) <= a4H*tol
+}
+
 // matchSheetTemplate picks the template whose aspect matches w/h within tolerance.
 // Returns matched=false (and a generic template carrying the default ratio) when
 // nothing matches, so the caller can downgrade provenance to fallback.
@@ -154,6 +162,18 @@ func deriveSheetGeometry(sheet *layoutBBox, showTitleBlock *bool) sheetGeometry 
 		g.Warnings = append(g.Warnings, fmt.Sprintf(
 			"sheet aspect %.3f did not match a known template; title-block keep-out uses a generic fallback ratio, not template geometry",
 			w/h))
+	}
+
+	// A4 first: the landscape title-block ratio is calibrated ONLY for A4. The real
+	// title block is a fixed-size table, so on a larger A3+ landscape sheet it is a
+	// proportionally smaller fraction and the A4 ratio OVER-reserves (and on a
+	// smaller A5 it would under-reserve). Keep a best-effort keep-out but downgrade
+	// provenance + warn, so a non-A4 keep-out is never silently trusted.
+	if matched && tmpl.Name == "a-series-landscape" && !isA4LandscapeSize(w, h) {
+		g.TitleBlock.Source = sheetSourceFallback
+		g.Warnings = append(g.Warnings, fmt.Sprintf(
+			"title-block keep-out is calibrated for A4 landscape only; this sheet (%.0f×%.0f) is a different A-series size, so the keep-out is an approximate OVER-estimate (the real title block is fixed-size) — verify manually before trusting it as a hard gate",
+			w, h))
 	}
 
 	// Respect an explicitly-hidden title block: no keep-out to enforce.
