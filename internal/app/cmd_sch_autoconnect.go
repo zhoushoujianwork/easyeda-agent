@@ -152,7 +152,15 @@ const (
 	costOffsetPerUnit = 0.1  // +offset * 0.1 — prefer shorter stubs
 	bonusOutwardSide  = -20  // direction matches the pin's outward side
 	bonusKindDefault  = -10  // direction matches the kind default (GND down / power up / port outward)
-	acLabelHalfExtent = 4.0  // nominal half-size of a placed flag/label marker box (schematic units)
+	// Nominal marker box half-extents (issue #148 Phase-2): a placed netflag/netport
+	// is ~11 units TALL and ~24 wide (real getPrimitivesBBox readback: netport 11×31,
+	// netflag 10×21), NOT the old 8×8 square. The height is what makes the scorer
+	// auto-stagger markers on tight (10-unit-pitch) parallel pins — an 8×8 box never
+	// overlapped its neighbour at 10 pitch, so stagger never fired. Kept a shade
+	// under the real width so the box doesn't reach back to a marker's OWN owner part
+	// (endpoint sits ≥18 from the pin; 12 < 18) and over-reject valid placements.
+	acLabelHalfW = 12.0
+	acLabelHalfH = 5.5
 	acCoordEps        = 0.01 // coordinate-equality tolerance
 	acOverlapEps      = 1e-6 // positive-length threshold for interval/area overlap
 )
@@ -230,11 +238,13 @@ func outwardDirection(pin acPin) string {
 	return "up"
 }
 
-// labelBox is the nominal extent of the flag/label that will sit at the endpoint.
+// labelBox is the nominal extent of the flag/label that will sit at the endpoint
+// (issue #148 Phase-2: a real marker box, ~24×11, so the scorer staggers markers
+// on tight parallel pins instead of stacking them).
 func labelBox(x, y float64) layoutBBox {
 	return layoutBBox{
-		MinX: x - acLabelHalfExtent, MinY: y - acLabelHalfExtent,
-		MaxX: x + acLabelHalfExtent, MaxY: y + acLabelHalfExtent,
+		MinX: x - acLabelHalfW, MinY: y - acLabelHalfH,
+		MaxX: x + acLabelHalfW, MaxY: y + acLabelHalfH,
 	}
 }
 

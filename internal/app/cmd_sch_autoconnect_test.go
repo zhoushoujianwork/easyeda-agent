@@ -101,6 +101,41 @@ func TestScoreCandidate_TitleBlockClearNotRejected(t *testing.T) {
 	}
 }
 
+// TestScoreCandidate_MarkerHeightTriggersStaggerAt10Pitch (issue #148 Phase-2):
+// the real ~11-tall marker box must overlap a neighbour's box at 10-unit pitch so
+// the scorer's flag-collision penalty fires and drives auto-stagger. The old 8×8
+// box never overlapped at 10 pitch, so parallel markers stacked silently.
+func TestScoreCandidate_MarkerHeightTriggersStaggerAt10Pitch(t *testing.T) {
+	// A marker already placed to the left of pin1 (endpoint 82,200), registered.
+	scene := acScene{Flags: []layoutBBox{labelBox(82, 200)}}
+	// pin2 sits 10 above pin1; its left marker at the SAME offset lands at (82,210).
+	pin2 := acPin{X: 100, Y: 210}
+	c := scoreCandidate(pin2, "left", 18, "ground", "N2", scene, rulesFor())
+	hasCollision := false
+	for _, r := range c.Reasons {
+		if r.Cost == costFlagCollision {
+			hasCollision = true
+		}
+	}
+	if !hasCollision {
+		t.Fatalf("11-tall markers at 10 pitch must collide (stagger trigger), reasons=%+v", c.Reasons)
+	}
+}
+
+// TestPlanConnection_StaggersAwayFromRegisteredMarker: given a registered marker,
+// the planner's best candidate must avoid overlapping it (stagger to another
+// offset/direction), not stack on top with only a soft penalty.
+func TestPlanConnection_StaggersAwayFromRegisteredMarker(t *testing.T) {
+	scene := acScene{Flags: []layoutBBox{labelBox(82, 200)}}
+	pin2 := acPin{X: 100, Y: 210}
+	sel := planConnection(pin2, "ground", "N2", scene, rulesFor())[0]
+	for _, r := range sel.Reasons {
+		if r.Cost == costFlagCollision {
+			t.Errorf("selected candidate should stagger away from the registered marker, got collision: %+v", sel)
+		}
+	}
+}
+
 // TestScoreCandidate_PinCrossIsHardReject: a stub crossing a non-target pin must
 // be a HARD reject (issue #64), not a soft penalty a long offset could out-vote.
 func TestScoreCandidate_PinCrossIsHardReject(t *testing.T) {
