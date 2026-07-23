@@ -13,11 +13,11 @@
   "verification": {
     "schematic": {
       "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
     },
     "component_selection": {
-      "status": "pending",
-      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+      "status": "passed",
+      "evidence": "deviceUuid/LCSC/footprint 已由 easyeda lib search + by-lcsc 对 ceshi 库解析写回 standard-parts.json(2026-07-23);全库覆盖率 100%。个别封装/变体存疑处(见 standard-parts desc caveat)待 block-apply 核对"
     },
     "pcb_drc": {
       "status": "pending"
@@ -90,22 +90,80 @@
     }
   },
   "internal_nets": [
-    ["U.INP", "R_INP.2"],
-    ["R_INP.1", "PORT:IN_P"],
-    ["U.INN", "R_INN.2"],
-    ["R_INN.1", "PORT:IN_N"],
-    ["U.SHDN", "R_SHDN.1", "PORT:SHDN"],
-    ["R_SHDN.2", "PORT:GND"],
-    ["U.VDD*", "U.PVDD", "C_VDD1.1", "C_VDD2.1", "PORT:VDD"],
-    ["U.C1P", "C_C1.1"],
-    ["U.C1N", "C_C1.2"],
-    ["U.C2P", "C_C2.1"],
-    ["U.C2N*", "C_C2.2"],
-    ["U.VOP", "FB_P.1"],
-    ["FB_P.2", "C_EMI_P.1", "PORT:SPK_P"],
-    ["U.VON", "FB_N.1"],
-    ["FB_N.2", "C_EMI_N.1", "PORT:SPK_N"],
-    ["U.GND*", "C_VDD1.2", "C_VDD2.2", "C_EMI_P.2", "C_EMI_N.2", "PORT:GND"]
+    [
+      "U.INP",
+      "R_INP.2"
+    ],
+    [
+      "R_INP.1",
+      "PORT:IN_P"
+    ],
+    [
+      "U.INN",
+      "R_INN.2"
+    ],
+    [
+      "R_INN.1",
+      "PORT:IN_N"
+    ],
+    [
+      "U.SHDN",
+      "R_SHDN.1",
+      "PORT:SHDN"
+    ],
+    [
+      "R_SHDN.2",
+      "PORT:GND"
+    ],
+    [
+      "U.VDD*",
+      "U.PVDD",
+      "C_VDD1.1",
+      "C_VDD2.1",
+      "PORT:VDD"
+    ],
+    [
+      "U.C1P",
+      "C_C1.1"
+    ],
+    [
+      "U.C1N",
+      "C_C1.2"
+    ],
+    [
+      "U.C2P",
+      "C_C2.1"
+    ],
+    [
+      "U.C2N*",
+      "C_C2.2"
+    ],
+    [
+      "U.VOP",
+      "FB_P.1"
+    ],
+    [
+      "FB_P.2",
+      "C_EMI_P.1",
+      "PORT:SPK_P"
+    ],
+    [
+      "U.VON",
+      "FB_N.1"
+    ],
+    [
+      "FB_N.2",
+      "C_EMI_N.1",
+      "PORT:SPK_N"
+    ],
+    [
+      "U.GND*",
+      "C_VDD1.2",
+      "C_VDD2.2",
+      "C_EMI_P.2",
+      "C_EMI_N.2",
+      "PORT:GND"
+    ]
   ],
   "ports": {
     "IN_P": {
@@ -194,7 +252,10 @@
   "signals": {
     "_doc": "差分音频输入对 + 差分喇叭输出对,均按差分成对处理。",
     "AUDIO_IN": {
-      "nets": ["IN_P", "IN_N"],
+      "nets": [
+        "IN_P",
+        "IN_N"
+      ],
       "type": "analog_diff",
       "route": "codec DAC 差分输出成对短走线进串阻,远离数字/开关噪声",
       "keepout": "远离 SHDN 脉冲线与开关电源",
@@ -202,7 +263,10 @@
       "reason": "模拟差分小信号,布线不对称/串扰会污染音质"
     },
     "SPK_OUT": {
-      "nets": ["SPK_P", "SPK_N"],
+      "nets": [
+        "SPK_P",
+        "SPK_N"
+      ],
       "type": "analog_diff",
       "route": "D 类开关输出成对、等长、加粗;磁珠+EMI 电容就近芯片,喇叭端子处再出线",
       "keepout": "远离天线/RF 与敏感模拟线(D 类开关沿辐射强)",

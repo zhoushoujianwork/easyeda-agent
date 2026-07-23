@@ -13,11 +13,11 @@
   "verification": {
     "schematic": {
       "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
     },
     "component_selection": {
-      "status": "pending",
-      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+      "status": "passed",
+      "evidence": "deviceUuid/LCSC/footprint 已由 easyeda lib search + by-lcsc 对 ceshi 库解析写回 standard-parts.json(2026-07-23);全库覆盖率 100%。个别封装/变体存疑处(见 standard-parts desc caveat)待 block-apply 核对"
     },
     "pcb_drc": {
       "status": "pending"
@@ -51,11 +51,11 @@
   },
   "internal_nets": [
     [
-      "U.SCx",
+      "U.SCX",
       "PORT:I2C_SCL"
     ],
     [
-      "U.SDx",
+      "U.SDX",
       "PORT:I2C_SDA"
     ],
     [
@@ -96,13 +96,13 @@
   "ports": {
     "I2C_SCL": {
       "dir": "bidir",
-      "at": "U.SCx",
+      "at": "U.SCX",
       "desc": "I2C 时钟;BMI270 符号该脚名为 SCx(datasheet SPI 名 SCK),I2C 模式下即 SCL(StickS3 走 G48_SCL)。宿主总线上拉在 MCU 侧,本块不重复加",
       "default_net": "I2C_SCL"
     },
     "I2C_SDA": {
       "dir": "bidir",
-      "at": "U.SDx",
+      "at": "U.SDX",
       "desc": "I2C 数据;BMI270 符号该脚名为 SDx(datasheet SPI 名 SDI),I2C 模式下即 SDA(StickS3 走 G47_SDA)",
       "default_net": "I2C_SDA"
     },
@@ -182,7 +182,10 @@
   },
   "signals": {
     "I2C": {
-      "nets": ["I2C_SCL", "I2C_SDA"],
+      "nets": [
+        "I2C_SCL",
+        "I2C_SDA"
+      ],
       "type": "single_high_speed",
       "route": "I2C 低速总线短走线,上拉在 MCU 侧;SCL 别与 SDA 长距离并行紧贴",
       "keepout": "远离开关电源/RF/天线",
@@ -190,7 +193,9 @@
       "reason": "读数总线,受扰会丢采样/误触发中断"
     },
     "INT": {
-      "nets": ["INT"],
+      "nets": [
+        "INT"
+      ],
       "type": "single_high_speed",
       "route": "INT1 短走线接 MCU 唤醒 GPIO,块内已上拉到 VDDIO",
       "keepout": "远离噪声线,避免误唤醒",

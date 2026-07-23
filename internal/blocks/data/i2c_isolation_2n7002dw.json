@@ -3,7 +3,9 @@
   "desc": "背靠背双 NMOS I2C 总线隔离/热插拔开关(StickS3 I2C HOT PLUGIN):每根 I2C 线用一颗 2N7002DW 双管的两只 NMOS 串联(源-源或漏-漏对接),两只栅极分别接两个电源域的 3V3 轨——每一侧域断电时,该侧 NMOS 栅极随之掉电截止,把本侧从中间节点断开,实现双向域隔离;只在被门控的隔离侧(AUDIO 域)各挂一颗 2.2k 上拉,主侧上拉由宿主总线提供。兼具 NMOS 电平转换能力(AN10441 衍生)",
   "category": "mcu-support",
   "author": "@zhoushoujianwork",
-  "contributors": ["M5Stack StickS3 K150 (原理图对标来源)"],
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
   "added": "v0.19.0",
   "updated": "v0.19.0",
   "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
@@ -11,14 +13,18 @@
   "verification": {
     "schematic": {
       "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图 page_04 I2C HOT PLUGIN 区对标提取(对抗校验已订正为背靠背双管拓扑);引脚按功能名绑定,待真机 --probe 刷 2N7002DW 双管真实脚名 + block-apply 网表逐网对账后升 verified"
+      "evidence": "离线草稿,自 StickS3 原理图 page_04 I2C HOT PLUGIN 区对标提取(对抗校验已订正为背靠背双管拓扑)。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
     },
     "component_selection": {
-      "status": "pending",
-      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+      "status": "passed",
+      "evidence": "deviceUuid/LCSC/footprint 已由 easyeda lib search + by-lcsc 对 ceshi 库解析写回 standard-parts.json(2026-07-23);全库覆盖率 100%。个别封装/变体存疑处(见 standard-parts desc caveat)待 block-apply 核对"
     },
-    "pcb_drc": { "status": "pending" },
-    "bringup": { "status": "pending" },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
     "production_ready": false
   },
   "parts": {
@@ -44,49 +50,79 @@
     }
   },
   "internal_nets": [
-    ["Q_SCL.S_ISO", "R_SCL.1", "PORT:I2C_SCL_B"],
-    ["Q_SCL.D_ISO", "Q_SCL.D_MAIN"],
-    ["Q_SCL.S_MAIN", "PORT:I2C_SCL_A"],
-    ["Q_SDA.S_ISO", "R_SDA.1", "PORT:I2C_SDA_B"],
-    ["Q_SDA.D_ISO", "Q_SDA.D_MAIN"],
-    ["Q_SDA.S_MAIN", "PORT:I2C_SDA_A"],
-    ["Q_SCL.G_ISO", "Q_SDA.G_ISO", "R_SCL.2", "R_SDA.2", "PORT:VDD_B"],
-    ["Q_SCL.G_MAIN", "Q_SDA.G_MAIN", "PORT:VDD_A"]
+    [
+      "Q_SCL.S2",
+      "R_SCL.1",
+      "PORT:I2C_SCL_B"
+    ],
+    [
+      "Q_SCL.D2",
+      "Q_SCL.D1"
+    ],
+    [
+      "Q_SCL.S1",
+      "PORT:I2C_SCL_A"
+    ],
+    [
+      "Q_SDA.S2",
+      "R_SDA.1",
+      "PORT:I2C_SDA_B"
+    ],
+    [
+      "Q_SDA.D2",
+      "Q_SDA.D1"
+    ],
+    [
+      "Q_SDA.S1",
+      "PORT:I2C_SDA_A"
+    ],
+    [
+      "Q_SCL.G2",
+      "Q_SDA.G2",
+      "R_SCL.2",
+      "R_SDA.2",
+      "PORT:VDD_B"
+    ],
+    [
+      "Q_SCL.G1",
+      "Q_SDA.G1",
+      "PORT:VDD_A"
+    ]
   ],
   "ports": {
     "I2C_SCL_A": {
       "dir": "bidir",
-      "at": "Q_SCL.S_MAIN",
+      "at": "Q_SCL.S1",
       "desc": "主侧(常开域)SCL 总线——接常开主 I2C(StickS3 G48_SCL,3V3_L2 域);主侧管源极,本块不含主侧上拉(由宿主提供)",
       "default_net": "I2C_SCL_A"
     },
     "I2C_SDA_A": {
       "dir": "bidir",
-      "at": "Q_SDA.S_MAIN",
+      "at": "Q_SDA.S1",
       "desc": "主侧 SDA 总线——接常开主 I2C(StickS3 G47_SDA);主侧管源极,本块不含主侧上拉",
       "default_net": "I2C_SDA_A"
     },
     "I2C_SCL_B": {
       "dir": "bidir",
-      "at": "Q_SCL.S_ISO",
+      "at": "Q_SCL.S2",
       "desc": "隔离侧(可门控 AUDIO 域)SCL 总线——接被门控外设 I2C(StickS3 AUDIO_I2C_SCL,3V3_L3B_AU 域 codec);隔离侧管源极,块内已 2.2k(R33)上拉到 VDD_B",
       "default_net": "I2C_SCL_B"
     },
     "I2C_SDA_B": {
       "dir": "bidir",
-      "at": "Q_SDA.S_ISO",
+      "at": "Q_SDA.S2",
       "desc": "隔离侧 SDA 总线——接被门控外设 I2C(StickS3 AUDIO_I2C_SDA);块内已 2.2k(R34)上拉到 VDD_B",
       "default_net": "I2C_SDA_B"
     },
     "VDD_A": {
       "dir": "in",
-      "at": "Q_SCL.G_MAIN",
+      "at": "Q_SCL.G1",
       "desc": "主侧域轨(StickS3 3V3_L2 常开)——两颗主侧串联管的共栅参考;该域上电时主侧管导通,把主侧总线接入中间节点",
       "default_net": "3V3"
     },
     "VDD_B": {
       "dir": "in",
-      "at": "Q_SCL.G_ISO",
+      "at": "Q_SCL.G2",
       "desc": "隔离侧域轨(StickS3 3V3_L3B_AU 可被 PMIC 门控)——两颗隔离侧串联管的共栅参考 + 隔离侧一对 2.2k 上拉的公共上拉端;该域断电即隔离管截止,实现域隔离",
       "default_net": "3V3_ISO"
     }
@@ -124,7 +160,10 @@
   ],
   "signals": {
     "I2C_A": {
-      "nets": ["I2C_SCL_A", "I2C_SDA_A"],
+      "nets": [
+        "I2C_SCL_A",
+        "I2C_SDA_A"
+      ],
       "type": "single_high_speed",
       "route": "主侧 I2C(常开域),短走线、成对,远离开关电源/RF",
       "keepout": "远离功率开关节点与天线",
@@ -132,7 +171,10 @@
       "reason": "I2C 总线,受扰会误码"
     },
     "I2C_B": {
-      "nets": ["I2C_SCL_B", "I2C_SDA_B"],
+      "nets": [
+        "I2C_SCL_B",
+        "I2C_SDA_B"
+      ],
       "type": "single_high_speed",
       "route": "隔离侧 I2C(可门控域),短走线、成对",
       "keepout": "远离功率开关节点与天线",

@@ -3,7 +3,9 @@
   "desc": "LGS4056 单节锂电线性充电(TP4056 类)+ CH213K 双路理想二极管电源路径 OR(输入 5V ↔ 电池)+ CJ3439 双 P-MOSFET 门控电池电压 ADC 采样分压——完整锂电管理前端;是 bq24074 集成式 power-path 充电器的分立替代方案,更省成本/更灵活。draft:引脚按功能名绑定,待真机 --probe + block-apply 网表对账后升 verified。",
   "category": "power",
   "author": "@zhoushoujianwork",
-  "contributors": ["M5Stack StickS3 K150 (原理图对标来源)"],
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
   "added": "v0.19.0",
   "updated": "v0.19.0",
   "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_03)",
@@ -11,14 +13,18 @@
   "verification": {
     "schematic": {
       "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
     },
     "component_selection": {
-      "status": "pending",
-      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+      "status": "passed",
+      "evidence": "deviceUuid/LCSC/footprint 已由 easyeda lib search + by-lcsc 对 ceshi 库解析写回 standard-parts.json(2026-07-23);全库覆盖率 100%。个别封装/变体存疑处(见 standard-parts desc caveat)待 block-apply 核对"
     },
-    "pcb_drc": { "status": "pending" },
-    "bringup": { "status": "pending" },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
     "production_ready": false
   },
   "parts": {
@@ -62,10 +68,15 @@
       "qty": 1,
       "note": "CH213K 理想二极管/负载开关(U14):电池 VBAT → 系统轨另一路。与 U_PP1 输出 OR 到系统轨实现输入↔电池无缝切换。脚名 VIN/VOUT/GND(同 U_PP1)。"
     },
-    "Q_ADC": {
+    "Q_ADC_A": {
       "part": "mosfet.cj3439kdw",
       "qty": 1,
-      "note": "CJ3439KDW 双 P-MOSFET(一封装两管 Q2A/Q2B)——电池电压 ADC 采样两管级联高边开关(非单管):Q2A 由 VBAT_ADC_EN 门控做电平反相(源接 GND、漏拉 Q2B 栅),R15(100K)把 Q2B 栅上拉到 VBAT_L0 使默认关断;Q2A 导通时拉低 Q2B 栅,Q2B(高边 P-MOS,源接 VBAT_L0)导通把 VBAT 送入 R23/R24 分压。睡眠时 EN 撤去,Q2B 关断断开分压回路省 µA 级漏电。internal_nets 用 A_/B_ 前缀区分两管的 G/S/D,真机 sch read/--probe 必须核对 CJ3439KDW 六脚符号真实脚名再绑定(本前缀为草稿占位)。"
+      "note": "CJ3439KDW 双 P-MOSFET(一封装两管 Q2A/Q2B)——电池电压 ADC 采样两管级联高边开关(非单管):Q2A 由 VBAT_ADC_EN 门控做电平反相(源接 GND、漏拉 Q2B 栅),R15(100K)把 Q2B 栅上拉到 VBAT_L0 使默认关断;Q2A 导通时拉低 Q2B 栅,Q2B(高边 P-MOS,源接 VBAT_L0)导通把 VBAT 送入 R23/R24 分压。睡眠时 EN 撤去,Q2B 关断断开分压回路省 µA 级漏电。internal_nets 用 A_/B_ 前缀区分两管的 G/S/D,真机 sch read/--probe 必须核对 CJ3439KDW 六脚符号真实脚名再绑定(本前缀为草稿占位)。 (CJ3439KDW 双管;库符号为单管3脚 G1/S1/D1,双管靠放两次:A/B 共 SOT-363 一封装,BOM 实为 1 颗)"
+    },
+    "Q_ADC_B": {
+      "part": "mosfet.cj3439kdw",
+      "qty": 1,
+      "note": "CJ3439KDW 第二管(与 Q_ADC_A 同一物理 SOT-363 双管封装的另一半);高边通路管"
     },
     "R_HS": {
       "part": "res.100k_0402",
@@ -94,25 +105,100 @@
     }
   },
   "internal_nets": [
-    ["U_CHG.VCC", "C_IN.1", "PORT:VIN_5V"],
-    ["U_CHG.BAT", "C_BAT.1", "U_PP2.VIN", "PORT:VBAT"],
-    ["U_CHG.PROG", "R_PROG.1"],
-    ["R_PROG.2", "PORT:GND"],
-    ["U_CHG.CE", "R_CE.1", "PORT:CHG_EN"],
-    ["R_CE.2", "PORT:GND"],
-    ["U_CHG.CHRG", "R_STAT.1", "PORT:CHG_STAT"],
-    ["R_STAT.2", "PORT:3V3"],
-    ["U_CHG.GND", "U_CHG.EP", "U_CHG.TEMP", "C_IN.2", "C_BAT.2", "U_PP1.GND", "U_PP2.GND", "PORT:GND"],
-    ["U_PP1.VIN", "PORT:VIN_5V"],
-    ["U_PP1.VOUT", "U_PP2.VOUT", "PORT:VSYS"],
-    ["Q_ADC.A_G", "R_ADC_G.1", "PORT:VBAT_ADC_EN"],
-    ["R_ADC_G.2", "PORT:GND"],
-    ["Q_ADC.A_S", "PORT:GND"],
-    ["Q_ADC.A_D", "Q_ADC.B_G", "R_HS.1"],
-    ["R_HS.2", "Q_ADC.B_S", "PORT:VBAT"],
-    ["Q_ADC.B_D", "R_ADC_H.1"],
-    ["R_ADC_H.2", "R_ADC_L.1", "C_ADC.1", "PORT:VBAT_ADC"],
-    ["R_ADC_L.2", "C_ADC.2", "PORT:GND"]
+    [
+      "U_CHG.VCC",
+      "C_IN.1",
+      "PORT:VIN_5V"
+    ],
+    [
+      "U_CHG.BAT",
+      "C_BAT.1",
+      "U_PP2.VI+",
+      "PORT:VBAT"
+    ],
+    [
+      "U_CHG.PROG",
+      "R_PROG.1"
+    ],
+    [
+      "R_PROG.2",
+      "PORT:GND"
+    ],
+    [
+      "U_CHG.CE",
+      "R_CE.1",
+      "PORT:CHG_EN"
+    ],
+    [
+      "R_CE.2",
+      "PORT:GND"
+    ],
+    [
+      "U_CHG.CHRG",
+      "R_STAT.1",
+      "PORT:CHG_STAT"
+    ],
+    [
+      "R_STAT.2",
+      "PORT:3V3"
+    ],
+    [
+      "U_CHG.GND",
+      "U_CHG.9",
+      "U_CHG.TEMP",
+      "C_IN.2",
+      "C_BAT.2",
+      "U_PP1.GND",
+      "U_PP2.GND",
+      "PORT:GND"
+    ],
+    [
+      "U_PP1.VI+",
+      "PORT:VIN_5V"
+    ],
+    [
+      "U_PP1.VO-",
+      "U_PP2.VO-",
+      "PORT:VSYS"
+    ],
+    [
+      "Q_ADC_A.G1",
+      "R_ADC_G.1",
+      "PORT:VBAT_ADC_EN"
+    ],
+    [
+      "R_ADC_G.2",
+      "PORT:GND"
+    ],
+    [
+      "Q_ADC_A.S1",
+      "PORT:GND"
+    ],
+    [
+      "Q_ADC_A.D1",
+      "Q_ADC_B.G1",
+      "R_HS.1"
+    ],
+    [
+      "R_HS.2",
+      "Q_ADC_B.S1",
+      "PORT:VBAT"
+    ],
+    [
+      "Q_ADC_B.D1",
+      "R_ADC_H.1"
+    ],
+    [
+      "R_ADC_H.2",
+      "R_ADC_L.1",
+      "C_ADC.1",
+      "PORT:VBAT_ADC"
+    ],
+    [
+      "R_ADC_L.2",
+      "C_ADC.2",
+      "PORT:GND"
+    ]
   ],
   "ports": {
     "VIN_5V": {
@@ -129,7 +215,7 @@
     },
     "VSYS": {
       "dir": "out",
-      "at": "U_PP1.VOUT",
+      "at": "U_PP1.VO-",
       "desc": "系统电源轨(本板 VBUS_L0):U_PP1(输入 5V)与 U_PP2(电池)两路理想二极管 OR 输出,输入↔电池无缝切换",
       "default_net": "VBUS_L0"
     },
@@ -153,7 +239,7 @@
     },
     "VBAT_ADC_EN": {
       "dir": "in",
-      "at": "Q_ADC.A_G",
+      "at": "Q_ADC_A.G1",
       "desc": "电池 ADC 采样门控使能:控制 CJ3439 双 P-MOSFET,睡眠时断开分压回路避免常态漏电",
       "default_net": "VBAT_ADC_EN"
     },
@@ -177,7 +263,8 @@
     "采样电容靠脚放置:C_ADC(C30)必须靠 MCU ADC 引脚放置(原理图注 “ADC电容靠近引脚放置”),缩短采样回路、抑制噪声。",
     "本块是完整的锂电管理前端单元,拓扑较复杂;可与 sy7088_boost_5v(VBUS→5V 升压)配套构成 StickS3 电源前端(充电/路径管理 + 升压供外设)。",
     "引脚名核对铁律:internal_nets 用 LGS4056/CH213K/CJ3439 的功能名/datasheet 脚名(VCC/BAT/PROG/CE/CHRG/GND/EP、IN/OUT、S/G/D 等);放置前先 sch read 拉真实符号脚名再绑定,别照抄本草稿脚名。CH213K 与 CJ3439 的具体脚位以 datasheet + sch read 为准。",
-    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。"
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "注:LGS4056 散热 EP 焊盘在库符号里编号 9、名却标 \"1\"(与 pin#1 TEMP 撞名),internal_nets 用编号 9 唯一定位并接 GND。"
   ],
   "pcb_layout": [
     {
@@ -216,7 +303,7 @@
       "severity": "should",
       "reason": "线性充电主路电流大且发热,靠电池节点缩短回路并便于散热"
     },
-    "Q_ADC": {
+    "Q_ADC_A": {
       "side": "top",
       "orientation": "ADC 采样门与分压电阻紧凑靠近 MCU ADC 走线,门控信号短",
       "severity": "should",
@@ -226,7 +313,11 @@
   "signals": {
     "_doc": "电源主路(大电流)+ 低速状态/门控/ADC 采样信号。",
     "POWER_PATH": {
-      "nets": ["VIN_5V", "VBAT", "VSYS"],
+      "nets": [
+        "VIN_5V",
+        "VBAT",
+        "VSYS"
+      ],
       "type": "power",
       "route": "充电输入/电池/系统三条主路加宽或铺铜,理想二极管 OR 汇合点走线短、压降小",
       "keepout": "",
@@ -234,7 +325,10 @@
       "reason": "充电/放电主路电流大,窄线压降与发热影响效率"
     },
     "ADC_SENSE": {
-      "nets": ["VBAT_ADC", "VBAT_ADC_EN"],
+      "nets": [
+        "VBAT_ADC",
+        "VBAT_ADC_EN"
+      ],
       "type": "analog",
       "route": "分压节点→ADC 走线短,C_ADC 靠 ADC 脚;门控信号避免耦合噪声",
       "keepout": "远离开关电源/RF",

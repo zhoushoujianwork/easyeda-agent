@@ -3,7 +3,9 @@
   "desc": "ES8311 单声道音频编解码(codec):I2C 控制(CCLK/CDATA)+ I2S 音频(MCLK/BCLK/LRCK/DSDIN/ASDOUT),一路 ADC(MIC1P/MIC1N 经耦合电容接 MEMS mic)+ 一路 DAC(OUTP/OUTN 经耦合电容→ D 类功放)。本板整颗芯片(PVDD/DVDD/AVDD)全部由干净音频轨 3V3_L3B_AU 供电,所有地(AGND/DGND/EPAD)回 AGND,仅经 R35(0R)单点桥回数字 GND。地址由 CE 脚设:接 GND/AGND=0x18、接 VDD=0x19(本板 CE 接 AGND=0x18)。QFN-24。",
   "category": "audio",
   "author": "@zhoushoujianwork",
-  "contributors": ["M5Stack StickS3 K150 (原理图对标来源)"],
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
   "added": "v0.19.0",
   "updated": "v0.19.0",
   "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
@@ -11,14 +13,18 @@
   "verification": {
     "schematic": {
       "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图 page_04 AUDIO 节对抗核对提取(引脚功能名+连线拓扑逐脚对图),待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+      "evidence": "离线草稿,自 StickS3 原理图 page_04 AUDIO 节对抗核对提取(引脚功能名+连线拓扑逐脚对图),待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
     },
     "component_selection": {
-      "status": "pending",
-      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+      "status": "passed",
+      "evidence": "deviceUuid/LCSC/footprint 已由 easyeda lib search + by-lcsc 对 ceshi 库解析写回 standard-parts.json(2026-07-23);全库覆盖率 100%。个别封装/变体存疑处(见 standard-parts desc caveat)待 block-apply 核对"
     },
-    "pcb_drc": { "status": "pending" },
-    "bringup": { "status": "pending" },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
     "production_ready": false
   },
   "parts": {
@@ -84,30 +90,114 @@
     }
   },
   "internal_nets": [
-    ["U.CCLK", "PORT:I2C_SCL"],
-    ["U.CDATA", "PORT:I2C_SDA"],
-    ["U.MCLK", "PORT:I2S_MCLK"],
-    ["U.SCLK", "PORT:I2S_BCLK"],
-    ["U.LRCK", "PORT:I2S_LRCK"],
-    ["U.DSDIN", "PORT:I2S_DIN"],
-    ["U.ASDOUT", "PORT:I2S_DOUT"],
-    ["U.MIC1P", "C_MIC1P.1"],
-    ["C_MIC1P.2", "PORT:MIC_P"],
-    ["U.MIC1N", "C_MIC1N.1"],
-    ["C_MIC1N.2", "PORT:MIC_N"],
-    ["U.OUTP", "C_OUTP.1"],
-    ["C_OUTP.2", "PORT:SPK_P"],
-    ["U.OUTN", "C_OUTN.1"],
-    ["C_OUTN.2", "PORT:SPK_N"],
-    ["U.VMID", "C_VMID.1"],
-    ["U.ADCVREF", "C_ADCVREF.1"],
-    ["U.DACVREF", "C_DACVREF.1"],
-    ["U.CE", "PORT:I2C_ADDR"],
-    ["U.PVDD", "C_PVDD.1", "PORT:DVDD"],
-    ["U.DVDD", "C_DVDD.1", "PORT:DVDD"],
-    ["U.AVDD", "C_AVDD.1", "PORT:AVDD"],
-    ["U.AGND", "U.DGND", "U.EPAD", "C_PVDD.2", "C_DVDD.2", "C_VMID.2", "C_ADCVREF.2", "C_DACVREF.2", "C_AVDD.2", "R_AGND.1", "PORT:AGND"],
-    ["R_AGND.2", "PORT:GND"]
+    [
+      "U.CCLK",
+      "PORT:I2C_SCL"
+    ],
+    [
+      "U.CDATA",
+      "PORT:I2C_SDA"
+    ],
+    [
+      "U.MCLK",
+      "PORT:I2S_MCLK"
+    ],
+    [
+      "U.SCLK/DMIC_SCL",
+      "PORT:I2S_BCLK"
+    ],
+    [
+      "U.LRCK",
+      "PORT:I2S_LRCK"
+    ],
+    [
+      "U.DSDIN",
+      "PORT:I2S_DIN"
+    ],
+    [
+      "U.ASDOUT",
+      "PORT:I2S_DOUT"
+    ],
+    [
+      "U.MIC1P/DMIC_SDA",
+      "C_MIC1P.1"
+    ],
+    [
+      "C_MIC1P.2",
+      "PORT:MIC_P"
+    ],
+    [
+      "U.MIC1N",
+      "C_MIC1N.1"
+    ],
+    [
+      "C_MIC1N.2",
+      "PORT:MIC_N"
+    ],
+    [
+      "U.OUTP",
+      "C_OUTP.1"
+    ],
+    [
+      "C_OUTP.2",
+      "PORT:SPK_P"
+    ],
+    [
+      "U.OUTN",
+      "C_OUTN.1"
+    ],
+    [
+      "C_OUTN.2",
+      "PORT:SPK_N"
+    ],
+    [
+      "U.VMID",
+      "C_VMID.1"
+    ],
+    [
+      "U.ADCVREF",
+      "C_ADCVREF.1"
+    ],
+    [
+      "U.DACVREF",
+      "C_DACVREF.1"
+    ],
+    [
+      "U.CE",
+      "PORT:I2C_ADDR"
+    ],
+    [
+      "U.PVDD",
+      "C_PVDD.1",
+      "PORT:DVDD"
+    ],
+    [
+      "U.DVDD",
+      "C_DVDD.1",
+      "PORT:DVDD"
+    ],
+    [
+      "U.AVDD",
+      "C_AVDD.1",
+      "PORT:AVDD"
+    ],
+    [
+      "U.AGND",
+      "U.DGND",
+      "U.EP",
+      "C_PVDD.2",
+      "C_DVDD.2",
+      "C_VMID.2",
+      "C_ADCVREF.2",
+      "C_DACVREF.2",
+      "C_AVDD.2",
+      "R_AGND.1",
+      "PORT:AGND"
+    ],
+    [
+      "R_AGND.2",
+      "PORT:GND"
+    ]
   ],
   "ports": {
     "I2C_SCL": {
@@ -130,7 +220,7 @@
     },
     "I2S_BCLK": {
       "dir": "in",
-      "at": "U.SCLK",
+      "at": "U.SCLK/DMIC_SCL",
       "desc": "I2S 位时钟 BCLK(datasheet 脚 SCLK/DMIC_SCL,本板 G17)",
       "default_net": "I2S_BCLK"
     },
@@ -258,7 +348,10 @@
   "signals": {
     "_doc": "控制 I2C 低速总线 + I2S 音频总线 + 模拟差分收发。",
     "I2C_CTRL": {
-      "nets": ["I2C_SCL", "I2C_SDA"],
+      "nets": [
+        "I2C_SCL",
+        "I2C_SDA"
+      ],
       "type": "single_high_speed",
       "route": "codec 寄存器配置总线,短走,上拉在宿主 I2C 侧(本块不含上拉,避免与主总线并联过强)",
       "keepout": "远离功率开关节点",
@@ -266,7 +359,13 @@
       "reason": "配置总线受扰会配错寄存器"
     },
     "I2S_AUDIO": {
-      "nets": ["I2S_MCLK", "I2S_BCLK", "I2S_LRCK", "I2S_DIN", "I2S_DOUT"],
+      "nets": [
+        "I2S_MCLK",
+        "I2S_BCLK",
+        "I2S_LRCK",
+        "I2S_DIN",
+        "I2S_DOUT"
+      ],
       "type": "single_high_speed",
       "route": "五线成组短走,MCLK/BCLK 时钟别与数据长距离并行串扰",
       "keepout": "远离 RF/开关电源",
@@ -274,7 +373,12 @@
       "reason": "音频时钟抖动/串扰会引入可听噪声"
     },
     "AUDIO_DIFF": {
-      "nets": ["MIC_P", "MIC_N", "SPK_P", "SPK_N"],
+      "nets": [
+        "MIC_P",
+        "MIC_N",
+        "SPK_P",
+        "SPK_N"
+      ],
       "type": "analog_diff",
       "route": "mic 输入与 DAC 输出各成对差分走线,等长贴近;mic 对包地屏蔽,远离数字/开关噪声",
       "keepout": "远离 SW/LX/RF 与数字高速线",

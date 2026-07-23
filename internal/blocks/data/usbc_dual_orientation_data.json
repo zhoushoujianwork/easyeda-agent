@@ -3,7 +3,9 @@
   "desc": "USB-C 设备口(16P)双取向数据 tie:DP1+DP2(A6+B6)短接成 USB_DP、DM1+DM2(A7+B7)短接成 USB_DM,C 口正反插都能通信;CC1/CC2 各 5.1K 下拉广告 UFP/设备(sink);D+/D- 各挂一颗 ESD5311 对地;VBUS/GND 冗余焊盘 fanout 全并联。区别于 usbc_ufp_power_or(仅电源 OR),本块只做数据+CC。",
   "category": "usb",
   "author": "@zhoushoujianwork",
-  "contributors": ["M5Stack StickS3 K150 (原理图对标来源)"],
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
   "added": "v0.19.0",
   "updated": "v0.19.0",
   "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_03)",
@@ -11,14 +13,18 @@
   "verification": {
     "schematic": {
       "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
     },
     "component_selection": {
-      "status": "pending",
-      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+      "status": "passed",
+      "evidence": "deviceUuid/LCSC/footprint 已由 easyeda lib search + by-lcsc 对 ceshi 库解析写回 standard-parts.json(2026-07-23);全库覆盖率 100%。个别封装/变体存疑处(见 standard-parts desc caveat)待 block-apply 核对"
     },
-    "pcb_drc": { "status": "pending" },
-    "bringup": { "status": "pending" },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
     "production_ready": false
   },
   "parts": {
@@ -49,15 +55,50 @@
     }
   },
   "internal_nets": [
-    ["J.VBUS*", "PORT:VBUS"],
-    ["J.GND*", "J.EP*", "PORT:GND"],
-    ["J.DP1", "J.DP2", "D_DP.1", "PORT:USB_DP"],
-    ["J.DN1", "J.DN2", "D_DM.1", "PORT:USB_DM"],
-    ["J.CC1", "R_CC1.1", "PORT:CC1"],
-    ["R_CC1.2", "PORT:GND"],
-    ["J.CC2", "R_CC2.1", "PORT:CC2"],
-    ["R_CC2.2", "PORT:GND"],
-    ["D_DP.2", "D_DM.2", "PORT:GND"]
+    [
+      "J.VBUS*",
+      "PORT:VBUS"
+    ],
+    [
+      "J.GND*",
+      "J.EP*",
+      "PORT:GND"
+    ],
+    [
+      "J.DP1",
+      "J.DP2",
+      "D_DP.1",
+      "PORT:USB_DP"
+    ],
+    [
+      "J.DN1",
+      "J.DN2",
+      "D_DM.1",
+      "PORT:USB_DM"
+    ],
+    [
+      "J.CC1",
+      "R_CC1.1",
+      "PORT:CC1"
+    ],
+    [
+      "R_CC1.2",
+      "PORT:GND"
+    ],
+    [
+      "J.CC2",
+      "R_CC2.1",
+      "PORT:CC2"
+    ],
+    [
+      "R_CC2.2",
+      "PORT:GND"
+    ],
+    [
+      "D_DP.2",
+      "D_DM.2",
+      "PORT:GND"
+    ]
   ],
   "ports": {
     "VBUS": {
@@ -150,7 +191,10 @@
   "signals": {
     "_doc": "USB 高速差分对 + CC 配置通道,数据线带 ESD。",
     "USB_DATA": {
-      "nets": ["USB_DP", "USB_DM"],
+      "nets": [
+        "USB_DP",
+        "USB_DM"
+      ],
       "type": "diff_pair",
       "route": "D+/D- 差分等长、90Ω,先过 ESD 再入连接器;双取向 tie 短接点靠近连接器,tie 段对称",
       "keepout": "远离开关电源 SW/LX 与 RF/天线",
@@ -158,7 +202,10 @@
       "reason": "USB 差分对,阻抗/等长失配或近开关噪声会误码"
     },
     "CC": {
-      "nets": ["CC1", "CC2"],
+      "nets": [
+        "CC1",
+        "CC2"
+      ],
       "type": "single_low_speed",
       "route": "短走线到 5.1K 下拉,靠近连接器",
       "keepout": "无特殊",
