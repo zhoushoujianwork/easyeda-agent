@@ -9,11 +9,11 @@
   "added": "v0.19.0",
   "updated": "v0.19.0",
   "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
-  "validated": null,
+  "validated": "ceshi 2026-07-23 by @zhoushoujianwork: block-apply 孤立单放 reconciled + bridge-check 0/0/0 + pin-audit 0/0(真机 --probe 符号脚核实)。schematic 档 passed;PCB/bringup 待整板。",
   "verification": {
     "schematic": {
-      "status": "pending",
-      "evidence": "离线草稿,自 StickS3 原理图 page_04 AUDIO 节对抗核对提取(引脚功能名+连线拓扑逐脚对图),待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified。引脚已真机 --probe 刷真实符号脚,blocks-pin-audit 全 1017 refs unique(0 fanout/0 missing/0 unknown)——功能名对真实符号脚已逐一核实(修正 BMI270 SCX/SDX、ES8311 复合脚名、模组电源脚多名+地=EP、连接器 pad 号、双 MOSFET G1/S1/D1、LGS4056 EP 编号 9 等)。待 sch block apply 网表逐网对账后升 passed"
+      "status": "passed",
+      "evidence": "ceshi 2026-07-23 sch block-apply 孤立单放:24 条 internal_net 全落地(reconciled:true,0 空 members)+ bridge-check 0 桥/0 孤儿桩/0 孤儿flag + blocks-pin-audit 引脚对真实符号脚 0 fanout/0 missing。孤立单放下模组多余 GPIO/连接器未用脚显示 floating=预期(块只接支撑电路)。诚实:pcb_drc/bringup 未跑,production_ready=false;非整板环境验证。"
     },
     "component_selection": {
       "status": "passed",

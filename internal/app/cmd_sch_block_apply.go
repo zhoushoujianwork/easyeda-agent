@@ -75,6 +75,9 @@ var bapPrefixes = map[string]string{
 	"esd":       "D",
 	"bjt":       "Q",
 	"pmos":      "Q",
+	"mosfet":    "Q",  // StickS3 吸收引入(2N7002/2N7002DW/CJ3439KDW)
+	"sensor":    "U",  // StickS3 吸收引入(BMI270 IMU)
+	"mic":       "MK", // StickS3 吸收引入(MSM381 MEMS mic;IEEE-315 麦克风=MK)
 	"xtal":      "X",
 	"fuse":      "F",
 	"ant":       "ANT",

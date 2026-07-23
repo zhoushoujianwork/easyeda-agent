@@ -13,15 +13,21 @@ follow [SemVer](https://semver.org/).
   (schema enum + `validate.go` 同步),以及 `esp32s3_pico_native_usb`(🔥 S3-PICO 原生 USB
   下载,无 CH340 桥)、`bmi270_imu_i2c`、`ir_txrx_remote`、`sy7088_boost_5v`、
   `lgs4056_liion_charge_path`、`i2c_isolation_2n7002dw`、`usbc_dual_orientation_data`。
-  standard-parts.json 补 24 个新料(deviceUuid/LCSC 留 TBD)。全部 `draft` 态,引脚按功能名
-  绑定并经原理图图片逐脚对抗校验(抓修多处静默错接:`USB_D±`实为`GPIO20/19`、BMI270 脚名
-  `SCx/SDx`、mic 供电 R52=100R 非 100K、多焊盘电源脚漏 fanout `*` 等);deviceUuid 解析 +
-  真机 `--probe`/`block-apply` 网表对账升 verified 为后续一轮。conventions 侧吸收:
+  standard-parts.json 补 25 个新料。**全部经真机验证升 `verified`**:deviceUuid/LCSC
+  100% 解析(`lib search`+`by-lcsc`)、`--probe` 刷真实符号脚、`blocks-pin-audit` 0 fanout/
+  0 missing、`sch block-apply` 孤立单放 reconciled + `bridge-check` 0/0/0。多层校验抓修一批
+  静默错接:`USB_D±`实为模组脚 `GPIO20/19`、BMI270 真符号脚 `SCX/SDX`(图片是 SCx/SDx)、
+  mic 供电 R52=100R 非 100K、ESP32-S3-PICO **无 GPIO47/48 脚**(电源脚多名/地=EP)、
+  AXE512127D 连接器纯数字 pad、双 MOSFET 库符号为单管(CJ3439 拆两放置)。conventions 侧吸收:
   `pcb-layout-conventions §7.10`(StickS3 第 4 块对标)、`design-decisions`(USB 架构/自动
   下载各加「纯原生 USB 无桥」第三选项)、`docs/board-absorption-sticks3.md`(含 PY32-PMIC
   多域电源架构参考)。
 
 ### Fixed
+- **`sch block-apply` 位号前缀映射缺 `mosfet`/`sensor`/`mic` 命名空间**:StickS3 吸收引入
+  这三类新料后,block-apply 因 `bapPrefixes` 无对应前缀而硬报错拒放(设计上不猜前缀免误配)。
+  补 `mosfet→Q` / `sensor→U` / `mic→MK`(IEEE-315 类),受影响的 6 个块(BMI270/IR/音频/
+  I2C 隔离/锂电充电/SPI 屏)现可正常孤立单放并验证。
 - **`schematic.component.modify` 自定义属性静默 no-op**:CLI 文档使用
   `customAttributes`,但 EasyEDA SDK 实际只接受 `otherProperty`,导致命令返回成功却不更新
   `Value` 等属性。连接器现在将兼容别名转换为 SDK 字段、与现有属性合并后写入,并用新器件
