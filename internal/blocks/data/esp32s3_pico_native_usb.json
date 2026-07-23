@@ -13,7 +13,7 @@
   "verification": {
     "schematic": {
       "status": "passed",
-      "evidence": "ceshi 2026-07-23 sch block-apply 孤立单放:17 条 internal_net 全落地(reconciled:true,0 空 members)+ bridge-check 0 桥/0 孤儿桩/0 孤儿flag + blocks-pin-audit 引脚对真实符号脚 0 fanout/0 missing。孤立单放下模组多余 GPIO/连接器未用脚显示 floating=预期(块只接支撑电路)。诚实:pcb_drc/bringup 未跑,production_ready=false;非整板环境验证。"
+      "evidence": "ceshi 2026-07-23 sch block-apply 孤立单放:17 条 internal_net 全落地(reconciled:true,0 空 members)+ bridge-check 0 桥/0 孤儿桩/0 孤儿flag + blocks-pin-audit 引脚对真实符号脚 0 fanout/0 missing。孤立单放下模组多余 GPIO/连接器未用脚显示 floating=预期(块只接支撑电路)。诚实:pcb_drc/bringup 未跑,production_ready=false;非整板环境验证。 【EN 端口 bug 修复 2026-07-24】CHIP_PU 内部网原漏 PORT:EN,孤立单放查不出(无外部网可绑),集成到 sticks3-clone 接复位键才暴露 EN 网只剩按键、RC 未接;加 PORT:EN 后干净重建,EN 网 = CHIP_PU+R_EN+C_EN+SW2 完整合并。印证:孤立单放 reconciled 不覆盖端口绑定,整板集成才是完整判据。"
     },
     "component_selection": {
       "status": "passed",
@@ -122,7 +122,8 @@
     [
       "U.CHIP_PU",
       "R_EN.1",
-      "C_EN.1"
+      "C_EN.1",
+      "PORT:EN"
     ],
     [
       "R_EN.2",
