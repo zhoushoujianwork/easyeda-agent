@@ -387,10 +387,10 @@
       "mpn": "0402WGF1000TCE",
       "lcsc": "C25076",
       "manufacturer": "UNI-ROYAL(厚声)",
-      "deviceUuid": "",
+      "deviceUuid": "372a75f52e5c428bb7d965aa9a4dec67",
       "footprint": "R0402",
       "basic": true,
-      "desc": "100Ω 1% 0402 —— 模拟供电 RC 滤波串阻(StickS3 R52,mic VDD 100R+100nF RC 滤波);C25076 为 JLC 基础料。（deviceUuid 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "100Ω 1% 0402 —— 模拟供电 RC 滤波串阻(StickS3 R52,mic VDD 100R+100nF RC 滤波);C25076 为 JLC 基础料。 （LCSC C25076/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ind.22uh_1210": {
       "value": "2.2µH",
@@ -1207,242 +1207,242 @@
     "mcu.esp32s3_pico1_n8r8": {
       "value": "ESP32-S3-PICO-1-N8R8",
       "mpn": "ESP32-S3-PICO-1-N8R8",
-      "lcsc": "",
+      "lcsc": "C7545129",
       "manufacturer": "Espressif",
-      "deviceUuid": "",
-      "footprint": "MODULE_ESP32-S3-PICO-1_LGA",
+      "deviceUuid": "6b9f2fd1fbdd415a9fe17c35acdeee3b",
+      "footprint": "QFN-56_L7.0-W7.0-P0.40-TL-EP4.0",
       "basic": false,
-      "desc": "ESP32-S3-PICO-1-N8R8 SiP 模组:内封 8MB flash + 8MB Octal PSRAM + PCB 天线,原生 USB,无需外挂存储/晶振/天线匹配 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "ESP32-S3-PICO-1-N8R8 SiP 模组:内封 8MB flash + 8MB Octal PSRAM + PCB 天线,原生 USB,无需外挂存储/晶振/天线匹配 （LCSC C7545129/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标;另有 C9900057109 同名可选;二者同封装）"
     },
     "ic.es8311": {
       "value": "ES8311",
       "mpn": "ES8311",
-      "lcsc": "",
-      "manufacturer": "Everest Semi(乾芯/Everest)",
-      "deviceUuid": "",
-      "footprint": "QFN-24",
+      "lcsc": "C962342",
+      "manufacturer": "Everest-semi(顺芯)",
+      "deviceUuid": "fe5e5027dfd04b5daa94f470f98cba94",
+      "footprint": "WQFN-20_L3.0-W3.0-P0.40-BL-EP1.7",
       "basic": false,
-      "desc": "ES8311 单声道音频编解码(I2S+I2C,24bit),一路 ADC 一路 DAC,I2C 地址 0x18/0x19(CE 脚设) （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "ES8311 单声道音频编解码(I2S+I2C,24bit),一路 ADC 一路 DAC,I2C 地址 0x18/0x19(CE 脚设) （LCSC C962342/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ic.aw8737a": {
       "value": "AW8737A",
-      "mpn": "AW8737ACSR",
-      "lcsc": "",
-      "manufacturer": "Awinic(艾为)",
-      "deviceUuid": "",
-      "footprint": "DFN-8?",
+      "mpn": "AW8737AFCR",
+      "lcsc": "C5162553",
+      "manufacturer": "AWINIC(艾为)",
+      "deviceUuid": "2eaf1cd684d44118af35644e7684d39e",
+      "footprint": "DSBGA-16_L1.6-W1.6-R4-C4-P0.40-BL_AW87318FCR",
       "basic": false,
-      "desc": "AW8737A 单声道 D/K 类音频功放(带电荷泵),差分输入,SHDN 脉冲设增益/模式,8Ω@1W （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "AW8737A 单声道 D/K 类音频功放(带电荷泵),差分输入,SHDN 脉冲设增益/模式,8Ω@1W （LCSC C5162553/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标;⚠封装 DSBGA-16 晶圆级,A 变体唯一命中;block-apply 前核对原理图 SPKER 实际封装）"
     },
     "mic.msm381a3729": {
       "value": "MSM381A3729H9BPC",
       "mpn": "MSM381A3729H9BPC",
-      "lcsc": "",
-      "manufacturer": "MEMSensing(敏芯微)",
-      "deviceUuid": "",
-      "footprint": "MEMS_MIC_BOTTOMPORT",
+      "lcsc": "C4747982",
+      "manufacturer": "MEMS(敏芯微)",
+      "deviceUuid": "e4ca03b94f6c49508e6cb9dbeb625f08",
+      "footprint": "MIC-SMD_4P-L3.8-W3.0-P1.70-TL-S2.46",
       "basic": false,
-      "desc": "模拟 MEMS 麦克风,底进声,信噪比 65dB,单端输出接成伪差分给 codec （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "模拟 MEMS 麦克风,底进声,信噪比 65dB,单端输出接成伪差分给 codec （LCSC C4747982/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "conn.btb_lcd_axe512127": {
       "value": "AXE512127D",
       "mpn": "AXE512127D",
-      "lcsc": "",
-      "manufacturer": "Panasonic(松下)",
-      "deviceUuid": "",
-      "footprint": "BTB-14P-0.4MM",
+      "lcsc": "C2982232",
+      "manufacturer": "PANASONIC(松下)",
+      "deviceUuid": "a191d879cd31412d94d2b9be0dbf954b",
+      "footprint": "CONN-SMD_12P-P0.40_PANASONIC_AXE512127D",
       "basic": false,
-      "desc": "LCD 板对板连接器 14P 0.4mm(接 ST7789P3 1.14\" IPS FPC);ST7789 驱动在 FPC 上不在主板 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "LCD 板对板连接器 14P 0.4mm(接 ST7789P3 1.14\" IPS FPC);ST7789 驱动在 FPC 上不在主板 （LCSC C2982232/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标;⚠脚数 12P(草稿曾按 14P);block-apply --probe 时以真实符号脚为准）"
     },
     "sensor.bmi270": {
       "value": "BMI270",
       "mpn": "BMI270",
-      "lcsc": "",
+      "lcsc": "C2836813",
       "manufacturer": "Bosch(博世)",
-      "deviceUuid": "",
-      "footprint": "LGA-14_2.5x3.0",
+      "deviceUuid": "cfe0716fdc914a4bbcb3d0e4b159b11e",
+      "footprint": "LGA-14_L3.0-W2.5-P0.50-BR",
       "basic": false,
-      "desc": "BMI270 6 轴 IMU(加速度+陀螺),I2C 0x68/0x69,低功耗带手势引擎,CSB→VDDIO 选 I2C （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "BMI270 6 轴 IMU(加速度+陀螺),I2C 0x68/0x69,低功耗带手势引擎,CSB→VDDIO 选 I2C （LCSC C2836813/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ic.vsop38338": {
       "value": "VSOP38338",
       "mpn": "VSOP38338",
-      "lcsc": "",
-      "manufacturer": "Vishay(威世)",
-      "deviceUuid": "",
-      "footprint": "IR_RECEIVER_MOLD_3P",
+      "lcsc": "C192566",
+      "manufacturer": "VISHAY(威世)",
+      "deviceUuid": "66eaacfee6a74513bd8bbbd50ef91f72",
+      "footprint": "DFN-8_L2.0-W2.0-P0.50-BL-EP",
       "basic": false,
-      "desc": "VSOP38338 38kHz 红外接收头(带 AGC/带通),OUT 开集输出;解码须用 MCU RMT 外设 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "VSOP38338 38kHz 红外接收头(带 AGC/带通),OUT 开集输出;解码须用 MCU RMT 外设 （LCSC C192566/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "led.ir928_emitter": {
       "value": "IR928-6C/F1",
-      "mpn": "IR928-6C/F1",
-      "lcsc": "",
-      "manufacturer": "Everlight/generic",
-      "deviceUuid": "",
-      "footprint": "LED_IR_5MM_or_SMD",
+      "mpn": "IR928-6C-F(6-1)",
+      "lcsc": "C367227",
+      "manufacturer": "EVERLIGHT(亿光)",
+      "deviceUuid": "0a270ad2bc9a42a8897ffa1e4a434605",
+      "footprint": "LED-TH_IR928-6C-F",
       "basic": false,
-      "desc": "IR928 红外发射管(940nm),低边 NMOS 驱动,10R 设脉冲电流 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "IR928 红外发射管(940nm),低边 NMOS 驱动,10R 设脉冲电流 （LCSC C367227/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ic.sy7088": {
       "value": "SY7088",
-      "mpn": "SY7088",
-      "lcsc": "",
+      "mpn": "SY7088DGC",
+      "lcsc": "C178240",
       "manufacturer": "Silergy(矽力杰)",
-      "deviceUuid": "",
-      "footprint": "SOT23-6",
+      "deviceUuid": "f8e670fea1514011ad96c1f5c74666b3",
+      "footprint": "DFN-8_L3.0-W2.0-P0.50-BL-EP",
       "basic": false,
-      "desc": "SY7088 同步升压 DCDC(1A),VBUS/锂电→5V;Vout=1.2×(1+Rh/Rl);2.2uH （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "SY7088 同步升压 DCDC(1A),VBUS/锂电→5V;Vout=1.2×(1+Rh/Rl);2.2uH （LCSC C178240/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ic.lgs4056": {
       "value": "LGS4056",
-      "mpn": "LGS4056H",
-      "lcsc": "",
-      "manufacturer": "LGSemi(晶丰/致新类)",
-      "deviceUuid": "",
-      "footprint": "ESOP-8",
+      "mpn": "LGS4056HDA",
+      "lcsc": "C5124109",
+      "manufacturer": "Legend-Si(棱晶半导体)",
+      "deviceUuid": "4ad9741ff3904d859d028b9e52e81095",
+      "footprint": "DFN-8_L2.0-W2.0-P0.50-TL-EP1.6",
       "basic": false,
-      "desc": "LGS4056 单节锂电线性充电 IC(TP4056 类):PROG 电阻设充电电流,CE 使能,CHRG 开漏状态 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "LGS4056 单节锂电线性充电 IC(TP4056 类):PROG 电阻设充电电流,CE 使能,CHRG 开漏状态 （LCSC C5124109/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标;⚠选 LGS4056HDA DFN-8 2x2(4.2V,无 -4.35 高压变体);核对原理图 U15 实际变体/封装）"
     },
     "ic.ch213k": {
       "value": "CH213K",
       "mpn": "CH213K",
-      "lcsc": "",
-      "manufacturer": "generic",
-      "deviceUuid": "",
-      "footprint": "SOT23-3?",
+      "lcsc": "C5456874",
+      "manufacturer": "WCH(南京沁恒)",
+      "deviceUuid": "11b7ac3f768147c385e38e3b17254086",
+      "footprint": "SOT-23-3_L2.9-W1.6-P1.90-LS2.8-BR",
       "basic": false,
-      "desc": "CH213K 理想二极管/负载开关,做输入↔电池分立电源路径 OR(无缝切换) （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "CH213K 理想二极管/负载开关,做输入↔电池分立电源路径 OR(无缝切换) （LCSC C5456874/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "mosfet.cj3439kdw": {
       "value": "CJ3439KDW",
       "mpn": "CJ3439KDW",
-      "lcsc": "",
-      "manufacturer": "Changjing(长晶)",
-      "deviceUuid": "",
-      "footprint": "SOT-363",
+      "lcsc": "C99824",
+      "manufacturer": "CJ(江苏长电/长晶)",
+      "deviceUuid": "09abf1185bed47f68d5a25966ac51f48",
+      "footprint": "SOT-363_L2.1-W1.3-P0.65-LS2.3-BL",
       "basic": false,
-      "desc": "CJ3439KDW 双 P-MOSFET,做电池 ADC 采样门控(睡眠断开分压省 µA 级漏电) （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "CJ3439KDW 双 P-MOSFET,做电池 ADC 采样门控(睡眠断开分压省 µA 级漏电) （LCSC C99824/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "mosfet.2n7002": {
       "value": "2N7002",
       "mpn": "2N7002",
-      "lcsc": "",
-      "manufacturer": "generic",
-      "deviceUuid": "",
-      "footprint": "SOT-23",
+      "lcsc": "C8545",
+      "manufacturer": "CJ(江苏长电/长晶)",
+      "deviceUuid": "f8007837564a4f1fa0e6b57b81dccb0d",
+      "footprint": "SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR",
       "basic": false,
-      "desc": "2N7002 单 N 沟道 MOSFET(60V/0.3A),通用低边开关/电平/背光使能 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "2N7002 单 N 沟道 MOSFET(60V/0.3A),通用低边开关/电平/背光使能 （LCSC C8545/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "mosfet.2n7002dw": {
       "value": "2N7002DW",
       "mpn": "2N7002DW",
-      "lcsc": "",
-      "manufacturer": "generic",
-      "deviceUuid": "",
-      "footprint": "SOT-363",
+      "lcsc": "C232839",
+      "manufacturer": "onsemi(安森美)",
+      "deviceUuid": "73b57c4793d2476781660dd82ef34924",
+      "footprint": "SC-70-6_L2.2-W1.3-P0.65-LS2.2-BL",
       "basic": false,
-      "desc": "2N7002DW 双 N 沟道 MOSFET(SOT-363),双向 I2C 电平转换/域隔离(NXP AN10441) （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "2N7002DW 双 N 沟道 MOSFET(SOT-363),双向 I2C 电平转换/域隔离(NXP AN10441) （LCSC C232839/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ind.cmc_usb_sdmm0806": {
       "value": "SDMM0806H-2-900T",
       "mpn": "SDMM0806H-2-900T",
-      "lcsc": "",
+      "lcsc": "C370285",
       "manufacturer": "Sunlord(顺络)",
-      "deviceUuid": "",
-      "footprint": "CMC_0806_90R@100MHz",
+      "deviceUuid": "16d098df88ca415b82426da296604b6f",
+      "footprint": "FILTER-SMD_4P-L0.8-W0.6-TR_SDMM0806H",
       "basic": false,
-      "desc": "USB 共模扼流圈 90Ω@100MHz,D+/D- 差分共模抑制;串 22R 后过扼流再出连接器 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "USB 共模扼流圈 90Ω@100MHz,D+/D- 差分共模抑制;串 22R 后过扼流再出连接器 （LCSC C370285/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "ind.2u2h": {
       "value": "2.2uH",
-      "mpn": "FTC1210655S2R2MBCA",
-      "lcsc": "",
-      "manufacturer": "Sunlord/Cyntec",
-      "deviceUuid": "",
-      "footprint": "IND_1210_POWER",
+      "mpn": "LCF1210-2R2J-T",
+      "lcsc": "C251994",
+      "manufacturer": "EMTEK(兆欣)",
+      "deviceUuid": "b9e91430c31d4fdeb255dc61d0358e9e",
+      "footprint": "IND-SMD_L3.6-W2.9",
       "basic": false,
-      "desc": "2.2uH 功率电感(1210,FTC1210 系),升压/降压 DCDC 储能 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "2.2uH 功率电感(1210,FTC1210 系),升压/降压 DCDC 储能 （LCSC C251994/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "res.2k2_0402": {
       "value": "2.2kΩ",
       "mpn": "0402WGF2201TCE",
-      "lcsc": "",
+      "lcsc": "C25879",
       "manufacturer": "UNI-ROYAL(厚声)",
-      "deviceUuid": "",
+      "deviceUuid": "a5af5fd5005a45819ff0ab771881db3d",
       "footprint": "R0402",
       "basic": true,
-      "desc": "2.2kΩ 1% 0402,I2C 上拉常用值 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "2.2kΩ 1% 0402,I2C 上拉常用值 （LCSC C25879/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "res.20k_0402": {
       "value": "20kΩ",
       "mpn": "0402WGF2002TCE",
-      "lcsc": "",
+      "lcsc": "C25765",
       "manufacturer": "UNI-ROYAL(厚声)",
-      "deviceUuid": "",
+      "deviceUuid": "3a163ef2745c43cd822f855b5ea3efa4",
       "footprint": "R0402",
       "basic": true,
-      "desc": "20kΩ 1% 0402 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "20kΩ 1% 0402 （LCSC C25765/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "res.147k_0402": {
       "value": "147kΩ",
       "mpn": "0402WGF1473TCE",
-      "lcsc": "",
+      "lcsc": "C64171",
       "manufacturer": "UNI-ROYAL(厚声)",
-      "deviceUuid": "",
+      "deviceUuid": "8b63f01eee16421eb50654f2d33bb533",
       "footprint": "R0402",
       "basic": false,
-      "desc": "147kΩ 1% 0402,SY7088 FB 上分压 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "147kΩ 1% 0402,SY7088 FB 上分压 （LCSC C64171/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "res.46k4_0402": {
       "value": "46.4kΩ",
       "mpn": "0402WGF4642TCE",
-      "lcsc": "",
+      "lcsc": "C52378",
       "manufacturer": "UNI-ROYAL(厚声)",
-      "deviceUuid": "",
+      "deviceUuid": "de4ba86b59ab40269f6fd9dbe0261c1c",
       "footprint": "R0402",
       "basic": false,
-      "desc": "46.4kΩ 1% 0402,SY7088 FB 下分压 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "46.4kΩ 1% 0402,SY7088 FB 下分压 （LCSC C52378/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "cap.2u2_0805": {
       "value": "2.2uF",
-      "mpn": "CL21A225KAFNNNE",
-      "lcsc": "",
-      "manufacturer": "Samsung(三星)",
-      "deviceUuid": "",
+      "mpn": "CL21A225KBQNNNE",
+      "lcsc": "C377773",
+      "manufacturer": "SAMSUNG(三星)",
+      "deviceUuid": "636c78492b2e4a92a4da594ddaf12c72",
       "footprint": "C0805",
       "basic": false,
-      "desc": "2.2uF 0805 MLCC,功放电荷泵飞跨电容/去耦 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "2.2uF 0805 MLCC,功放电荷泵飞跨电容/去耦 （LCSC C377773/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "cap.33nf_0402": {
       "value": "33nF",
-      "mpn": "0402B333K250CT",
-      "lcsc": "",
+      "mpn": "0402F333M500NT",
+      "lcsc": "C1585",
       "manufacturer": "FH(风华)",
-      "deviceUuid": "",
+      "deviceUuid": "d77fec7c92904db5bfcdca81ca5668d1",
       "footprint": "C0402",
       "basic": false,
-      "desc": "33nF 0402 MLCC,ES8311 OUTP/OUTN 滤波 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "33nF 0402 MLCC,ES8311 OUTP/OUTN 滤波 （LCSC C1585/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "esd.esd5311": {
       "value": "ESD5311",
-      "mpn": "ESD5311N",
-      "lcsc": "",
-      "manufacturer": "generic",
-      "deviceUuid": "",
-      "footprint": "SOD-882/0201",
+      "mpn": "ESD5311N-2/TR",
+      "lcsc": "C153721",
+      "manufacturer": "WILLSEMI(韦尔)",
+      "deviceUuid": "b40dce9de0fb4fd38071a26a56bd18ff",
+      "footprint": "X1-DFN1006-2_L1.0-W0.6_ESD5311N-2-TR",
       "basic": false,
-      "desc": "ESD5311 单向 ESD 保护二极管(5V),USB D+/D- 数据线防静电 （deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "ESD5311 单向 ESD 保护二极管(5V),USB D+/D- 数据线防静电 （LCSC C153721/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     },
     "fb.120r_0603": {
       "value": "120Ω@100MHz",
       "mpn": "BLM18PG121SN1D",
-      "lcsc": "",
+      "lcsc": "C14709",
       "manufacturer": "muRata(村田)",
-      "deviceUuid": "",
+      "deviceUuid": "23a291ab27a541929bca72e15b923ccd",
       "footprint": "L0603",
       "basic": false,
-      "desc": "120Ω@100MHz 0603 磁珠,D 类功放 SPK± 输出 EMI 抑制(配 100pF 对地);开关沿辐射抑制。（deviceUuid/LCSC 待真机 lib search 解析写回;StickS3 对标提取, draft）"
+      "desc": "120Ω@100MHz 0603 磁珠,D 类功放 SPK± 输出 EMI 抑制(配 100pF 对地);开关沿辐射抑制。 （LCSC C14709/deviceUuid 已由 lib by-lcsc 解析 2026-07-23;StickS3 对标）"
     }
   }
 }
