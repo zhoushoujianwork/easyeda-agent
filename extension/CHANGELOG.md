@@ -6,6 +6,21 @@ follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **电路块库吸收 M5Stack StickS3(K150)—— 11 个新块 + 2 个新类目**:从官方公开原理图
+  (V0.6)对标提取,填补库里完全缺失的品类。新增 `audio`(`es8311_codec_i2s` /
+  `aw8737_classd_spk` / `mems_mic_analog`)、`display`(`st7789_spi_lcd_btb`)两个 category
+  (schema enum + `validate.go` 同步),以及 `esp32s3_pico_native_usb`(🔥 S3-PICO 原生 USB
+  下载,无 CH340 桥)、`bmi270_imu_i2c`、`ir_txrx_remote`、`sy7088_boost_5v`、
+  `lgs4056_liion_charge_path`、`i2c_isolation_2n7002dw`、`usbc_dual_orientation_data`。
+  standard-parts.json 补 24 个新料(deviceUuid/LCSC 留 TBD)。全部 `draft` 态,引脚按功能名
+  绑定并经原理图图片逐脚对抗校验(抓修多处静默错接:`USB_D±`实为`GPIO20/19`、BMI270 脚名
+  `SCx/SDx`、mic 供电 R52=100R 非 100K、多焊盘电源脚漏 fanout `*` 等);deviceUuid 解析 +
+  真机 `--probe`/`block-apply` 网表对账升 verified 为后续一轮。conventions 侧吸收:
+  `pcb-layout-conventions §7.10`(StickS3 第 4 块对标)、`design-decisions`(USB 架构/自动
+  下载各加「纯原生 USB 无桥」第三选项)、`docs/board-absorption-sticks3.md`(含 PY32-PMIC
+  多域电源架构参考)。
+
 ### Fixed
 - **`schematic.component.modify` 自定义属性静默 no-op**:CLI 文档使用
   `customAttributes`,但 EasyEDA SDK 实际只接受 `otherProperty`,导致命令返回成功却不更新

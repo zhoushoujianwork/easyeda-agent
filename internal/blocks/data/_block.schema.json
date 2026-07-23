@@ -20,8 +20,10 @@
     "desc": {"type": "string", "minLength": 1},
     "category": {
       "enum": [
+        "audio",
         "button",
         "comms",
+        "display",
         "indicator",
         "mcu",
         "mcu-support",

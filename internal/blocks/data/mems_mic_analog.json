@@ -1,0 +1,190 @@
+{
+  "id": "block.mems_mic_analog",
+  "desc": "模拟 MEMS 麦克风(MSM381A3729H9BPC,底进声):单端 OUT 经 0R(R48)接 codec MIC1P,MIC1N 经 0R(R49)接模拟地基准(pin3 GND,再经 R26 0R 单点桥到 AGND)构成伪差分;VDD 由 3V3_L3B_AU 经 R52(100R)+C65(100nF) RC 滤波供电。信噪比 65dB。",
+  "category": "audio",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "mic.msm381a3729",
+      "qty": 1,
+      "note": "MSM381A3729H9BPC 模拟 MEMS 麦克风(底进声),单端模拟输出,信噪比 65dB。符号 4 脚:OUT(pin4)/VDD(pin1)/GND(pin3)/GND(pin2)——两个 GND 脚接**不同网络**(pin3=MIC_N 基准侧、pin2=去耦回流侧,间隔 R26 0R 单点桥),放置前先 sch read 拉真实符号脚名/脚号再绑定,别照抄功能名。"
+    },
+    "R_OUT": {
+      "part": "res.0r_0402",
+      "qty": 1,
+      "note": "mic OUT(pin4) → MIC1_P 的 0R 跳线(StickS3 R48),便于调试改接法/断开测量。"
+    },
+    "R_REF": {
+      "part": "res.0r_0402",
+      "qty": 1,
+      "note": "MIC1_N 参考端 0R 跳线(StickS3 R49),把 mic 的 pin3 GND 基准引到 codec 的 MIC1N 参考脚,构成伪差分(MIC1N = mic 地基准,不是 VDD 偏置)。"
+    },
+    "R_FILT": {
+      "part": "res.100r_0402",
+      "qty": 1,
+      "note": "VDD 供电 RC 滤波串阻(StickS3 R52,100R/1%),3V3_L3B_AU 经此 + C65(100nF)到 AGND 构成 RC 低通,滤除电源噪声再进 mic VDD。注:原草稿误标为 100K 偏置电阻,实测原理图为 100R 供电滤波,与 MIC1_N 无连接。"
+    },
+    "R_S": {
+      "part": "res.0r_0402",
+      "qty": 1,
+      "note": "地基准单点桥(StickS3 R26,0R):mic pin3 GND(MIC_N 基准侧)经此接 AGND,Kelvin/单点接地便于隔离。"
+    },
+    "C_VDD": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "mic VDD 去耦/RC 滤波帽(StickS3 C65 100nF),VDD 滤波节点 → AGND,最靠 mic 电源脚。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.OUT",
+      "R_OUT.1"
+    ],
+    [
+      "R_OUT.2",
+      "PORT:MIC_P"
+    ],
+    [
+      "U.VDD",
+      "C_VDD.1",
+      "R_FILT.2"
+    ],
+    [
+      "R_FILT.1",
+      "PORT:VDD"
+    ],
+    [
+      "U.GND3",
+      "R_REF.1",
+      "R_S.1"
+    ],
+    [
+      "R_REF.2",
+      "PORT:MIC_N"
+    ],
+    [
+      "U.GND2",
+      "C_VDD.2",
+      "R_S.2",
+      "PORT:AGND"
+    ]
+  ],
+  "ports": {
+    "MIC_P": {
+      "dir": "out",
+      "at": "R_OUT.2",
+      "desc": "麦克风单端输出经 R_OUT 0R 跳线 → codec MIC1P(伪差分正)",
+      "default_net": "MIC1_P"
+    },
+    "MIC_N": {
+      "dir": "out",
+      "at": "R_REF.2",
+      "desc": "mic 地基准端经 R_REF 0R 跳线 → codec MIC1N(伪差分参考/负)",
+      "default_net": "MIC1_N"
+    },
+    "VDD": {
+      "dir": "in",
+      "at": "R_FILT.1",
+      "desc": "麦克风模拟供电入口,接干净音频轨 3V3_L3B_AU;块内经 R_FILT(100R)+C_VDD(100nF) RC 滤波再进 mic VDD 脚",
+      "default_net": "3V3_L3B_AU"
+    },
+    "AGND": {
+      "dir": "in",
+      "at": "U.GND2",
+      "desc": "模拟地;mic pin2 GND + C_VDD 去耦回流 + R_S 单点桥另一端汇于此",
+      "default_net": "AGND"
+    }
+  },
+  "schematic_notes": [
+    "模拟 MEMS mic 伪差分接法(照 StickS3 page_04 MIC 节实测):单端 OUT(pin4)经 R_OUT(R48 0R)→ codec MIC1P;MIC1N 端不是 VDD 偏置,而是把 mic 的 pin3 GND 基准经 R_REF(R49 0R)引到 codec MIC1N 参考脚 —— 单端信号 + 地基准构成伪差分,codec 差分输入抑制共模噪声。全部用 0R 跳线便于调试改接法。",
+    "VDD 供电=RC 滤波(不是偏置):3V3_L3B_AU 经 R_FILT(R52 100R/1%)串入,C_VDD(C65 100nF)从 VDD 滤波节点到 AGND,构成 RC 低通滤除电源噪声再进 mic VDD。**订正**:原草稿把 R52 当 100K 偏置电阻并接到 MIC1_N,实测原理图 R52=100R 且只在 VDD 供电路径上,与 MIC1_N 无任何连接。",
+    "双 GND 脚 + 单点接地:mic 有两个 GND 脚,pin3(MIC_N 基准侧)经 R_S(R26 0R)单点桥到 AGND,pin2(去耦回流侧)直接到 AGND;二者电气上仅隔一颗 0R,但网表上是两个网(R26 分隔),block-apply 对账时须按脚号(pin3/pin2)分别绑定,勿合并、勿用 * fanout。",
+    "布局要点:mic 尽量靠近 codec,MIC_P/MIC_N 走线短、成对走、包地屏蔽,远离数字/开关噪声源;底进声孔须对齐外壳开孔。",
+    "MSM381A3729H9BPC 信噪比 65dB。引脚名/脚号核对:符号两 GND 脚很可能同名(GND),放置时须按脚号 pin3(基准)/pin2(回流)区分绑定,先 sch read 拉真实符号脚名/脚号再落地。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "decap-adjacency",
+      "target": "U.VDD",
+      "constraint": "100nF(C_VDD)紧贴 mic 电源脚,先过 HF 帽再进 mic,去耦回路走短",
+      "value": "C_VDD <=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "mic-near-codec",
+      "target": "U ↔ codec",
+      "constraint": "mic 靠近 codec 摆放以缩短 MIC_P/MIC_N 模拟走线",
+      "value": "尽量近",
+      "severity": "should"
+    },
+    {
+      "rule": "acoustic-port-align",
+      "target": "U 底进声孔",
+      "constraint": "底进声孔对齐外壳/PCB 声孔开孔,声道通畅、密封防漏音",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "sense-shield",
+      "target": "MIC_P / MIC_N 走线",
+      "constraint": "MIC_P/MIC_N 成对短走线,两侧包地屏蔽,远离数字/开关/RF 噪声,不与噪声线长距离并行",
+      "value": ">=2mm 隔离",
+      "severity": "should"
+    }
+  ],
+  "signals": {
+    "_doc": "模拟 mic 伪差分输出对 + 模拟供电。",
+    "MIC_DIFF": {
+      "nets": [
+        "MIC_P",
+        "MIC_N"
+      ],
+      "type": "analog_diff",
+      "route": "MIC_P/MIC_N 成对短走线,等长贴近走(差分对待),包地屏蔽",
+      "keepout": "远离数字/开关电源/RF;不与噪声线平行长距离",
+      "severity": "must",
+      "reason": "模拟音频微弱信号,走线不对称或受扰直接变噪声/失真"
+    }
+  },
+  "placement": {
+    "U": {
+      "board_edge": false,
+      "orientation": "底进声孔朝向外壳声孔;mic 本体靠近 codec 一侧",
+      "severity": "must",
+      "reason": "声孔须对齐外壳开孔,且缩短到 codec 的模拟走线"
+    }
+  },
+  "silk": {
+    "U": {
+      "label": "MIC",
+      "clearance": "outside-body — mic 本体外侧,勿压声孔区",
+      "severity": "should"
+    }
+  },
+  "bom_note": "6 件:1× 模拟 MEMS mic(mic.msm381a3729,MSM381A3729H9BPC 底进声)+ 3× 0R 0402 跳线(R_OUT=R48/R_REF=R49/R_S=R26)+ 1× 100R 0402 供电滤波(R_FILT=R52,100R/1%,非 100K 偏置)+ 1× 100nF 0402 去耦滤波(C_VDD=C65)。mic 为扩展料,其余 0402 为 JLC basic 料。VDD 须走干净音频轨(3V3_L3B_AU),经 R52+C65 RC 滤波后进 mic。"
+}

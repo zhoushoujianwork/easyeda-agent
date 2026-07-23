@@ -9,9 +9,10 @@ import (
 )
 
 var validCategories = map[string]bool{
-	"button": true, "comms": true, "indicator": true, "mcu": true,
-	"mcu-support": true, "power": true, "protection": true, "rf": true,
-	"sensing": true, "storage": true, "usb": true, "usb-serial": true,
+	"audio": true, "button": true, "comms": true, "display": true,
+	"indicator": true, "mcu": true, "mcu-support": true, "power": true,
+	"protection": true, "rf": true, "sensing": true, "storage": true,
+	"usb": true, "usb-serial": true,
 }
 
 var validPortDirections = map[string]bool{"in": true, "out": true, "bidir": true}

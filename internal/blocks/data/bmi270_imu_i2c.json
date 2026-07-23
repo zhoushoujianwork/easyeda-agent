@@ -1,0 +1,209 @@
+{
+  "id": "block.bmi270_imu_i2c",
+  "desc": "BMI270 6 轴 IMU(3 轴加速度 + 3 轴陀螺)I2C 接口最小系统:CSB 接 VDDIO 选 I2C 模式、SDO 接地定地址 0x68、INT1 中断上拉输出唤醒 MCU,VDD/VDDIO 各 100nF 就近去耦。M5Stack StickS3(取代老 StickC 的 MPU6886)同款,带手势/计步低功耗智能引擎",
+  "category": "sensing",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "sensor.bmi270",
+      "qty": 1,
+      "note": "BMI270 6 轴 IMU(3 轴加速度 + 3 轴陀螺),LGA-14 封装,I2C 地址 0x68(SDO=GND)/0x69(SDO=VDDIO)。带手势/计步/低功耗智能引擎;StickS3 用它取代老 StickC 的 MPU6886。CSB 接 VDDIO 选 I2C 模式(拉低=SPI)。引脚名放置前 sch read 核对真实符号脚。"
+    },
+    "R_INT": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "INT1 上拉到 VDDIO(StickS3 R6,PYG4_IMU_INT);INT1 推挽输出接 MCU GPIO 做运动唤醒。"
+    },
+    "C_VDD": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VDD 电源去耦(StickS3 C33),就近芯片供电脚。"
+    },
+    "C_VDDIO": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "VDDIO 电源去耦(StickS3 C35),就近 IO 电平脚;VDDIO 须匹配主机 I2C 电平。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.SCx",
+      "PORT:I2C_SCL"
+    ],
+    [
+      "U.SDx",
+      "PORT:I2C_SDA"
+    ],
+    [
+      "U.INT1",
+      "R_INT.1",
+      "PORT:INT"
+    ],
+    [
+      "R_INT.2",
+      "PORT:VDDIO"
+    ],
+    [
+      "U.CSB",
+      "PORT:VDDIO"
+    ],
+    [
+      "U.SDO",
+      "PORT:GND"
+    ],
+    [
+      "U.VDD",
+      "C_VDD.1",
+      "PORT:VDD"
+    ],
+    [
+      "U.VDDIO",
+      "C_VDDIO.1",
+      "PORT:VDDIO"
+    ],
+    [
+      "U.GND",
+      "U.GNDIO",
+      "C_VDD.2",
+      "C_VDDIO.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "I2C_SCL": {
+      "dir": "bidir",
+      "at": "U.SCx",
+      "desc": "I2C 时钟;BMI270 符号该脚名为 SCx(datasheet SPI 名 SCK),I2C 模式下即 SCL(StickS3 走 G48_SCL)。宿主总线上拉在 MCU 侧,本块不重复加",
+      "default_net": "I2C_SCL"
+    },
+    "I2C_SDA": {
+      "dir": "bidir",
+      "at": "U.SDx",
+      "desc": "I2C 数据;BMI270 符号该脚名为 SDx(datasheet SPI 名 SDI),I2C 模式下即 SDA(StickS3 走 G47_SDA)",
+      "default_net": "I2C_SDA"
+    },
+    "INT": {
+      "dir": "out",
+      "at": "U.INT1",
+      "desc": "INT1 推挽中断/运动唤醒输出 → MCU GPIO(StickS3 PYG4_IMU_INT);块内已 100k 上拉到 VDDIO。INT2 本板悬空,按需另接",
+      "default_net": "IMU_INT"
+    },
+    "VDD": {
+      "dir": "in",
+      "at": "U.VDD",
+      "desc": "芯片主供电;就近 100nF 去耦。可与 VDDIO 同接一轨",
+      "default_net": "3V3"
+    },
+    "VDDIO": {
+      "dir": "in",
+      "at": "U.VDDIO",
+      "desc": "IO 电平轨,必须匹配主机 I2C 电平(StickS3 为 3V3_L1);同时是 CSB 选模式与 INT 上拉的参考轨,就近 100nF 去耦",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "U.GND",
+      "desc": "地;VDD/VDDIO 去耦回流,GNDIO 也接此,SDO 接地定地址 0x68",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "接口模式选择:CSB 接 VDDIO 选 I2C 模式(CSB 拉低才是 SPI)。SDO 电平设 I2C 地址——SDO 接地 = 0x68(本板默认),SDO 接 VDDIO = 0x69。本块 internal_nets 已把 U.CSB 绑到 PORT:VDDIO、U.SDO 绑到 PORT:GND。",
+    "I2C 模式脚名映射:StickS3 原理图 BMI270 符号该两脚名标为 SCx / SDx(datasheet SPI 名 SCK/SDI),I2C 模式下分别充当 SCL/SDA(走 G48_SCL / G47_SDA);internal_nets 已用符号名 SCx/SDx,放置前 sch read 再核对(可能回读为 SCx/SDx 或 pad 号 13/14)。",
+    "INT1 推挽输出接 MCU GPIO 做运动唤醒(StickS3 PYG4_IMU_INT,本板 100k 上拉到 VDDIO);INT2 可选,本板悬空。BMI270 内置手势/计步智能引擎,可配运动检测中断唤醒主机。",
+    "VDDIO 必须匹配主机 I2C 电平(StickS3 为 3V3_L1);VDD 与 VDDIO 就近各 100nF 去耦,电容靠近管脚放置(原理图注)。VDD 与 VDDIO 可同接一轨。",
+    "BMI270 是 StickS3 的 IMU,取代老 StickC 的 MPU6886;低功耗、带手势/计步智能引擎。",
+    "宿主 I2C 总线上拉在 MCU 侧已有,本块不重复加上拉,避免并联过强;若本块是总线唯一从机且无上拉时,另在 SCL/SDA 各补一颗上拉到 VDDIO。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "引脚名核对:internal_nets 用 StickS3 原理图 BMI270 符号脚名(SCx/SDx/SDO/CSB/INT1/VDD/VDDIO/GND/GNDIO;I2C 两脚符号名 SCx/SDx 而非 datasheet SPI 名 SCK/SDI);放置前先 sch read 拉真实符号脚名再绑定。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "decap-adjacency",
+      "target": "U.VDD / U.VDDIO",
+      "constraint": "VDD、VDDIO 各 100nF 去耦紧贴对应供电脚,回流路径短(原理图注『电容靠近管脚』)",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "orientation-consistency",
+      "target": "U (BMI270 LGA-14)",
+      "constraint": "IMU 贴装朝向需与整机坐标系一致(X/Y/Z 轴方向),换算靠固件但 PCB 摆放决定物理轴向;放置角度记录进机构对齐",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "keep-short",
+      "target": "I2C_SCL / I2C_SDA",
+      "constraint": "I2C 两线保持短、走线整齐,远离开关电源/RF/天线;IMU 靠近 MCU 缩短总线",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "quiet-placement",
+      "target": "U (IMU)",
+      "constraint": "IMU 远离发热/振动源(功放、电机)与大电流开关节点,避免机械/热噪声污染陀螺零偏",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "placement": {
+    "U": {
+      "board_edge": false,
+      "side": "top",
+      "orientation": "按整机坐标系摆正 X/Y/Z 轴;远离功放/开关电源等噪声与发热源",
+      "severity": "should",
+      "reason": "IMU 物理轴向由 PCB 摆放决定,靠近 MCU 缩短 I2C,远离噪声保陀螺精度"
+    }
+  },
+  "signals": {
+    "I2C": {
+      "nets": ["I2C_SCL", "I2C_SDA"],
+      "type": "single_high_speed",
+      "route": "I2C 低速总线短走线,上拉在 MCU 侧;SCL 别与 SDA 长距离并行紧贴",
+      "keepout": "远离开关电源/RF/天线",
+      "severity": "should",
+      "reason": "读数总线,受扰会丢采样/误触发中断"
+    },
+    "INT": {
+      "nets": ["INT"],
+      "type": "single_high_speed",
+      "route": "INT1 短走线接 MCU 唤醒 GPIO,块内已上拉到 VDDIO",
+      "keepout": "远离噪声线,避免误唤醒",
+      "severity": "should",
+      "reason": "运动唤醒中断,毛刺会误触发唤醒耗电"
+    }
+  },
+  "silk": {
+    "U": {
+      "label": "BMI270 / IMU",
+      "clearance": "outside-body — IMU 本体外侧;标注第 1 脚极性",
+      "severity": "should"
+    }
+  },
+  "bom_note": "4 件:1× BMI270 6 轴 IMU(sensor.bmi270,LGA-14)+ 1× 100k 0402(INT1 上拉)+ 2× 100nF 0402(VDD/VDDIO 去耦)。CSB→VDDIO 选 I2C、SDO→GND 定址 0x68 均在块内接死,无额外料。宿主 I2C 上拉不含在本块(在 MCU 侧)。deviceUuid/LCSC C 号待真机 lib search 解析。"
+}

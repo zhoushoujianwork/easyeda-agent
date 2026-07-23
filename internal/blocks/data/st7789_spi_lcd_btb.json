@@ -1,0 +1,259 @@
+{
+  "id": "block.st7789_spi_lcd_btb",
+  "desc": "SPI TFT(ST7789P3 135x240 IPS 1.14\")接口 = 主板侧 BTB 连接器(AXE512127D)+ 背光低边 MOSFET 开关。ST7789P3 驱动 IC 在 LCD FPC 上、不在本板;本块只是主板的 BTB 座 + 背光使能控制。座子传 SPI 4 线 CS/SCK/MOSI/DC(RS)/RST、共享 I2C(SCL/SDA,给 FPC 触摸/辅助)、屏供电 3V3 与背光 LED 两脚(anode/cathode)。背光 LED 由 3V3 经 R27 10R 限流→座子 anode 脚,LED cathode 脚→Q6 2N7002 漏极→GND,栅极受 G38_LCD_BL 使能、R43 5.1K 栅极下拉。",
+  "category": "display",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图 page_04 LCD_BTB 节对标提取(引脚按功能名绑定);已对抗校验原理图图片修正背光拓扑与电阻角色,待真机 --probe 刷 AXE512127D 真实 pad 名 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "J": {
+      "part": "conn.btb_lcd_axe512127",
+      "qty": 1,
+      "note": "LCD BTB 连接器 AXE512127D;SPI 屏信号 + 共享 I2C + 屏供电 + 背光 LED 两脚全经此座传到 LCD FPC。原理图脚:1=LCD_CS(G41)、3=VDD(3V3_L3B)、5=SCK(G40)、6=SCL(G48)、7=MOSI(G39)、8=SDA(G47)、9=RS/DC(G45)、10=背光 LED 阳极、11=RST(G21)、12=背光 LED 阴极;2/14/15=GND、13/16=MP 安装脚、4=NC。BTB 座真实 pad 号随座子而定,放置前先用 sch read --probe 拉真实脚名再绑定,本块信号名为功能名。"
+    },
+    "Q_BL": {
+      "part": "mosfet.2n7002",
+      "qty": 1,
+      "note": "背光低边开关 NMOS(Q6 2N7002T):栅极受 G38_LCD_BL 使能,漏极接座子背光 LED 阴极脚(pin12),源极接 GND。拉高栅极→导通→背光亮,拉低→关断→省电。"
+    },
+    "R_CS": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "LCD_CS 片选上拉 10K 到 3V3_L3B(R41),保证屏未选中时 CS 电平确定、避免误选。"
+    },
+    "R_BL_LED": {
+      "part": "res.10r_0402",
+      "qty": 1,
+      "note": "背光 LED 串限流 10R(R27):从 3V3_L3B 串到座子背光 LED 阳极脚(pin10),设背光电流。"
+    },
+    "R_BL_G": {
+      "part": "res.5k1_0402",
+      "qty": 1,
+      "note": "背光 MOSFET 栅极下拉 5.1K(R43):G38_LCD_BL 悬空/上电未驱动时把 Q6 栅极拉到 GND,保证背光默认关断。"
+    },
+    "C_VDD": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "屏逻辑供电去耦 1uF(C51),就近座子 VDD 脚(pin3);屏供电轨 3V3_L3B(可被电源域门控省电)。"
+    }
+  },
+  "internal_nets": [
+    [
+      "J.LCD_CS",
+      "R_CS.1",
+      "PORT:LCD_CS"
+    ],
+    [
+      "R_CS.2",
+      "PORT:3V3"
+    ],
+    [
+      "J.LCD_SCK",
+      "PORT:LCD_SCK"
+    ],
+    [
+      "J.LCD_MOSI",
+      "PORT:LCD_MOSI"
+    ],
+    [
+      "J.LCD_RS",
+      "PORT:LCD_DC"
+    ],
+    [
+      "J.LCD_RST",
+      "PORT:LCD_RST"
+    ],
+    [
+      "J.SCL",
+      "PORT:I2C_SCL"
+    ],
+    [
+      "J.SDA",
+      "PORT:I2C_SDA"
+    ],
+    [
+      "R_BL_LED.1",
+      "PORT:3V3"
+    ],
+    [
+      "R_BL_LED.2",
+      "J.BL_A"
+    ],
+    [
+      "J.BL_K",
+      "Q_BL.D"
+    ],
+    [
+      "Q_BL.S",
+      "PORT:GND"
+    ],
+    [
+      "Q_BL.G",
+      "R_BL_G.1",
+      "PORT:LCD_BL"
+    ],
+    [
+      "R_BL_G.2",
+      "PORT:GND"
+    ],
+    [
+      "J.VDD",
+      "C_VDD.1",
+      "PORT:3V3"
+    ],
+    [
+      "J.GND*",
+      "C_VDD.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "LCD_CS": {
+      "dir": "in",
+      "at": "J.LCD_CS",
+      "desc": "SPI 片选(G41)→ LCD;低有效选中屏;块内 10K 上拉到 3V3 保证未选中电平确定",
+      "default_net": "LCD_CS"
+    },
+    "LCD_SCK": {
+      "dir": "in",
+      "at": "J.LCD_SCK",
+      "desc": "SPI 时钟(G40)→ LCD",
+      "default_net": "LCD_SCK"
+    },
+    "LCD_MOSI": {
+      "dir": "in",
+      "at": "J.LCD_MOSI",
+      "desc": "SPI 数据(G39)→ LCD;ST7789 单向写,无 MISO",
+      "default_net": "LCD_MOSI"
+    },
+    "LCD_DC": {
+      "dir": "in",
+      "at": "J.LCD_RS",
+      "desc": "数据/命令选择(G45,RS=DC)→ LCD;高=数据、低=命令",
+      "default_net": "LCD_DC"
+    },
+    "LCD_RST": {
+      "dir": "in",
+      "at": "J.LCD_RST",
+      "desc": "屏复位(G21)→ LCD;经座子直连,本块无 RST 上拉(复位电平由 MCU 侧保证)",
+      "default_net": "LCD_RST"
+    },
+    "I2C_SCL": {
+      "dir": "bidir",
+      "at": "J.SCL",
+      "desc": "共享 I2C 时钟(G48)经座子传到 LCD FPC(触摸/辅助器件);上拉在主控侧",
+      "default_net": "I2C_SCL"
+    },
+    "I2C_SDA": {
+      "dir": "bidir",
+      "at": "J.SDA",
+      "desc": "共享 I2C 数据(G47)经座子传到 LCD FPC(触摸/辅助器件);上拉在主控侧",
+      "default_net": "I2C_SDA"
+    },
+    "LCD_BL": {
+      "dir": "in",
+      "at": "Q_BL.G",
+      "desc": "背光使能(G38)→ Q6 2N7002 栅极;拉高开背光、拉低关背光;块内 5.1K 栅极下拉保证默认关断",
+      "default_net": "LCD_BL"
+    },
+    "3V3": {
+      "dir": "in",
+      "at": "J.VDD",
+      "desc": "屏逻辑供电轨 3V3_L3B(可被电源域门控);同时经 R27 10R 供背光 LED、CS 上拉入口、1uF 去耦入口",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "J.GND*",
+      "desc": "地;座子多个 GND 脚(2/14/15)全并联 + 去耦回流 + 背光 MOSFET 源极/栅极下拉回流",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "ST7789P3 控制器在 LCD 模组(FPC)上,本块只是主板 BTB 座(AXE512127D)+ 背光低边开关,不含驱动 IC。座子传 SPI 4 线 CS/SCK/MOSI/DC(RS)/RST + 共享 I2C(SCL/SDA)+ 屏供电 3V3 + 背光 LED 两脚。分辨率 135x240 IPS 1.14\"。",
+    "背光低边 NMOS 开关(Q6 2N7002T):3V3_L3B → R27 10R 限流 → 座子背光 LED 阳极脚(pin10);LED 在 FPC 上,阴极脚(pin12)→ Q6 漏极 → Q6 源极 → GND;栅极受 G38_LCD_BL 使能,R43 5.1K 栅极下拉到 GND 保证默认关断。背光可为独立电源域门控省电。",
+    "LCD_CS 用 10K(R41)上拉到 3V3_L3B,保证屏未选中时片选电平确定。屏供电 3V3_L3B(可被电源域门控省电),C51 1uF 就近座子 VDD 脚(pin3)去耦。",
+    "座子还带出共享 I2C 总线(G48_SCL/G47_SDA,pin6/8),给 LCD FPC 上的触摸/辅助器件;I2C 上拉在主控侧,本块不含。pin4=NC(原理图打叉),pin13/16=MP 安装脚。",
+    "BTB 连接器真实 pad 名随座子(AXE512127D)而定,放置前先用 sch read --probe 拉真实脚名再绑定信号;本块 internal_nets 用功能名,不照抄脚号。GND 用 J.GND* fanout 把座子所有 GND 脚(2/14/15)并联。",
+    "SPI 走线短、CS/SCK/MOSI 整齐,远离 RF/开关电源。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "decap-adjacency",
+      "target": "J.VDD",
+      "constraint": "C51 1uF 紧贴 BTB 座供电脚 J.VDD(pin3),去耦回路走短",
+      "value": "<=2mm",
+      "severity": "should"
+    },
+    {
+      "rule": "backlight-fet-adjacency",
+      "target": "Q_BL / R_BL_LED / R_BL_G",
+      "constraint": "背光 MOSFET、10R 限流与栅极下拉靠近 BTB 座背光脚,背光电流回路短",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "keep-short",
+      "target": "LCD_CS / LCD_SCK / LCD_MOSI / LCD_DC / LCD_RST",
+      "constraint": "SPI 四线 + DC/RST 保持短、走线整齐,远离 RF/开关电源;CS/SCK/MOSI 别与开关噪声长距离并行",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "placement": {
+    "J": {
+      "board_edge": false,
+      "edge": "any",
+      "side": "top",
+      "orientation": "BTB 座朝 LCD FPC 折叠方向,便于屏排线对插;座子位置对齐屏机械开窗",
+      "severity": "should",
+      "reason": "LCD 经 BTB 座对插,座子位置/朝向须匹配屏 FPC 走向与机壳开窗"
+    }
+  },
+  "signals": {
+    "LCD_SPI": {
+      "nets": [
+        "LCD_SCK",
+        "LCD_MOSI",
+        "LCD_CS",
+        "LCD_DC"
+      ],
+      "type": "single_high_speed",
+      "route": "SPI 屏总线尽量短、走线整齐;SCK 别与 MOSI 长距离紧贴并行",
+      "keepout": "远离 RF/天线与开关电源;BTB 座靠近主控缩短总线",
+      "severity": "should",
+      "reason": "SPI 屏中高速总线,长走线/强干扰会花屏"
+    }
+  },
+  "silk": {
+    "J": {
+      "label": "LCD_BTB",
+      "clearance": "outside-body — BTB 座本体外侧",
+      "severity": "should"
+    }
+  },
+  "bom_note": "共 6 件:1× LCD BTB 连接器(conn.btb_lcd_axe512127,AXE512127D)+ 1× 2N7002 背光低边 MOSFET(mosfet.2n7002,Q6)+ 1× 10K 0402(R41,CS 上拉)+ 1× 10R 0402(R27,背光 LED 限流)+ 1× 5.1K 0402(R43,背光栅极下拉)+ 1× 1uF 0402(C51,屏供电去耦)。ST7789P3 驱动 IC 与背光 LED 均在 LCD FPC 上、不计入本块 BOM。"
+}

@@ -1,0 +1,229 @@
+{
+  "id": "block.aw8737_classd_spk",
+  "desc": "AW8737A 单声道 D 类/K 类音频功放(内置电荷泵):差分输入 INP/INN 各串 10K,SHDN 脉冲设增益/工作模式,VDD/PVDD 从 5V 供电;C1P/C1N/C2P/C2N 接 2.2uF 飞跨电容,VOP/VON 输出各经 120R@100MHz 磁珠 + 100pF EMI 电容再到 8Ω 喇叭。StickS3 音频功率级",
+  "category": "audio",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "ic.aw8737a",
+      "qty": 1,
+      "note": "AW8737A 单声道 D 类/K 类音频功放,内置电荷泵。差分输入 INP/INN,SHDN 脉冲控制增益/模式,VDD/PVDD 从 5V(VBUS_L0)。引脚名放置前 sch read / --probe 核对真实符号脚。"
+    },
+    "R_INP": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "INP 差分输入串阻(StickS3 R31),与 R_INN 一起设输入阻抗/增益;IN_P 来自 codec DAC_L_P。"
+    },
+    "R_INN": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "INN 差分输入串阻(StickS3 R32);IN_N 来自 codec DAC_L_N。"
+    },
+    "R_SHDN": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "SHDN 下拉/偏置 100K(StickS3 R30);单纯拉低=关断,脉冲个数设增益/工作模式。"
+    },
+    "C_VDD1": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "VDD 去耦体电容 22uF(StickS3 C36),就近 VDD/PVDD 电源脚。"
+    },
+    "C_VDD2": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "VDD 去耦体电容 22uF(StickS3 C37),与 C_VDD1 并联稳 5V。"
+    },
+    "C_C1": {
+      "part": "cap.2u2_0805",
+      "qty": 1,
+      "note": "电荷泵飞跨电容 C1P/C1N 之间 2.2uF(StickS3 C46),电荷泵工作必需件。"
+    },
+    "C_C2": {
+      "part": "cap.2u2_0805",
+      "qty": 1,
+      "note": "电荷泵飞跨电容 C2P/C2N 之间 2.2uF(StickS3 C47),电荷泵工作必需件。"
+    },
+    "FB_P": {
+      "part": "fb.120r_0603",
+      "qty": 1,
+      "note": "SPK_P 输出磁珠 120R@100MHz(StickS3 FB1),抑制 D 类开关沿辐射。"
+    },
+    "FB_N": {
+      "part": "fb.120r_0603",
+      "qty": 1,
+      "note": "SPK_N 输出磁珠 120R@100MHz(StickS3 FB2),与 FB_P 成对。"
+    },
+    "C_EMI_P": {
+      "part": "cap.100pf_0402",
+      "qty": 1,
+      "note": "SPK_P EMI 电容 100pF/50V(StickS3 C48),磁珠后对地。"
+    },
+    "C_EMI_N": {
+      "part": "cap.100pf_0402",
+      "qty": 1,
+      "note": "SPK_N EMI 电容 100pF/50V(StickS3 C49),磁珠后对地。"
+    }
+  },
+  "internal_nets": [
+    ["U.INP", "R_INP.2"],
+    ["R_INP.1", "PORT:IN_P"],
+    ["U.INN", "R_INN.2"],
+    ["R_INN.1", "PORT:IN_N"],
+    ["U.SHDN", "R_SHDN.1", "PORT:SHDN"],
+    ["R_SHDN.2", "PORT:GND"],
+    ["U.VDD*", "U.PVDD", "C_VDD1.1", "C_VDD2.1", "PORT:VDD"],
+    ["U.C1P", "C_C1.1"],
+    ["U.C1N", "C_C1.2"],
+    ["U.C2P", "C_C2.1"],
+    ["U.C2N*", "C_C2.2"],
+    ["U.VOP", "FB_P.1"],
+    ["FB_P.2", "C_EMI_P.1", "PORT:SPK_P"],
+    ["U.VON", "FB_N.1"],
+    ["FB_N.2", "C_EMI_N.1", "PORT:SPK_N"],
+    ["U.GND*", "C_VDD1.2", "C_VDD2.2", "C_EMI_P.2", "C_EMI_N.2", "PORT:GND"]
+  ],
+  "ports": {
+    "IN_P": {
+      "dir": "in",
+      "at": "R_INP.1",
+      "desc": "差分音频输入正,来自 codec DAC_L_P;块内经 R_INP 10K 串阻进 U.INP",
+      "default_net": "DAC_L_P"
+    },
+    "IN_N": {
+      "dir": "in",
+      "at": "R_INN.1",
+      "desc": "差分音频输入负,来自 codec DAC_L_N;块内经 R_INN 10K 串阻进 U.INN",
+      "default_net": "DAC_L_N"
+    },
+    "SHDN": {
+      "dir": "in",
+      "at": "U.SHDN",
+      "desc": "关断/脉冲增益控制(StickS3 PYG3_SPK_Pulse PWM 驱动);脉冲个数设增益/模式,拉低=关断,块内 100K 偏置",
+      "default_net": "SPK_PULSE"
+    },
+    "VDD": {
+      "dir": "in",
+      "at": "U.VDD",
+      "desc": "功放供电 5V(StickS3 VBUS_L0);VDD 与 PVDD 同接此轨,块内 2×22uF 体电容去耦",
+      "default_net": "5V"
+    },
+    "SPK_P": {
+      "dir": "out",
+      "at": "FB_P.2",
+      "desc": "喇叭差分输出正,经 120R@100MHz 磁珠 + 100pF EMI 电容后引出至 8Ω 喇叭",
+      "default_net": "SPK_P"
+    },
+    "SPK_N": {
+      "dir": "out",
+      "at": "FB_N.2",
+      "desc": "喇叭差分输出负,经 120R@100MHz 磁珠 + 100pF EMI 电容后引出至 8Ω 喇叭",
+      "default_net": "SPK_N"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "U.GND",
+      "desc": "地;功放 GND/EPAD + VDD 体电容 + 输出 EMI 电容回流公共端",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "AW8737A = 带电荷泵的 D 类/K 类单声道音频功放,差分输入 INP/INN。C1P/C1N/C2P/C2N 各接一颗 2.2uF 飞跨电容(C_C1/C_C2),电荷泵工作必需,一颗都不能省。VDD 与 PVDD 从 5V(StickS3 VBUS_L0)供电,就近 2×22uF 体电容。",
+    "SHDN 脉冲控制:AW873x 系列用 SHDN 脚上的脉冲个数设增益/工作模式(StickS3 用 PYG3_SPK_Pulse PWM 驱动);单纯把 SHDN 拉低=关断。R_SHDN 100K(R30)做下拉/偏置,保证空闲电平确定。",
+    "输出 EMI 处理:VOP/VON 输出到喇叭前各串一颗 120R@100MHz 磁珠(FB_P/FB_N)+ 100pF 对地(C_EMI_P/C_EMI_N),抑制 D 类开关沿的辐射;喇叭引线较长时必备。磁珠在前、EMI 电容在磁珠之后接地。",
+    "差分输入串阻 10K(R_INP/R_INN,StickS3 R31/R32)设输入阻抗与增益;IN_P/IN_N 来自 codec ES8311 的 DAC_L_P/DAC_L_N 差分输出。",
+    "使用限制:电池供电时音量建议 <75%(M5 注:功率过大会导致整机重启,5V 供电轨被拉塌)。8Ω@1W 喇叭。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "引脚名核对:internal_nets 用 AW8737A datasheet 功能脚名(INP/INN/SHDN/VDD/PVDD/C1P/C1N/C2P/C2N/VOP/VON/GND);放置前先 sch read / --probe 拉真实符号脚名再绑定,别照抄脚号。",
+    "多焊盘 fanout:StickS3 原理图对标该 16 焊盘符号,功能名 VDD 出现在 A3+B3 两个焊盘、C2N 出现在 B1+B2 两个焊盘、GND 出现在 C2+C3+C4 三个焊盘 —— 这三个功能名都用 `*` 全并联(U.VDD* / U.C2N* / U.GND*),否则同名冗余焊盘只连一个、另一个静默悬空(电源脚/电荷泵飞跨电容负端开路)。PVDD/VOP/VON/C1P/C1N/C2P 均单焊盘,不加 *。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "flying-cap-adjacency",
+      "target": "C_C1 / C_C2",
+      "constraint": "电荷泵飞跨电容 2.2uF 紧贴 U 的 C1P/C1N、C2P/C2N 脚,走线短、回路小,减小电荷泵开关噪声",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "decap-adjacency",
+      "target": "C_VDD1 / C_VDD2",
+      "constraint": "2×22uF 体电容紧贴 VDD/PVDD 电源脚,承受 D 类瞬态大电流;5V 供电走线加宽",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "emi-filter-order",
+      "target": "FB_P/FB_N → C_EMI_P/C_EMI_N → SPK_P/SPK_N",
+      "constraint": "输出先过磁珠再接 EMI 电容到地,最后出到喇叭端子;磁珠靠近芯片输出脚,EMI 电容地就近缝合地平面",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "diff-out-pair",
+      "target": "SPK_P / SPK_N",
+      "constraint": "喇叭差分输出走线成对、等长、短,远离数字/RF/开关电源;喇叭线长时磁珠+EMI 电容不可省",
+      "value": "对称成对",
+      "severity": "should"
+    }
+  ],
+  "signals": {
+    "_doc": "差分音频输入对 + 差分喇叭输出对,均按差分成对处理。",
+    "AUDIO_IN": {
+      "nets": ["IN_P", "IN_N"],
+      "type": "analog_diff",
+      "route": "codec DAC 差分输出成对短走线进串阻,远离数字/开关噪声",
+      "keepout": "远离 SHDN 脉冲线与开关电源",
+      "severity": "should",
+      "reason": "模拟差分小信号,布线不对称/串扰会污染音质"
+    },
+    "SPK_OUT": {
+      "nets": ["SPK_P", "SPK_N"],
+      "type": "analog_diff",
+      "route": "D 类开关输出成对、等长、加粗;磁珠+EMI 电容就近芯片,喇叭端子处再出线",
+      "keepout": "远离天线/RF 与敏感模拟线(D 类开关沿辐射强)",
+      "severity": "must",
+      "reason": "D 类开关输出辐射强,布线不当会干扰 RF/音频并超 EMI"
+    }
+  },
+  "placement": {
+    "U": {
+      "board_edge": false,
+      "orientation": "功放靠近喇叭端子与 codec DAC 输出,缩短差分输入与喇叭输出走线;飞跨电容/体电容环绕芯片就近放",
+      "severity": "should",
+      "reason": "缩短差分输入与喇叭输出、减小电荷泵与供电回路面积"
+    }
+  },
+  "silk": {
+    "U": {
+      "label": "AW8737",
+      "clearance": "outside-body — 功放本体外侧标注,第一脚方向清晰",
+      "severity": "should"
+    }
+  },
+  "bom_note": "12 件:1× AW8737A 单声道 D 类功放(ic.aw8737a)+ 2× 10k 0402(差分输入串阻)+ 1× 100k 0402(SHDN 偏置)+ 2× 22uF 0805(VDD 体电容)+ 2× 2.2uF 0805(电荷泵飞跨电容,必需)+ 2× 120R@100MHz 0603 磁珠(输出 EMI)+ 2× 100pF 0402(输出 EMI 电容)。飞跨电容与输出磁珠/EMI 电容一件都不能省(电荷泵与 D 类辐射抑制必需)。deviceUuid/LCSC C 号待真机 lib search 解析。"
+}

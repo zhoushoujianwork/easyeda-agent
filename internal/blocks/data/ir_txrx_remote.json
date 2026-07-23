@@ -1,0 +1,190 @@
+{
+  "id": "block.ir_txrx_remote",
+  "desc": "红外遥控收发单元:VSOP38338 38kHz 红外接收头(OUT 串阻+下拉→MCU)+ IR928 红外发射管由 2N7002 NMOS 低边驱动(限流+栅极串阻/下拉)。两半独立,任一半不用可 DNF;VCC 从 5V 供电,接收解码须走 MCU RMT 外设",
+  "category": "comms",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_05)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "U_RX": {
+      "part": "ic.vsop38338",
+      "qty": 1,
+      "note": "VSOP38338 38kHz 红外接收头(带内置 38kHz 载波解调),常供电,OUT 空闲高、收到调制载波拉低;脚名(VCC/GND/OUT)放置前 sch read 核对。"
+    },
+    "C_RX": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "接收头 VCC 去耦(原理图 C2 10uF),就近 U_RX 电源脚放置,抑制供电纹波(红外接收头对电源噪声敏感)。"
+    },
+    "R_RX_S": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "接收 OUT 串阻(原理图 R6),接到 MCU 侧,限制边沿电流/做简单 RC。"
+    },
+    "R_RX_PD": {
+      "part": "res.20k_0402",
+      "qty": 1,
+      "note": "接收下拉 20K(原理图 R5),接在串阻 R6 之后的 MCU/LED_RX 节点(非 OUT 直下拉),与 R6 构成 10K/20K 分压并保证空闲电平确定。"
+    },
+    "D_TX": {
+      "part": "led.ir928_emitter",
+      "qty": 1,
+      "note": "IR928-6C/F1 红外发射管;阳极接 5V(VCC),阴极经限流电阻→MOSFET 漏极,低边驱动。"
+    },
+    "Q_TX": {
+      "part": "mosfet.2n7002",
+      "qty": 1,
+      "note": "发射 LED 低边驱动 NMOS(原理图 Q1);漏极接 LED 阴极侧,源极接地,栅极由 MCU 经串阻驱动。"
+    },
+    "R_TX_LED": {
+      "part": "res.10r_0402",
+      "qty": 1,
+      "note": "发射 LED 限流 10R(原理图 R2),设脉冲电流(红外发射为短脉冲,峰值电流较大)。"
+    },
+    "R_TX_G": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "栅极下拉 10K(原理图 R1),MCU 复位/悬空时保证 NMOS 关断,LED 不误发。"
+    },
+    "R_TX_GS": {
+      "part": "res.22r_0402",
+      "qty": 1,
+      "note": "栅极串阻 22R(原理图 R3),抑制栅极振铃/EMI 与开关沿。"
+    }
+  },
+  "internal_nets": [
+    ["U_RX.VCC", "C_RX.1", "PORT:VCC"],
+    ["U_RX.GND", "C_RX.2", "PORT:GND"],
+    ["U_RX.OUT", "R_RX_S.1"],
+    ["R_RX_S.2", "R_RX_PD.1", "PORT:IR_RX"],
+    ["R_RX_PD.2", "PORT:GND"],
+    ["D_TX.A", "PORT:VCC"],
+    ["D_TX.K", "R_TX_LED.1"],
+    ["R_TX_LED.2", "Q_TX.D"],
+    ["Q_TX.G", "R_TX_GS.2", "R_TX_G.1"],
+    ["R_TX_GS.1", "PORT:IR_TX"],
+    ["R_TX_G.2", "PORT:GND"],
+    ["Q_TX.S", "PORT:GND"]
+  ],
+  "ports": {
+    "IR_RX": {
+      "dir": "out",
+      "at": "R_RX_S.2",
+      "desc": "红外接收头解调输出 → MCU(本板 G42_IR_RX,经 LED_RX);块内已串阻+20K 下拉;解码须走 MCU RMT 外设,不支持 GPIO 软解",
+      "default_net": "IR_RX"
+    },
+    "IR_TX": {
+      "dir": "in",
+      "at": "R_TX_GS.1",
+      "desc": "MCU → 红外发射驱动(本板 G46_IR_TX,经 LED_TX);经 22R 栅极串阻进 NMOS 栅极,高电平点亮红外 LED",
+      "default_net": "IR_TX"
+    },
+    "VCC": {
+      "dir": "in",
+      "at": "U_RX.VCC",
+      "desc": "5V 供电(本板 5V_VBUS,由 EXT_5V 使能后才有,注意 EXT_5V_EN 供电模式);同时给接收头 VCC 与发射 LED 阳极",
+      "default_net": "5V"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "U_RX.GND",
+      "desc": "地;接收头 GND、去耦、下拉、栅极下拉、NMOS 源极的公共回流",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "两半独立:接收半(VSOP38338 常供电,OUT 经 10K 串阻 + 20K 下拉→MCU)与发射半(IR928 红外 LED + 2N7002 NMOS 低边驱动)彼此独立,任一半不用时可整体 DNF(不贴片)。",
+    "接收解码必须用 MCU 的 RMT 外设(M5 明确注明:不支持 GPIO 软解);且接收时须关闭喇叭功放(D 类功放开关噪声会串扰,导致红外收不到)。",
+    "发射为低边 NMOS 驱动:IR928 阳极接 5V、阴极经 10R 限流(R2)到 NMOS 漏极;MCU 输出经 22R 栅极串阻(R3)进栅极,栅极另挂 10K 下拉(R1)保证空闲关断;10R 限流设红外脉冲电流。",
+    "收发布局尽量正对、距离建议 >30cm(太近会异常);VCC 从 5V(EXT_5V 使能后才有),使用前确认供电模式已开 EXT_5V_EN。",
+    "本板红外在 BTB 子板上,本块抽象为独立红外收发单元可通用;接收头 VCC 就近 10uF 去耦。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "引脚名核对:internal_nets 用功能名(VSOP38338 的 VCC/GND/OUT、IR928 的 A/K、2N7002 的 G/D/S);放置前先 sch read 拉真实符号脚名再绑定,别照抄脚号。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "decap-adjacency",
+      "target": "U_RX.VCC",
+      "constraint": "10uF(C_RX)紧贴接收头 VCC 脚,去耦回路短,抑制供电纹波(红外接收头对电源噪声敏感)",
+      "value": "C_RX <=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "emitter-receiver-facing",
+      "target": "D_TX / U_RX 光学面",
+      "constraint": "发射管与接收头出光/进光面朝外壳开孔,收发正对;两者间距 >30cm 使用(太近会异常),板上尽量拉开或加隔离墙防近场直射",
+      "value": ">30cm 使用距离",
+      "severity": "should"
+    },
+    {
+      "rule": "led-current-loop",
+      "target": "5V→D_TX→R_TX_LED→Q_TX→GND",
+      "constraint": "发射 LED 脉冲电流回路走短、回流面积小,降低开关沿 EMI",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "placement": {
+    "U_RX": {
+      "board_edge": true,
+      "edge": "user-facing",
+      "side": "top",
+      "orientation": "接收头进光面朝外壳红外窗口",
+      "severity": "should",
+      "reason": "红外接收需对准外壳开孔,避免遮挡"
+    },
+    "D_TX": {
+      "board_edge": true,
+      "edge": "user-facing",
+      "side": "top",
+      "orientation": "发射管出光面朝外壳红外窗口,与接收头同侧",
+      "severity": "should",
+      "reason": "红外发射需射出机壳"
+    }
+  },
+  "signals": {
+    "IR": {
+      "nets": ["IR_RX", "IR_TX"],
+      "type": "single_high_speed",
+      "route": "红外收发控制线短走线到 MCU;IR_RX 远离喇叭功放/开关电源等噪声源,IR_TX 脉冲回路走短",
+      "keepout": "远离 D 类功放输出/开关电源;接收线避免与发射线长距离并行",
+      "severity": "should",
+      "reason": "38kHz 载波解调对干扰敏感;发射为大电流脉冲,串扰会误码"
+    }
+  },
+  "silk": {
+    "U_RX": {
+      "label": "IR-RX",
+      "clearance": "outside-body — 接收头本体外侧",
+      "severity": "should"
+    },
+    "D_TX": {
+      "label": "IR-TX",
+      "clearance": "outside-body — 发射管本体外侧,标注极性(阳极→5V)",
+      "severity": "should"
+    }
+  },
+  "bom_note": "9 件:1× VSOP38338 红外接收头 + 1× IR928 红外发射管 + 1× 2N7002 NMOS(发射低边驱动)+ 1× 10uF 0805(接收头去耦)+ 5× 0402 电阻(R_RX_S 10K/R_RX_PD 20K/R_TX_LED 10R/R_TX_G 10K/R_TX_GS 22R)。收/发两半独立,任一半不用可整体 DNF。deviceUuid/LCSC C 号待真机 lib search 解析。"
+}

@@ -1,0 +1,219 @@
+{
+  "id": "block.sy7088_boost_5v",
+  "desc": "SY7088 同步升压 DCDC(VBUS/锂电 3.0-4.2V → 5V,1A):FB 分压 147K/46.4K 设 5V 输出,输入 3×22uF/输出 2×22uF + 2.2uH 功率电感,EN 使能;给 GROVE/EXT_5V/红外等外设供电",
+  "category": "power",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_03)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "ic.sy7088",
+      "qty": 1,
+      "note": "SY7088 同步升压(boost)DCDC 转换器;VIN 侧升压到 5V/1A。FB 反馈脚设输出电压,EN 使能,LX 为开关节点,PGND/SGND 功率地与信号地。脚名(IN/LX/FB/EN/PGND/SGND)放置前先 sch read 拉真实符号脚名再绑定,别照抄功能名。"
+    },
+    "L": {
+      "part": "ind.2u2h",
+      "qty": 1,
+      "note": "2.2uH 功率电感(原理图 L2);一端接 LX 开关节点,一端接 VIN 输入侧(升压拓扑电感在输入)。选大电流/低 DCR 功率电感,饱和电流留 1A 输出裕量。"
+    },
+    "C_IN1": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "输入电容(原理图 C16),22uF/0805,贴近 VIN/电感输入侧。"
+    },
+    "C_IN2": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "输入电容(原理图 C17),22uF/0805,与 C_IN1/C_IN3 并联降输入纹波。"
+    },
+    "C_IN3": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "输入电容(原理图 C18),22uF/0805。输入 3×22uF 抗升压输入电流脉动。"
+    },
+    "C_OUT1": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "输出电容(原理图 C23),22uF/0805,贴近 VOUT 稳定 5V 输出、降纹波。"
+    },
+    "C_OUT2": {
+      "part": "cap.22uf_0805",
+      "qty": 1,
+      "note": "输出电容(原理图 C24),22uF/0805,与 C_OUT1 并联。输出 2×22uF。"
+    },
+    "R_FB_H": {
+      "part": "res.147k_0402",
+      "qty": 1,
+      "note": "FB 上分压 Ru(原理图 R13,147K),VOUT→FB。与 R_FB_L 分压设输出:Vout=1.2×(1+R13/R14)=1.2×(1+147/46.4)≈5V。"
+    },
+    "R_FB_L": {
+      "part": "res.46k4_0402",
+      "qty": 1,
+      "note": "FB 下分压 Rd(原理图 R14,46.4K),FB→GND。公式 Rd=1.2V/(Vout-1.2)×Ru;换轨压时按此重算分压。"
+    },
+    "R_EN": {
+      "part": "res.100k_0402",
+      "qty": 1,
+      "note": "EN 使能电阻(原理图 R10,100K);上拉/下拉设默认使能状态,EN 端由 PMIC/GPIO 门控升压开关。"
+    }
+  },
+  "internal_nets": [
+    [
+      "U.LX*",
+      "L.1"
+    ],
+    [
+      "L.2",
+      "U.IN",
+      "C_IN1.1",
+      "C_IN2.1",
+      "C_IN3.1",
+      "PORT:VIN"
+    ],
+    [
+      "U.OUT*",
+      "C_OUT1.1",
+      "C_OUT2.1",
+      "R_FB_H.1",
+      "PORT:VOUT"
+    ],
+    [
+      "U.FB",
+      "R_FB_H.2",
+      "R_FB_L.1"
+    ],
+    [
+      "R_FB_L.2",
+      "PORT:GND"
+    ],
+    [
+      "U.EN",
+      "R_EN.1",
+      "PORT:EN"
+    ],
+    [
+      "U.PGND",
+      "U.SGND",
+      "C_IN1.2",
+      "C_IN2.2",
+      "C_IN3.2",
+      "C_OUT1.2",
+      "C_OUT2.2",
+      "R_EN.2",
+      "PORT:GND"
+    ]
+  ],
+  "ports": {
+    "VIN": {
+      "dir": "in",
+      "at": "U.IN",
+      "desc": "升压输入(VBUS_L0 / 锂电 3.0-4.2V 或 VBUS);经 2.2uH 电感与 3×22uF 输入电容进 IN 脚",
+      "default_net": "VBUS_L0"
+    },
+    "EN": {
+      "dir": "in",
+      "at": "U.EN",
+      "desc": "使能脚(高有效开升压);由 PMIC/GPIO 门控 EXT_5V,块内 100K(R_EN)设默认状态",
+      "default_net": "EXT_5V_EN"
+    },
+    "VOUT": {
+      "dir": "out",
+      "at": "U.OUT",
+      "desc": "5V 升压输出(≈1A,原理图 BOOST_OUT 轨);经 TPS22916 负载开关门控成 EXT_5V/GROVE_5V 给 GROVE/红外等外设。⚠不要裸接外设口——下游须经负载开关做使能/限流,升压器本身不能下游限流",
+      "default_net": "BOOST_OUT"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "U.PGND",
+      "desc": "地(功率地 PGND + 信号地 SGND + 输入/输出电容回流);FB 下分压亦回此",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "拓扑=SY7088 同步升压 DCDC:把 VBUS_L0(锂电 3.0-4.2V 或 VBUS)升到 5V/1A,给 GROVE、EXT_5V、红外收发等需要 5V 的外设供电。升压电感 2.2uH(L2)一端接开关节点 LX、一端接 VIN 输入侧。",
+    "输出电压由 FB 分压设定:Vout=1.2×(1+R13/R14)=1.2×(1+147/46.4)≈5V;原理图给出的下分压公式 Rd=1.2V/(Vout-1.2)×Ru。换目标电压时按此重算 R_FB_L(保持 R_FB_H=147K)。",
+    "输入 3×22uF(C16/C17/C18)、输出 2×22uF(C23/C24),抗升压输入电流脉动与输出纹波;去耦/滤波电容就近电源脚放置。",
+    "⚠升压器不能在下游限流:5V 输出必须接负载开关(TPS22916 / AW35122 / pmos_highside_softstart 等)做 EXT_5V 使能与限流/软启,绝不裸接外设口,否则外设短路会直接拖垮升压级。",
+    "EN 使能:R_EN 100K(R10)设默认使能状态,实际由 PMIC/GPIO(EXT_5V_EN)门控——待机时关断升压省电。",
+    "引脚名核对:internal_nets 用 SY7088 功能名(IN/LX/FB/EN/PGND/SGND);实际符号 pad 名可能不同,放置前先 sch read / --probe 拉真实脚名再绑定。LX/OUT 若为多焊盘(fanout *)则全并联。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "lx-node-small",
+      "target": "U.LX / L 开关节点",
+      "constraint": "LX(开关节点)铜面积尽量小以抑 EMI;电感紧贴 LX 脚,回路面积最小",
+      "value": "最小铜面积",
+      "severity": "must"
+    },
+    {
+      "rule": "power-cap-adjacency",
+      "target": "C_IN1-3 / C_OUT1-2",
+      "constraint": "输入/输出 22uF 电容紧凑贴近对应电源脚,输入回路(电容-电感-IN)与输出回路(LX-输出电容)短而紧",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "fb-keepout",
+      "target": "U.FB / R_FB_H / R_FB_L 走线",
+      "constraint": "FB 反馈走线远离 LX 开关节点(高 dv/dt 噪声耦合会扰动稳压);分压电阻靠 FB 脚",
+      "value": "远离 LX",
+      "severity": "should"
+    },
+    {
+      "rule": "power-trace-width",
+      "target": "VIN→电感→VOUT 主路",
+      "constraint": "升压主路(输入电流大于输出电流)按 1A+ 加宽或铺铜,PGND/SGND 单点或大面积回流",
+      "value": ">=0.5mm 或铺铜",
+      "severity": "should"
+    }
+  ],
+  "signals": {
+    "_doc": "功率升压级:大电流开关回路 + FB 敏感反馈线。",
+    "POWER": {
+      "nets": ["VIN", "VOUT"],
+      "type": "power",
+      "route": "输入/输出主路加宽,输入回路(电容-电感-IN)与输出回路(LX-电容-OUT)面积最小",
+      "keepout": "LX 开关节点小铜面、远离 FB 与敏感模拟线",
+      "severity": "must",
+      "reason": "升压开关回路面积大=EMI 与纹波源"
+    },
+    "FEEDBACK": {
+      "nets": ["EN"],
+      "type": "analog",
+      "route": "FB 分压节点走线短、远离 LX;EN 由门控信号驱动",
+      "keepout": "远离 LX 开关节点",
+      "severity": "should",
+      "reason": "FB 受开关噪声耦合会扰动稳压精度"
+    }
+  },
+  "silk": {
+    "U": {
+      "label": "SY7088 5V",
+      "clearance": "outside-body — 标注升压输出轨(EXT_5V / 5V)便于调试",
+      "severity": "should"
+    }
+  },
+  "bom_note": "10 件:1× SY7088 升压 DCDC(ic.sy7088)+ 1× 2.2uH 功率电感(ind.2u2h)+ 5× 22uF 0805(输入 3 + 输出 2)+ FB 分压 147K/46.4K 0402 各 1 + EN 100K 0402。输出 5V/1A,给 GROVE/EXT_5V/红外供电;下游须接负载开关做使能限流。deviceUuid/LCSC C 号待真机 lib search 解析。"
+}

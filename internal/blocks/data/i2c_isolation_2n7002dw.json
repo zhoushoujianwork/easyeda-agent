@@ -1,0 +1,151 @@
+{
+  "id": "block.i2c_isolation_2n7002dw",
+  "desc": "背靠背双 NMOS I2C 总线隔离/热插拔开关(StickS3 I2C HOT PLUGIN):每根 I2C 线用一颗 2N7002DW 双管的两只 NMOS 串联(源-源或漏-漏对接),两只栅极分别接两个电源域的 3V3 轨——每一侧域断电时,该侧 NMOS 栅极随之掉电截止,把本侧从中间节点断开,实现双向域隔离;只在被门控的隔离侧(AUDIO 域)各挂一颗 2.2k 上拉,主侧上拉由宿主总线提供。兼具 NMOS 电平转换能力(AN10441 衍生)",
+  "category": "mcu-support",
+  "author": "@zhoushoujianwork",
+  "contributors": ["M5Stack StickS3 K150 (原理图对标来源)"],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图 page_04 I2C HOT PLUGIN 区对标提取(对抗校验已订正为背靠背双管拓扑);引脚按功能名绑定,待真机 --probe 刷 2N7002DW 双管真实脚名 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": { "status": "pending" },
+    "bringup": { "status": "pending" },
+    "production_ready": false
+  },
+  "parts": {
+    "Q_SCL": {
+      "part": "mosfet.2n7002dw",
+      "qty": 1,
+      "note": "SCL 线隔离开关(StickS3 封装 Q4,2N7002DW SOT-363 双管)。双管的两只 NMOS 串联:隔离侧管(Q4A,脚 1/6/2)源=隔离侧总线、漏=中间节点、栅(脚2)→隔离侧轨 VDD_B;主侧管(Q4B,脚 3/4/5)漏=中间节点、源=主侧总线、栅(脚5)→主侧轨 VDD_A。功能脚名(S_ISO/D_ISO/G_ISO/S_MAIN/D_MAIN/G_MAIN)对应观测脚号 1/6/2 / 4/3/5,放置前 sch read --probe 核对真实符号脚名再 remap;S/D 互换对通断对称,但体二极管方向由器件固定,以真机为准。"
+    },
+    "Q_SDA": {
+      "part": "mosfet.2n7002dw",
+      "qty": 1,
+      "note": "SDA 线隔离开关(StickS3 封装 Q5,2N7002DW SOT-363 双管),接法同 Q_SCL:隔离侧管 Q5B、主侧管 Q5A 串联,两栅分接 VDD_B / VDD_A。"
+    },
+    "R_SCL": {
+      "part": "res.2k2_0402",
+      "qty": 1,
+      "note": "隔离侧(可门控 AUDIO 域)SCL 上拉到 VDD_B(StickS3 R33,3V3_L3B_AU)。隔离侧断电时该上拉随域掉电,隔离管截止,不回灌主侧。主侧(G48_SCL)上拉不在本块——由宿主主总线提供(StickS3 见 Core MCU R38 / ESP32 块 I2C 上拉)。"
+    },
+    "R_SDA": {
+      "part": "res.2k2_0402",
+      "qty": 1,
+      "note": "隔离侧 SDA 上拉到 VDD_B(StickS3 R34,3V3_L3B_AU),同 R_SCL。"
+    }
+  },
+  "internal_nets": [
+    ["Q_SCL.S_ISO", "R_SCL.1", "PORT:I2C_SCL_B"],
+    ["Q_SCL.D_ISO", "Q_SCL.D_MAIN"],
+    ["Q_SCL.S_MAIN", "PORT:I2C_SCL_A"],
+    ["Q_SDA.S_ISO", "R_SDA.1", "PORT:I2C_SDA_B"],
+    ["Q_SDA.D_ISO", "Q_SDA.D_MAIN"],
+    ["Q_SDA.S_MAIN", "PORT:I2C_SDA_A"],
+    ["Q_SCL.G_ISO", "Q_SDA.G_ISO", "R_SCL.2", "R_SDA.2", "PORT:VDD_B"],
+    ["Q_SCL.G_MAIN", "Q_SDA.G_MAIN", "PORT:VDD_A"]
+  ],
+  "ports": {
+    "I2C_SCL_A": {
+      "dir": "bidir",
+      "at": "Q_SCL.S_MAIN",
+      "desc": "主侧(常开域)SCL 总线——接常开主 I2C(StickS3 G48_SCL,3V3_L2 域);主侧管源极,本块不含主侧上拉(由宿主提供)",
+      "default_net": "I2C_SCL_A"
+    },
+    "I2C_SDA_A": {
+      "dir": "bidir",
+      "at": "Q_SDA.S_MAIN",
+      "desc": "主侧 SDA 总线——接常开主 I2C(StickS3 G47_SDA);主侧管源极,本块不含主侧上拉",
+      "default_net": "I2C_SDA_A"
+    },
+    "I2C_SCL_B": {
+      "dir": "bidir",
+      "at": "Q_SCL.S_ISO",
+      "desc": "隔离侧(可门控 AUDIO 域)SCL 总线——接被门控外设 I2C(StickS3 AUDIO_I2C_SCL,3V3_L3B_AU 域 codec);隔离侧管源极,块内已 2.2k(R33)上拉到 VDD_B",
+      "default_net": "I2C_SCL_B"
+    },
+    "I2C_SDA_B": {
+      "dir": "bidir",
+      "at": "Q_SDA.S_ISO",
+      "desc": "隔离侧 SDA 总线——接被门控外设 I2C(StickS3 AUDIO_I2C_SDA);块内已 2.2k(R34)上拉到 VDD_B",
+      "default_net": "I2C_SDA_B"
+    },
+    "VDD_A": {
+      "dir": "in",
+      "at": "Q_SCL.G_MAIN",
+      "desc": "主侧域轨(StickS3 3V3_L2 常开)——两颗主侧串联管的共栅参考;该域上电时主侧管导通,把主侧总线接入中间节点",
+      "default_net": "3V3"
+    },
+    "VDD_B": {
+      "dir": "in",
+      "at": "Q_SCL.G_ISO",
+      "desc": "隔离侧域轨(StickS3 3V3_L3B_AU 可被 PMIC 门控)——两颗隔离侧串联管的共栅参考 + 隔离侧一对 2.2k 上拉的公共上拉端;该域断电即隔离管截止,实现域隔离",
+      "default_net": "3V3_ISO"
+    }
+  },
+  "schematic_notes": [
+    "拓扑=背靠背双 NMOS I2C 总线隔离/热插拔开关(StickS3 I2C HOT PLUGIN)。每根 I2C 线用一颗 2N7002DW 双管里的两只 NMOS 串联:隔离侧总线 →(隔离侧管)→ 中间节点 →(主侧管)→ 主侧总线;隔离侧管栅极接隔离侧域轨(VDD_B,3V3_L3B_AU),主侧管栅极接主侧域轨(VDD_A,3V3_L2)。",
+    "隔离原理=各侧管的栅极由各自域轨供电:某一侧域断电,该侧管栅极掉电截止,把该侧从中间节点断开,双向都能隔离;两域同时上电时两管导通,总线连通。因此 AUDIO 域(3V3_L3B_AU,可被 PMIC 门控省电)断电时不会把常开主总线(3V3_L2)拉死,热插拔/热断电友好。",
+    "上拉只在隔离侧:R33(SCL)/R34(SDA)各 2.2k 上拉到隔离侧轨 3V3_L3B_AU;主侧(G48_SCL/G47_SDA)上拉不在本块,由宿主主总线提供(StickS3 由 Core MCU 的 R38/R39 IIC PULL_UP + ESP32 模组块的 I2C 上拉给)。实例化时若隔离侧总线上已另有上拉源,删除本块对应一侧 2.2k 避免并联过强。",
+    "串联双管兼具 NMOS 电平转换能力(AN10441 衍生):栅极接较低域轨时,低压侧拉低经沟道/体二极管同步拉低高压侧,可用于两域电压不同(如 3V3↔1V8)的场景;StickS3 两域同为 3V3,主要取其域隔离/热插拔作用。",
+    "引脚名核对:internal_nets 用功能名(S_ISO/D_ISO/G_ISO=隔离侧管源/漏/栅,S_MAIN/D_MAIN/G_MAIN=主侧管源/漏/栅),对应 StickS3 观测脚号 Q4A=1/6/2、Q4B=4/3/5(Q5 同构)。2N7002DW 是双管封装,放置前先 sch read --probe 拉真实符号脚名再绑定,别照抄脚号;S/D 对通断对称但体二极管方向由器件固定。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "keep-short-symmetric",
+      "target": "SCL/SDA 两侧走线",
+      "constraint": "两颗 2N7002DW 靠近放,隔离侧(B)与主侧(A)走线短而对称;SCL/SDA 成对走,避免长距离并行串扰",
+      "value": "",
+      "severity": "should"
+    },
+    {
+      "rule": "pullup-adjacency",
+      "target": "R_SCL / R_SDA",
+      "constraint": "隔离侧上拉贴近隔离侧总线与隔离侧轨,回路短;隔离侧上拉必须挂在可门控轨(VDD_B=3V3_L3B_AU)而非常开轨,否则丧失隔离功能",
+      "value": "",
+      "severity": "must"
+    },
+    {
+      "rule": "domain-boundary",
+      "target": "VDD_A / VDD_B",
+      "constraint": "主侧与隔离侧分属两个电源域,布局上把两侧分区、两颗串联开关管跨在域边界上,中间节点面积小;避免隔离侧铜面越界到常开域",
+      "value": "",
+      "severity": "should"
+    }
+  ],
+  "signals": {
+    "I2C_A": {
+      "nets": ["I2C_SCL_A", "I2C_SDA_A"],
+      "type": "single_high_speed",
+      "route": "主侧 I2C(常开域),短走线、成对,远离开关电源/RF",
+      "keepout": "远离功率开关节点与天线",
+      "severity": "should",
+      "reason": "I2C 总线,受扰会误码"
+    },
+    "I2C_B": {
+      "nets": ["I2C_SCL_B", "I2C_SDA_B"],
+      "type": "single_high_speed",
+      "route": "隔离侧 I2C(可门控域),短走线、成对",
+      "keepout": "远离功率开关节点与天线",
+      "severity": "should",
+      "reason": "I2C 总线,受扰会误码"
+    }
+  },
+  "silk": {
+    "Q_SCL": {
+      "label": "I2C-ISO",
+      "clearance": "outside-body — 隔离管本体外侧",
+      "severity": "should"
+    }
+  },
+  "bom_note": "共 4 件:2× 2N7002DW SOT-363 双管 NMOS(SCL=Q4/SDA=Q5,每颗双管两只 NMOS 串联做背靠背隔离开关)+ 2× 2.2k 0402 隔离侧上拉(R33 SCL / R34 SDA,到 3V3_L3B_AU)。主侧上拉不在本块(由宿主主总线提供)。全部 JLC 常规料。用途=I2C 总线域隔离/热插拔,把可门控外设 I2C 域与常开主总线隔开;需要时兼做电平转换。"
+}

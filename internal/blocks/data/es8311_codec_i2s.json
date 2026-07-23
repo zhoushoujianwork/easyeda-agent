@@ -1,0 +1,293 @@
+{
+  "id": "block.es8311_codec_i2s",
+  "desc": "ES8311 单声道音频编解码(codec):I2C 控制(CCLK/CDATA)+ I2S 音频(MCLK/BCLK/LRCK/DSDIN/ASDOUT),一路 ADC(MIC1P/MIC1N 经耦合电容接 MEMS mic)+ 一路 DAC(OUTP/OUTN 经耦合电容→ D 类功放)。本板整颗芯片(PVDD/DVDD/AVDD)全部由干净音频轨 3V3_L3B_AU 供电,所有地(AGND/DGND/EPAD)回 AGND,仅经 R35(0R)单点桥回数字 GND。地址由 CE 脚设:接 GND/AGND=0x18、接 VDD=0x19(本板 CE 接 AGND=0x18)。QFN-24。",
+  "category": "audio",
+  "author": "@zhoushoujianwork",
+  "contributors": ["M5Stack StickS3 K150 (原理图对标来源)"],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图 page_04 AUDIO 节对抗核对提取(引脚功能名+连线拓扑逐脚对图),待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": { "status": "pending" },
+    "bringup": { "status": "pending" },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "ic.es8311",
+      "qty": 1,
+      "note": "ES8311 单声道音频 codec,QFN-24。控制走 I2C(CCLK/CDATA),音频走 I2S(MCLK/SCLK/LRCK/DSDIN/ASDOUT);内含一路 ADC(MIC1P/MIC1N 差分输入)+ 一路 DAC(OUTP/OUTN 差分输出)。CE 脚设 I2C 地址(接 GND/AGND=0x18 / 接 VDD=0x19)。引脚名用 datasheet 脚名,放置前 sch read 拉真实符号脚名再绑定(注意 SCLK 脚符号名可能是『SCLK/DMIC_SCL』、MIC1P 可能是『MIC1P/DMIC_SDA』)。"
+    },
+    "C_PVDD": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "PVDD 电源去耦(StickS3 C32 10uF),就近芯片电源脚;顶端接 3V3_L3B_AU 音频轨,底端回 AGND。"
+    },
+    "C_DVDD": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "DVDD 电源去耦(StickS3 C34 10uF),就近芯片电源脚;顶端接 3V3_L3B_AU 音频轨,底端回 AGND。"
+    },
+    "C_MIC1P": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "MIC1P 输入 AC 耦合电容(StickS3 C38 1uF),串联在 U.MIC1P → MIC1_P 之间(隔直,mic 偏置与 codec 输入解耦)。"
+    },
+    "C_MIC1N": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "MIC1N 输入 AC 耦合电容(StickS3 C39 1uF),串联在 U.MIC1N → MIC1_N 之间。"
+    },
+    "C_VMID": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "VMID 中点电压旁路(StickS3 C40 1uF),U.VMID → AGND,datasheet 必需。"
+    },
+    "C_ADCVREF": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "ADCVREF ADC 基准旁路(StickS3 C41 1uF),U.ADCVREF → AGND,datasheet 必需。"
+    },
+    "C_DACVREF": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "DACVREF DAC 基准旁路(StickS3 C42 1uF),U.DACVREF → AGND,datasheet 必需。"
+    },
+    "C_OUTP": {
+      "part": "cap.33nf_0402",
+      "qty": 1,
+      "note": "OUTP DAC 输出串联耦合电容(StickS3 C45 33nF/25V),串联在 U.OUTP → DAC_L_P(→功放)之间,隔直。"
+    },
+    "C_OUTN": {
+      "part": "cap.33nf_0402",
+      "qty": 1,
+      "note": "OUTN DAC 输出串联耦合电容(StickS3 C43 33nF/25V),串联在 U.OUTN → DAC_L_N(→功放)之间,隔直。"
+    },
+    "C_AVDD": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "AVDD 模拟电源旁路(StickS3 C44 1uF/10V),U.AVDD → AGND,就近模拟电源脚。"
+    },
+    "R_AGND": {
+      "part": "res.0r_0402",
+      "qty": 1,
+      "note": "AGND↔数字 GND 单点桥 0R(StickS3 R35)。板级模拟地平面经此单点回数字地平面,回流走 LDO 芯片衬底;R35 一端 AGND、另一端数字 GND,不直连 U18 任一地脚(U18 全部地脚已在 AGND 上)。"
+    }
+  },
+  "internal_nets": [
+    ["U.CCLK", "PORT:I2C_SCL"],
+    ["U.CDATA", "PORT:I2C_SDA"],
+    ["U.MCLK", "PORT:I2S_MCLK"],
+    ["U.SCLK", "PORT:I2S_BCLK"],
+    ["U.LRCK", "PORT:I2S_LRCK"],
+    ["U.DSDIN", "PORT:I2S_DIN"],
+    ["U.ASDOUT", "PORT:I2S_DOUT"],
+    ["U.MIC1P", "C_MIC1P.1"],
+    ["C_MIC1P.2", "PORT:MIC_P"],
+    ["U.MIC1N", "C_MIC1N.1"],
+    ["C_MIC1N.2", "PORT:MIC_N"],
+    ["U.OUTP", "C_OUTP.1"],
+    ["C_OUTP.2", "PORT:SPK_P"],
+    ["U.OUTN", "C_OUTN.1"],
+    ["C_OUTN.2", "PORT:SPK_N"],
+    ["U.VMID", "C_VMID.1"],
+    ["U.ADCVREF", "C_ADCVREF.1"],
+    ["U.DACVREF", "C_DACVREF.1"],
+    ["U.CE", "PORT:I2C_ADDR"],
+    ["U.PVDD", "C_PVDD.1", "PORT:DVDD"],
+    ["U.DVDD", "C_DVDD.1", "PORT:DVDD"],
+    ["U.AVDD", "C_AVDD.1", "PORT:AVDD"],
+    ["U.AGND", "U.DGND", "U.EPAD", "C_PVDD.2", "C_DVDD.2", "C_VMID.2", "C_ADCVREF.2", "C_DACVREF.2", "C_AVDD.2", "R_AGND.1", "PORT:AGND"],
+    ["R_AGND.2", "PORT:GND"]
+  ],
+  "ports": {
+    "I2C_SCL": {
+      "dir": "bidir",
+      "at": "U.CCLK",
+      "desc": "控制 I2C 时钟(CCLK,本板 AUDIO_I2C_SCL);codec 寄存器配置总线",
+      "default_net": "AUDIO_I2C_SCL"
+    },
+    "I2C_SDA": {
+      "dir": "bidir",
+      "at": "U.CDATA",
+      "desc": "控制 I2C 数据(CDATA,本板 AUDIO_I2C_SDA)",
+      "default_net": "AUDIO_I2C_SDA"
+    },
+    "I2S_MCLK": {
+      "dir": "in",
+      "at": "U.MCLK",
+      "desc": "I2S 主时钟(本板 G18);由 MCU 提供",
+      "default_net": "I2S_MCLK"
+    },
+    "I2S_BCLK": {
+      "dir": "in",
+      "at": "U.SCLK",
+      "desc": "I2S 位时钟 BCLK(datasheet 脚 SCLK/DMIC_SCL,本板 G17)",
+      "default_net": "I2S_BCLK"
+    },
+    "I2S_LRCK": {
+      "dir": "in",
+      "at": "U.LRCK",
+      "desc": "I2S 帧/声道时钟 LRCK(本板 G15)",
+      "default_net": "I2S_LRCK"
+    },
+    "I2S_DIN": {
+      "dir": "in",
+      "at": "U.DSDIN",
+      "desc": "DAC 串行数据入(DSDIN,本板 G14,ESP→codec 放音)",
+      "default_net": "I2S_DIN"
+    },
+    "I2S_DOUT": {
+      "dir": "out",
+      "at": "U.ASDOUT",
+      "desc": "ADC 串行数据出(datasheet 脚 ASDOUT/SDOUT,本板 G16,codec→ESP 录音)",
+      "default_net": "I2S_DOUT"
+    },
+    "MIC_P": {
+      "dir": "in",
+      "at": "C_MIC1P.2",
+      "desc": "MEMS mic 差分正,经 C_MIC1P(C38 1uF)AC 耦合到 U.MIC1P(接 mems_mic_analog 块 MIC_P)",
+      "default_net": "MIC1_P"
+    },
+    "MIC_N": {
+      "dir": "in",
+      "at": "C_MIC1N.2",
+      "desc": "MEMS mic 差分负/参考,经 C_MIC1N(C39 1uF)AC 耦合到 U.MIC1N(接 mems_mic_analog 块 MIC_N)",
+      "default_net": "MIC1_N"
+    },
+    "SPK_P": {
+      "dir": "out",
+      "at": "C_OUTP.2",
+      "desc": "DAC 输出正,经 C_OUTP(C45 33nF)串联耦合→功放差分输入(本板 DAC_L_P→AW8737)",
+      "default_net": "DAC_L_P"
+    },
+    "SPK_N": {
+      "dir": "out",
+      "at": "C_OUTN.2",
+      "desc": "DAC 输出负,经 C_OUTN(C43 33nF)串联耦合→功放差分输入(本板 DAC_L_N→AW8737)",
+      "default_net": "DAC_L_N"
+    },
+    "AVDD": {
+      "dir": "in",
+      "at": "U.AVDD",
+      "desc": "模拟电源,独立干净音频轨(本板 3V3_L3B_AU,专用 LDO CM1801 供,与数字 3V3 分开)",
+      "default_net": "3V3_L3B_AU"
+    },
+    "DVDD": {
+      "dir": "in",
+      "at": "U.DVDD",
+      "desc": "数字/外设电源脚 PVDD+DVDD 共此轨。本板 PVDD/DVDD 与 AVDD 同接干净音频轨 3V3_L3B_AU(整颗 ES8311 全走音频轨,不接数字 3V3),这是本板音频信噪比的做法",
+      "default_net": "3V3_L3B_AU"
+    },
+    "AGND": {
+      "dir": "in",
+      "at": "U.AGND",
+      "desc": "模拟地(AGND/DGND/EPAD 全在此);U18 所有地脚汇聚点,经 R_AGND 0R 单点桥回数字 GND",
+      "default_net": "AGND"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "R_AGND.2",
+      "desc": "数字 GND(仅经 R_AGND 0R 单点桥与本块 AGND 相连;U18 无地脚直接接数字 GND)",
+      "default_net": "GND"
+    },
+    "I2C_ADDR": {
+      "dir": "in",
+      "at": "U.CE",
+      "desc": "I2C 地址选择脚 CE:接 GND/AGND=0x18 / 接 VDD=0x19。本板原理图把 CE 直接接 AGND(0x18),故 default_net=AGND;如需 0x19 由宿主改接 VDD",
+      "default_net": "AGND"
+    }
+  },
+  "schematic_notes": [
+    "ES8311 是单声道音频 codec:一路 ADC(MIC1P/MIC1N 经耦合电容接 MEMS mic)+ 一路 DAC(OUTP/OUTN 经耦合电容→ AW8737 D 类功放)。控制走 I2C(CCLK 时钟 / CDATA 数据),音频走 I2S 五线(MCLK 主时钟 / SCLK=BCLK 位时钟 / LRCK 帧时钟 / DSDIN DAC 数据入 / ASDOUT ADC 数据出)。I2C 地址由 CE 脚设定:CE=GND/AGND → 0x18,CE=VDD → 0x19(本板 CE 直接接 AGND=0x18)。",
+    "★电源架构(与常规 ES8311 不同,以本板原理图为准):PVDD/DVDD/AVDD 三个电源脚**全部接干净音频轨 3V3_L3B_AU**(由专用 LDO CM1801 供,与数字 3V3 分开),整颗芯片不接数字 3V3。C32/C34(10uF)去 PVDD/DVDD、C44(1uF)去 AVDD,底端全部回 AGND。",
+    "★接地架构:U18 全部地脚(AGND 脚10 / DGND 脚5 / EPAD)与所有旁路电容底端**都汇到 AGND**;数字 GND 只经 R35(0R,本块 R_AGND)从 AGND **单点桥**接回,回流走 LDO 芯片衬底(原理图注『AGND 回流 LDO 芯片衬底单点接地』)。R35 一端 AGND、一端数字 GND,**不直连 U18 任何地脚**。整块只有这一个 0R 桥连通模拟地与数字地,勿多点缝合。",
+    "MIC1P/MIC1N 各串一颗 1uF(C38/C39)AC 耦合电容再接 MEMS mic(见 mems_mic_analog 块 MIC1_P/MIC1_N);OUTP/OUTN 各串一颗 33nF(C45/C43)耦合电容再接功放差分输入(见 aw8737_classd_spk 块 DAC_L_P/DAC_L_N)。四颗都是**串联隔直**,不是对地旁路。",
+    "基准旁路必装:VMID/ADCVREF/DACVREF 各挂一颗 1uF(C40/C41/C42)对 AGND 旁路(datasheet 必需,缺则 ADC/DAC 基准不稳)。",
+    "I2S 五线接 MCU;三块(codec + mems_mic_analog + aw8737_classd_spk)组合成完整录放音链路。",
+    "音频域 I2C 可被电源域门控(AUDIO 域断电省电),若与主 I2C 常开总线跨域,须经 i2c_isolation_2n7002dw 隔离,避免音频域断电时把常开总线拉死。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "引脚名核对:internal_nets 用 ES8311 datasheet 脚名(CCLK/CDATA/MCLK/SCLK/LRCK/DSDIN/ASDOUT/MIC1P/MIC1N/OUTP/OUTN/VMID/ADCVREF/DACVREF/CE/PVDD/DVDD/AVDD/AGND/DGND/EPAD),放置前先 sch read 拉真实符号脚名再绑定,别照抄。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "single-point-ground",
+      "target": "R_AGND(AGND↔数字 GND 0R 桥)",
+      "constraint": "AGND 平面(含 U18 全部地脚)与数字 GND 平面仅经 R_AGND 一个 0R 单点相连,回流走 LDO 芯片衬底;禁止多点缝合两地",
+      "value": "单点",
+      "severity": "must"
+    },
+    {
+      "rule": "decap-adjacency",
+      "target": "U.AVDD/PVDD/DVDD/VMID/ADCVREF/DACVREF",
+      "constraint": "各电源/基准脚去耦与旁路电容就近贴脚,回路走短(AVDD/VMID/xREF 1uF、PVDD/DVDD 10uF)",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "coupling-cap-adjacency",
+      "target": "C_MIC1P/C_MIC1N(mic 耦合)+ C_OUTP/C_OUTN(DAC 耦合)",
+      "constraint": "串联耦合电容就近 codec 脚,mic 耦合电容与差分对同侧短走",
+      "value": "就近",
+      "severity": "should"
+    },
+    {
+      "rule": "clean-analog-rail",
+      "target": "PVDD/DVDD/AVDD",
+      "constraint": "三脚均从独立音频轨(3V3_L3B_AU)供电,铜面与数字 3V3 分开,勿共用数字电源铜",
+      "value": "独立轨",
+      "severity": "must"
+    },
+    {
+      "rule": "diff-pair-short",
+      "target": "MIC_P/MIC_N + SPK_P/SPK_N",
+      "constraint": "mic 差分输入与 DAC 差分输出各成对短走、贴近、远离数字/开关噪声;mic 对建议包地屏蔽",
+      "value": "成对短走",
+      "severity": "should"
+    }
+  ],
+  "signals": {
+    "_doc": "控制 I2C 低速总线 + I2S 音频总线 + 模拟差分收发。",
+    "I2C_CTRL": {
+      "nets": ["I2C_SCL", "I2C_SDA"],
+      "type": "single_high_speed",
+      "route": "codec 寄存器配置总线,短走,上拉在宿主 I2C 侧(本块不含上拉,避免与主总线并联过强)",
+      "keepout": "远离功率开关节点",
+      "severity": "should",
+      "reason": "配置总线受扰会配错寄存器"
+    },
+    "I2S_AUDIO": {
+      "nets": ["I2S_MCLK", "I2S_BCLK", "I2S_LRCK", "I2S_DIN", "I2S_DOUT"],
+      "type": "single_high_speed",
+      "route": "五线成组短走,MCLK/BCLK 时钟别与数据长距离并行串扰",
+      "keepout": "远离 RF/开关电源",
+      "severity": "should",
+      "reason": "音频时钟抖动/串扰会引入可听噪声"
+    },
+    "AUDIO_DIFF": {
+      "nets": ["MIC_P", "MIC_N", "SPK_P", "SPK_N"],
+      "type": "analog_diff",
+      "route": "mic 输入与 DAC 输出各成对差分走线,等长贴近;mic 对包地屏蔽,远离数字/开关噪声",
+      "keepout": "远离 SW/LX/RF 与数字高速线",
+      "severity": "must",
+      "reason": "模拟差分音频,布线不对称/受扰直接变可听噪声"
+    }
+  },
+  "silk": {
+    "U": {
+      "label": "ES8311",
+      "clearance": "outside-body — 芯片本体外侧标注位号/型号",
+      "severity": "should"
+    }
+  },
+  "bom_note": "12 件:1× ES8311 codec(ic.es8311,QFN-24)+ 2× 10uF 0805(PVDD/DVDD 去耦 C32/C34)+ 6× 1uF 0402(VMID/ADCVREF/DACVREF 旁路 C40/C41/C42 + MIC1P/MIC1N 耦合 C38/C39 + AVDD 旁路 C44)+ 2× 33nF 0402(OUTP/OUTN 串联耦合 C45/C43)+ 1× 0R 0402(R35 AGND↔数字GND 单点桥)。基准旁路 3 颗、mic 耦合 2 颗、AGND 0R 桥一个都不能省;PVDD/DVDD/AVDD 须全接独立音频轨 3V3_L3B_AU。ES8311 与去耦料 deviceUuid/LCSC 待真机 lib search 解析。"
+}

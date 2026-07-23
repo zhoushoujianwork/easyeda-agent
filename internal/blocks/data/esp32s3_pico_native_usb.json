@@ -1,0 +1,257 @@
+{
+  "id": "block.esp32s3_pico_native_usb",
+  "desc": "ESP32-S3-PICO-1-N8R8 SiP 模组最小系统 + 原生 USB 下载(无 CH340/桥芯片):S3 内置 USB-Serial/JTAG,D+/D- 各串 22R 经 SDMM0806 共模扼流圈直连 USB-C;EN 上电复位 RC + GPIO0 boot strap + I2C 2.2K 上拉。PICO-1 内封 8MB flash + 8MB PSRAM + PCB 天线,无需外挂存储/晶振/天线匹配——区别于 WROOM 屏蔽罩模组与裸片最小系统",
+  "category": "mcu",
+  "author": "@zhoushoujianwork",
+  "contributors": [
+    "M5Stack StickS3 K150 (原理图对标来源)"
+  ],
+  "added": "v0.19.0",
+  "updated": "v0.19.0",
+  "source": "oshwhub-ref:M5Stack StickS3 K150 原理图 PDF V0.6 20251111 (page_04)",
+  "validated": null,
+  "verification": {
+    "schematic": {
+      "status": "pending",
+      "evidence": "离线草稿,自 StickS3 原理图对标提取,引脚按功能名绑定,待真机 --probe 刷符号脚 + block-apply 网表逐网对账后升 verified"
+    },
+    "component_selection": {
+      "status": "pending",
+      "evidence": "deviceUuid/LCSC 待真机 lib search 解析"
+    },
+    "pcb_drc": {
+      "status": "pending"
+    },
+    "bringup": {
+      "status": "pending"
+    },
+    "production_ready": false
+  },
+  "parts": {
+    "U": {
+      "part": "mcu.esp32s3_pico1_n8r8",
+      "qty": 1,
+      "note": "ESP32-S3-PICO-1-N8R8 SiP 模组,内封 8MB flash + 8MB PSRAM + PCB 天线;相对裸片/S3R8 块的最大简化=无需外挂 flash/psram/晶振/天线匹配。原生 USB-Serial/JTAG 支持 D+/D- 直连 USB-C 下载。USB 数据脚=GPIO20(D+)/GPIO19(D-),复位脚=CHIP_PU(net SOC_RESET),BOOT=GPIO0,I2C=GPIO48(SCL)/GPIO47(SDA)——已按原理图 page_04 校验订正为真实符号脚名;放置前仍 sch read/--probe 核对完整符号脚名(如 GPIO47/SPICLK_P、GPIO48/SPICLK_N 的复合名)。"
+    },
+    "FT1": {
+      "part": "ind.cmc_usb_sdmm0806",
+      "qty": 1,
+      "note": "USB 共模扼流圈 SDMM0806H-2-900T,抑制 D+/D- 差分共模噪声;两组(1/2 与 3/4)分别串在 D+ 与 D- 上,靠近 USB 连接器。"
+    },
+    "R_DP": {
+      "part": "res.22r_0402",
+      "qty": 1,
+      "note": "USB D+ 串阻 22R,配合共模扼流做差分匹配(90Ω 差分阻抗)。"
+    },
+    "R_DM": {
+      "part": "res.22r_0402",
+      "qty": 1,
+      "note": "USB D- 串阻 22R,与 R_DP 成对等长。"
+    },
+    "R_EN": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "EN/CHIP_PU 上拉 3V3;与 C_EN 构成上电复位 RC,RC 靠近芯片。"
+    },
+    "C_EN": {
+      "part": "cap.1uf_0402",
+      "qty": 1,
+      "note": "EN/CHIP_PU RC 电容到 GND(1uF,原理图 C50=1uF/10V —— 校验订正:草稿/规格误记 100nF,以原理图为准),原理图注『RC靠近芯片,电容优先靠近』;上电延迟保证复位可靠释放。"
+    },
+    "R_BOOT": {
+      "part": "res.10k_0402",
+      "qty": 1,
+      "note": "GPIO0 boot strap 上拉 3V3(原理图 R46,BOOT_OUT 路);上电为高=正常启动,拉低=进下载模式。"
+    },
+    "R_SCL": {
+      "part": "res.2k2_0402",
+      "qty": 1,
+      "note": "I2C SCL 上拉 2.2K 到 3V3(本板约定 SCL=GPIO48/G48);宿主总线已有上拉时删除避免并联过强。"
+    },
+    "R_SDA": {
+      "part": "res.2k2_0402",
+      "qty": 1,
+      "note": "I2C SDA 上拉 2.2K 到 3V3(本板约定 SDA=GPIO47/G47);同 R_SCL 去重规则。"
+    },
+    "C_VDD1": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "模组电源脚就近 100nF 去耦(3V3),贴电源脚放置。"
+    },
+    "C_VDD2": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "模组电源脚就近 100nF 去耦(3V3)。"
+    },
+    "C_VDD3": {
+      "part": "cap.100nf_0402",
+      "qty": 1,
+      "note": "模组电源脚就近 100nF 去耦(3V3)。"
+    },
+    "C_BULK": {
+      "part": "cap.10uf_0805",
+      "qty": 1,
+      "note": "3V3 体电容,配合三颗 100nF 就近去耦稳定模组供电。"
+    }
+  },
+  "internal_nets": [
+    ["U.GPIO20", "FT1.1"],
+    ["FT1.2", "R_DP.1"],
+    ["R_DP.2", "PORT:USB_DP"],
+    ["U.GPIO19", "FT1.3"],
+    ["FT1.4", "R_DM.1"],
+    ["R_DM.2", "PORT:USB_DM"],
+    ["U.CHIP_PU", "R_EN.1", "C_EN.1"],
+    ["R_EN.2", "PORT:3V3"],
+    ["C_EN.2", "PORT:GND"],
+    ["U.GPIO0", "R_BOOT.1", "PORT:BOOT"],
+    ["R_BOOT.2", "PORT:3V3"],
+    ["U.GPIO48", "R_SCL.1", "PORT:I2C_SCL"],
+    ["R_SCL.2", "PORT:3V3"],
+    ["U.GPIO47", "R_SDA.1", "PORT:I2C_SDA"],
+    ["R_SDA.2", "PORT:3V3"],
+    ["U.3V3*", "C_VDD1.1", "C_VDD2.1", "C_VDD3.1", "C_BULK.1", "PORT:3V3"],
+    ["U.GND*", "C_VDD1.2", "C_VDD2.2", "C_VDD3.2", "C_BULK.2", "PORT:GND"]
+  ],
+  "ports": {
+    "USB_DP": {
+      "dir": "bidir",
+      "at": "R_DP.2",
+      "desc": "USB D+ 差分(模组 GPIO20/USB_D+);模组侧起 SDMM0806 共模扼流圈 → 22R 串阻 → 引出到 USB-C 连接器 D+(原理图顺序:模组→扼流→串阻→连接器);差分等长、90Ω 阻抗",
+      "default_net": "USB_DP"
+    },
+    "USB_DM": {
+      "dir": "bidir",
+      "at": "R_DM.2",
+      "desc": "USB D- 差分(模组 GPIO19/USB_D-);模组侧起 SDMM0806 共模扼流圈 → 22R 串阻 → 引出到 USB-C 连接器 D-;与 D+ 成对等长",
+      "default_net": "USB_DM"
+    },
+    "EN": {
+      "dir": "in",
+      "at": "U.CHIP_PU",
+      "desc": "EN=CHIP_PU 上电复位(块内已 10K 上拉 + 1uF RC,原理图 C50=1uF);可选引出到复位键/PMIC,长按复位配合 BOOT 进下载",
+      "default_net": "EN"
+    },
+    "BOOT": {
+      "dir": "in",
+      "at": "U.GPIO0",
+      "desc": "GPIO0 boot strap(块内已 10K 上拉到 3V3);高=正常启动,拉低=进下载模式,通常接 BOOT 按键到 GND",
+      "default_net": "BOOT"
+    },
+    "I2C_SCL": {
+      "dir": "bidir",
+      "at": "U.GPIO48",
+      "desc": "I2C 时钟(本板约定 GPIO48/G48);块内已 2.2K 上拉到 3V3,宿主总线已有上拉时删本对",
+      "default_net": "I2C_SCL"
+    },
+    "I2C_SDA": {
+      "dir": "bidir",
+      "at": "U.GPIO47",
+      "desc": "I2C 数据(本板约定 GPIO47/G47);块内已 2.2K 上拉到 3V3",
+      "default_net": "I2C_SDA"
+    },
+    "3V3": {
+      "dir": "in",
+      "at": "C_BULK.1",
+      "desc": "3.3V 模组供电轨:所有 3V3/VDDA 电源脚 + 三颗 100nF + 一颗 10uF 体电容 + EN/BOOT/I2C 上拉的公共端",
+      "default_net": "3V3"
+    },
+    "GND": {
+      "dir": "in",
+      "at": "C_BULK.2",
+      "desc": "地:模组所有 GND/EPAD 焊盘 + 去耦回流 + EN RC 电容回地",
+      "default_net": "GND"
+    }
+  },
+  "schematic_notes": [
+    "原生 USB 下载无需 CH340/桥芯片:ESP32-S3 内置 USB-Serial/JTAG 外设,D+/D- 直连 USB-C;固件侧置 ARDUINO_USB_CDC_ON_BOOT=1 / USB_MODE=1 即可枚举为 USB CDC。这与 esp32_autodownload 的 UART+CH340 双三极管自动下载路线是两条不同技术路线,本块走原生 USB。",
+    "下载模式进入方式:长按复位键(EN)配合 BOOT(GPIO0)拉低即可进下载;有原生 USB CDC 时还可软复位自动进下载,不需要 DTR/RTS 自动下载电路,省掉两颗三极管。",
+    "USB 差分处理(原理图实际顺序):模组 GPIO20/GPIO19 → SDMM0806 共模扼流圈(FT1,紧贴模组)→ 22R 串阻(R44/R45)→ 出 USB-C 连接器;即扼流圈在模组侧、串阻在连接器侧(与旧草稿『串阻在模组侧』相反,已按 page_04 订正)。差分对等长、目标差分阻抗 90Ω。注:FT1(SDMM0806H-2-900T)四脚绕组配对(哪两脚同一绕组)未能从原理图确认,须按 datasheet + --probe 核对,勿把两条数据线经扼流圈内部短接。",
+    "EN 上电复位 RC:R_EN 10K 上拉到 3V3(R40)+ C_EN 1uF 到地(C50=1uF/10V,原理图实测——草稿/规格误记 100nF,以原理图为准),接模组 CHIP_PU 脚(net SOC_RESET),RC 必须靠近芯片放置(原理图注『RC靠近芯片,电容优先靠近』),保证上电时复位电平缓释、启动稳定。",
+    "GPIO0(BOOT)10K 上拉到 3V3:上电默认高=正常运行启动,拉低=进 ROM 下载器;通常引出到 BOOT 按键(按下拉地)。",
+    "I2C 上拉 2.2K 到 3V3(本板 SCL=GPIO48/G48、SDA=GPIO47/G47);若宿主总线上已有上拉,删除本块 R_SCL/R_SDA 避免并联上拉过强。GPIO 编号为本板约定,放置前 sch read 核对模组真实脚名再绑定。",
+    "PICO-1 SiP 内封 flash + psram + PCB 天线,无需外挂存储/晶振/天线匹配,是相对裸片/S3R8 块的最大简化;仅当改用外置天线时才需 ANT_PAD π 网络(本板留 0R + NC 占位)。",
+    "模组供电:所有电源脚就近各一颗 100nF(C_VDD1..C_VDD3)+ 一颗 10uF(C_BULK)体电容。原理图另在 VDD3P3 脚有一颗 2nH(L4)+ C61 的 π 滤波,属板级可选、且需把模组真实 VDD3P3 脚从公共 3V3 网拆出单独供电——本可复用块未纳入(避免悬空件/破坏 3V3 fanout);宿主板需要 VDD3P3 π 滤波时,在该脚另加 2nH 串联 + 旁路电容。",
+    "netflag 必须经真实导线连到脚:重叠脚坐标不算连接,DRC 看不到(EasyEDA 硬规则)。",
+    "引脚名核对:internal_nets 用功能名(USB_D+/USB_D-/EN/GPIO0/GPIO47/GPIO48/3V3/GND);放置前先用 sch read + --probe 拉真实模组符号脚名,再 block-apply 逐网对账后方可升 verified。"
+  ],
+  "pcb_layout": [
+    {
+      "rule": "usb-diff-front-end",
+      "target": "R_DP / R_DM / FT1",
+      "constraint": "22R 串阻 + SDMM0806 共模扼流圈靠近 USB-C 连接器放置,D+/D- 差分对等长、目标 90Ω;扼流后直出连接器,尽量短",
+      "value": "diff 90Ω, 等长",
+      "severity": "must"
+    },
+    {
+      "rule": "en-rc-adjacency",
+      "target": "R_EN / C_EN",
+      "constraint": "EN 上电复位 RC 紧贴模组 EN 脚放置(原理图注『RC靠近芯片,电容优先靠近』)",
+      "value": "<=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "decap-adjacency",
+      "target": "U 电源脚 / C_VDD1..C_VDD3 / C_BULK",
+      "constraint": "三颗 100nF 分别贴各电源脚,10uF 体电容就近;去耦回路走短",
+      "value": "100nF <=2mm",
+      "severity": "must"
+    },
+    {
+      "rule": "antenna-keepout",
+      "target": "PICO-1 天线区(模组本体一侧)",
+      "constraint": "PICO-1 内置 PCB 天线,模组本体天线一侧所有层禁铺铜/无器件 keepout,避免失谐",
+      "value": "所有层 no-copper",
+      "severity": "must"
+    }
+  ],
+  "placement": {
+    "FT1": {
+      "board_edge": true,
+      "edge": "user-facing",
+      "orientation": "共模扼流圈与 22R 串阻靠近 USB-C 连接器,D+/D- 短且成对",
+      "severity": "should",
+      "reason": "USB 前端越靠连接器,差分完整性越好"
+    },
+    "U": {
+      "orientation": "PICO-1 天线一侧朝板边、悬出板外或对齐 keepout 区;电源脚侧留去耦布局空间",
+      "severity": "must",
+      "reason": "模组内置天线需要板边/无铜 keepout 避免失谐"
+    }
+  },
+  "signals": {
+    "USB_DIFF": {
+      "nets": ["USB_DP", "USB_DM"],
+      "type": "diff_pair",
+      "route": "D+/D- 差分对等长、贴近平行,过 22R 串阻 + SDMM0806 共模扼流后出连接器;目标 90Ω 差分阻抗",
+      "keepout": "远离开关电源/RF/天线区,勿跨分割地",
+      "severity": "must",
+      "reason": "USB 全速/高速差分,阻抗与等长失配会枚举失败或误码"
+    },
+    "I2C": {
+      "nets": ["I2C_SCL", "I2C_SDA"],
+      "type": "single_high_speed",
+      "route": "短走线,上拉至 3V3;SCL/SDA 别长距离紧贴并行",
+      "keepout": "远离开关节点/RF",
+      "severity": "should",
+      "reason": "I2C 低速总线,受扰会丢通信"
+    }
+  },
+  "silk": {
+    "U": {
+      "label": "ESP32-S3-PICO",
+      "clearance": "outside-body — 模组本体外侧,勿压天线区",
+      "severity": "should"
+    }
+  },
+  "keepout": {
+    "antenna": {
+      "target": "PICO-1 天线一侧",
+      "layers": "all",
+      "rule": "no-copper",
+      "severity": "must",
+      "reason": "PICO-1 SiP 内置 PCB 天线,任一层铺铜都会失谐"
+    }
+  },
+  "bom_note": "13 件:1× ESP32-S3-PICO-1-N8R8 SiP 模组(内封 8MB flash + 8MB PSRAM + 天线)+ 1× SDMM0806 USB 共模扼流圈 + 2× 22R 0402(D+/D- 串阻)+ 2× 10K 0402(EN 上拉/GPIO0 boot 上拉)+ 2× 2.2K 0402(I2C 上拉)+ 3× 100nF 0402(电源去耦)+ 1× 1uF 0402(EN/CHIP_PU RC 电容 C50,原理图实测 1uF)+ 1× 10uF 0805 体电容。原生 USB 下载省掉 CH340 桥芯片与自动下载三极管;PICO-1 SiP 省掉外挂 flash/psram/晶振/天线匹配。VDD3P3 π 滤波(2nH+C61)为板级可选,未纳入本块。deviceUuid/LCSC C 号待真机 lib search 解析。"
+}
