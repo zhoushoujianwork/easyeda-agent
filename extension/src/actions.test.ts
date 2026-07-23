@@ -128,24 +128,51 @@ test('place without designator: no modify call, keeps placeholder (issue #68)', 
 
 // ─── schematic.component.modify 自定义属性兼容与回读校验 ───────────────
 
-function installComponentModifyStub(options: { apply?: boolean } = {}) {
+function installComponentModifyStub(options: {
+	/** false = SDK 全部静默丢弃(#150 假成功) */
+	apply?: boolean;
+	/** 只有这些键生效,其余静默丢弃(#151 部分应用) */
+	applyKeys?: string[];
+	/** 平台规范化:落库值一律 String() 化(数字 10 → "10") */
+	normalize?: boolean;
+	/** modify 成功后回读通道坏掉:get 恒抛错(#151 残洞) */
+	failGetAfterModify?: boolean;
+} = {}) {
 	let otherProperty: Record<string, string | number | boolean> = {
 		Description: 'keep me',
 		Value: '',
 	};
 	const calls: Array<{ id: string; patch: Record<string, unknown> }> = [];
+	let modifyCalled = false;
 	const current = () => mockComponent({
 		PrimitiveId: 'r2-pid',
 		Designator: 'R2',
 		OtherProperty: { ...otherProperty },
 	});
+	const store = (v: string | number | boolean) => options.normalize ? String(v) : v;
 	(globalThis as any).eda = {
 		sch_PrimitiveComponent: {
-			get: async (id: string) => id === 'r2-pid' ? current() : undefined,
+			get: async (id: string) => {
+				if (options.failGetAfterModify && modifyCalled) throw new Error('readback channel down');
+				return id === 'r2-pid' ? current() : undefined;
+			},
 			modify: async (id: string, patch: Record<string, unknown>) => {
 				calls.push({ id, patch });
+				modifyCalled = true;
 				if (options.apply !== false && patch.otherProperty) {
-					otherProperty = { ...(patch.otherProperty as Record<string, string | number | boolean>) };
+					const next = patch.otherProperty as Record<string, string | number | boolean>;
+					if (options.applyKeys) {
+						const out = { ...otherProperty };
+						for (const key of options.applyKeys) {
+							if (key in next) out[key] = store(next[key]);
+						}
+						otherProperty = out;
+					}
+					else {
+						otherProperty = Object.fromEntries(
+							Object.entries(next).map(([k, v]) => [k, store(v)]),
+						);
+					}
 				}
 				return current();
 			},
@@ -190,6 +217,128 @@ test('modify: rejects SDK success when requested properties were silently ignore
 		}),
 		/returned success but did not apply properties: Value/,
 	);
+	delete (globalThis as any).eda;
+});
+
+test('modify: unknown top-level patch keys rejected BEFORE any eda call (issue #151)', async () => {
+	const fx = installComponentModifyStub();
+	await assert.rejects(
+		() => schematicComponentModify({
+			primitiveId: 'r2-pid',
+			// typo of customAttributes — the SDK would silently drop it
+			patch: { customAtributes: { Value: '10kΩ' } },
+		}),
+		/Unknown component patch field\(s\): customAtributes/,
+	);
+	// 前置拒绝 = 零变异:modify 从未被调用
+	assert.equal(fx.calls.length, 0);
+	// Allowed 列表标注别名互斥,不误导「两个都能传」
+	await assert.rejects(
+		() => schematicComponentModify({
+			primitiveId: 'r2-pid',
+			patch: { bogus: 1 },
+		}),
+		/alias of otherProperty — use one, not both/,
+	);
+	delete (globalThis as any).eda;
+});
+
+test('modify: partial application returns structured success with notApplied + propertiesBefore (issue #151)', async () => {
+	const fx = installComponentModifyStub({ applyKeys: ['Value'] });
+	const res: any = await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		patch: { customAttributes: { Value: '10kΩ', Grade: 'A' } },
+	});
+
+	// ok:true(不抛错)→ daemon 照常 arm autosave,已应用子集得到落盘保护
+	assert.equal(res.result.partial, true);
+	assert.deepEqual(res.result.applied, ['Value']);
+	assert.deepEqual(res.result.notApplied, ['Grade']);
+	assert.deepEqual(res.result.alreadySet, []);
+	// Value 在 before 里已有键(值 '')→ 不算新增键
+	assert.deepEqual(res.result.addedKeys, []);
+	// before 快照支撑「重放恢复」与审计 before/after
+	assert.deepEqual(res.result.propertiesBefore, { Description: 'keep me', Value: '' });
+	assert.equal(res.warnings.length, 1);
+	assert.match(res.warnings[0], /Grade/);
+	// 文案带组件身份:CLI 全局按文本 dedup,不同组件的同键 partial 不互吞
+	assert.match(res.warnings[0], /r2-pid/);
+	// 画布真值:Value 已生效,Grade 无踪影
+	assert.deepEqual(fx.getOtherProperty(), { Description: 'keep me', Value: '10kΩ' });
+	delete (globalThis as any).eda;
+});
+
+test('modify: already-equal key does NOT shield the all-dropped hard gate (issue #151 review)', async () => {
+	// Description 期望值 === 原值:SDK 全部丢弃时回读命中纯属巧合,
+	// 不可证明写入 → 画布确未变,必须报错而非 partial(#150 假成功检测不被绕过)
+	installComponentModifyStub({ apply: false });
+	await assert.rejects(
+		() => schematicComponentModify({
+			primitiveId: 'r2-pid',
+			patch: { customAttributes: { Description: 'keep me', Grade: 'A' } },
+		}),
+		/returned success but did not apply properties: Grade/,
+	);
+	delete (globalThis as any).eda;
+});
+
+test('modify: newly-added keys reported in addedKeys — propertiesBefore replay cannot remove them (issue #151 review)', async () => {
+	installComponentModifyStub({ applyKeys: ['NewA'] });
+	const res: any = await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		patch: { customAttributes: { NewA: '1', NewB: '2' } },
+	});
+	assert.equal(res.result.partial, true);
+	assert.deepEqual(res.result.applied, ['NewA']);
+	assert.deepEqual(res.result.notApplied, ['NewB']);
+	// NewA 不在 before 快照里 → merge 语义下重放 propertiesBefore 删不掉它,
+	// 结构化暴露 + 文案如实说明,不谎报「可恢复」
+	assert.deepEqual(res.result.addedKeys, ['NewA']);
+	assert.match(res.warnings[0], /NewA/);
+	assert.match(res.warnings[0], /无法经 modify 移除/);
+	delete (globalThis as any).eda;
+});
+
+test('modify: zero properties applied but geometry also patched → partial success, not error (issue #151)', async () => {
+	installComponentModifyStub({ apply: false });
+	const res: any = await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		// x 可能已生效(stub 不建模几何,但真机上几何与属性独立提交)——
+		// 抛错会把可能已变的画布压成 ok:false 丢 autosave
+		patch: { x: 150, customAttributes: { Value: '10kΩ' } },
+	});
+	assert.equal(res.result.partial, true);
+	assert.deepEqual(res.result.notApplied, ['Value']);
+	delete (globalThis as any).eda;
+});
+
+test('modify: platform number→string normalization is NOT a false partial (issue #151)', async () => {
+	installComponentModifyStub({ normalize: true });
+	const res: any = await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		patch: { customAttributes: { Value: 10 } },
+	});
+	// String(10) === "10":强转容忍比较,不误报 partial
+	assert.equal(res.result.partial, undefined);
+	assert.equal(res.result.component.otherProperty.Value, '10');
+	// 全量成功也带 before 快照(审计 before/after 铁律)
+	assert.deepEqual(res.result.propertiesBefore, { Description: 'keep me', Value: '' });
+	delete (globalThis as any).eda;
+});
+
+test('modify: readback failure after successful modify degrades to verified:false, never ok:false (issue #151)', async () => {
+	installComponentModifyStub({ failGetAfterModify: true });
+	const res: any = await schematicComponentModify({
+		primitiveId: 'r2-pid',
+		patch: { customAttributes: { Value: '10kΩ' } },
+	});
+	// modify 已成功 ⇒ 画布已变;回读通道失败绝不能抛错(丢 autosave),
+	// 降级为 verified:false + warning(pageRename 先例)
+	assert.equal(res.result.verified, false);
+	// 画布状态未经验证,恰是最需要 before 快照支撑恢复的场景
+	assert.deepEqual(res.result.propertiesBefore, { Description: 'keep me', Value: '' });
+	assert.equal(res.warnings.length, 1);
+	assert.match(res.warnings[0], /回读校验/);
 	delete (globalThis as any).eda;
 });
 

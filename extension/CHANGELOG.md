@@ -11,6 +11,26 @@ follow [SemVer](https://semver.org/).
   `customAttributes`,但 EasyEDA SDK 实际只接受 `otherProperty`,导致命令返回成功却不更新
   `Value` 等属性。连接器现在将兼容别名转换为 SDK 字段、与现有属性合并后写入,并用新器件
   句柄逐字段回读验证;平台再次静默忽略时会明确报错,不再假报成功。(#150, 感谢 @zhiqiangme 贡献)
+- **`schematic.component.modify` 部分应用丢 autosave(#150 的回读门收尾,#151)**:
+  回读门从「任何字段未生效即抛错」改为**分级语义** — SDK 部分应用时抛错会让 daemon
+  (只对 ok:true 排 autosave)跳过落盘,已写进画布的子集只留内存、重试面对部分变异的
+  文档。现在:全部生效=ok;**部分生效=ok + `result.{partial,applied,notApplied,
+  propertiesBefore}` + warnings**(已应用子集照常 autosave,`propertiesBefore` 支撑
+  重放恢复与审计 before/after,CLI `sch modify` 非零退出保住错误信号);纯属性补丁
+  0 字段生效仍报错(画布确未变,回读铁律不倒退)。另:**未知顶层 patch 键前置拒绝**
+  (逐字抄自 pro-api-types 的 modify 14 键签名,SDK 对未知键静默丢弃、事后无从归因);
+  回读值比较 String() 强转容忍(平台把数字属性规范化为字符串,不再误报 partial);
+  modify 成功后**回读通道本身失败**降级为 `verified:false` + warning 而非抛错
+  (250ms 重试一次;抛错同样会丢 autosave)。CLI 侧新增连接器 warnings 的 stderr
+  choke-point 渲染(对齐 staleRisk/concurrentWriter)。对抗性评审加固:`applied`
+  只计**回读可证明**的写入(期望值与原值本就相同的键归 `alreadySet`,不豁免
+  全失败硬门——否则「一个已满足键+其余全丢」可绕过假成功检测);**新增键**
+  merge 语义下重放 `propertiesBefore` 删不掉,结构化暴露为 `addedKeys` 且文案
+  如实说明;partial 警告文案带 primitiveId(CLI 全局按文本 dedup,不同组件不
+  互吞);`propertiesBefore` 三条返回路径全带(审计 before/after);playbook
+  重放(`easyeda apply`)与 `sch no-connect` 同步接 partial 失败门;
+  `schematic.page.rename` 的降级 warning 同步提升到顶层 warnings(吃到 stderr
+  渲染,`result.warning` 保留兼容)。
 
 ## [0.18.0] - 2026-07-22
 

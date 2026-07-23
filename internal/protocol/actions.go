@@ -240,7 +240,7 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			Mutates:     true,
 			NeedsWindow: true,
-			Description: "Modify component position, designator, name, BOM flags, or custom properties. customAttributes is a compatibility alias for the EasyEDA SDK otherProperty field; property patches are merged with existing values and verified by readback so SDK success/no-op is reported as an error.",
+			Description: "Modify component position, designator, name, BOM flags, or custom properties. customAttributes is a compatibility alias for the EasyEDA SDK otherProperty field; unknown patch keys are rejected up front (the SDK silently drops them). Property patches are merged with existing values and verified by readback with tiered semantics (#151): all applied = ok; PARTIAL application = ok with result.{partial,applied,alreadySet,notApplied,addedKeys,propertiesBefore} + warnings — the applied subset stays on canvas and autosaves; the `sch modify` subcommand and playbook replay treat partial as a failure, but raw `easyeda call` users must check result.partial/notApplied themselves. A pure-property patch where nothing provably applied is an error (canvas unchanged). Replaying propertiesBefore restores overwritten values only; keys newly added by the call (addedKeys) cannot be removed via modify.",
 			Inputs:      []string{"primitiveId", "patch"},
 			Outputs:     []string{"component state"},
 			VerifyWith:  []string{"schematic.component.get"},

@@ -453,13 +453,13 @@ const schematicPageRename: Handler = async (payload) => {
 	if (verified) {
 		return { result: { ok, verified: true } };
 	}
+	const warning = '重命名已提交，但页面列表元数据尚未同步为新名（EasyEDA 平台异步缓存，issue #55）；'
+		+ '请稍后重试或触发任意其他写操作后再用 doc ls 确认。';
 	return {
-		result: {
-			ok,
-			verified: false,
-			warning: '重命名已提交，但页面列表元数据尚未同步为新名（EasyEDA 平台异步缓存，issue #55）；'
-				+ '请稍后重试或触发任意其他写操作后再用 doc ls 确认。',
-		},
+		// result.warning 保留兼容旧调用方;顶层 warnings 让 CLI stderr
+		// choke-point(#151)也能渲染,与 modify 的 verified:false 降级同款形状。
+		result: { ok, verified: false, warning },
+		warnings: [warning],
 	};
 };
 
@@ -772,6 +772,34 @@ export const schematicComponentPlace: Handler = async (payload) => {
 type SchematicPropertyValue = string | number | boolean;
 
 /**
+ * eda.sch_PrimitiveComponent.modify 接受的全部顶层 patch 键 — 逐字抄自
+ * @jlceda/pro-api-types 的 modify 签名(14 键),外加本连接器的兼容别名
+ * customAttributes(下方归一化为 otherProperty)。SDK 对未知顶层键**静默丢弃**
+ * (#150/#151 根因),事后回读无从归因,所以在任何 eda.* 调用之前就拒绝
+ * (#120 前置拒绝范式:零变异、精确归因)。
+ */
+const SCH_MODIFY_PATCH_KEYS: ReadonlySet<string> = new Set([
+	'x', 'y', 'rotation', 'mirror', 'addIntoBom', 'addIntoPcb',
+	'designator', 'name', 'uniqueId', 'manufacturer', 'manufacturerId',
+	'supplier', 'supplierId', 'otherProperty',
+	'customAttributes',
+]);
+
+/**
+ * 逐字段回读判定:平台会把数字属性规范化成字符串(10 → "10"),String() 强转
+ * 容忍比较避免把规范化误判成未应用(false-partial)。缺键恒为未应用。
+ */
+function propertyApplied(
+	actual: Record<string, SchematicPropertyValue>,
+	key: string,
+	expected: SchematicPropertyValue,
+): boolean {
+	if (!(key in actual)) return false;
+	const got = actual[key];
+	return got === expected || String(got) === String(expected);
+}
+
+/**
  * 校验原理图器件自定义属性补丁，避免 SDK 静默忽略不支持的嵌套值。
  */
 function requireSchematicPropertyPatch(
@@ -804,6 +832,20 @@ export const schematicComponentModify: Handler = async (payload) => {
 		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required object field "patch".');
 	}
 
+	// 未知顶层键在任何 eda.* 调用前拒绝:SDK 会静默丢弃它们,回读也无从
+	// 区分「键不支持」和「值被平台拒绝」;前置拒绝是零变异的精确失败(#151)。
+	const unknownKeys = Object.keys(patch as Record<string, unknown>)
+		.filter(key => !SCH_MODIFY_PATCH_KEYS.has(key));
+	if (unknownKeys.length > 0) {
+		throw new ActionError(
+			ErrorCodes.MISSING_PAYLOAD_FIELD,
+			`Unknown component patch field(s): ${unknownKeys.join(', ')}. `
+			+ `Allowed: ${[...SCH_MODIFY_PATCH_KEYS]
+				.map(k => k === 'customAttributes' ? 'customAttributes (alias of otherProperty — use one, not both)' : k)
+				.join(', ')}.`,
+		);
+	}
+
 	const normalizedPatch = { ...(patch as Record<string, unknown>) };
 	const hasCustomAttributes = Object.prototype.hasOwnProperty.call(normalizedPatch, 'customAttributes');
 	const hasOtherProperty = Object.prototype.hasOwnProperty.call(normalizedPatch, 'otherProperty');
@@ -815,17 +857,19 @@ export const schematicComponentModify: Handler = async (payload) => {
 	}
 
 	let expectedProperties: Record<string, SchematicPropertyValue> | undefined;
+	let propertiesBefore: Record<string, SchematicPropertyValue> | undefined;
 	if (hasCustomAttributes || hasOtherProperty) {
 		const field = hasCustomAttributes ? 'customAttributes' : 'otherProperty';
 		expectedProperties = requireSchematicPropertyPatch(normalizedPatch[field], field);
 
 		// EasyEDA SDK 只接受 otherProperty，而且会整体替换该对象；先合并现有值，
 		// 使 CLI 文档中的 customAttributes 别名可用，同时避免修改 Value 时清空其他属性。
+		// before 快照同时兑现审计 before/after 约定,部分应用时随 result 返回。
 		const current = await getComponentOrThrow(primitiveId);
-		const existing = cleanOtherProperty(
+		propertiesBefore = cleanOtherProperty(
 			current.getState_OtherProperty() as Record<string, unknown> | undefined,
 		) ?? {};
-		normalizedPatch.otherProperty = { ...existing, ...expectedProperties };
+		normalizedPatch.otherProperty = { ...propertiesBefore, ...expectedProperties };
 		delete normalizedPatch.customAttributes;
 	}
 
@@ -844,23 +888,103 @@ export const schematicComponentModify: Handler = async (payload) => {
 	}
 
 	if (expectedProperties) {
-		// SDK 某些未知字段会返回成功但静默 no-op；必须用新句柄回读实际画布状态。
-		const fresh = await getComponentOrThrow(primitiveId);
+		// SDK 某些字段会返回成功但静默 no-op；必须用新句柄回读实际画布状态。
+		// modify 已成功返回 ⇒ 画布可能已变;此后回读通道自身的失败绝不能再变成
+		// ok:false —— daemon 只对 ok:true 排 autosave,抛错会让已落画布的变更
+		// 只留内存、reload 即丢(issue #151)。回读失败重试一次后降级为
+		// verified:false + warning(schematicPageRename 同款先例)。
+		let fresh: SchComponent | undefined;
+		try {
+			fresh = await getComponentOrThrow(primitiveId);
+		}
+		catch { /* transient — retry once below */ }
+		if (!fresh) {
+			await new Promise<void>(resolve => setTimeout(resolve, 250));
+			try {
+				fresh = await getComponentOrThrow(primitiveId);
+			}
+			catch { /* fall through to verified:false */ }
+		}
+		if (!fresh) {
+			return {
+				result: {
+					component: serializeComponent(component),
+					verified: false,
+					// 恰是最需要 before 快照支撑恢复的场景(画布状态未经验证)
+					propertiesBefore: propertiesBefore ?? {},
+				},
+				warnings: [
+					`修改已提交,但回读校验组件 "${primitiveId}" 失败(重试一次仍失败);`
+					+ '画布状态未经逐字段验证,请用 schematic.component.get 复核(issue #151)。',
+				],
+			};
+		}
 		const actual = cleanOtherProperty(
 			fresh.getState_OtherProperty() as Record<string, unknown> | undefined,
 		) ?? {};
-		const notApplied = Object.entries(expectedProperties)
-			.filter(([key, value]) => actual[key] !== value)
-			.map(([key]) => key);
-		if (notApplied.length > 0) {
+		const expectedKeys = Object.keys(expectedProperties);
+		const before = propertiesBefore ?? {};
+		const notApplied = expectedKeys
+			.filter(key => !propertyApplied(actual, key, expectedProperties[key]));
+		// 回读命中的键按 before 快照再二分:before 本就等于期望值的键无法证明
+		// 本次写入(SDK 丢弃与写入同值回读不可区分),归入 alreadySet,不计入
+		// applied、也不豁免全失败硬门 —— 否则「一个已满足键 + 其余全丢」会绕过
+		// #150 的假成功检测。
+		const alreadySet = expectedKeys.filter(key =>
+			!notApplied.includes(key) && propertyApplied(before, key, expectedProperties[key]));
+		const applied = expectedKeys.filter(key =>
+			!notApplied.includes(key) && !alreadySet.includes(key));
+		const patchedBeyondProperties = Object.keys(normalizedPatch).some(key => key !== 'otherProperty');
+		if (notApplied.length > 0 && applied.length === 0 && !patchedBeyondProperties) {
+			// 纯属性 patch 且无一可证明写入:画布确未变(alreadySet 键本来就是
+			// 期望值),假成功必须报错(回读铁律,此时 ok:false 不 arm autosave
+			// 是正确行为 — 没有东西需要落盘)。
 			throw new ActionError(
 				ErrorCodes.EDA_CALL_FAILED,
 				`Component "${primitiveId}" modify returned success but did not apply properties: ${notApplied.join(', ')}.`,
 			);
 		}
+		if (notApplied.length > 0) {
+			// 部分应用:已写进画布的子集是既成事实,报结构化成功(ok:true)让
+			// daemon 照常 arm autosave 落盘;调用方从 notApplied/warnings 拿到
+			// 未生效清单(同文件 set_no_connect #134 的 notApplied 同款语义)。
+			// CLI 侧 `sch modify` 对 notApplied 非空非零退出,错误信号不丢。
+			// merge 语义删不掉键:重放 propertiesBefore 只能恢复被覆盖键的原值,
+			// 本次新增键(addedKeys)须编辑器手工删除 — 文案如实说明,不谎报可恢复。
+			const addedKeys = applied.filter(key => !(key in before));
+			return {
+				result: {
+					component: serializeComponent(fresh),
+					partial: true,
+					applied,
+					alreadySet,
+					notApplied,
+					addedKeys,
+					propertiesBefore: before,
+				},
+				warnings: [
+					`组件 "${primitiveId}" 部分属性未生效: ${notApplied.join(', ')}(SDK 静默忽略)。`
+					+ (applied.length > 0
+						? `已应用子集(${applied.join(', ')})已保留在画布并照常 autosave;`
+						: '属性均未生效,但几何/元数据 patch 可能已生效(照常 autosave);')
+					+ '重放 result.propertiesBefore 仅恢复被覆盖键的原值'
+					+ (addedKeys.length > 0
+						? `,本次新增键(${addedKeys.join(', ')})无法经 modify 移除,需编辑器手工删除`
+						: '')
+					+ '(issue #151)。',
+				],
+			};
+		}
 		component = fresh;
 	}
-	return { result: { component: serializeComponent(component) } };
+	return {
+		result: {
+			component: serializeComponent(component),
+			// 审计 before/after:属性修改的 before 快照随全量成功一并返回
+			// (纯几何 patch 无属性修改,不引入空对象噪音)。
+			...(propertiesBefore !== undefined ? { propertiesBefore } : {}),
+		},
+	};
 };
 
 const schematicComponentDelete: Handler = async (payload) => {

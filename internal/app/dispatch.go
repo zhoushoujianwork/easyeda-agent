@@ -393,6 +393,41 @@ func warnConcurrentWriter(respBody []byte, stderr io.Writer) {
 	fmt.Fprintf(stderr, "⚠ concurrentWriter: %s\n", parsed.ConcurrentWriter)
 }
 
+// responseWarningsSeen deduplicates connector-attached response warnings within
+// one CLI invocation, aligned with staleRiskSeen (composite commands fire many
+// actions and would repeat identical advisories).
+var (
+	responseWarningsMu   sync.Mutex
+	responseWarningsSeen = map[string]bool{}
+)
+
+// warnResponseWarnings surfaces connector-attached top-level response warnings
+// (e.g. a partial property application on schematic.component.modify, issue
+// #151, or the rebind "new primitiveId" advisory) on STDERR, so JSON/table
+// output on stdout stays machine-parseable. Best-effort and non-blocking,
+// aligned with warnStaleRisk.
+func warnResponseWarnings(respBody []byte, stderr io.Writer) {
+	var parsed struct {
+		Warnings []string `json:"warnings"`
+	}
+	if json.Unmarshal(respBody, &parsed) != nil || len(parsed.Warnings) == 0 {
+		return
+	}
+	for _, w := range parsed.Warnings {
+		if w == "" {
+			continue
+		}
+		responseWarningsMu.Lock()
+		seen := responseWarningsSeen[w]
+		responseWarningsSeen[w] = true
+		responseWarningsMu.Unlock()
+		if seen {
+			continue
+		}
+		fmt.Fprintf(stderr, "⚠ %s\n", w)
+	}
+}
+
 // ── --doc guard: pin mutating actions to a chosen document ───────────────────
 //
 // Every action that MOVES/creates/deletes primitives operates on whatever
@@ -540,6 +575,9 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	warnStaleRisk(respBody, os.Stderr)
 	// Same choke point for the concurrent-writer advisory (issue #108).
 	warnConcurrentWriter(respBody, os.Stderr)
+	// And for connector-attached warnings (partial property application #151,
+	// rebind re-place advisory, …) — visible without per-command wiring.
+	warnResponseWarnings(respBody, os.Stderr)
 	return respBody, nil
 }
 

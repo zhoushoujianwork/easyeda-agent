@@ -435,6 +435,25 @@ final placed state.`,
 			Use:   "modify",
 			Short: "Modify component position, designator, BOM flags, or custom properties",
 			Args:  cobra.NoArgs,
+			Long: `Modify component position, designator, BOM flags, or custom properties.
+
+Patch keys are validated up front against the EasyEDA SDK modify signature
+(x/y/rotation/mirror/addIntoBom/addIntoPcb/designator/name/uniqueId/
+manufacturer/manufacturerId/supplier/supplierId/otherProperty, plus the
+customAttributes alias for otherProperty — use one, not both); unknown
+top-level keys are rejected before any canvas mutation (the SDK silently
+drops them). Property patches MERGE with the component's existing custom
+properties and are verified by fresh readback, with tiered semantics (#151):
+
+  - all requested properties applied      → success
+  - PARTIAL application                   → wire-level ok (the applied subset
+    stays on canvas and autosaves) but THIS COMMAND EXITS NON-ZERO with
+    result.{partial,applied,alreadySet,notApplied,addedKeys,propertiesBefore};
+    replaying propertiesBefore restores overwritten values only — keys newly
+    added by this call (addedKeys) cannot be removed via modify
+  - pure-property patch, nothing applied  → error (canvas unchanged)
+  - readback channel itself fails         → success with verified:false +
+    warning (erroring would skip autosave and lose the applied edit)`,
 			Example: `  easyeda sch modify --id <primitiveId> --patch '{"x":150,"y":200}'
   easyeda sch modify --id <id> --patch '{"customAttributes":{"Value":"10k"}}'`,
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -448,8 +467,22 @@ final placed state.`,
 				if err := json.Unmarshal([]byte(patchJSON), &patch); err != nil {
 					return fmt.Errorf("invalid --patch json: %w", err)
 				}
-				return dispatch(cfg, "schematic.component.modify", window,
-					map[string]any{"primitiveId": id, "patch": patch}, stdout, stderr)
+				res, err := dispatchCapture(cfg, "schematic.component.modify", window,
+					map[string]any{"primitiveId": id, "patch": patch}, stdout)
+				if err != nil {
+					return err
+				}
+				// 部分应用(#151):已应用子集是既成事实(wire 级 ok:true 使
+				// autosave 照常落盘),但脚本/CI 必须看到失败信号 —— wire 级
+				// ok 与 CLI 退出码解耦(#113 精神:错误信号不丢)。
+				if na, _ := res.Result["notApplied"].([]any); len(na) > 0 {
+					keys := make([]string, 0, len(na))
+					for _, k := range na {
+						keys = append(keys, fmt.Sprint(k))
+					}
+					return fmt.Errorf("partial apply: properties not applied: %s (applied subset kept on canvas and autosaved; replaying result.propertiesBefore restores overwritten values only — keys newly added by this call (result.addedKeys) cannot be removed via modify)", strings.Join(keys, ", "))
+				}
+				return nil
 			},
 		}
 		c.Flags().StringVar(&id, "id", "", "primitive ID to modify (required)")
@@ -858,7 +891,21 @@ pull fresh ids before any follow-up mutation on it.`,
 				if clear {
 					payload["noConnected"] = false
 				}
-				return dispatch(cfg, "schematic.pin.set_no_connect", window, payload, stdout, stderr)
+				res, err := dispatchCapture(cfg, "schematic.pin.set_no_connect", window, payload, stdout)
+				if err != nil {
+					return err
+				}
+				// notApplied 退出码约定与 `sch modify` 对齐(#151):部分 pin 未
+				// 持久化时 wire 级 ok:true(已持久化子集照常 autosave),但脚本/CI
+				// 必须从退出码看到失败信号。
+				if na, _ := res.Result["notApplied"].([]any); len(na) > 0 {
+					pins := make([]string, 0, len(na))
+					for _, p := range na {
+						pins = append(pins, fmt.Sprint(p))
+					}
+					return fmt.Errorf("partial apply: no-connect not persisted on pin(s): %s (persisted subset kept; re-run for the listed pins)", strings.Join(pins, ", "))
+				}
+				return nil
 			},
 		}
 		c.Flags().StringVar(&designator, "designator", "", "component designator, e.g. U1 (required)")
