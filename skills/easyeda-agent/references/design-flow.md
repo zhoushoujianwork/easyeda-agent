@@ -54,14 +54,14 @@ S0 设计方案书 → S1 图纸/分页💾 → S2 模块编组 → S3 按组摆
 
 | 步 | 做什么 | 固定命令 | 过门判据(不过不进下一步) |
 |---|---|---|---|
-| S0 | 方案书:选块选型、网名表、分页计划、架构决策 | `blocks ls/search/show` → spec 写盘 → `easyeda spec validate`(落块后位号回填走 `easyeda spec backfill … --write`,或 `block-apply --spec`) | validate 无 ERROR;milestone 档经用户确认 |
+| S0 | 方案书:选块选型、网名表、分页计划、架构决策 | `blocks ls/search/show` → spec 写盘 → `easyeda spec validate --strict`(落块后位号回填走 `easyeda spec backfill … --write`,或 `block-apply --spec`) | **首个 page-new/place/block-apply 前** validate 无 ERROR;milestone 档经用户确认 |
 | S1 | 图纸/分页 reconcile 到模块计划 | `sch pages` → `page-rename`/`page-new`/`page-delete` → `sch sheet-geometry --json` | 页集合=模块计划;每页有 A4 sheet 💾 |
 | S2 | 分区规划(只规划不落子) | 块路径读虚拟组;手工页 `sch zones set` → `sch zone-plan --json` | 六项 validation 全 0 **且 `labelScopeDegraded=false`**(降级=判据验不了,不是"没问题") |
 | S3 | 按组摆放(块优先;命中块 S3+S4 一条命令) | `sch block-apply <id> --bind 端口=网名 --spec <s0.json>`(`--spec` 顺手回填位号)/ `sch autolayout --engine template` / `sch place`+`modify` | `sch gate --only layout-lint,clusters` 无 ERROR 💾。⛔ 报 `page-too-small` = **停手问用户**(独立成页/继续分页/收小组),工具不自动分页;人肉重试由 `--max-attempts`(默认 3)机械叫停 |
 | S3′ | **分区收敛(按需)**:分区拥挤 / `partitionOverlap`>0 / 重整已放置页 | `sch zone-arrange`(纯规划,唯一解;phase B = 边归属+多层货架+回溯)→ `--apply`(断言①②+假失败清创+分级回滚+**断言③落地复判**) | verdict=pass 且断言①②③绿(③ = 落地实测框 vs 规划框偏差 ≤ gutter、区框零重叠、**无成员探出图纸**、**retain 区几何未被改动**、**无自由落点 pin**)。**断言③红时不要「多跑几遍」** —— 桩线伸展已统一为一把尺,再跑一轮只会追尾(真机 4 轮取证:每轮 dry-run pass、落地必重叠);按复判表定位是哪个区胖了。**这条现在有机械兜底**:`block-apply`/`destagger`/`group-move` 的 `--max-attempts`(默认 3,跨调用失败签名台账)会在同一个结果第 3 次出现时**停手并给结论**,画布零改动;而一旦读到 `page-too-small` 就**别再做任何几何微调**,直接进拆页决策(见 S3 停点)。注意「规划框 = 落地框上界」**只在模型内成立**(同一份 pin 坐标+桩长),真机 MCU_IO 六区实测偏差 +141/+126/+82/+56/+26/+10,断言③ 的职责就是把不成立的那几次报出来。报「N 只 pin 走了自由落点」= 计划根本没覆盖那几只脚,它们的方向/桩长不在规划里,先看是不是有 pin 靠普通导线/netlabel 连着。`blocked` 时先看 phase A 那一栏收敛了没(**排不下的是形状不是面积**)——phase A 现在会**域感知选形**(候选先比可排布档位、再比「本页有几条通道装得下」,平局才回到原有紧凑序),所以 `zones[].mode` 尾巴会直说它选了什么形态、为什么;读到「没有一个装得进任何通道」就是真的要拆(**别去调纸张/带高**),再考虑 `page-new` 拆页 —— A4-only,不换纸。phase A 行首的 `↩` = **「不得变差」门回退了这一区**(收敛会让它在本页**更难排**,于是保留原形;理由在 `zones[].retainWhy`)—— 那是保护不是故障,**别去改 A4 尺寸/带高绕开它**,要么把该区拆小要么拆页;门比的是**三档可排布性**(`2` 有落点 / `1` 只被图签挡 / `0` 连可用域都装不下),掉档才回退 —— 所以「原形也排不下」不等于放行,`1 → 0` 照样拦(2026-08-20 第二轮真机 `449×737 → 244×863` 就是从首版那个单布尔判据里漏掉的);两个形状都是 `0` 档时门不拦,phase B 报「纸面放不下」= 真的要拆。`↩` 区在 `--apply` 里受**刚体不变式**硬门保护(逐 pin 比对方向/桩长/类型,不一致就拒绝整页、画布零改动) |
 | S4 | 通道布线(块外的连线) | `sch autoconnect`(电源/地/netport)/ `sch wire`(信号) | 无穿件压线 💾 |
-| S5 | 校验门(机械真值) | 逐页 `sch gate --strict --doc <页>` + 全工程 `sch nets --strict` + `sch reconcile` | 每页 verdict=pass;无网名变体/单引脚网;意图对账无差异 |
-| S6 | 调整闭环 | 照 gate 报告「下一步」修 → 重跑 gate | verdict=pass → `sch save` 确认 `saved:true` 💾 |
+| S5 | 校验门(机械真值) | 多页统一运行 `scripts/schematic-acceptance.py`(内部逐页 strict gate + 全工程 nets + 黄金对账) | 每页 verdict=pass;或仅显式挂账 v1.1.1 `missing-titleblock`;无网名变体/单引脚网;意图对账无差异 |
+| S6 | 调整闭环 | 按页修一个 finding 类别 → 先跑便宜门 → 最终只重跑一次 acceptance | acceptance 通过 → `sch save` 确认 `saved:true` 💾 |
 | S6′ | 交付三件套(默认必做) | `sch zone-draw --mode partition` + `sch note --zone <模块>` + ~~`sch titleblock`~~(⚠图签写入当前禁用:写路径损毁 sheet 引用→重启丢图框,见 actions.md;留白如实报) | `sch check` 无 missing-partition/note(titleblock 挂账) |
 
 > `blocked` ≠ `fail`(检查器没跑成,先修环境别改电路);判状态看数据不看截图;每过门显式 save。
@@ -75,6 +75,9 @@ imported/placement_ready 打成实心圆,而那块 PCB 上一个器件都没有�
 S6 平台不暴露脏标记(只能显式 `sch save` 并确认 `saved:true`)。
 
 ### S0 — 设计方案书(Design Proposal)
+- **时序门**:S0 spec 必须在首个 `page-new`、`place` 或 `block-apply` 前落盘并通过
+  `easyeda spec validate --strict`。先画后补 spec 只能算事后记录,不能阻止选型、分页和
+  统一网名返工；不要靠创建 `*_NEW` 临时页代替容量规划。
 - **做什么**:读懂设计——器件清单、电源树、功能模块划分、目标幅面;**并在放置第一个元件之前**,把覆盖原理图 + PCB 全程的架构决策一次性定下来,而不是让它们在 S2/P4/P8 执行到才被想起(实测最贵的返工正是决策后置:天线 keepout 后置逼已布线的模块重绕,地策略选错要重铺)。
 - **怎么做(轻量摸底)**:见 conventions 的 `design-pre-analysis.md`(器件清单、电源树、功能分组、幅面估算)。`easyeda health` 确认已连接。
 - **怎么做(架构决策)**:查 [`design-decisions.md`](./design-decisions.md) 里的决策点清单——叠层与层数、地策略(单 GND PLANE vs 分区 pour + 桥地)、接口取向(如 USB 单/双取向)、器件选型成本档位等。**每一条都要把该文件里的选项、已知坑、推荐方案摊开给用户看,由用户拍板,不能替用户默认选**——这是设计方案书阶段的核心产出,不是可选步骤。RF/天线 keepout 范围**不在**这份决策清单里——它是唯一正确答案的 guardrail(必须覆盖全层),不摊开选项;S0 只需把 RF 器件位号和 `"all"` 层范围写进 spec 的 `rf` 字段供 P4 直接读取执行。
@@ -356,6 +359,8 @@ S6 平台不暴露脏标记(只能显式 `sch save` 并确认 `saved:true`)。
 
 **逐页跑 `easyeda sch gate --strict --doc <page>`,再做一次设计意图对账。** 不要用
 `--all-pages` 的浅数据冒充逐页证明(`--strict` 与 `--all-pages` 不兼容,多页就循环 `--doc`)。
+多页工程优先运行 `scripts/schematic-acceptance.py`,由它统一核对页集合、逐页 gate、全工程
+nets、pin→net/NC 黄金表和最终导出,避免漏页或重复执行同一组慢检查。
 
 1. **机械门(一条命令)** `easyeda sch gate --strict --doc <page>`
 
@@ -395,6 +400,12 @@ S6 平台不暴露脏标记(只能显式 `sch save` 并确认 `saved:true`)。
    `--json` 带每个 stage 的完整原生报告(`stages[].detail`),是四个单命令 JSON 的超集,不用重跑。
    局部复查仍可直接用 `sch layout-lint` / `sch check` / `sch bridge-check` / `sch drc` 单命令
    (它们原样保留),但**交付门走 gate**。窗口不在前台时 `--skip drc` 先过前三关。
+
+   **v1.1.1 标题栏例外(精确 allowlist,不是通用忽略 WARN):**`sch titleblock --data`
+   会损坏 sheet 引用,而 strict gate 同时会报 `missing-titleblock` 并建议该危险命令。
+   只有 CLI 与 connector 都是 1.1.1、失败 stage 仅为 `check`、finding 仅含
+   `missing-titleblock`、其余 stage 全 pass 时,才可给 acceptance 脚本显式传
+   `--allow-titleblock-gap` 挂账。任何其他版本、stage 或 finding 仍失败。
 
 2. **跨页网名门(逐页命令看不见的那半)** `easyeda sch nets --strict`
 

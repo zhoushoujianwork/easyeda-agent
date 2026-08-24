@@ -19,17 +19,20 @@ netflag、去耦贴 IC、框和文字按页保存。**
 
 ### 新建或尚未布线的页面
 
-1. `easyeda sch sheet-geometry --json --doc <page>`：必须有真实 sheet bbox。
-2. 按功能拆页并生成 module spec；`easyeda sch zones set --spec <spec>` 持久化
+1. **先落盘并严格校验 S0 spec，再创建/放置页面。** spec 至少冻结器件选型、统一网名、
+   页面集合、模块归属和接口方向；文件时间必须早于首个 placement。不要用 `_NEW` 页面
+   作为容量规划手段。
+2. `easyeda sch sheet-geometry --json --doc <page>`：必须有真实 sheet bbox。
+3. 按功能拆页并生成 module spec；`easyeda sch zones set --spec <spec>` 持久化
    （认领现在**只给布局前的 `sch autolayout` 指定落位格位**；分区框/说明的成员归属
    读的是虚拟组 —— `sch block-apply` 落块时已按功能子群自动归组）
    `modules[].page/zone/parts`。
-3. 放置全部器件并读回真实 bbox/pins。优先 `sch block-apply`；其次在无
+4. 放置全部器件并读回真实 bbox/pins。优先 `sch block-apply`；其次在无
    wire/bus/marker 的页面运行 `sch autolayout --engine template --dry-run`，确认后
    `--apply --doc <page>`。
-4. 每页通过 `sch layout-lint --strict --doc <page>` 后才布线。
-5. 模块内部画短正交线；电源/地/netport 短桩优先用 `sch autoconnect`。
-6. 逐页完成下方“功能框 + 文字标注”和“最终验证门”。
+5. 每页通过 `sch layout-lint --strict --doc <page>` 后才布线。
+6. 模块内部画短正交线；电源/地/netport 短桩优先用 `sch autoconnect`。
+7. 逐页完成下方“功能框 + 文字标注”和“最终验证门”。
 
 ### 已连线、待整理的页面
 
@@ -56,6 +59,19 @@ netflag、去耦贴 IC、框和文字按页保存。**
 5. 每批修改后立即 `sch read` 对照黄金表；任何 pin→net、NC 集合变化都先修复，不带病
    进入下一批。每个通过的批次显式 `sch save`。
 6. 全页完成后运行最终验证门；只有拓扑完全一致才可宣布“只是布局变化”。
+
+### 每页事务与失败预算
+
+每页只走一条状态线：`baseline → mutate → readback → cheap gate → save`。未过的页不进入
+下一页，也不把多页问题混在一次大修里。
+
+- 中间检查只跑 `sch gate --only layout-lint,check,bridge-check --doc <page>`；官方 DRC
+  放到该页完成或最终验收时跑，避免每挪一个标签都重复最慢检查。
+- `connect_pin`、`disconnect`、move、delete 等非幂等动作 fail/partial 后先读回活体；
+  只重试明确失败项一次。第二次同类失败立即停止，保留输入、stderr 和 readback。
+- `zone-arrange`、`destagger` 先 dry-run 一次，apply 最多一次；断言、网表或 bridge 变差
+  时停止，不重放整批。
+- 一个页面若需要第二次整体迁移，回到 S0/S1 重算分页，不再追加临时 `_NEW` 页。
 
 ## 功能框 + 文字标注（逐页）
 
@@ -109,13 +125,27 @@ easyeda sch zone-draw --mode partition --font-size 22 --doc <page> --project <pr
 
 ## 最终验证门（每页）
 
-1. `easyeda sch gate --strict --doc <page>`：**`verdict` 必须是 `pass`**。一条命令按固定顺序
+多页工程优先运行：
+
+```bash
+python3 <skill>/scripts/schematic-acceptance.py \
+  --project <project> --spec <s0.json> --golden <pin-net.json> \
+  --export --artifacts .easyeda/artifacts
+```
+
+脚本只读取一次页表，随后串行显式打开每页，执行 strict gate、权威 `sch read`、全工程
+`sch nets --strict`、黄金 pin→net/NC 对账和可选导出，避免手工循环漏页。
+
+1. `easyeda sch gate --strict --doc <page>`：通常 **`verdict` 必须是 `pass`**。一条命令按固定顺序
    跑完四关(layout-lint 0 overlap/0 pin-coincidence + check 结构与 marker findings 0 +
    bridge-check 0 bridge、orphan 解释或清理 + drc fatal/error 0),报告里带每关的计数;
    DRC 聚合 WARN 仍需审阅并报告。
    - `verdict=blocked` **不是板子的问题**——检查器没跑起来(连接器断/页没打开),
      先 `easyeda health` + `doc switch <page>` 修环境再重跑,别去改电路。
    - 窗口不在前台时先 `--skip drc` 过前三关,DRC 单独补跑。
+   - CLI/connector v1.1.1 若仅被 `missing-titleblock` 阻塞，可在 acceptance 脚本上显式加
+     `--allow-titleblock-gap` 挂账；脚本会拒绝任何其他版本、stage 或 finding。不要执行
+     gate 输出里的 `sch titleblock --data`，该写路径会损坏 sheet 引用。
 2. `easyeda sch read --doc <page>`：与设计 spec 或整理前黄金
    `DESIGNATOR.pin → net`、显式 NC 集合逐项一致。**gate 判「合不合法」,这步判「对不对」**,
    两者都要。

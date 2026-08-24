@@ -27,6 +27,7 @@ mcp-test: build ## install MCP deps and run unit + stdio protocol tests
 # fixture goldens (known-good board stays clean, known-bad cases still fire).
 lint-test: ## linter rule-trust harness (orientation + fixtures)
 	python3 skills/easyeda-agent/scripts/tests/run.py
+	python3 -m unittest discover -s skills/easyeda-agent/scripts/tests -p '*_test.py'
 
 blocks-audit: ## check every block pin ref against real symbol pins (offline; --probe to refresh)
 	python3 skills/easyeda-agent/scripts/blocks-pin-audit.py

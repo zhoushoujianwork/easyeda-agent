@@ -2,7 +2,6 @@
 name: easyeda-agent
 description: "Community EasyEDA Agent automation skill for EasyEDA Pro schematic and PCB work through the local easyeda-agent CLI/daemon/connector. Use when designing a board from scratch; inspecting, cleaning up, or safely refactoring an existing wired schematic; arranging multi-page functional modules; drawing page-scoped module frames and text labels; preserving and reconciling pin-to-net topology; placing/wiring real LCSC/JLC library parts; syncing schematic changes into PCB; laying out PCB components; running EasyEDA DRC/check/bridge-check/layout-lint; exporting BOM/netlists/artifacts; querying the embedded circuit-block library (`easyeda blocks ls/show/search`); or applying the bundled EasyEDA design workflows and conventions. 覆盖嘉立创EDA专业版原理图/PCB、混乱原理图整理、多页功能分区、框选文字标注、布线、铺铜、板框与机械门禁。适用于嘉立创EDA(JLC EDA / JLCEDA / LCEDA / EasyEDA Pro)与立创商城(LCSC)元件的电路板设计自动化。"
 license: MIT
-compatibility: "Requires the local easyeda-agent CLI and daemon (macOS/Linux/Windows) plus the EasyEDA Agent Connector extension installed in EasyEDA Pro with 'Allow external interaction' enabled. Bundled scripts need Python 3. Network access is needed only for LCSC part lookup and self-update."
 metadata:
   author: zhoushoujianwork
   version: "1.1.1"
@@ -15,6 +14,10 @@ Use the local `easyeda` CLI and daemon to operate EasyEDA Pro through typed,
 observable actions. This is the community `easyeda-agent` workflow, not an official
 EasyEDA skill; the suffix is intentional so users can distinguish it from upstream
 EasyEDA tooling.
+
+Requires the local `easyeda` CLI and daemon (macOS/Linux/Windows), the EasyEDA Agent
+Connector extension with “Allow external interaction” enabled, and Python 3 for
+bundled scripts. Network access is only needed for LCSC lookup and self-update.
 
 > **本 skill 单独装上没用 —— 它要驱动两个外部件:本机 `easyeda` CLI/daemon + EasyEDA Pro 里的连接器插件。**
 > 源码与文档:https://github.com/zhoushoujianwork/easyeda-agent
@@ -69,6 +72,7 @@ EasyEDA tooling.
 14. **阶段门禁机械强制,不必预读细则** — 布线前、布线后各一道门,未过一律被拒(daemon 在 /action 层也拦,raw 调用绕不过)。撞上去的拒绝消息**自带下一条该跑的命令**,照做即可。切入/恢复会话:`workflow status --reconcile` → `workflow advance`。→ design-flow P6(含 force 分级 #132)/P10
 15. **原理图必须分页分区 + 每模块电路说明,默认必做**(「最小/单页」不是借口)— ①分页(页名=功能名)②`sch zones set`+`zone-draw` 画区框(**单页小板也要画**)③每模块 1~3 行 `sch note`。⚠ 手工 `block-apply`/`sch place` **不自动画框**,必须补 ②③。机械兜底:`sch check` 的 `missing-partition` + `sch gate --strict` 会挡下。→ design-flow S1–S3
 16. **「探出图纸」≠「比图纸还大」** — 前者挪一挪能解;后者(`page-too-small`)挪多少次都没用,必须换手段,且**分页是设计决策 → 停手问用户**(工具不自动分页)。别人肉重试:`--max-attempts`(默认 3)会替你停手。→ design-flow S3
+17. **S0 先于任何放置** — spec 必须在首个 `page-new` / `place` / `block-apply` 前落盘并通过 `easyeda spec validate --strict`;先画后补只能算记录,不能证明设计决策已冻结。→ design-flow S0
 
 ## ② 流程停点 + 档位默认 + 块地图速查
 
@@ -161,8 +165,10 @@ EasyEDA tooling.
 - **Schematic work**:读 `references/schematic.md`。
 - **混乱/已连线原理图整理、多页高质量布局、功能框和文字标注**:同时读
   `references/design-flow.md` 的 S1–S6、`references/auto-layout-sop.md` 的
-  “已连线页安全整理”，以及 `references/schematic.md` 的 “Functional frames +
-  text labels”。先保存 pin→net/NC 黄金表，任何布局重构后必须逐页对账。
+  “已连线页安全整理”、`references/schematic-efficient-flow.md`,以及
+  `references/schematic.md` 的 “Functional frames + text labels”。先保存 pin→net/NC
+  黄金表，任何布局重构后必须逐页对账；多页最终验收走
+  `scripts/schematic-acceptance.py`,不要手工重拼页循环。
 - **PCB work**:读 `references/pcb.md`(顶部有「块的 PCB 约束(先查)」+ 命令目录)。
 - 查任一 typed action 签名、或 >5 步批量操作要用 playbook(`easyeda apply`):读 `references/actions.md`。
 - **DRC / 制造规则地板与 fallback**:读 `references/fab-rules-jlcpcb.json`(live `pcb.drc.rules` 优先,此表作 fallback seed + clamp floors,**永不发出低于 manufacturingMin 的 track/via/gap**)。
