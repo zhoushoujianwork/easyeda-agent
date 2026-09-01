@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.2.15] — 2026-09-01
+## [1.3.0] — 2026-09-01
 
 - Add typed `library.model3d.search` and `library.model3d.copy` actions for selecting existing library models without UI automation.
 - Add `library.device.set_model3d` with exact Device-name preflight, model existence checks, bind/replace/clear support, and association readback verification.
