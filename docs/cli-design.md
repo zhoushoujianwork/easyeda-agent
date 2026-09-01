@@ -15,7 +15,7 @@ easyeda <domain> <action> [flags]
 | `easyeda sch` | 原理图操作（place / wire / netflag / drc / save / export …） |
 | `easyeda pcb` | PCB 操作（layout / line / via / import / align …） |
 | `easyeda bom` | BOM 导出与补全 |
-| `easyeda lib` | 器件库搜索与选型 |
+| `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型 |
 | `easyeda daemon` | 守护进程管理（start / health） |
 | `easyeda audit` | 操作日志查看 |
 | `easyeda update` | 自更新（别名 `upgrade`）：CLI 二进制 + skill 目录 → latest；连接器只报不改 |

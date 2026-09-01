@@ -5,7 +5,7 @@ license: MIT
 compatibility: "Requires the local easyeda-agent CLI and daemon (macOS/Linux/Windows) plus the EasyEDA Agent Connector extension installed in EasyEDA Pro with 'Allow external interaction' enabled. Bundled scripts need Python 3. Network access is needed only for LCSC part lookup and self-update."
 metadata:
   author: zhoushoujianwork
-  version: "1.2.10"
+  version: "1.2.15"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
@@ -172,6 +172,7 @@ EasyEDA tooling.
   align·distribute·grid-snap / 板框 / 自动布局)→ `references/pcb-layout.md`。
 - 查任一 typed action 签名、或 >5 步批量操作要用 playbook(`easyeda apply`):读 `references/actions.md`。
 - **DRC / 制造规则地板与 fallback**:读 `references/fab-rules-jlcpcb.json`(live `pcb.drc.rules` 优先,此表作 fallback seed + clamp floors,**永不发出低于 manufacturingMin 的 track/via/gap**)。
+- **初级常见问题 / UI 排障**(库更新后符号变化、网络名显示/匹配、选择过滤、丝印/图层不可选、位号 `?`、过孔重叠、铺铜与填充区域混淆、规则导入覆盖、工程/浏览器/考试流程):读 `references/beginner-troubleshooting.md`。其中槽孔尺寸是培训经验值,必须与 live 制造规则比较并取更严格者；考试条目只用于考试场景。
 - **PCB 设计规范手册(人读正本)**:`references/pcb-design-rules.md`——线宽阶梯/过孔/布局/走线/铺铜/Mark点/拼板/丝印/叠层/DRC 三级清单;`pcb check` 报错信息里的 `[规范 §N]` 即指此手册章节,照章修。
 - New/uncertain raw `eda.*` API:先 `easyeda api search/show`,再查官方 prodocs 参考页(方法为 `@alpha`/`@beta`/`@deprecated` 或有已知 upstream issue 时),把 caveat 记进 references 再固化成工作流。
 - Schematic 布局规则:读 `references/schematic-layout-conventions.md`。

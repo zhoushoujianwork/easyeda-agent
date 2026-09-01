@@ -27,6 +27,195 @@ import {
 	summarizeActivePageConnectivity,
 } from './actions';
 
+// ─── Library asset authoring: footprint + symbol + Device ────────────────
+
+test('library footprint create defaults to personal library and verifies by get', async () => {
+	const calls: Array<unknown> = [];
+	(globalThis as any).eda = {
+		dmt_Project: { getCurrentProjectInfo: async () => ({ name: 'motor-box' }) },
+		lib_LibrariesList: { getPersonalLibraryUuid: async () => 'LIB-PERSONAL' },
+		lib_Footprint: {
+			create: async (...args: unknown[]) => { calls.push(args); return 'FP-1'; },
+			get: async (uuid: string, libraryUuid: string) => ({ uuid, libraryUuid, name: 'MY_FP' }),
+		},
+	};
+	try {
+		const res: any = await runAction('library.footprint.create', { name: 'MY_FP', description: 'test' });
+		assert.deepEqual(calls, [['LIB-PERSONAL', 'EA_AGENT__MY_FP', undefined, 'test']]);
+		assert.equal(res.result.name, 'EA_AGENT__MY_FP');
+		assert.equal(res.result.namespace, 'EA_AGENT');
+		assert.equal(res.result.uuid, 'FP-1');
+		assert.equal(res.result.libraryUuid, 'LIB-PERSONAL');
+		assert.equal(res.result.verified, true);
+		assert.equal(res.result.footprint.name, 'MY_FP');
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library footprint create reports partial when creation cannot be read back', async () => {
+	(globalThis as any).eda = {
+		dmt_Project: { getCurrentProjectInfo: async () => ({ friendlyName: '测试 项目' }) },
+		lib_LibrariesList: { getProjectLibraryUuid: async () => 'LIB-PROJECT' },
+		lib_Footprint: { create: async () => 'FP-2', get: async () => undefined },
+	};
+	try {
+		const res: any = await runAction('library.footprint.create', { name: 'ASYNC_FP', scope: 'project' });
+		assert.equal(res.result.partial, true);
+		assert.equal(res.result.verified, false);
+		assert.equal(res.result.created.uuid, 'FP-2');
+		assert.match(res.warnings[0], /do not retry blindly/);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library footprint copy namespaces the lossless copy and verifies it', async () => {
+	let args: unknown[] = [];
+	(globalThis as any).eda = {
+		lib_LibrariesList: { getPersonalLibraryUuid: async () => 'LIB-PERSONAL' },
+		lib_Footprint: {
+			get: async (uuid: string) => ({ uuid, name: uuid === 'SRC' ? 'sdCard' : 'EA_AGENT__SDCARD_V2' }),
+			copy: async (...callArgs: unknown[]) => { args = callArgs; return 'COPY'; },
+		},
+	};
+	try {
+		const res: any = await runAction('library.footprint.copy', {
+			uuid: 'SRC', sourceLibraryUuid: 'LIB-SRC', name: 'sdCard v2',
+		});
+		assert.deepEqual(args, ['SRC', 'LIB-SRC', 'LIB-PERSONAL', undefined, 'EA_AGENT__SDCARD_V2']);
+		assert.equal(res.result.uuid, 'COPY');
+		assert.equal(res.result.verified, true);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library footprint build opens the asset, creates pads/lines and verifies IDs', async () => {
+	const padIds: string[] = [];
+	const lineIds: string[] = [];
+	(globalThis as any).eda = {
+		lib_Footprint: { openInEditor: async () => 'TAB-FP' },
+		pcb_PrimitivePad: {
+			create: async (_layer: number, number: string) => {
+				const id = `pad-${number}`; padIds.push(id);
+				return { getState_PrimitiveId: () => id };
+			},
+			get: async (ids: string[]) => ids.map(id => ({ id })),
+			delete: async () => true,
+		},
+		pcb_MathPolygon: {
+			createPolygon: (source: unknown) => ({ source }),
+		},
+		pcb_PrimitivePolyline: {
+			create: async () => {
+				const id = `line-${lineIds.length + 1}`; lineIds.push(id);
+				return { getState_PrimitiveId: () => id };
+			},
+			get: async (ids: string[]) => ids.map(id => ({ id })),
+			delete: async () => true,
+		},
+		pcb_Document: { save: async () => true },
+	};
+	try {
+		const res: any = await runAction('library.footprint.build', {
+			uuid: 'FP-1', libraryUuid: 'LIB-F',
+			pads: [
+				{ number: '1', layer: 1, x: -40, y: 0, shape: ['RECT', 40, 50, 4] },
+				{ number: '2', layer: 1, x: 40, y: 0, shape: ['RECT', 40, 50, 4] },
+			],
+			lines: [{ layer: 3, startX: -60, startY: 35, endX: 60, endY: 35, width: 6 }],
+		});
+		assert.deepEqual(res.result.created.pads, ['pad-1', 'pad-2']);
+		assert.deepEqual(res.result.created.lines, ['line-1']);
+		assert.equal(res.result.tabId, 'TAB-FP');
+		assert.equal(res.result.verified, true);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library footprint build rejects duplicate pad numbers before opening/mutating', async () => {
+	let opened = false;
+	(globalThis as any).eda = { lib_Footprint: { openInEditor: async () => { opened = true; } } };
+	try {
+		await assert.rejects(
+			() => runAction('library.footprint.build', {
+				uuid: 'FP-1', libraryUuid: 'LIB-F', pads: [
+					{ number: '1', layer: 1, x: 0, y: 0, shape: ['RECT', 40, 40, 0] },
+					{ number: '1', layer: 1, x: 50, y: 0, shape: ['RECT', 40, 40, 0] },
+				],
+			}),
+			(err: any) => err.code === 'PRECONDITION_REFUSED' && /Duplicate pad/.test(err.message),
+		);
+		assert.equal(opened, false);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library Device create binds explicit symbol and footprint refs', async () => {
+	let createArgs: Array<unknown> = [];
+	(globalThis as any).eda = {
+		dmt_Project: { getCurrentProjectInfo: async () => ({ name: 'motor-box' }) },
+		lib_Device: {
+			create: async (...args: unknown[]) => { createArgs = args; return 'DEV-1'; },
+			get: async () => ({ uuid: 'DEV-1', association: { symbol: { uuid: 'SYM-1' }, footprint: { uuid: 'FP-1' } } }),
+		},
+	};
+	try {
+		const res: any = await runAction('library.device.create', {
+			name: 'MY_DEVICE', libraryUuid: 'LIB-D',
+			symbol: { uuid: 'SYM-1', libraryUuid: 'LIB-S' },
+			footprint: { uuid: 'FP-1', libraryUuid: 'LIB-F' },
+			property: { designator: 'U', addIntoBom: true, addIntoPcb: true },
+		});
+		assert.equal(createArgs[0], 'LIB-D');
+		assert.equal(createArgs[1], 'EA_AGENT__MY_DEVICE');
+		assert.deepEqual(createArgs[3], {
+			symbol: { uuid: 'SYM-1', libraryUuid: 'LIB-S' },
+			footprint: { uuid: 'FP-1', libraryUuid: 'LIB-F' },
+		});
+		assert.deepEqual(createArgs[5], { designator: 'U', addIntoBom: true, addIntoPcb: true });
+		assert.equal(res.result.name, 'EA_AGENT__MY_DEVICE');
+		assert.equal(res.result.verified, true);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library Device create refuses a malformed symbol ref before mutation', async () => {
+	let mutated = false;
+	(globalThis as any).eda = { lib_Device: { create: async () => { mutated = true; } } };
+	try {
+		await assert.rejects(
+			() => runAction('library.device.create', { name: 'BAD', symbol: { uuid: 'SYM' } }),
+			(err: any) => err.code === 'PRECONDITION_REFUSED',
+		);
+		assert.equal(mutated, false);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('library Device delete requires exact expected name and verifies absence', async () => {
+	let live: any = { uuid: 'DEV-1', name: 'EA_AGENT__TEST' };
+	let deleteCalls = 0;
+	(globalThis as any).eda = {
+		lib_Device: {
+			get: async () => live,
+			delete: async () => { deleteCalls++; live = undefined; return true; },
+		},
+	};
+	try {
+		await assert.rejects(
+			() => runAction('library.device.delete', { uuid: 'DEV-1', libraryUuid: 'LIB', expectedName: 'USER_PART' }),
+			(err: any) => err.code === 'PRECONDITION_REFUSED' && /name mismatch/.test(err.message),
+		);
+		assert.equal(deleteCalls, 0);
+		const res: any = await runAction('library.device.delete', {
+			uuid: 'DEV-1', libraryUuid: 'LIB', expectedName: 'EA_AGENT__TEST',
+		});
+		assert.equal(res.result.deleted, true);
+		assert.equal(res.result.verified, true);
+		assert.equal(deleteCalls, 1);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
 test('connect_pin endpoint contract is y-UP and matches Go autoconnect', () => {
 	assert.deepEqual(connectPinEndpoint(100, 100, 30, 'up'), { x: 100, y: 130 });
 	assert.deepEqual(connectPinEndpoint(100, 100, 30, 'down'), { x: 100, y: 70 });

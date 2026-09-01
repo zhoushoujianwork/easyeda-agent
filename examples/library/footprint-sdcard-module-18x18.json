@@ -1,0 +1,16 @@
+{
+  "pads": [
+    {"number":"1","layer":12,"x":-300,"y":250,"shape":["RECT",70,70,6],"hole":["ROUND",40]},
+    {"number":"2","layer":12,"x":-300,"y":150,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+    {"number":"3","layer":12,"x":-300,"y":50,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+    {"number":"4","layer":12,"x":-300,"y":-50,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+    {"number":"5","layer":12,"x":-300,"y":-150,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+    {"number":"6","layer":12,"x":-300,"y":-250,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]}
+  ],
+  "lines": [
+    {"layer":3,"startX":-354.33,"startY":354.33,"endX":354.33,"endY":354.33,"width":6},
+    {"layer":3,"startX":354.33,"startY":354.33,"endX":354.33,"endY":-354.33,"width":6},
+    {"layer":3,"startX":354.33,"startY":-354.33,"endX":-354.33,"endY":-354.33,"width":6},
+    {"layer":3,"startX":-354.33,"startY":-354.33,"endX":-354.33,"endY":354.33,"width":6}
+  ]
+}

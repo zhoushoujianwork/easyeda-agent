@@ -1,8 +1,50 @@
 # Changelog
 
+## [1.2.15] — 2026-09-01
+
+- Add typed `library.model3d.search` and `library.model3d.copy` actions for selecting existing library models without UI automation.
+- Add `library.device.set_model3d` with exact Device-name preflight, model existence checks, bind/replace/clear support, and association readback verification.
+- Expose the workflow through `easyeda lib model3d search/copy` and `easyeda lib device model3d`.
+
+## [1.2.14] — 2026-09-01
+
+- Add `circles[]` to typed symbol authoring for pin-1 and polarity markers.
+- Correct the SD-card example to use inward-facing pin labels and a pin-1 ring.
+- Add one-shot CLI `lib device build --spec`: create and bind Symbol + Footprint + optional 3D, with reverse-order rollback on failure.
+
+## [1.2.13] — 2026-09-01
+
+- Add typed symbol geometry authoring (`library.symbol.build`) with validation and readback.
+- Add typed 3D model import/read/delete backed by the official `lib_3DModel` API.
+- Allow CLI Device creation to bind Symbol + Footprint + 3D Model.
+
 All notable changes to the **EDA Agent Connector** (the easyeda-agent project's connector extension) are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); versions
 follow [SemVer](https://semver.org/).
+
+## [1.2.12] — 2026-09-01
+
+### Added — 可复用库命名与无损封装复制
+
+- 新建 Symbol、Footprint、Device 统一使用跨项目 `EA_AGENT__<ASSET>` 命名。
+- Device 搜索支持指定 `libraryUuid`，可精确限定个人库。
+- 新增 `library.footprint.copy` / `lib footprint copy`，通过官方库 API 无损复制
+  复杂封装并立即回读验证；适合含弧线、区域、文字和机械细节的卡座类封装。
+- 新增 Symbol、Footprint、Device 的名称防误删 typed delete，并适配库删除后的缓存行为。
+
+## [1.2.11] — 2026-08-31
+
+### Added — 单器件库封装创作
+
+- 新增个人库、工程库与系统库标识查询。
+- 新增封装、符号和 Device 的创建与读取命令，Device 可显式绑定符号、封装和
+  3D 模型引用。
+- 新增 JSON 驱动的封装构建：一次创建焊盘与图形线，保存后逐图元回读验证；
+  中途失败会返回结构化 partial/rollback 结果，防止盲目重试。
+- 新建封装、符号和 Device 自动使用跨项目可复用的 `EA_AGENT__<资产>` 命名，和
+  用户原有库资产隔离；项目来源放扩展属性而不是名字。新增三类资产的安全删除。
+- 封装丝印使用编辑器实际支持的 Polygon + Polyline 图元路径；已在 EasyEDA Pro
+  3.2.186 中以 R0603（2 焊盘、4 条丝印）热加载验收通过。
 
 ## [1.2.10] — 2026-08-27
 

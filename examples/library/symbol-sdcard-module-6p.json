@@ -1,0 +1,14 @@
+{
+  "outline": [-10, -40, 30, -40, 30, 30, -10, 30, -10, -40],
+  "circles": [
+    {"centerX":-4,"centerY":25,"radius":3,"lineWidth":1}
+  ],
+  "pins": [
+    {"number":"1","name":"3V3","x":-30,"y":20,"rotation":180,"length":20,"pinType":"Power"},
+    {"number":"2","name":"CS","x":-30,"y":10,"rotation":180,"length":20,"pinType":"IN"},
+    {"number":"3","name":"MOSI","x":-30,"y":0,"rotation":180,"length":20,"pinType":"IN"},
+    {"number":"4","name":"CLK","x":-30,"y":-10,"rotation":180,"length":20,"pinType":"IN"},
+    {"number":"5","name":"MISO","x":-30,"y":-20,"rotation":180,"length":20,"pinType":"OUT"},
+    {"number":"6","name":"GND","x":-30,"y":-30,"rotation":180,"length":20,"pinType":"Ground"}
+  ]
+}

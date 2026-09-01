@@ -1,0 +1,24 @@
+{
+  "pads": [
+    {
+      "number": "1",
+      "layer": 1,
+      "x": -35,
+      "y": 0,
+      "shape": ["RECT", 35, 40, 4]
+    },
+    {
+      "number": "2",
+      "layer": 1,
+      "x": 35,
+      "y": 0,
+      "shape": ["RECT", 35, 40, 4]
+    }
+  ],
+  "lines": [
+    { "layer": 3, "startX": -55, "startY": 30, "endX": 55, "endY": 30, "width": 6 },
+    { "layer": 3, "startX": 55, "startY": 30, "endX": 55, "endY": -30, "width": 6 },
+    { "layer": 3, "startX": 55, "startY": -30, "endX": -55, "endY": -30, "width": 6 },
+    { "layer": 3, "startX": -55, "startY": -30, "endX": -55, "endY": 30, "width": 6 }
+  ]
+}

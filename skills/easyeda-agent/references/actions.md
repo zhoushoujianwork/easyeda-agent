@@ -103,7 +103,42 @@ rip-up/clear 等破坏性步骤——整册回放前先 `--dry-run` 看计划,�
 
 ## Library
 
-- `schematic.library.search` — 自由文本搜索立创/EasyEDA 器件库，返回 libraryUuid + uuid。当 `query` 为纯 LCSC C 号（`^C\d+$`）时自动切换为精确模式，仅保留 `lcsc`/`supplierId` 严格相等的条目；无精确命中则报错。传 `allowFuzzy`（CLI `--allow-fuzzy`）可保留原模糊排序结果
+3D 模型的选择与关联可完全通过 typed CLI/API 完成：
+
+```bash
+easyeda lib model3d search --query SDCARD --limit 20
+easyeda lib model3d copy --uuid <model> --source-library <lib> --name SDCARD_18X18
+easyeda lib device model3d --uuid <device> --library <lib> \
+  --expected-name EA_AGENT__SDCARD_MODULE_18X18 \
+  --model3d-uuid <model> --model3d-library <lib>
+easyeda lib device model3d --uuid <device> --library <lib> \
+  --expected-name EA_AGENT__SDCARD_MODULE_18X18 --clear
+```
+
+绑定动作会先确认 Device 和模型存在，再调用 `lib_Device.modify`；只有回读中模型
+UUID 与 library UUID 均精确一致才报告成功。
+
+- `schematic.library.search` — 自由文本搜索立创/EasyEDA 器件库，返回 libraryUuid + uuid。可传 `libraryUuid`（CLI `--library`）只搜个人库等指定库。当 `query` 为纯 LCSC C 号（`^C\d+$`）时自动切换为精确模式，仅保留 `lcsc`/`supplierId` 严格相等的条目；无精确命中则报错。传 `allowFuzzy`（CLI `--allow-fuzzy`）可保留原模糊排序结果
+- `library.list` — 列出库并返回 `personalLibraryUuid` / `projectLibraryUuid` / `systemLibraryUuid`。CLI：`easyeda lib libraries`。
+- `library.footprint.create/get` — 在个人库（默认）或工程库创建空封装并立即 `get` 回读验证；创建成功但即时回读缺失时返回 `partial:true`，不得盲目重试。CLI：`easyeda lib footprint create --name MY_FP [--scope project]` / `footprint get --uuid … [--library …]`。
+- `library.footprint.build` — 打开指定封装并从 JSON spec 写入焊盘与线段。单位统一为 **mil**；`pads[].shape`/`hole` 使用官方 tuple（如 `['RECT',35,40,4]`、`['ELLIPSE',50,50]`、`hole:['ROUND',24]`），常用层：TOP=1、BOTTOM=2、TOP_SILKSCREEN=3、BOTTOM_SILKSCREEN=4、MULTI=12。整份 spec 先校验再 mutation；中途失败尝试删除本次图元并返回 `partial/rollback`。CLI：`easyeda lib footprint build --uuid <fp> --library <lib> --spec examples/library/footprint-r0603.json`。
+- `library.footprint.copy` — 通过官方 `lib_Footprint.copy` 无损复制复杂封装，自动套用 `EA_AGENT__` 命名并回读验证。弧线/区域/文字/机械细节尚未进入 JSON builder 时优先用此路径。CLI：`easyeda lib footprint copy --uuid <src> --source-library <lib> --name SDCARD_V2`。
+- `library.symbol.create/get` — 创建/读取符号库资产；`--symbol-type` 是官方 `ELIB_SymbolType` 数值。CLI：`easyeda lib symbol create|get …`。
+- `library.device.create/get` — 创建单器件 Device 并绑定已有 Symbol、可选 Footprint，写入位号前缀/BOM/制造商/供应商属性后立即回读关联。默认 `addIntoBom/addIntoPcb=true`；`--properties '{"Value":"10k"}'` 写入官方 `otherProperty`。CLI：`easyeda lib device create --name … --symbol-uuid … --symbol-library … [--footprint-uuid … --footprint-library …] --designator U`。
+
+以上三个 `create` 会强制使用跨项目可复用的 `EA_AGENT__<ASSET>` 命名（例如
+`EA_AGENT__R0603`）。资产名统一规范化为大写标识；若调用方已传入完整前缀则不会
+重复添加。项目来源应写入 Device `otherProperty`/描述，不放进个人库资产名。
+三个 `delete` 均要求 `--uuid`、`--library` 和 `--expected-name` 精确匹配，并在删除后
+回读验证不存在。
+
+单器件资产的推荐顺序：`lib libraries` → `footprint create` → `footprint build` → `symbol create` → `symbol build` → 可选 `model3d create` → `device create`（绑定三者）→ `device get` → `sch place` 试放。Footprint/Device/Symbol/3D Model 官方库 API 均为 beta；输出中的 `verified` 与 `partial` 必须检查。
+
+一站式推荐：`easyeda lib device build --spec device.json`。CLI 依序创建 Symbol、Footprint、可选 3D Model 并绑定 Device；任一步失败会按 3D→Footprint→Symbol 逆序尝试回滚，不留下可被误认为完成品的 Device。
+
+- `library.symbol.build` / `easyeda lib symbol build --uuid ... --library ... --spec symbol.json`：从 `outline[]` + `pins[]` + 可选 `circles[]` 从零绘制符号并回读验证；圆图元用于 Pin-1/极性标记。
+- `library.model3d.create|get|delete` / `easyeda lib model3d ...`：从本地 STEP/3D 文件导入，统一加 `EA_AGENT__` 命名并回读验证。
+- `easyeda lib device create` 支持 `--model3d-uuid` + `--model3d-library`，与 Symbol、Footprint 一起绑定为完整 Device。
 
 ## Verify & Export
 

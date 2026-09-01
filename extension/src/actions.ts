@@ -4164,10 +4164,11 @@ const schematicLibrarySearch: Handler = async (payload) => {
 	const query = requireString(payload, 'query');
 	const limit = optionalNumber(payload, 'limit') ?? 10;
 	const allowFuzzy = optionalBoolean(payload, 'allowFuzzy') ?? false;
+	const libraryUuid = optionalString(payload, 'libraryUuid');
 
 	let raw: Array<unknown>;
 	try {
-		raw = await eda.lib_Device.search(query);
+		raw = await eda.lib_Device.search(query, libraryUuid);
 	}
 	catch (err) {
 		throw edaError(err, 'Failed to search device library.');
@@ -4320,6 +4321,589 @@ const schematicLibraryGetByLcscIds: Handler = async (payload) => {
 			...(notFound.length ? { notFound } : {}),
 		},
 	};
+};
+
+// ─── Library asset authoring: symbol + footprint + device ────────────────
+
+const libraryList: Handler = async () => {
+	try {
+		const [libraries, personalLibraryUuid, projectLibraryUuid, systemLibraryUuid] = await Promise.all([
+			eda.lib_LibrariesList.getAllLibrariesList(),
+			eda.lib_LibrariesList.getPersonalLibraryUuid(),
+			eda.lib_LibrariesList.getProjectLibraryUuid(),
+			eda.lib_LibrariesList.getSystemLibraryUuid(),
+		]);
+		return {
+			result: {
+				libraries: Array.isArray(libraries) ? libraries : [],
+				personalLibraryUuid: personalLibraryUuid ?? null,
+				projectLibraryUuid: projectLibraryUuid ?? null,
+				systemLibraryUuid: systemLibraryUuid ?? null,
+			},
+		};
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to read EasyEDA library list.');
+	}
+};
+
+function optionalStringArray(payload: Record<string, unknown>, key: string): Array<string> | undefined {
+	const value = payload[key];
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `"${key}" must be a string array.`);
+	}
+	return value as Array<string>;
+}
+
+async function resolveWritableLibraryUuid(payload: Record<string, unknown>): Promise<string> {
+	const explicit = optionalString(payload, 'libraryUuid');
+	if (explicit) return explicit;
+	const scope = optionalString(payload, 'scope') ?? 'personal';
+	let uuid: string | undefined;
+	if (scope === 'personal') uuid = await eda.lib_LibrariesList.getPersonalLibraryUuid();
+	else if (scope === 'project') uuid = await eda.lib_LibrariesList.getProjectLibraryUuid();
+	else throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, '"scope" must be "personal" or "project".');
+	if (!uuid) throw new ActionError(ErrorCodes.INVALID_STATE, `EasyEDA did not expose a ${scope} library UUID.`);
+	return uuid;
+}
+
+function normalizeLibraryNamePart(value: string, fallback: string): string {
+	const normalized = value.normalize('NFKC').trim().toUpperCase()
+		.replace(/[^\p{L}\p{N}]+/gu, '_')
+		.replace(/^_+|_+$/g, '')
+		.replace(/_+/g, '_');
+	return normalized || fallback;
+}
+
+/** Keep agent-authored personal-library assets reusable and visibly separate. */
+async function namespacedLibraryAssetName(requestedName: string): Promise<{ name: string; requestedName: string; namespace: string }> {
+	const assetMark = normalizeLibraryNamePart(requestedName, 'ASSET');
+	const namespace = 'EA_AGENT';
+	const prefix = `${namespace}__`;
+	return {
+		name: requestedName.toUpperCase().startsWith(prefix) ? requestedName : `${prefix}${assetMark}`,
+		requestedName,
+		namespace,
+	};
+}
+
+const libraryFootprintCreate: Handler = async (payload) => {
+	const requestedName = requireString(payload, 'name');
+	const description = optionalString(payload, 'description');
+	const classification = optionalStringArray(payload, 'classification');
+	try {
+		const { name, namespace } = await namespacedLibraryAssetName(requestedName);
+		const libraryUuid = await resolveWritableLibraryUuid(payload);
+		const uuid = await eda.lib_Footprint.create(libraryUuid, name, classification, description);
+		if (!uuid) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA returned no UUID after creating the footprint.');
+		const footprint = await eda.lib_Footprint.get(uuid, libraryUuid);
+		if (!footprint) {
+			return { result: { partial: true, created: { uuid, libraryUuid, name }, verified: false }, warnings: ['Footprint was created but immediate readback returned no record; do not retry blindly.'] };
+		}
+		return { result: { uuid, libraryUuid, name, requestedName, namespace, verified: true, footprint } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to create footprint library asset.');
+	}
+};
+
+const libraryFootprintGet: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = optionalString(payload, 'libraryUuid');
+	try {
+		const footprint = await eda.lib_Footprint.get(uuid, libraryUuid);
+		if (!footprint) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Footprint "${uuid}" was not found.`);
+		return { result: { footprint } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to read footprint library asset.');
+	}
+};
+
+const libraryFootprintCopy: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const sourceLibraryUuid = requireString(payload, 'sourceLibraryUuid');
+	const requestedName = requireString(payload, 'name');
+	const classification = optionalStringArray(payload, 'classification');
+	try {
+		const source = await eda.lib_Footprint.get(uuid, sourceLibraryUuid);
+		if (!source) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Source footprint "${uuid}" was not found.`);
+		const { name, namespace } = await namespacedLibraryAssetName(requestedName);
+		const libraryUuid = await resolveWritableLibraryUuid(payload);
+		const copiedUuid = await eda.lib_Footprint.copy(uuid, sourceLibraryUuid, libraryUuid, classification, name);
+		if (!copiedUuid) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA returned no UUID after copying the footprint.');
+		const footprint = await eda.lib_Footprint.get(copiedUuid, libraryUuid);
+		if (!footprint) return {
+			result: { partial: true, created: { uuid: copiedUuid, libraryUuid, name }, source: { uuid, libraryUuid: sourceLibraryUuid }, verified: false },
+			warnings: ['Footprint copy returned a UUID but immediate readback was empty; do not retry blindly.'],
+		};
+		return { result: { uuid: copiedUuid, libraryUuid, name, requestedName, namespace, source: { uuid, libraryUuid: sourceLibraryUuid }, verified: true, footprint } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to copy footprint library asset.'); }
+};
+
+const libraryFootprintDelete: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	const expectedName = requireString(payload, 'expectedName');
+	try {
+		const before = await eda.lib_Footprint.get(uuid, libraryUuid);
+		if (!before) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Footprint "${uuid}" was not found; nothing was deleted.`);
+		if (before.name !== expectedName) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Footprint name mismatch: expected "${expectedName}", found "${before.name}".`);
+		if (!await eda.lib_Footprint.delete(uuid, libraryUuid)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `EasyEDA refused to delete footprint "${expectedName}".`);
+		let after;
+		try { after = await eda.lib_Footprint.get(uuid, libraryUuid); }
+		catch { after = undefined; /* SDK throws an opaque object for a missing footprint. */ }
+		if (after) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Footprint "${expectedName}" still exists after delete returned success.`);
+		return { result: { uuid, libraryUuid, name: expectedName, deleted: true, verified: true } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to delete footprint library asset.'); }
+};
+
+type FootprintPadSpec = {
+	number: string; layer: number; x: number; y: number; rotation: number;
+	shape: TPCB_PrimitivePadShape; hole: TPCB_PrimitivePadHole | null;
+	metallization: boolean; padType: EPCB_PrimitivePadType;
+};
+type FootprintLineSpec = {
+	layer: number; startX: number; startY: number; endX: number; endY: number; width: number;
+};
+
+function finiteField(raw: Record<string, unknown>, key: string, label: string): number {
+	const value = raw[key];
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `${label}.${key} must be a finite number.`);
+	}
+	return value;
+}
+
+function parseFootprintBuildSpec(payload: Record<string, unknown>): { pads: FootprintPadSpec[]; lines: FootprintLineSpec[] } {
+	const rawPads = payload.pads ?? [];
+	const rawLines = payload.lines ?? [];
+	if (!Array.isArray(rawPads) || !Array.isArray(rawLines) || rawPads.length + rawLines.length === 0) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Footprint build requires a non-empty pads[] and/or lines[] array.');
+	}
+	const pads = rawPads.map((value, index): FootprintPadSpec => {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `pads[${index}] must be an object.`);
+		}
+		const p = value as Record<string, unknown>;
+		if (typeof p.number !== 'string' || !p.number) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `pads[${index}].number is required.`);
+		if (!Array.isArray(p.shape) || p.shape.length < 3) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `pads[${index}].shape must be an official pad-shape tuple.`);
+		if (p.hole !== undefined && p.hole !== null && !Array.isArray(p.hole)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `pads[${index}].hole must be null or a hole tuple.`);
+		return {
+			number: p.number,
+			layer: finiteField(p, 'layer', `pads[${index}]`),
+			x: finiteField(p, 'x', `pads[${index}]`), y: finiteField(p, 'y', `pads[${index}]`),
+			rotation: p.rotation === undefined ? 0 : finiteField(p, 'rotation', `pads[${index}]`),
+			shape: p.shape as TPCB_PrimitivePadShape,
+			hole: (p.hole ?? null) as TPCB_PrimitivePadHole | null,
+			metallization: p.metallization === undefined ? true : Boolean(p.metallization),
+			padType: (p.padType === undefined ? 0 : finiteField(p, 'padType', `pads[${index}]`)) as EPCB_PrimitivePadType,
+		};
+	});
+	const numbers = new Set<string>();
+	for (const p of pads) {
+		if (numbers.has(p.number)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Duplicate pad number "${p.number}".`);
+		numbers.add(p.number);
+	}
+	const lines = rawLines.map((value, index): FootprintLineSpec => {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `lines[${index}] must be an object.`);
+		const l = value as Record<string, unknown>;
+		return {
+			layer: finiteField(l, 'layer', `lines[${index}]`),
+			startX: finiteField(l, 'startX', `lines[${index}]`), startY: finiteField(l, 'startY', `lines[${index}]`),
+			endX: finiteField(l, 'endX', `lines[${index}]`), endY: finiteField(l, 'endY', `lines[${index}]`),
+			width: finiteField(l, 'width', `lines[${index}]`),
+		};
+	});
+	return { pads, lines };
+}
+
+function primitiveIdOf(primitive: unknown): string {
+	if (!primitive || typeof primitive !== 'object') return '';
+	const getter = (primitive as { getState_PrimitiveId?: () => unknown }).getState_PrimitiveId;
+	const id = typeof getter === 'function' ? getter.call(primitive) : undefined;
+	return typeof id === 'string' ? id : '';
+}
+
+const libraryFootprintBuild: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	const { pads, lines } = parseFootprintBuildSpec(payload); // validate everything before mutation
+	let tabId: string | undefined;
+	const createdPads: string[] = [];
+	const createdLines: string[] = [];
+	try {
+		tabId = await eda.lib_Footprint.openInEditor(uuid, libraryUuid);
+		if (!tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'EasyEDA did not open the footprint editor.');
+		for (const p of pads) {
+			const primitive = await eda.pcb_PrimitivePad.create(
+				p.layer as TPCB_LayersOfPad, p.number, p.x, p.y, p.rotation, p.shape,
+				'', p.hole, 0, 0, 0, p.metallization, p.padType,
+			);
+			const id = primitiveIdOf(primitive);
+			if (!primitive || !id) throw new Error(`pad ${p.number} create returned no persistent primitive id`);
+			createdPads.push(id);
+		}
+		for (const l of lines) {
+			// In a footprint editor pcb_PrimitiveLine.create() rejects graphic layers
+			// such as top silkscreen (observed on layer 3).  A UI-drawn footprint
+			// graphic is represented by a polyline, so turn each public line segment
+			// into the official polygon object before creating its primitive.
+			const source = [l.startX, l.startY, 'L', l.endX, l.endY] as unknown as TPCB_PolygonSourceArray;
+			const polygon = eda.pcb_MathPolygon.createPolygon(source);
+			if (!polygon) throw new Error('line polygon creation returned no geometry');
+			const primitive = await eda.pcb_PrimitivePolyline.create('', l.layer as TPCB_LayersOfLine, polygon, l.width, false);
+			const id = primitiveIdOf(primitive);
+			if (!primitive || !id) throw new Error('line create returned no persistent primitive id');
+			createdLines.push(id);
+		}
+		await eda.pcb_Document.save();
+		const [padReadback, lineReadback] = await Promise.all([
+			createdPads.length ? eda.pcb_PrimitivePad.get(createdPads) : Promise.resolve([]),
+			createdLines.length ? eda.pcb_PrimitivePolyline.get(createdLines) : Promise.resolve([]),
+		]);
+		const verified = padReadback.length === createdPads.length && lineReadback.length === createdLines.length;
+		return {
+			result: { uuid, libraryUuid, tabId, created: { pads: createdPads, lines: createdLines }, verified },
+			...(verified ? {} : { warnings: ['Footprint geometry was created but immediate primitive readback was incomplete; do not retry blindly.'] }),
+		};
+	}
+	catch (err) {
+		if (err instanceof ActionError && createdPads.length + createdLines.length === 0) throw err;
+		// Mutation has started: never throw and lose autosave/partial-state semantics.
+		const rollback = { pads: false, lines: false };
+		try { rollback.pads = createdPads.length === 0 || await eda.pcb_PrimitivePad.delete(createdPads); } catch { /* report below */ }
+		try { rollback.lines = createdLines.length === 0 || await eda.pcb_PrimitivePolyline.delete(createdLines); } catch { /* report below */ }
+		return {
+			result: {
+				partial: true, uuid, libraryUuid, tabId: tabId ?? null,
+				created: { pads: createdPads, lines: createdLines }, rollback,
+				error: describeThrown(err), verified: false,
+			},
+			warnings: ['Footprint build failed after mutation began; inspect rollback and the opened footprint before retrying.'],
+		};
+	}
+};
+
+const librarySymbolCreate: Handler = async (payload) => {
+	const requestedName = requireString(payload, 'name');
+	const description = optionalString(payload, 'description');
+	const classification = optionalStringArray(payload, 'classification');
+	const symbolType = optionalNumber(payload, 'symbolType');
+	try {
+		const { name, namespace } = await namespacedLibraryAssetName(requestedName);
+		const libraryUuid = await resolveWritableLibraryUuid(payload);
+		const uuid = await eda.lib_Symbol.create(
+			libraryUuid, name, classification,
+			symbolType as ELIB_SymbolType | undefined, description,
+		);
+		if (!uuid) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA returned no UUID after creating the symbol.');
+		const symbol = await eda.lib_Symbol.get(uuid, libraryUuid);
+		if (!symbol) {
+			return { result: { partial: true, created: { uuid, libraryUuid, name }, verified: false }, warnings: ['Symbol was created but immediate readback returned no record; do not retry blindly.'] };
+		}
+		return { result: { uuid, libraryUuid, name, requestedName, namespace, verified: true, symbol } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to create symbol library asset.');
+	}
+};
+
+const librarySymbolGet: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = optionalString(payload, 'libraryUuid');
+	try {
+		const symbol = await eda.lib_Symbol.get(uuid, libraryUuid);
+		if (!symbol) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Symbol "${uuid}" was not found.`);
+		return { result: { symbol } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to read symbol library asset.');
+	}
+};
+
+type SymbolPinSpec = {
+	x: number; y: number; number: string; name: string; rotation: number;
+	length: number; shape: ESCH_PrimitivePinShape; pinType: ESCH_PrimitivePinType;
+};
+type SymbolCircleSpec = { centerX: number; centerY: number; radius: number; lineWidth: number };
+
+const librarySymbolBuild: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	if (!Array.isArray(payload.pins) || payload.pins.length === 0) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Symbol build requires a non-empty pins[] array.');
+	}
+	if (!Array.isArray(payload.outline) || payload.outline.length < 8 || payload.outline.some(v => typeof v !== 'number' || !Number.isFinite(v))) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Symbol build requires outline[] with at least four finite x/y points.');
+	}
+	const pins = payload.pins.map((raw, index): SymbolPinSpec => {
+		if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `pins[${index}] must be an object.`);
+		const p = raw as Record<string, unknown>;
+		if (typeof p.number !== 'string' || !p.number || typeof p.name !== 'string') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `pins[${index}] requires number and name strings.`);
+		return {
+			x: finiteField(p, 'x', `pins[${index}]`), y: finiteField(p, 'y', `pins[${index}]`),
+			number: p.number, name: p.name,
+			rotation: p.rotation === undefined ? 0 : finiteField(p, 'rotation', `pins[${index}]`),
+			length: p.length === undefined ? 20 : finiteField(p, 'length', `pins[${index}]`),
+			shape: (p.shape ?? 'None') as ESCH_PrimitivePinShape,
+			pinType: (p.pinType ?? 'Passive') as ESCH_PrimitivePinType,
+		};
+	});
+	const rawCircles = payload.circles ?? [];
+	if (!Array.isArray(rawCircles)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'circles must be an array.');
+	const circles = rawCircles.map((raw, index): SymbolCircleSpec => {
+		if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `circles[${index}] must be an object.`);
+		const c = raw as Record<string, unknown>;
+		const radius = finiteField(c, 'radius', `circles[${index}]`);
+		if (radius <= 0) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `circles[${index}].radius must be greater than zero.`);
+		return { centerX: finiteField(c, 'centerX', `circles[${index}]`), centerY: finiteField(c, 'centerY', `circles[${index}]`), radius, lineWidth: c.lineWidth === undefined ? 1 : finiteField(c, 'lineWidth', `circles[${index}]`) };
+	});
+	const createdPins: string[] = [];
+	const createdCircles: string[] = [];
+	let outlineId = '';
+	let tabId: string | undefined;
+	try {
+		tabId = await eda.lib_Symbol.openInEditor(uuid, libraryUuid);
+		if (!tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'EasyEDA did not open the symbol editor.');
+		const outline = await eda.sch_PrimitivePolygon.create(payload.outline as number[], null, 'none', 1, null);
+		outlineId = primitiveIdOf(outline);
+		if (!outlineId) throw new Error('symbol outline create returned no persistent primitive id');
+		for (const p of pins) {
+			const primitive = await eda.sch_PrimitivePin.create(p.x, p.y, p.number, p.name, p.rotation, p.length, null, p.shape, p.pinType);
+			const id = primitiveIdOf(primitive);
+			if (!id) throw new Error(`symbol pin ${p.number} create returned no persistent primitive id`);
+			createdPins.push(id);
+		}
+		for (const c of circles) {
+			const primitive = await eda.sch_PrimitiveCircle.create(c.centerX, c.centerY, c.radius, null, 'none', c.lineWidth, null, null);
+			const id = primitiveIdOf(primitive);
+			if (!id) throw new Error('symbol circle create returned no persistent primitive id');
+			createdCircles.push(id);
+		}
+		await eda.sch_Document.save();
+		const [pinReadback, outlineReadback, circleReadback] = await Promise.all([
+			eda.sch_PrimitivePin.get(createdPins), eda.sch_PrimitivePolygon.get(outlineId),
+			createdCircles.length ? eda.sch_PrimitiveCircle.get(createdCircles) : Promise.resolve([]),
+		]);
+		const verified = pinReadback.length === createdPins.length && Boolean(outlineReadback) && circleReadback.length === createdCircles.length;
+		return { result: { uuid, libraryUuid, tabId, created: { pins: createdPins, outline: outlineId, circles: createdCircles }, verified } };
+	}
+	catch (err) {
+		try { if (createdPins.length) await eda.sch_PrimitivePin.delete(createdPins); } catch { /* report partial */ }
+		try { if (createdCircles.length) await eda.sch_PrimitiveCircle.delete(createdCircles); } catch { /* report partial */ }
+		try { if (outlineId) await eda.sch_PrimitivePolygon.delete(outlineId); } catch { /* report partial */ }
+		return { result: { partial: true, uuid, libraryUuid, tabId: tabId ?? null, created: { pins: createdPins, outline: outlineId, circles: createdCircles }, error: describeThrown(err), verified: false }, warnings: ['Symbol build failed; created geometry was rolled back where possible.'] };
+	}
+};
+
+const librarySymbolDelete: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	const expectedName = requireString(payload, 'expectedName');
+	try {
+		const before = await eda.lib_Symbol.get(uuid, libraryUuid);
+		if (!before) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Symbol "${uuid}" was not found; nothing was deleted.`);
+		if (before.name !== expectedName) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Symbol name mismatch: expected "${expectedName}", found "${before.name}".`);
+		if (!await eda.lib_Symbol.delete(uuid, libraryUuid)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `EasyEDA refused to delete symbol "${expectedName}".`);
+		let after;
+		try { after = await eda.lib_Symbol.get(uuid, libraryUuid); }
+		catch { after = undefined; }
+		if (after) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Symbol "${expectedName}" still exists after delete returned success.`);
+		return { result: { uuid, libraryUuid, name: expectedName, deleted: true, verified: true } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to delete symbol library asset.'); }
+};
+
+const libraryModel3DCreate: Handler = async (payload) => {
+	const requestedName = requireString(payload, 'name');
+	const dataBase64 = requireString(payload, 'dataBase64');
+	const description = optionalString(payload, 'description');
+	const classification = optionalStringArray(payload, 'classification');
+	const unitRaw = optionalString(payload, 'unit') ?? 'mm';
+	if (!['mm', 'cm', 'm', 'mil', 'inch'].includes(unitRaw)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'unit must be one of mm, cm, m, mil, inch.');
+	const unit = unitRaw as ESYS_Unit.MILLIMETER | ESYS_Unit.CENTIMETER | ESYS_Unit.METER | ESYS_Unit.MIL | ESYS_Unit.INCH;
+	try {
+		const { name, namespace } = await namespacedLibraryAssetName(requestedName);
+		const libraryUuid = await resolveWritableLibraryUuid(payload);
+		const bytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
+		if (!bytes.length) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, '3D model file is empty.');
+		const fileName = optionalString(payload, 'fileName') ?? `${name}.step`;
+		const file = new File([bytes], fileName, { type: optionalString(payload, 'mimeType') ?? 'application/step' });
+		const uuids = await eda.lib_3DModel.create(libraryUuid, file, classification, unit);
+		if (!uuids?.length) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA returned no UUID after importing the 3D model.');
+		const uuid = uuids[0];
+		if (!await eda.lib_3DModel.modify(uuid, libraryUuid, name, classification, description)) {
+			return { result: { partial: true, uuid, uuids, libraryUuid, name, verified: false }, warnings: ['3D model imported but metadata rename failed; inspect before retrying.'] };
+		}
+		const model = await eda.lib_3DModel.get(uuid, libraryUuid);
+		const verified = Boolean(model && model.name === name);
+		return { result: { uuid, uuids, libraryUuid, name, requestedName, namespace, model, verified } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to import 3D model library asset.'); }
+};
+
+const libraryModel3DGet: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = optionalString(payload, 'libraryUuid');
+	try {
+		const model = await eda.lib_3DModel.get(uuid, libraryUuid);
+		if (!model) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `3D model "${uuid}" was not found.`);
+		return { result: { model } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to read 3D model library asset.'); }
+};
+
+const libraryModel3DSearch: Handler = async (payload) => {
+	const query = requireString(payload, 'query');
+	const libraryUuid = optionalString(payload, 'libraryUuid');
+	const classification = optionalStringArray(payload, 'classification');
+	const limit = payload.limit === undefined ? 20 : finiteField(payload, 'limit', 'payload');
+	if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'limit must be an integer from 1 to 100.');
+	try {
+		const models = await eda.lib_3DModel.search(query, libraryUuid, classification, limit, 1);
+		return { result: { query, libraryUuid: libraryUuid ?? null, models, count: models.length } };
+	}
+	catch (err) { throw edaError(err, 'Failed to search 3D model library assets.'); }
+};
+
+const libraryModel3DCopy: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const sourceLibraryUuid = requireString(payload, 'sourceLibraryUuid');
+	const requestedName = requireString(payload, 'name');
+	const classification = optionalStringArray(payload, 'classification');
+	try {
+		const { name, namespace } = await namespacedLibraryAssetName(requestedName);
+		const libraryUuid = await resolveWritableLibraryUuid(payload);
+		const copiedUuid = await eda.lib_3DModel.copy(uuid, sourceLibraryUuid, libraryUuid, classification, name);
+		if (!copiedUuid) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA returned no UUID after copying the 3D model.');
+		const model = await eda.lib_3DModel.get(copiedUuid, libraryUuid);
+		if (!model) return { result: { partial: true, uuid: copiedUuid, libraryUuid, name, verified: false }, warnings: ['3D model copy returned a UUID but immediate readback was empty; do not retry blindly.'] };
+		return { result: { uuid: copiedUuid, libraryUuid, name, requestedName, namespace, source: { uuid, libraryUuid: sourceLibraryUuid }, model, verified: true } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to copy 3D model library asset.'); }
+};
+
+const libraryDeviceSetModel3D: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	const expectedName = requireString(payload, 'expectedName');
+	const clear = payload.clear === true;
+	const model3D = clear ? null : requireLibraryRef(payload, 'model3D');
+	try {
+		const before = await eda.lib_Device.get(uuid, libraryUuid);
+		if (!before) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Device "${uuid}" was not found.`);
+		if (before.name !== expectedName) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Device name mismatch: expected "${expectedName}", found "${before.name}".`);
+		if (!clear && !await eda.lib_3DModel.get(model3D!.uuid, model3D!.libraryUuid)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `3D model "${model3D!.uuid}" was not found.`);
+		if (!await eda.lib_Device.modify(uuid, libraryUuid, undefined, undefined, { model3D })) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA refused the Device 3D-model association update.');
+		const device = await eda.lib_Device.get(uuid, libraryUuid);
+		const association = device?.association as unknown as Record<string, unknown> | undefined;
+		const actual = association?.model3D as { uuid?: string; libraryUuid?: string } | undefined;
+		const legacyUuid = association?.model3DUuid;
+		const verified = clear ? !actual && !legacyUuid : actual?.uuid === model3D!.uuid && actual?.libraryUuid === model3D!.libraryUuid;
+		if (!verified) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Device update returned success but 3D-model association readback did not match.');
+		return { result: { uuid, libraryUuid, name: expectedName, model3D, cleared: clear, verified: true, device } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to update Device 3D-model association.'); }
+};
+
+const libraryModel3DDelete: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	const expectedName = requireString(payload, 'expectedName');
+	try {
+		const before = await eda.lib_3DModel.get(uuid, libraryUuid);
+		if (!before || before.name !== expectedName) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `3D model name mismatch or missing: expected "${expectedName}".`);
+		if (!await eda.lib_3DModel.delete(uuid, libraryUuid)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `EasyEDA refused to delete 3D model "${expectedName}".`);
+		let after; try { after = await eda.lib_3DModel.get(uuid, libraryUuid); } catch { after = undefined; }
+		if (after) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `3D model "${expectedName}" still exists after delete returned success.`);
+		return { result: { uuid, libraryUuid, name: expectedName, deleted: true, verified: true } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to delete 3D model library asset.'); }
+};
+
+function requireLibraryRef(payload: Record<string, unknown>, key: string): { uuid: string; libraryUuid: string } {
+	const raw = payload[key];
+	if (!raw || typeof raw !== 'object') {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `Missing required object "${key}" ({uuid, libraryUuid}).`);
+	}
+	const ref = raw as Record<string, unknown>;
+	if (typeof ref.uuid !== 'string' || !ref.uuid || typeof ref.libraryUuid !== 'string' || !ref.libraryUuid) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `"${key}" must contain non-empty uuid and libraryUuid strings.`);
+	}
+	return { uuid: ref.uuid, libraryUuid: ref.libraryUuid };
+}
+
+const libraryDeviceCreate: Handler = async (payload) => {
+	const requestedName = requireString(payload, 'name');
+	const symbol = requireLibraryRef(payload, 'symbol');
+	const footprint = payload.footprint === undefined ? undefined : requireLibraryRef(payload, 'footprint');
+	const model3D = payload.model3D === undefined ? undefined : requireLibraryRef(payload, 'model3D');
+	const description = optionalString(payload, 'description');
+	const classification = optionalStringArray(payload, 'classification');
+	const property = payload.property;
+	if (property !== undefined && (!property || typeof property !== 'object' || Array.isArray(property))) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, '"property" must be an object.');
+	}
+	try {
+		const { name, namespace } = await namespacedLibraryAssetName(requestedName);
+		const libraryUuid = await resolveWritableLibraryUuid(payload);
+		const uuid = await eda.lib_Device.create(
+			libraryUuid, name, classification,
+			{ symbol, ...(footprint ? { footprint } : {}), ...(model3D ? { model3D } : {}) },
+			description,
+			property as ILIB_DeviceExtendPropertyItem | undefined,
+		);
+		if (!uuid) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'EasyEDA returned no UUID after creating the device.');
+		const device = await eda.lib_Device.get(uuid, libraryUuid);
+		if (!device) {
+			return { result: { partial: true, created: { uuid, libraryUuid, name }, verified: false }, warnings: ['Device was created but immediate readback returned no record; do not retry blindly.'] };
+		}
+		return { result: { uuid, libraryUuid, name, requestedName, namespace, verified: true, device } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to create device library asset.');
+	}
+};
+
+const libraryDeviceGet: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = optionalString(payload, 'libraryUuid');
+	try {
+		const device = await eda.lib_Device.get(uuid, libraryUuid);
+		if (!device) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Device "${uuid}" was not found.`);
+		return { result: { device } };
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to read device library asset.');
+	}
+};
+
+const libraryDeviceDelete: Handler = async (payload) => {
+	const uuid = requireString(payload, 'uuid');
+	const libraryUuid = requireString(payload, 'libraryUuid');
+	const expectedName = requireString(payload, 'expectedName');
+	try {
+		const before = await eda.lib_Device.get(uuid, libraryUuid);
+		if (!before) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Device "${uuid}" was not found; nothing was deleted.`);
+		if (before.name !== expectedName) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Device name mismatch: expected "${expectedName}", found "${before.name}".`);
+		if (!await eda.lib_Device.delete(uuid, libraryUuid)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `EasyEDA refused to delete Device "${expectedName}".`);
+		let after;
+		try { after = await eda.lib_Device.get(uuid, libraryUuid); }
+		catch { after = undefined; }
+		if (after) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Device "${expectedName}" still exists after delete returned success.`);
+		return { result: { uuid, libraryUuid, name: expectedName, deleted: true, verified: true } };
+	}
+	catch (err) { if (err instanceof ActionError) throw err; throw edaError(err, 'Failed to delete Device library asset.'); }
 };
 
 // ─── Rebind: swap a placed component's footprint / symbol ─────────────
@@ -10838,6 +11422,25 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.power.connect_pin': schematicPowerConnectPin,
 	'schematic.library.search': schematicLibrarySearch,
 	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
+	'library.list': libraryList,
+	'library.footprint.create': libraryFootprintCreate,
+	'library.footprint.get': libraryFootprintGet,
+	'library.footprint.copy': libraryFootprintCopy,
+	'library.footprint.delete': libraryFootprintDelete,
+	'library.footprint.build': libraryFootprintBuild,
+	'library.symbol.create': librarySymbolCreate,
+	'library.symbol.build': librarySymbolBuild,
+	'library.symbol.get': librarySymbolGet,
+	'library.symbol.delete': librarySymbolDelete,
+	'library.model3d.create': libraryModel3DCreate,
+	'library.model3d.get': libraryModel3DGet,
+	'library.model3d.search': libraryModel3DSearch,
+	'library.model3d.copy': libraryModel3DCopy,
+	'library.model3d.delete': libraryModel3DDelete,
+	'library.device.create': libraryDeviceCreate,
+	'library.device.get': libraryDeviceGet,
+	'library.device.set_model3d': libraryDeviceSetModel3D,
+	'library.device.delete': libraryDeviceDelete,
 	'schematic.rebind.footprint': schematicRebindFootprint,
 	'schematic.rebind.symbol': schematicRebindSymbol,
 	'schematic.component.replace': schematicComponentReplace,

@@ -3,7 +3,7 @@
 	"uuid": "4dae27407c1d43be98e8e210d45fe587",
 	"displayName": "EDA Agent Connector",
 	"description": "Bridges the local agent daemon to the official eda.* API over a local WebSocket, dispatching typed schematic and PCB actions.",
-	"version": "1.2.10",
+	"version": "1.2.15",
 	"publisher": "zhoushoujian",
 	"engines": {
 		"eda": "~3.2.0"

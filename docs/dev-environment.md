@@ -175,6 +175,12 @@ node extension/scripts/hot-reload-server.mjs &     # ws://127.0.0.1:8790
 easyeda daemon health                       # connectorVersion shows the new version
 ```
 
+If the editor has unsaved/open library documents, Chrome may show “重新加载此网站？”
+after step 3. Confirm **重新加载** in the browser; until that dialog is handled the old
+connector's `debug.exec_js` request can remain at the head of its FIFO and later typed
+actions will correctly refuse with `CONNECTOR_QUEUE_BLOCKED`. After reload, wait for a
+new `windowId`/`connectedAt` in `easyeda daemon health` before issuing a write.
+
 The inject script writes the IndexedDB records described above; the server reads
 `extension/dist/index.js` + the version from `extension.json`. Both take flags
 (`--port`, `--bundle`; `--keep` to stay resident) — see the file headers.

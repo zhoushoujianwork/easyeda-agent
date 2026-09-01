@@ -1,0 +1,43 @@
+{
+  "name": "SDCARD_MODULE_18X18",
+  "description": "18x18 mm 6-pin SPI SD card module",
+  "libraryUUID": "f60b2174579745258ada9b72bbe2f52b",
+  "designator": "U",
+  "properties": {"EasyEDA Agent":"one-shot-device-build"},
+  "symbol": {
+    "name": "SDCARD_MODULE_6P",
+    "description": "Standard inward-facing labels and pin-1 marker",
+    "geometry": {
+      "outline": [-10,-40,30,-40,30,30,-10,30,-10,-40],
+      "circles": [{"centerX":-4,"centerY":25,"radius":3,"lineWidth":1}],
+      "pins": [
+        {"number":"1","name":"3V3","x":-30,"y":20,"rotation":180,"length":20,"pinType":"Power"},
+        {"number":"2","name":"CS","x":-30,"y":10,"rotation":180,"length":20,"pinType":"IN"},
+        {"number":"3","name":"MOSI","x":-30,"y":0,"rotation":180,"length":20,"pinType":"IN"},
+        {"number":"4","name":"CLK","x":-30,"y":-10,"rotation":180,"length":20,"pinType":"IN"},
+        {"number":"5","name":"MISO","x":-30,"y":-20,"rotation":180,"length":20,"pinType":"OUT"},
+        {"number":"6","name":"GND","x":-30,"y":-30,"rotation":180,"length":20,"pinType":"Ground"}
+      ]
+    }
+  },
+  "footprint": {
+    "name": "SDCARD_MODULE_18X18",
+    "description": "18x18 mm module with six 2.54 mm through-hole pins",
+    "geometry": {
+      "pads": [
+        {"number":"1","layer":12,"x":-300,"y":250,"shape":["RECT",70,70,6],"hole":["ROUND",40]},
+        {"number":"2","layer":12,"x":-300,"y":150,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+        {"number":"3","layer":12,"x":-300,"y":50,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+        {"number":"4","layer":12,"x":-300,"y":-50,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+        {"number":"5","layer":12,"x":-300,"y":-150,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]},
+        {"number":"6","layer":12,"x":-300,"y":-250,"shape":["ELLIPSE",70,70],"hole":["ROUND",40]}
+      ],
+      "lines": [
+        {"layer":3,"startX":-354.33,"startY":354.33,"endX":354.33,"endY":354.33,"width":6},
+        {"layer":3,"startX":354.33,"startY":354.33,"endX":354.33,"endY":-354.33,"width":6},
+        {"layer":3,"startX":354.33,"startY":-354.33,"endX":-354.33,"endY":-354.33,"width":6},
+        {"layer":3,"startX":-354.33,"startY":-354.33,"endX":-354.33,"endY":354.33,"width":6}
+      ]
+    }
+  }
+}
