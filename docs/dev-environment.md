@@ -249,6 +249,33 @@ lands at IndexedDB key `<uuid>|dist/index.js`. Mind that offset.
   re-verify the store names/keys if EasyEDA bumps its schema version
   (`_v6` today).
 
+## Native net-label compatibility (verified 2026-09-05)
+
+EasyEDA's official `eda.sch_PrimitiveAttribute.createNetLabel(x, y, net)` API
+is documented as a **BETA** API and is marked **"ADD since EDA v4"**. The
+arguments are simply the schematic X/Y coordinate and a non-empty net name;
+there is no alternate direction/rotation argument. The connector's
+`net_label` implementation passes that signature correctly.
+
+Do not infer support from the editor UI alone: manual placement of a net label
+may work while the typed connector call hangs. In EasyEDA 3.2.186, a live
+`sch connect --kind net_label` probe timed out while awaiting the native promise
+and rolled back the stub wire, even with connector 1.3.1. The same page could
+still be made electrically correct by placing EN as a net label in the UI;
+the connector readback exposed the EN net name but did not enumerate the native
+label as `componentType: "netlabel"`.
+
+When diagnosing this class of issue, follow this order:
+
+1. Run `easyeda health` and record the exact EasyEDA and connector versions.
+2. Read the official API page and check its "ADD since"/BETA note before
+   changing arguments.
+3. Run a one-pin live probe, then immediately `sch read`/`sch check`; never
+   assume a timeout means nothing landed.
+4. If the native promise does not settle, restore the previous connection,
+   save, and report a runtime-version compatibility gap. Upgrade EasyEDA to a
+   runtime that supports EDA v4 before retrying automation.
+
 ## Advisory loop: what the implement operator can and cannot do
 
 ClawFlow's implement operator runs `claude -p` in a **headless worktree** — it
