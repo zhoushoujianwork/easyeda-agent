@@ -38,6 +38,7 @@ func TestResolveNetflagKind(t *testing.T) {
 		"power": true, "ground": true, "analog_ground": true,
 		"protective_ground": true, "protect_ground": true,
 		"net_port_in": true, "net_port_out": true, "net_port_bi": true,
+		"net_label": true,
 	}
 	for _, canonical := range netflagKindAliases {
 		if !connectorAccepts[canonical] {

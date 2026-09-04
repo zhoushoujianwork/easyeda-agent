@@ -2439,6 +2439,7 @@ const NET_PORT_KINDS: Record<string, NetPortDirection> = {
 	net_port_out: 'OUT',
 	net_port_bi: 'BI',
 };
+const NET_LABEL_KIND = 'net_label';
 
 const schematicNetflagCreate: Handler = async (payload) => {
 	const kind = requireString(payload, 'kind');
@@ -2471,6 +2472,10 @@ const schematicNetflagCreate: Handler = async (payload) => {
 				mirror,
 			);
 		}
+		else if (kind === NET_LABEL_KIND) {
+			const net = requireString(payload, 'net');
+			component = await eda.sch_PrimitiveAttribute.createNetLabel(x, y, net);
+		}
 		else if (kind === 'short_circuit') {
 			component = await eda.sch_PrimitiveComponent.createShortCircuitFlag(x, y, rotation, mirror);
 		}
@@ -2493,7 +2498,7 @@ const schematicNetflagCreate: Handler = async (payload) => {
 	return {
 		result: {
 			primitiveId: component.getState_PrimitiveId(),
-			component: serializeComponent(component),
+			...(kind === NET_LABEL_KIND ? {} : { component: serializeComponent(component as SchComponent) }),
 		},
 	};
 };
@@ -6143,6 +6148,13 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 				Promise.resolve(eda.sch_PrimitiveComponent.createNetPort(NET_PORT_KINDS[kind], net, endX, endY, applied)),
 				CONNECT_PIN_OP_TIMEOUT_MS,
 				`Netport create did not settle within ${CONNECT_PIN_OP_TIMEOUT_MS}ms — the platform dropped the request without rejecting (the stuck-at-99% hang). Rolling back the stub wire and failing fast so the caller can retry this pin.`,
+			);
+		}
+		else if (kind === NET_LABEL_KIND) {
+			flag = await withTimeout(
+				Promise.resolve(eda.sch_PrimitiveAttribute.createNetLabel(endX, endY, net)),
+				CONNECT_PIN_OP_TIMEOUT_MS,
+				`Netlabel create did not settle within ${CONNECT_PIN_OP_TIMEOUT_MS}ms — rolling back the stub wire.`,
 			);
 		}
 		else {

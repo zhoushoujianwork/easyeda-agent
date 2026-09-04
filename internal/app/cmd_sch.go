@@ -59,13 +59,15 @@ var netflagKindAliases = map[string]string{
 	"net_port_in":       "net_port_in",
 	"net_port_out":      "net_port_out",
 	"net_port_bi":       "net_port_bi",
+	"netlabel":          "net_label",
+	"net_label":         "net_label",
 }
 
 // netflagKindHelp is the single source of truth for the --kind help text so the
 // listed values stay in sync with what resolveNetflagKind actually accepts.
 const netflagKindHelp = "flag kind (required). Shorthands: gnd→ground, agnd→analog_ground, " +
 	"pgnd→protective_ground, netport→net_port_bi. Canonical: power, ground, analog_ground, " +
-	"protective_ground, protect_ground, net_port_in, net_port_out, net_port_bi"
+	"protective_ground, protect_ground, net_port_in, net_port_out, net_port_bi, net_label"
 
 // resolveNetflagKind translates a CLI --kind value (shorthand or canonical) to
 // the canonical kind the connector accepts. Unknown values get a friendly CLI
@@ -77,7 +79,7 @@ func resolveNetflagKind(kind string) (string, error) {
 	valid := []string{
 		"gnd", "agnd", "pgnd", "netport",
 		"power", "ground", "analog_ground", "protective_ground", "protect_ground",
-		"net_port_in", "net_port_out", "net_port_bi",
+		"net_port_in", "net_port_out", "net_port_bi", "netlabel", "net_label",
 	}
 	return "", fmt.Errorf("unknown --kind %q; expected one of: %v", kind, valid)
 }
