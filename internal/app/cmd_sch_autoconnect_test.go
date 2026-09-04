@@ -1003,6 +1003,23 @@ func TestOppositeDirection(t *testing.T) {
 	}
 }
 
+func TestOutwardDirectionPrefersPinRotationForAsymmetricConnector(t *testing.T) {
+	owner := layoutBBox{MinX: 0, MinY: 0, MaxX: 100, MaxY: 100}
+	rot := 180.0 // rendered pin points left; bbox center alone is ambiguous
+	pin := acPin{X: 50, Y: 50, OwnerBBox: &owner, PinRotation: &rot}
+	if got := outwardDirection(pin); got != "left" {
+		t.Fatalf("pin rotation must define outward side for asymmetric symbols: got %q", got)
+	}
+}
+
+func TestOutwardDirectionFallsBackWithoutPinRotation(t *testing.T) {
+	owner := layoutBBox{MinX: 0, MinY: 0, MaxX: 100, MaxY: 100}
+	pin := acPin{X: -2, Y: 50, OwnerBBox: &owner}
+	if got := outwardDirection(pin); got != "left" {
+		t.Fatalf("missing pin rotation should retain bbox fallback: got %q", got)
+	}
+}
+
 // **lane 错开不能凌驾于正确性之上**。真机:U3:V3 左侧撞标签(1583),lane 因为
 // 「左侧已被占」去找没被占用的方向,把 marker 甩到了背面(50597)—— 分数高了 32 倍,
 // 而排序本身是对的,是 lane 在排序之外强行改选。

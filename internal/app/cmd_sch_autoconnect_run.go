@@ -165,20 +165,26 @@ func buildScene(result map[string]any) acScene {
 						continue
 					}
 					hasPins = true
+					var pinRotation *float64
+					if rv, ok := pm["rotation"]; ok {
+						r := asFloat(rv)
+						pinRotation = &r
+					}
 					// The extension attaches each pin's current net as `net`:
 					// a string (possibly "") when the netlist is available, or
 					// null when it isn't. asString collapses null → "", so use
 					// presence-of-key to decide NetKnown.
 					netVal, netKnown := pm["net"]
 					scene.Pins = append(scene.Pins, acPin{
-						X:          asFloat(pm["x"]),
-						Y:          asFloat(pm["y"]),
-						Designator: designator,
-						PinNumber:  asString(pm["pinNumber"]),
-						PinName:    asString(pm["pinName"]),
-						OwnerBBox:  box,
-						Net:        asString(netVal),
-						NetKnown:   netKnown && netVal != nil,
+						X:           asFloat(pm["x"]),
+						Y:           asFloat(pm["y"]),
+						Designator:  designator,
+						PinNumber:   asString(pm["pinNumber"]),
+						PinName:     asString(pm["pinName"]),
+						OwnerBBox:   box,
+						PinRotation: pinRotation,
+						Net:         asString(netVal),
+						NetKnown:    netKnown && netVal != nil,
 					})
 				}
 			}

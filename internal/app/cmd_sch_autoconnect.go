@@ -74,6 +74,10 @@ type acPin struct {
 	PinNumber  string
 	PinName    string
 	OwnerBBox  *layoutBBox
+	// PinRotation is the pin primitive's rendered outward direction.  It is
+	// authoritative for asymmetric connector symbols; bbox-center inference is
+	// only a fallback for older connectors that did not serialize rotation.
+	PinRotation *float64
 	// Net is the pin's CURRENT authoritative net (from schematic.components.list
 	// --include-pins). Empty means "floating" when NetKnown is true; NetKnown is
 	// false when the netlist wasn't available, so idempotency checks can't run and
@@ -324,6 +328,22 @@ func kindDefaultDirection(canonicalKind string) string {
 // part's bbox center — the natural side to route a pin's flag. Empty when the
 // owner bbox is unknown.
 func outwardDirection(pin acPin) string {
+	if pin.PinRotation != nil {
+		r := math.Mod(*pin.PinRotation, 360)
+		if r < 0 {
+			r += 360
+		}
+		switch {
+		case r < 45 || r >= 315:
+			return "right"
+		case r < 135:
+			return "up"
+		case r < 225:
+			return "left"
+		default:
+			return "down"
+		}
+	}
 	if pin.OwnerBBox == nil {
 		return ""
 	}
