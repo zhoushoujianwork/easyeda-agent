@@ -1,0 +1,31 @@
+{
+  "modules": [
+    {"name": "POWER", "kind": "POWER", "parts": ["POWER", "C1", "C2", "R1", "R2"], "page": "POWER", "zone": "left"},
+    {"name": "HOST_IO", "kind": "IO", "parts": ["U1", "J1", "R3", "R4", "R5"], "page": "HOST_IO", "zone": "center"},
+    {"name": "RF_MCU", "kind": "RF", "parts": ["U1", "U2", "R3", "R4", "R5", "R7", "R10", "C1", "C2"], "page": "RF_MCU", "zone": "center"},
+    {"name": "TALK_MCU", "kind": "MCU", "parts": ["J_PROG_TALK", "R8", "R9"], "page": "TALK", "zone": "center"},
+    {"name": "RF_PROGRAM", "kind": "IO", "parts": ["J_PROG_RF"], "page": "RF_MCU", "zone": "right"}
+  ],
+  "flow": ["POWER", "IO", "RF", "MCU"],
+  "flowAxis": "auto",
+  "pages": [
+    {"name": "POWER", "sheet": "A4", "modules": ["POWER"]},
+    {"name": "HOST_IO", "sheet": "A4", "modules": ["HOST_IO"]},
+    {"name": "RF_MCU", "sheet": "A4", "modules": ["RF_MCU", "RF_PROGRAM"]},
+    {"name": "TALK", "sheet": "A4", "modules": ["TALK_MCU"]}
+  ],
+  "stackup": {
+    "layers": 4,
+    "groundStrategy": "plane",
+    "innerLayers": ["GND", "VCC_3V3"]
+  },
+  "assembly": {"profile": "hand-solder", "side": "top"},
+  "rf": {"parts": ["RF_MCU"], "keepoutLayers": "all"},
+  "board": {"outline": "compact"},
+  "interfaces": [
+    {"name": "RF_PROGRAM", "ref": "J_PROG_RF", "internal": true},
+    {"name": "TALK_PROGRAM", "ref": "J_PROG_TALK", "internal": true},
+    {"name": "HOST_USB", "ref": "J1", "edge": "bottom", "facing": "user-facing", "orientation": "dual"}
+  ],
+  "costTier": "standard"
+}
