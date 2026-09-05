@@ -12,6 +12,7 @@ import (
 type Document struct {
 	SchemaVersion string       `json:"schemaVersion"`
 	ProjectID     string       `json:"projectId,omitempty"`
+	DocumentID    string       `json:"documentId,omitempty"`
 	Components    []Component  `json:"components"`
 	Nets          []Net        `json:"nets"`
 	Connections   []Connection `json:"connections"`
@@ -82,6 +83,16 @@ func Compare(a, b Document) Diff {
 			d.ChangedConnections = append(d.ChangedConnections, k)
 		}
 	}
+	for k := range am {
+		if _, ok := bm[k]; !ok {
+			d.ChangedConnections = append(d.ChangedConnections, k)
+		}
+	}
+	sort.Strings(d.AddedComponents)
+	sort.Strings(d.RemovedComponents)
+	sort.Strings(d.AddedNets)
+	sort.Strings(d.RemovedNets)
+	sort.Strings(d.ChangedConnections)
 	return d
 }
 
@@ -130,11 +141,12 @@ type Port struct {
 }
 
 func (d *Document) Validate() error {
-	if d.SchemaVersion == "" {
+	if d.SchemaVersion != "1.4" {
 		return fmt.Errorf("schemaVersion is required")
 	}
 	comps := map[string]bool{}
 	refs := map[string]bool{}
+	pins := map[[2]string]bool{}
 	for _, c := range d.Components {
 		if c.ID == "" || c.Ref == "" {
 			return fmt.Errorf("component id/ref required")
@@ -144,6 +156,13 @@ func (d *Document) Validate() error {
 		}
 		comps[c.ID] = true
 		refs[c.Ref] = true
+		for _, p := range c.Pins {
+			k := [2]string{c.ID, p.Number}
+			if p.Number == "" || pins[k] {
+				return fmt.Errorf("empty/duplicate pin on %s", c.Ref)
+			}
+			pins[k] = true
+		}
 	}
 	nets := map[string]bool{}
 	for _, n := range d.Nets {
@@ -152,7 +171,13 @@ func (d *Document) Validate() error {
 		}
 		nets[n.ID] = true
 	}
+	seen := map[[2]string]bool{}
 	for _, c := range d.Connections {
+		k := [2]string{c.ComponentID, c.PinNumber}
+		if !pins[k] || seen[k] {
+			return fmt.Errorf("unknown/duplicate connection pin %v", k)
+		}
+		seen[k] = true
 		if !comps[c.ComponentID] {
 			return fmt.Errorf("connection references unknown component %s", c.ComponentID)
 		}
