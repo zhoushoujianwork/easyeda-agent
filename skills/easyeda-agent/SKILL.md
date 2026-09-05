@@ -5,7 +5,7 @@ license: MIT
 compatibility: "Requires the local easyeda-agent CLI and daemon (macOS/Linux/Windows) plus the EasyEDA Agent Connector extension installed in EasyEDA Pro with 'Allow external interaction' enabled. Bundled scripts need Python 3. Network access is needed only for LCSC part lookup and self-update."
 metadata:
   author: zhoushoujianwork
-  version: "1.3.0"
+  version: "1.3.1"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
