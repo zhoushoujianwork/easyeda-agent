@@ -195,6 +195,20 @@ extensionUuid 在 `extension/extension.json`。IndexedDB 结构非官方稳定 A
 
 ## 3. 已踩过的坑
 
+### 3.1 旧连接器运行时残留，导致重复注册
+
+扩展管理器里只剩一个 `.eext`，不代表已经打开的 EasyEDA 页面只运行一个
+连接器。重新导入、更新扩展或重启 daemon 后，旧页面实例仍可能继续注册，
+表现为 `health` 中同一工程/文档出现多个 `windowId`、多个
+`connectorVersion`，以及写动作超时。详细的症状、根因、恢复和验证清单见
+[`docs/connector-runtime-recovery.md`](../../../docs/connector-runtime-recovery.md)。
+
+快速修复顺序固定为：停止 Apply → 卸载旧扩展并只保留一个安装项 → **完全
+退出并重启 EasyEDA** → 必要时 `easyeda daemon start` → 重新打开工程 →
+`easyeda health --project <project>` 确认只有一个目标窗口后再写。不要只
+reload 同一个 tab，也不要清空站点数据；后者会把 IndexedDB 中的扩展安装记录
+一起删掉。
+
 - **chrome-devtools MCP 多实例抢 profile**:多个会话/IDE(Claude Code、
   VSCode、opencode…)各起一个 chrome-devtools-mcp,全都用同一个
   `~/.cache/chrome-devtools-mcp/chrome-profile`,同一时刻只有一个 Chrome 能
