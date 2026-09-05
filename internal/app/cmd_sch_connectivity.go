@@ -28,7 +28,17 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 		if err != nil {
 			return err
 		}
-		doc, err := connectivity.FromRead(raw.Result)
+		// components.list is the pin-intent source: unlike schematic.read it
+		// carries noConnected, distinguishing intentional NC from a missing wire.
+		pinRaw, err := requestAction(cfg, "schematic.components.list", *window, map[string]any{"includePins": true})
+		if err != nil {
+			return err
+		}
+		readResult := raw.Result
+		if parts, ok := pinRaw.Result["components"]; ok {
+			readResult["components"] = parts
+		}
+		doc, err := connectivity.FromRead(readResult)
 		if err != nil {
 			return err
 		}

@@ -33,16 +33,17 @@ type Diff struct {
 	AddedNets          []string `json:"addedNets,omitempty"`
 	RemovedNets        []string `json:"removedNets,omitempty"`
 	ChangedConnections []string `json:"changedConnections,omitempty"`
+	ChangedNoConnect   []string `json:"changedNoConnect,omitempty"`
 }
 
 func Compare(a, b Document) Diff {
 	d := Diff{}
-	ac, bc := map[string]bool{}, map[string]bool{}
+	ac, bc := map[string]Component{}, map[string]Component{}
 	for _, c := range a.Components {
-		ac[c.ID] = true
+		ac[c.ID] = c
 	}
 	for _, c := range b.Components {
-		bc[c.ID] = true
+		bc[c.ID] = c
 	}
 	for id := range bc {
 		if !ac[id] {
@@ -83,6 +84,25 @@ func Compare(a, b Document) Diff {
 			d.ChangedConnections = append(d.ChangedConnections, k)
 		}
 	}
+	for id, ca := range ac {
+		cb, ok := bc[id]
+		if !ok {
+			continue
+		}
+		ap := map[string]bool{}
+		for _, p := range ca.Pins {
+			ap[p.Number] = p.NoConnected
+		}
+		bp := map[string]bool{}
+		for _, p := range cb.Pins {
+			bp[p.Number] = p.NoConnected
+		}
+		for n, v := range bp {
+			if ap[n] != v {
+				d.ChangedNoConnect = append(d.ChangedNoConnect, id+":"+n)
+			}
+		}
+	}
 	for k := range am {
 		if _, ok := bm[k]; !ok {
 			d.ChangedConnections = append(d.ChangedConnections, k)
@@ -93,6 +113,7 @@ func Compare(a, b Document) Diff {
 	sort.Strings(d.AddedNets)
 	sort.Strings(d.RemovedNets)
 	sort.Strings(d.ChangedConnections)
+	sort.Strings(d.ChangedNoConnect)
 	return d
 }
 
@@ -109,9 +130,10 @@ type Device struct {
 	Name        string `json:"name,omitempty"`
 }
 type Pin struct {
-	Number string `json:"number"`
-	Name   string `json:"name,omitempty"`
-	Type   string `json:"type,omitempty"`
+	Number      string `json:"number"`
+	Name        string `json:"name,omitempty"`
+	Type        string `json:"type,omitempty"`
+	NoConnected bool   `json:"noConnected,omitempty"`
 }
 type Net struct {
 	ID    string `json:"id"`
@@ -185,7 +207,23 @@ func (d *Document) Validate() error {
 			return fmt.Errorf("connection references unknown net %s", c.NetID)
 		}
 	}
+	for _, c := range d.Components {
+		for _, p := range c.Pins {
+			if !connectedPin(d, c.ID, p.Number) && !p.NoConnected {
+				d.Issues = append(d.Issues, Issue{Code: "unconnected-pin", Severity: "warning", ComponentID: c.ID, PinNumber: p.Number, Message: fmt.Sprintf("%s pin %s has no net and no NC marker", c.Ref, p.Number)})
+			}
+		}
+	}
 	return nil
+}
+
+func connectedPin(d *Document, id, pin string) bool {
+	for _, c := range d.Connections {
+		if c.ComponentID == id && c.PinNumber == pin {
+			return true
+		}
+	}
+	return false
 }
 func (d *Document) TopologyHash() (string, error) {
 	if err := d.Validate(); err != nil {

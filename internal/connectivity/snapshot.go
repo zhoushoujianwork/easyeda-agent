@@ -34,11 +34,18 @@ func FromRead(m map[string]any) (Document, error) {
 				return d, fmt.Errorf("%s: invalid pin", ref)
 			}
 			n, _ := p["number"].(string)
+			if n == "" {
+				n, _ = p["pinNumber"].(string)
+			}
 			name, _ := p["name"].(string)
+			if name == "" {
+				name, _ = p["pinName"].(string)
+			}
 			if _, ok := p["net"]; !ok {
 				return d, fmt.Errorf("%s.%s: missing net evidence", ref, n)
 			}
-			c.Pins = append(c.Pins, Pin{Number: n, Name: name})
+			nc, _ := p["noConnected"].(bool)
+			c.Pins = append(c.Pins, Pin{Number: n, Name: name, NoConnected: nc})
 			if p["net"] != nil {
 				net, ok := p["net"].(string)
 				if !ok {
