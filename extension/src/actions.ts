@@ -33,6 +33,7 @@ import {
 	requireNumber,
 	requireString,
 	requireStringArray,
+	uint8ToBase64,
 } from './util';
 
 type Payload = Record<string, unknown>;
@@ -11376,8 +11377,29 @@ const debugExecJs: Handler = async (payload) => {
 	catch (err) {
 		throw edaError(err, 'exec_js failed.');
 	}
-	// A non-JSON-serializable return (e.g. a Blob) will not survive the wire;
-	// debug snippets that need binary should base64-encode it themselves.
+	// Preserve binary results across the JSON/WebSocket transport.  Returning a
+	// Blob directly causes JSON.stringify to emit `{}` (and using `.text()` can
+	// corrupt ZIP/Gerber bytes), so expose an explicit base64 envelope.
+	if (value instanceof Blob) {
+		return {
+			result: {
+				value: {
+					__type: 'blob',
+					mimeType: value.type || 'application/octet-stream',
+					size: value.size,
+					base64: await blobToBase64(value),
+				},
+			},
+		};
+	}
+	if (value instanceof ArrayBuffer) {
+		const bytes = new Uint8Array(value);
+		return { result: { value: { __type: 'bytes', size: bytes.byteLength, base64: uint8ToBase64(bytes) } } };
+	}
+	if (ArrayBuffer.isView(value)) {
+		const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+		return { result: { value: { __type: 'bytes', size: bytes.byteLength, base64: uint8ToBase64(bytes) } } };
+	}
 	return { result: { value: value ?? null } };
 };
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.1] — 2026-09-05
+
+### Fixed
+
+- Reject placed-instance UUIDs before schematic materialization so an invalid
+  16-character ID cannot hang the EasyEDA connector queue (#196).
+- Preserve Blob, ArrayBuffer, and typed-array results from `debug.exec_js` as
+  explicit base64 envelopes, keeping Gerber/ZIP bytes intact (#195).
+- Run external PCB autorouters through the native Windows shell on Windows,
+  preserving DSN/SES paths, and enforce a bounded router timeout (#194).
+- Add the 1.4 schematic connectivity snapshot/diff/plan/apply/materialize
+  baseline with page-scoped reads and guarded write verification.
+
 ## [1.3.0] — 2026-09-01
 
 - Add typed `library.model3d.search` and `library.model3d.copy` actions for selecting existing library models without UI automation.

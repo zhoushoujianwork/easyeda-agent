@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +20,21 @@ import (
 	"github.com/zhoushoujianwork/easyeda-agent/internal/pcb/svgimport"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/spec"
 )
+
+// runExternalRouter keeps the command-template interface while selecting the
+// native shell on each platform.  Using sh on Windows strips backslashes from
+// DSN/SES paths and makes Freerouting fail before it can read the input.
+func runExternalRouter(ctx context.Context, command string, stderr io.Writer) error {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+	}
+	cmd.Stdout = stderr
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
 
 // pcbClearScopes is the canonical set of `pcb clear --only` values, mirrored in
 // the connector's PCB_CLEAR_SCOPES.
@@ -2181,10 +2198,12 @@ exported DSN contains keepout entries before trusting the result.`,
 				sesPath := strings.TrimSuffix(dsnPath, ".dsn") + ".ses"
 				runStr := strings.NewReplacer("{in}", dsnPath, "{out}", sesPath).Replace(tmpl)
 				fmt.Fprintf(stderr, "routing: %s\n", runStr)
-				rc := exec.Command("sh", "-c", runStr)
-				rc.Stdout = stderr
-				rc.Stderr = stderr
-				if err := rc.Run(); err != nil {
+				routerCtx, cancelRouter := context.WithTimeout(context.Background(), 10*time.Minute)
+				defer cancelRouter()
+				if err := runExternalRouter(routerCtx, runStr, stderr); err != nil {
+					if routerCtx.Err() != nil {
+						return fmt.Errorf("external router timed out after 10m: %w", routerCtx.Err())
+					}
 					return fmt.Errorf("external router failed: %w", err)
 				}
 				if _, err := os.Stat(sesPath); err != nil {
