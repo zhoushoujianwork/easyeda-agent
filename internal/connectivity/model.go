@@ -118,11 +118,23 @@ func Compare(a, b Document) Diff {
 }
 
 type Component struct {
-	ID        string `json:"id"`
-	Ref       string `json:"ref"`
-	Device    Device `json:"device"`
-	Footprint string `json:"footprint,omitempty"`
-	Pins      []Pin  `json:"pins"`
+	ID        string     `json:"id"`
+	Ref       string     `json:"ref"`
+	Device    Device     `json:"device"`
+	Footprint string     `json:"footprint,omitempty"`
+	Pins      []Pin      `json:"pins"`
+	Placement *Placement `json:"placement,omitempty"`
+}
+type Placement struct {
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+	BBox *BBox   `json:"bbox,omitempty"`
+}
+type BBox struct {
+	MinX float64 `json:"minX"`
+	MinY float64 `json:"minY"`
+	MaxX float64 `json:"maxX"`
+	MaxY float64 `json:"maxY"`
 }
 type Device struct {
 	LibraryUUID string `json:"libraryUuid,omitempty"`

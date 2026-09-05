@@ -2,6 +2,7 @@ package connectivity
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"sort"
 )
@@ -24,6 +25,25 @@ func FromRead(m map[string]any) (Document, error) {
 		}
 		ref, _ := x["designator"].(string)
 		c := Component{ID: "cmp-" + ref, Ref: ref}
+		if xv, xok := numberValue(x["x"]); xok {
+			if yv, yok := numberValue(x["y"]); yok {
+				c.Placement = &Placement{X: xv, Y: yv}
+			}
+		}
+		if bb, ok := x["bbox"].(map[string]any); ok {
+			if minx, a := numberValue(bb["minX"]); a {
+				if miny, b := numberValue(bb["minY"]); b {
+					if maxx, c1 := numberValue(bb["maxX"]); c1 {
+						if maxy, d := numberValue(bb["maxY"]); d {
+							if c.Placement == nil {
+								c.Placement = &Placement{}
+							}
+							c.Placement.BBox = &BBox{MinX: minx, MinY: miny, MaxX: maxx, MaxY: maxy}
+						}
+					}
+				}
+			}
+		}
 		ps, ok := x["pins"].([]any)
 		if !ok || len(ps) == 0 {
 			return d, fmt.Errorf("%s: pin inventory unavailable; read each active page separately", ref)
@@ -74,6 +94,22 @@ func FromRead(m map[string]any) (Document, error) {
 		return a.PinNumber < b.PinNumber
 	})
 	return d, d.Validate()
+}
+
+func numberValue(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case json.Number:
+		f, e := n.Float64()
+		return f, e == nil
+	default:
+		return 0, false
+	}
 }
 
 // NamedPins compares observed connectivity using instance references and net names.
