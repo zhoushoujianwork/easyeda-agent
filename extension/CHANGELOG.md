@@ -2724,3 +2724,6 @@ All real-machine verified on the ESP32 regression board; each `easyeda pcb …` 
   `eda.*` API, with auto-reconnect and a heartbeat.
 - `connect_pin` composite action and the netflag/netport orientation convention.
 - Header menu: **Reconnect**, **Stop**, **Toggle Auto-Connect**, **About**.
+## [1.4.0]
+
+- 1.4 schematic connectivity data flow baseline.
