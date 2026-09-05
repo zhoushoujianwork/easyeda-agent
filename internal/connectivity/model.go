@@ -16,9 +16,20 @@ type Document struct {
 	Nets          []Net        `json:"nets"`
 	Connections   []Connection `json:"connections"`
 	Modules       []Module     `json:"modules,omitempty"`
+	Issues        []Issue      `json:"issues,omitempty"`
 }
+type Issue struct {
+	Code        string `json:"code"`
+	Severity    string `json:"severity"`
+	ComponentID string `json:"componentId,omitempty"`
+	PinNumber   string `json:"pinNumber,omitempty"`
+	NetID       string `json:"netId,omitempty"`
+	Message     string `json:"message"`
+}
+
 type Component struct {
-	ID, Ref   string `json:"id","ref"`
+	ID        string `json:"id"`
+	Ref       string `json:"ref"`
 	Device    Device `json:"device"`
 	Footprint string `json:"footprint,omitempty"`
 	Pins      []Pin  `json:"pins"`
