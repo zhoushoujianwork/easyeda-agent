@@ -142,10 +142,12 @@ type Device struct {
 	Name        string `json:"name,omitempty"`
 }
 type Pin struct {
-	Number      string `json:"number"`
-	Name        string `json:"name,omitempty"`
-	Type        string `json:"type,omitempty"`
-	NoConnected bool   `json:"noConnected,omitempty"`
+	Number      string  `json:"number"`
+	Name        string  `json:"name,omitempty"`
+	Type        string  `json:"type,omitempty"`
+	NoConnected bool    `json:"noConnected,omitempty"`
+	X           float64 `json:"x,omitempty"`
+	Y           float64 `json:"y,omitempty"`
 }
 type Net struct {
 	ID    string `json:"id"`

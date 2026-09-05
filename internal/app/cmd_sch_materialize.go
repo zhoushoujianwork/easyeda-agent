@@ -16,6 +16,7 @@ import (
 // later derived apply step. No existing canvas data is overwritten here.
 func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 	var out string
+	var withConnectivity bool
 	c := &cobra.Command{
 		Use:   "materialize <connectivity.json>",
 		Short: "将 1.4 原理图数据转换为器件放置 Apply 队列",
@@ -42,6 +43,31 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 				}
 				pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y}, Capture: map[string]string{c.Ref: "$.primitiveId"}})
 			}
+			if withConnectivity {
+				byID := map[string]connectivity.Component{}
+				for _, c := range d.Components {
+					byID[c.ID] = c
+				}
+				for _, edge := range d.Connections {
+					c := byID[edge.ComponentID]
+					var pin connectivity.Pin
+					for _, p := range c.Pins {
+						if p.Number == edge.PinNumber {
+							pin = p
+							break
+						}
+					}
+					kind := "netport"
+					if n := findNet(d, edge.NetID); n != nil {
+						if n.Name == "GND" || n.Name == "AGND" {
+							kind = "ground"
+						} else if n.Role == "power" || n.Name == "+3V3" || n.Name == "+5V" {
+							kind = "power"
+						}
+					}
+					pb.Steps = append(pb.Steps, playbookStep{ID: "connect-" + c.Ref + "-" + pin.Number, Name: "connect " + c.Ref + "." + pin.Number, Action: "schematic.power.connect_pin", Payload: map[string]any{"pinX": pin.X, "pinY": pin.Y, "kind": kind, "net": findNetName(d, edge.NetID)}})
+				}
+			}
 			pb.Steps = append(pb.Steps, playbookStep{ID: "save", Action: "schematic.save", Checkpoint: true})
 			encoded, _ := json.MarshalIndent(pb, "", "  ")
 			encoded = append(encoded, '\n')
@@ -57,5 +83,21 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&out, "out", "", "write playbook to a file instead of stdout")
+	c.Flags().BoolVar(&withConnectivity, "with-connectivity", false, "also emit pin-to-net connect_pin steps (use on an empty target page)")
 	return c
+}
+
+func findNet(d connectivity.Document, id string) *connectivity.Net {
+	for i := range d.Nets {
+		if d.Nets[i].ID == id {
+			return &d.Nets[i]
+		}
+	}
+	return nil
+}
+func findNetName(d connectivity.Document, id string) string {
+	if n := findNet(d, id); n != nil {
+		return n.Name
+	}
+	return id
 }
