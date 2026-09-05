@@ -205,3 +205,24 @@ UUID 与 library UUID 均精确一致才报告成功。
 `netId` 当前由网名确定性生成：重排不变，但改名会改变 ID，尚不是持久网络身份。
 无引脚的浅数据拒绝导出；多页必须逐页激活读取，不能把空 pins 当作 NC。
 离线 diff 包含新增、移除连接；结构校验拒绝不存在的引脚和同脚重复归网。
+
+### Connectivity → plan → sch apply（当前支持范围）
+
+```bash
+easyeda sch connectivity --window <id> > .easyeda/tmp/before.json
+# 在副本 after.json 中明确目标 connections；不修改 before.json
+easyeda sch plan .easyeda/tmp/before.json .easyeda/tmp/after.json > .easyeda/tmp/plan.json
+easyeda sch apply .easyeda/tmp/plan.json --dry-run
+easyeda sch apply .easyeda/tmp/plan.json --window <id>
+```
+
+`plan` 输出实际 playbook `version:1 / meta / steps`，不再输出占位 operations。
+当前仅支持已有引脚增加显式 `power`、`ground`、`net_port_in/out/bi` 连接；
+新增器件、换网、断连、改名、模块变化、普通 wire 路由均拒绝生成计划，不会自动改成标签。
+前后快照必须具有相同 projectId/documentId。无连接的引脚不自动推断为 NC。
+
+生成队列先核对整页 pin-to-net 基线，每次写入后和保存后分别回读核对；
+`expectedConnectivity` 是 playbook 的检查字段，验证失败即停。它不是事务回滚：
+先前已落地的动作保留并记录 journal。保护计划禁止目标覆盖、`--resume`、`--from/--to`，
+失败后重新导出实际快照再规划。内部 run 子命令继承目标页守卫。
+离线结构检查用于规划；执行时回读用于证明写入，二者职责不同。

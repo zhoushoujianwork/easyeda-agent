@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/connectivity"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
 )
 
@@ -57,8 +58,9 @@ type verifyBlock struct {
 }
 
 type playbookStep struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
+	ExpectedConnectivity *connectivity.Document `json:"expectedConnectivity,omitempty"`
+	ID                   string                 `json:"id,omitempty"`
+	Name                 string                 `json:"name,omitempty"`
 
 	Action  string         `json:"action,omitempty"`
 	Payload map[string]any `json:"payload,omitempty"`
@@ -133,6 +135,24 @@ Precedence: CLI flag > playbook file > built-in default.`,
 				return err
 			}
 
+			// Guarded graph plans cannot skip their baseline or replay into another page.
+			guarded := false
+			for _, step := range pb.Steps {
+				if step.ExpectedConnectivity != nil {
+					guarded = true
+				}
+			}
+			if guarded {
+				if resume || fromRef != "" || toRef != "" {
+					return fmt.Errorf("guarded connectivity plans require a fresh full execution; re-export and re-plan after failure")
+				}
+				if (cfg.project != "" && cfg.project != pb.Meta.Project) || (doc != "" && doc != pb.Meta.Doc) {
+					return fmt.Errorf("cannot override connectivity plan target")
+				}
+				local := *cfg
+				local.doc = pb.Meta.Doc
+				cfg = &local
+			}
 			// precedence: CLI flag > file
 			if cfg.project == "" {
 				cfg.project = pb.Meta.Project
@@ -277,6 +297,20 @@ func stepKind(s *playbookStep) string {
 
 func preflight(pb *playbook, vars map[string]string) []string {
 	var errs []string
+	for _, s := range pb.Steps {
+		if s.ExpectedConnectivity != nil {
+			d := s.ExpectedConnectivity
+			if s.Action != "schematic.read" || s.Run != "" || s.Notify != "" {
+				errs = append(errs, "expectedConnectivity only supports schematic.read")
+			}
+			if d.ProjectID == "" || d.DocumentID == "" || d.ProjectID != pb.Meta.Project || d.DocumentID != pb.Meta.Doc {
+				errs = append(errs, "expectedConnectivity target mismatch")
+			}
+			if e := d.Validate(); e != nil {
+				errs = append(errs, e.Error())
+			}
+		}
+	}
 	if pb.Version != 1 {
 		errs = append(errs, fmt.Sprintf("unsupported version %d (want 1)", pb.Version))
 	}
@@ -941,6 +975,9 @@ func (r *applyRunner) executeStep(s *playbookStep, catalog map[string]protocol.A
 
 // executeOnce dispatches the step body once and returns the decoded JSON result.
 func (r *applyRunner) executeOnce(s *playbookStep, timeout time.Duration) (any, error) {
+	if s.ExpectedConnectivity != nil {
+		return r.checkConnectivity(s.ExpectedConnectivity)
+	}
 	switch {
 	case s.Notify != "":
 		msg, err := substVars(s.Notify, r.vars)
@@ -1046,6 +1083,10 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 		default:
 			argv = append(argv, "--"+k, fmt.Sprintf("%v", t))
 		}
+	}
+	// Thread the pinned document through composite commands as well.
+	if r.cfg.doc != "" && supportsWindowFlag(run) {
+		argv = append(argv, "--doc", r.cfg.doc)
 	}
 	// thread routing globals through
 	if r.cfg.project != "" {
