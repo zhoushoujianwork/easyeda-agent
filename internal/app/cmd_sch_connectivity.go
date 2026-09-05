@@ -20,7 +20,7 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 			return err
 		}
 		doc := connectivity.Document{SchemaVersion: "1.4"}
-		m, _ := raw.(map[string]any)
+		m := raw.Result
 		if cs, ok := m["components"].([]any); ok {
 			for i, v := range cs {
 				x, _ := v.(map[string]any)
