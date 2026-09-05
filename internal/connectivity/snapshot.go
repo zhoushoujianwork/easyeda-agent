@@ -37,6 +37,12 @@ func FromRead(m map[string]any) (Document, error) {
 		if xv, xok := numberValue(x["x"]); xok {
 			if yv, yok := numberValue(x["y"]); yok {
 				c.Placement = &Placement{X: xv, Y: yv}
+				if rv, rok := numberValue(x["rotation"]); rok {
+					c.Placement.Rotation = rv
+				}
+				if mv, mok := x["mirror"].(bool); mok {
+					c.Placement.Mirror = mv
+				}
 			}
 		}
 		if bb, ok := x["bbox"].(map[string]any); ok {

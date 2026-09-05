@@ -36,3 +36,17 @@ func TestRejectShallowRead(t *testing.T) {
 		t.Fatal("shallow read accepted")
 	}
 }
+
+func TestSnapshotPreservesPlacementOrientation(t *testing.T) {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(`{"components":[{"componentType":"part","designator":"C1","x":100,"y":200,"rotation":90,"mirror":true,"pins":[{"number":"1","net":"VCC"}]}]}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	d, err := FromRead(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Components[0].Placement == nil || d.Components[0].Placement.Rotation != 90 || !d.Components[0].Placement.Mirror {
+		t.Fatalf("orientation was not preserved: %#v", d.Components[0].Placement)
+	}
+}

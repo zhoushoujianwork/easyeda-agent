@@ -90,7 +90,14 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 					if c.Placement == nil {
 						return fmt.Errorf("%s 缺少 placement 坐标", c.Ref)
 					}
-					pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y, "designator": c.Ref}, Capture: map[string]string{c.Ref: "$.primitiveId"}})
+					placePayload := map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y, "designator": c.Ref}
+					if c.Placement.Rotation != 0 {
+						placePayload["rotation"] = c.Placement.Rotation
+					}
+					if c.Placement.Mirror {
+						placePayload["mirror"] = true
+					}
+					pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: placePayload, Capture: map[string]string{c.Ref: "$.primitiveId"}})
 				}
 				if withConnectivity {
 					for _, edge := range d.Connections {

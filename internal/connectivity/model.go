@@ -128,9 +128,13 @@ type Component struct {
 	PageName  string     `json:"pageName,omitempty"`
 }
 type Placement struct {
-	X    float64 `json:"x"`
-	Y    float64 `json:"y"`
-	BBox *BBox   `json:"bbox,omitempty"`
+	// X/Y and orientation are part of the authored 1.4 placement plan. BBox is
+	// observed geometry only; it is never replayed as a mutation input.
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
+	Rotation float64 `json:"rotation,omitempty"`
+	Mirror   bool    `json:"mirror,omitempty"`
+	BBox     *BBox   `json:"bbox,omitempty"`
 }
 type BBox struct {
 	MinX float64 `json:"minX"`

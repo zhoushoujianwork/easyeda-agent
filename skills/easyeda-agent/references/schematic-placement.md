@@ -246,6 +246,10 @@ placed), and a `validation` summary (`partOverlaps` / `titleBlockHits` /
 
 ### Deterministic zone layout plan — `sch zone-arrange` (A4-only)
 
+### 1.4 数据驱动的人工式首屏布局
+
+单页重建先把布局写入 connectivity 1.4 快照，再 Apply 到画布：核心器件从左上起点按 Z 字错行落位，外围件根据连接引脚的实际方向贴近对应侧，所有 authored anchor 吸附到 5-unit schematic grid。`placement.rotation` 与 `placement.mirror` 是可回放字段；`bbox` 和 pin 坐标只用于回读验证。这样移动器件不会依赖当前视图，也不会把旧导线几何误当成拓扑来源。Apply 后必须重新读取 pin→net，跑 `sch check`、`sch bridge-check`、`sch drc`，再保存。
+
 排布功能区前先跑 `sch zone-arrange`(纯规划零改动,同一输入唯一输出):
 
 ```bash
