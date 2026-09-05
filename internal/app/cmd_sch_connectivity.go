@@ -21,8 +21,8 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 		}
 		doc := connectivity.Document{SchemaVersion: "1.4"}
 		m := raw.Result
+		netIDs := map[string]string{}
 		if cs, ok := m["components"].([]any); ok {
-			netIDs := map[string]string{}
 			for i, v := range cs {
 				x, _ := v.(map[string]any)
 				ref, _ := x["designator"].(string)
