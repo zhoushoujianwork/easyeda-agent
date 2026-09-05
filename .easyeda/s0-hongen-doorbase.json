@@ -30,8 +30,8 @@
   "interfaces": [
     {"name": "RF_PROGRAM", "ref": "J_PROG_RF", "internal": true, "pitchMm": 1.25, "pinout": ["EN", "IO0", "RX", "TX", "GND", "VBUS"], "externalProgrammer": true},
     {"name": "TALK_PROGRAM", "ref": "J_PROG_TALK", "internal": true, "pitchMm": 1.25, "pinout": ["EN", "IO0", "RX", "TX", "GND", "VBUS"], "externalProgrammer": true},
-    {"name": "RF_SD", "ref": "J_SD", "internal": true, "pitchMm": 1.25},
-    {"name": "RF_CC1101", "ref": "J_CC1101_MOD", "internal": true, "pitchMm": 1.25},
+    {"name": "RF_SD", "ref": "J_SD_MOD", "internal": true, "pitchMm": 1.25, "pinCount": 6, "pinout": ["GND", "MISO", "CLK", "MOSI", "CS", "+3V3"]},
+    {"name": "RF_CC1101", "ref": "J_CC1101_MOD", "internal": true, "pitchMm": 1.25, "pinCount": 8, "connectorModel": "WT125AL_8PINX1.25MM", "pinout": ["GND", "GDO2", "MISO", "MOSI", "SCK", "CSN", "GDO0", "+3V3"]},
     {"name": "TALK_AUDIO", "ref": "J_AUDIO_MOD", "internal": true, "pitchMm": 1.25, "pinCount": 7, "connectorModel": "WAFER-MX1.25-7PLB"},
     {"name": "TALK_MIC_A", "ref": "J_MIC_A", "internal": true, "pitchMm": 1.25, "pinCount": 3},
     {"name": "TALK_MIC_B", "ref": "J_MIC_B", "internal": true, "pitchMm": 1.25, "pinCount": 3},
