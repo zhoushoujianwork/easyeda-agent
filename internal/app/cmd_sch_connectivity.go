@@ -23,6 +23,9 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 		}
 		if allPages {
 			payload["allPages"] = true
+			// EasyEDA lazily loads non-active pages; force the connector to tag
+			// and hydrate every page before collecting the authoritative snapshot.
+			payload["tagPages"] = true
 		}
 		raw, err := requestAction(cfg, "schematic.read", *window, payload)
 		if err != nil {
@@ -30,7 +33,12 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 		}
 		// components.list is the pin-intent source: unlike schematic.read it
 		// carries noConnected, distinguishing intentional NC from a missing wire.
-		pinRaw, err := requestAction(cfg, "schematic.components.list", *window, map[string]any{"includePins": true})
+		pinPayload := map[string]any{"includePins": true}
+		if allPages {
+			pinPayload["allPages"] = true
+			pinPayload["tagPages"] = true
+		}
+		pinRaw, err := requestAction(cfg, "schematic.components.list", *window, pinPayload)
 		if err != nil {
 			return err
 		}
