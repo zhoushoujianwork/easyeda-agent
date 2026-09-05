@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,10 +84,13 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 					if c.Device.UUID == "" || c.Device.LibraryUUID == "" {
 						return fmt.Errorf("%s 缺少 libraryUuid/deviceUuid，不能安全放置", c.Ref)
 					}
+					if !isDeviceLibraryUUID(c.Device.UUID) {
+						return fmt.Errorf("%s 的 deviceUuid=%q 不是 32 位器件库 UUID（这通常是 sch list 返回的 16 位实例 UUID）；先用 connectivity 导出(includeDeviceIdentity)或 lib by-lcsc 解析后再 materialize", c.Ref, c.Device.UUID)
+					}
 					if c.Placement == nil {
 						return fmt.Errorf("%s 缺少 placement 坐标", c.Ref)
 					}
-					pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y}, Capture: map[string]string{c.Ref: "$.primitiveId"}})
+					pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y, "designator": c.Ref}, Capture: map[string]string{c.Ref: "$.primitiveId"}})
 				}
 				if withConnectivity {
 					for _, edge := range d.Connections {
@@ -131,6 +135,14 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 	c.Flags().BoolVar(&withConnectivity, "with-connectivity", false, "also emit pin-to-net connect_pin steps (use on an empty target page)")
 	c.Flags().StringVar(&onlyPage, "page", "", "materialize only one page by page name or UUID")
 	return c
+}
+
+func isDeviceLibraryUUID(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
 }
 
 func findNet(d connectivity.Document, id string) *connectivity.Net {

@@ -294,7 +294,7 @@ easyeda doc switch <P2|PCB1|uuid> --project <名字>   # 切换:按页名/PCB名
 
 ### 原理图编辑
 
-- `schematic.components.list` — `--include-bbox` 附带每个元件渲染范围 `{minX,minY,maxX,maxY}`(供布局推理);`--include-pins` 附带每脚 `{pinName,pinNumber,x,y,noConnected}`，并明确返回 `pinsAvailable:true`；SDK 读脚失败会返回 `pinsAvailable:false + pinsError`，不再伪装成 `pins:[]`。内部布局写门还会请求 `includeConnectivitySummary`，得到 active-page 的 wires/buses/netflags/netports/netlabels/shortSymbols fail-closed 计数。两个常规 flag 可与 `--all-pages` 叠加(输出会显著变大)。
+- `schematic.components.list` — `--include-bbox` 附带每个元件渲染范围 `{minX,minY,maxX,maxY}`(供布局推理);`--include-pins` 附带每脚 `{pinName,pinNumber,x,y,noConnected}`，并明确返回 `pinsAvailable:true`；SDK 读脚失败会返回 `pinsAvailable:false + pinsError`，不再伪装成 `pins:[]`。connectivity 导出还请求 `includeDeviceIdentity`：把放置实例的 16 位 uuid 解析成 `schematic.component.place` 所需的 32 位器件库 uuid，无法唯一解析时返回 `deviceIdentityError`。内部布局写门还会请求 `includeConnectivitySummary`，得到 active-page 的 wires/buses/netflags/netports/netlabels/shortSymbols fail-closed 计数。两个常规 flag 可与 `--all-pages` 叠加(输出会显著变大)。
 - **`easyeda sch layout-lint`** — **布局自检**(治覆盖的机械真值)。拉 `components.list --include-bbox --include-pins`,Go 侧两两几何检查:**bbox 重叠 / 异件引脚重合 = ERROR**、**间距 < `--min-gap`(默认 2.54mm) / 锚点 off-grid / out-of-sheet = WARN**。生产过门使用 `--strict`，会把这些 WARN、缺失或畸形 bbox/anchor/pin 几何、旧 connector 无法证明 pin 读取成功的状态，以及“无可读 sheet、无法执行 out-of-sheet 判定”的状态一并升级为非零退出，避免 `0 overlap` 冒充布局已完成。
 **注意 `layout-lint` 只判器件本体** —— 标签之间、标签压器件、标签探出图纸它结构上看不见,
 那一半在 `sch clusters`(已进 `sch gate` 第 2 关)。zone-violation 判据已废弃:分区框从活体

@@ -41,7 +41,7 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 				if err != nil {
 					return err
 				}
-				pinRaw, err := requestAction(cfg, "schematic.components.list", win, map[string]any{"includePins": true, "includeBBox": true})
+				pinRaw, err := requestAction(cfg, "schematic.components.list", win, map[string]any{"includePins": true, "includeBBox": true, "includeDeviceIdentity": true})
 				if err != nil {
 					return err
 				}
@@ -100,7 +100,7 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 		}
 		// components.list is the pin-intent source: unlike schematic.read it
 		// carries noConnected, distinguishing intentional NC from a missing wire.
-		pinPayload := map[string]any{"includePins": true, "includeBBox": true}
+		pinPayload := map[string]any{"includePins": true, "includeBBox": true, "includeDeviceIdentity": true}
 		if allPages {
 			pinPayload["allPages"] = true
 			pinPayload["tagPages"] = true
