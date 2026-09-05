@@ -204,6 +204,10 @@ type retiredWindow struct {
 const (
 	retiredWindowTTL = 30 * time.Minute
 	retiredWindowMax = 64
+	// connectorTTL bounds stale WebSocket registrations. The connector sends
+	// heartbeats frequently; a full minute without any frame means the browser
+	// page or extension session is gone and must not remain routable.
+	connectorTTL = 90 * time.Second
 )
 
 // hub tracks connected connectors keyed by windowId.
@@ -227,6 +231,34 @@ func (h *hub) add(c *conn) {
 	h.mu.Lock()
 	h.windows[id] = c
 	h.mu.Unlock()
+}
+
+// pruneStale removes registrations whose transport stopped sending frames.
+// It is deliberately explicit instead of relying only on websocket close
+// notifications: browser extension reloads can leave the old socket half-open
+// for a while, which otherwise makes /health show phantom connector versions.
+func (h *hub) pruneStale(now time.Time) int {
+	h.mu.Lock()
+	var stale []*conn
+	for id, c := range h.windows {
+		c.mu.Lock()
+		last := c.lastSeen
+		c.mu.Unlock()
+		if !last.IsZero() && now.Sub(last) > connectorTTL {
+			stale = append(stale, c)
+			delete(h.windows, id)
+			w := c.snapshot()
+			h.retired[id] = retiredWindow{ProjectUUID: w.Context.ProjectUUID, ProjectName: w.Context.ProjectName, DocumentUUID: w.Context.DocumentUUID, DocumentType: w.Context.DocumentType, RetiredAt: now}
+		}
+	}
+	h.pruneRetiredLocked()
+	h.mu.Unlock()
+	for _, c := range stale {
+		if c.ws != nil {
+			_ = c.ws.Close(websocket.StatusGoingAway, "stale connector session")
+		}
+	}
+	return len(stale)
 }
 
 func (h *hub) remove(windowID string) {
@@ -342,6 +374,7 @@ func (h *hub) liveWindowSummary() (count int, summary string) {
 }
 
 func (h *hub) get(windowID string) (*conn, bool) {
+	h.pruneStale(time.Now().UTC())
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	c, ok := h.windows[windowID]
@@ -354,6 +387,7 @@ func (h *hub) target(windowID string) (*conn, bool) {
 	if windowID != "" {
 		return h.get(windowID)
 	}
+	h.pruneStale(time.Now().UTC())
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	var matches []Window
@@ -380,6 +414,7 @@ func (h *hub) target(windowID string) (*conn, bool) {
 // project still maps to multiple windows after the preferDoc filter, in which
 // case the caller should fall back to an explicit --window.
 func (h *hub) windowForProject(project, preferDoc string) (id string, found bool, ambiguous bool) {
+	h.pruneStale(time.Now().UTC())
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	var matches []Window
@@ -574,6 +609,7 @@ func semverCore(v string) string {
 }
 
 func (h *hub) list() []Window {
+	h.pruneStale(time.Now().UTC())
 	h.mu.RLock()
 	conns := make([]*conn, 0, len(h.windows))
 	for _, c := range h.windows {

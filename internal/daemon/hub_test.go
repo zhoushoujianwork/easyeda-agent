@@ -15,6 +15,29 @@ func connWith(windowID, project, docType string) *conn {
 	return c
 }
 
+func TestHubPruneStale(t *testing.T) {
+	now := time.Now().UTC()
+	stale := connWith("stale", "p", "schematic")
+	stale.lastSeen = now.Add(-connectorTTL - time.Second)
+	fresh := connWith("fresh", "p", "schematic")
+	fresh.lastSeen = now
+	h := newHub()
+	h.windows["stale"] = stale
+	h.windows["fresh"] = fresh
+	if n := h.pruneStale(now); n != 1 {
+		t.Fatalf("pruneStale removed %d, want 1", n)
+	}
+	if _, ok := h.windows["stale"]; ok {
+		t.Fatal("stale registration remains")
+	}
+	if _, ok := h.windows["fresh"]; !ok {
+		t.Fatal("fresh registration removed")
+	}
+	if _, ok := h.retired["stale"]; !ok {
+		t.Fatal("stale identity was not retained for reconnect routing")
+	}
+}
+
 // TestWindowForProject covers project→windowId routing, including the
 // multi-window-per-project case disambiguated by document type (a project open
 // in both a schematic and a PCB window).
