@@ -17,6 +17,7 @@ import (
 func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 	var out string
 	var withConnectivity bool
+	var onlyPage string
 	c := &cobra.Command{
 		Use:   "materialize <connectivity.json>",
 		Short: "将 1.4 原理图数据转换为器件放置 Apply 队列",
@@ -32,6 +33,28 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 			}
 			if err := d.Validate(); err != nil {
 				return fmt.Errorf("数据结构校验失败: %w", err)
+			}
+			if onlyPage != "" {
+				keep := map[string]bool{}
+				for _, c := range d.Components {
+					if c.PageName == onlyPage || c.PageID == onlyPage {
+						keep[c.ID] = true
+					}
+				}
+				filtered := d.Components
+				d.Components = nil
+				for _, c := range filtered {
+					if keep[c.ID] {
+						d.Components = append(d.Components, c)
+					}
+				}
+				filteredEdges := d.Connections
+				d.Connections = nil
+				for _, e := range filteredEdges {
+					if keep[e.ComponentID] {
+						d.Connections = append(d.Connections, e)
+					}
+				}
 			}
 			stepTimeout := 90
 			pb := playbook{Version: 1, Meta: playbookMeta{Name: "sch-materialize", Description: "Materialize 1.4 connectivity components", Project: d.ProjectID, Doc: d.DocumentID}, Defaults: stepPolicy{TimeoutSec: &stepTimeout}, Steps: []playbookStep{}}
@@ -106,6 +129,7 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 	}
 	c.Flags().StringVar(&out, "out", "", "write playbook to a file instead of stdout")
 	c.Flags().BoolVar(&withConnectivity, "with-connectivity", false, "also emit pin-to-net connect_pin steps (use on an empty target page)")
+	c.Flags().StringVar(&onlyPage, "page", "", "materialize only one page by page name or UUID")
 	return c
 }
 
