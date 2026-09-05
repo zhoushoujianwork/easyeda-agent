@@ -94,6 +94,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Schematic operations",
 	}
 	sch.PersistentFlags().StringVar(&window, "window", "", "EasyEDA window ID")
+	sch.AddCommand(newSchConnectivityCmd(cfg, &window, stdout, stderr))
 
 	// ── pages ────────────────────────────────────────────────────────────
 	// schematic.pages.list
