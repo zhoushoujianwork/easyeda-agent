@@ -1,6 +1,8 @@
 
 # EasyEDA Schematic
 
+> 1.4 先建立并校验 component/pin/net/pin-to-net，再布局。真实 wire 是连接首选；网络标签只作跨模块、跨页和电源辅助。模块复用遵循 [`docs/schematic-connectivity-model.md`](../../../docs/schematic-connectivity-model.md)。
+
 Use `easyeda-agent` typed actions. Do not write raw EasyEDA JavaScript unless a typed action is missing and the user explicitly accepts a debug path.
 
 > **本文导航**:Workflow · Production preflight gates · library-first 绘图 · netlist 批量实现 ·

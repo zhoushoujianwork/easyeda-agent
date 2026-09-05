@@ -11,6 +11,8 @@ metadata:
 
 # EasyEDA Agent
 
+> **1.4 原理图基线**：连接核心（component/pin/net/pin-to-net）先于布局；每个框选功能电路按 Lib 复用。详见 [`docs/schematic-connectivity-model.md`](../../docs/schematic-connectivity-model.md)。网络标签仅作辅助别名。
+
 Use the local `easyeda` CLI and daemon to operate EasyEDA Pro through typed,
 observable actions. This is the community `easyeda-agent` workflow, not an official
 EasyEDA skill; the suffix is intentional so users can distinguish it from upstream

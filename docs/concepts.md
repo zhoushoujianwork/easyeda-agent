@@ -8,7 +8,9 @@
 
 ---
 
-## 一、电气层
+## 一、电气层（1.4 连接核心）
+
+稳定连接模型见 [`schematic-connectivity-model.md`](./schematic-connectivity-model.md)。布局算法只读该模型。
 
 ### 网(net)
 一条把若干**引脚(pad)**连在一起的电气网络。原理图的连接、PCB 的连通性都以网为单位。
