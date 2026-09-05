@@ -12,7 +12,7 @@ easyeda <domain> <action> [flags]
 
 | 顶级子命令 | 职责 |
 |---|---|
-| `easyeda sch` | 原理图操作（place / wire / netflag / drc / save / export …） |
+| `easyeda sch` | 原理图操作（connectivity / plan / apply / place / wire / drc / save / export …） |
 | `easyeda pcb` | PCB 操作（layout / line / via / import / align …） |
 | `easyeda bom` | BOM 导出与补全 |
 | `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型 |
@@ -49,3 +49,4 @@ easyeda <domain> <action> [flags]
 | ① `debug.exec_js` | 完整支持（逃生舱始终可用） |
 | ② Typed actions | 34 个：原理图 20 + PCB 13 + debug 1 |
 | ③ Cobra 子命令 | **尚未建立**，所有功能目前通过 `easyeda call <action>` 裸调 |
+原理图变更统一通过 `easyeda sch apply` 的有序队列执行；PCB 操作保持在 `easyeda pcb` 域。CLI → daemon → connector 是唯一运行链路，不设 Broker 层。

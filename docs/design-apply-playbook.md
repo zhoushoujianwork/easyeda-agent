@@ -1,4 +1,4 @@
-# 设计:`easyeda apply` — 声明式步骤回放(playbook)
+# 设计:`easyeda sch apply` — 原理图声明式变更回放
 
 > **动机**(esp32MiniRequire 探针轮次 #1 实证):完整画一块板,agent 写了 10 个一次性
 > bash 脚本,内容全是同构胶水——循环调 `easyeda` 子命令、记日志、防超时、断点续跑。
@@ -8,11 +8,11 @@
 ## 命令接口
 
 ```bash
-easyeda apply steps.json                    # 顺序执行,自动写 journal,失败即停
-easyeda apply steps.json --dry-run          # 只校验格式/变量/动作名,打印计划
-easyeda apply steps.json --resume           # 按 journal 跳过已完成步骤,断点续跑
-easyeda apply steps.json --from 12 --to 30  # 区间执行(调试单段)
-easyeda apply steps.json --yes              # 放行确认门控步骤(delete/clear/import)
+easyeda sch apply steps.json                    # 顺序执行原理图队列,失败即停
+easyeda sch apply steps.json --dry-run          # 只校验格式/变量/动作名,打印计划
+easyeda sch apply steps.json --resume           # 按 journal 跳过已完成步骤,断点续跑
+easyeda sch apply steps.json --from 12 --to 30  # 区间执行(调试单段)
+easyeda sch apply steps.json --yes              # 放行确认门控步骤
 easyeda audit export --playbook > replay.json   # ★ 从真实会话的审计日志生成 playbook
 ```
 

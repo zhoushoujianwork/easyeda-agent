@@ -172,7 +172,7 @@ EasyEDA tooling.
   `doc reload` 门 + guardrails + 命令目录)。**按需再读**——不要一次全拉:动铜(布线 / 过孔 /
   铺铜 / 禁布区 / 填充区域)→ `references/pcb-routing.md`;摆放(sch→PCB 同步 / 器件 CRUD /
   align·distribute·grid-snap / 板框 / 自动布局)→ `references/pcb-layout.md`。
-- 查任一 typed action 签名、或 >5 步批量操作要用 playbook(`easyeda apply`):读 `references/actions.md`。
+  - 查任一 typed action 签名、或 >5 步原理图批量操作要用 `easyeda sch apply` 队列：读 `references/actions.md`。
 - **DRC / 制造规则地板与 fallback**:读 `references/fab-rules-jlcpcb.json`(live `pcb.drc.rules` 优先,此表作 fallback seed + clamp floors,**永不发出低于 manufacturingMin 的 track/via/gap**)。
 - **初级常见问题 / UI 排障**(库更新后符号变化、网络名显示/匹配、选择过滤、丝印/图层不可选、位号 `?`、过孔重叠、铺铜与填充区域混淆、规则导入覆盖、工程/浏览器/考试流程):读 `references/beginner-troubleshooting.md`。其中槽孔尺寸是培训经验值,必须与 live 制造规则比较并取更严格者；考试条目只用于考试场景。
 - **PCB 设计规范手册(人读正本)**:`references/pcb-design-rules.md`——线宽阶梯/过孔/布局/走线/铺铜/Mark点/拼板/丝印/叠层/DRC 三级清单;`pcb check` 报错信息里的 `[规范 §N]` 即指此手册章节,照章修。

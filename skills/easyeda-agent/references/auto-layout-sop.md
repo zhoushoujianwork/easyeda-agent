@@ -88,7 +88,7 @@ easyeda sch zone-draw --mode partition --font-size 22 --doc <page> --project <pr
 - `doc switch` 返回不代表数据已稳定。读操作用 `sch read --page <page>`；所有 mutation
   用全局 `--doc <page>`，让 CLI 切页、确认当前文档并 fail closed。
 - 每批重新读取 primitive ID；不要跨页复用 ID 或依赖隐式活动页。
-- 超过约 50 次 mutation 时使用 typed `easyeda` action、`easyeda apply`、
+- 超过约 50 次 mutation 时使用 typed `easyeda` action、`easyeda sch apply`、
   `scripts/bulk-place.py` 或 `scripts/bulk-connect.py` 分批执行并增量保存。
 - 只有 typed action 缺失且用户明确接受时，才把 `debug.exec_js` 当临时调试逃生口；
   不把 raw JavaScript 写进生产 SOP。

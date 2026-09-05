@@ -30,7 +30,7 @@ Clearance 26→**0**、`pcb check` **0**、`layout-lint` **100/100**。残留 1 
 ### B. CLI / daemon 改进
 
 **P0(直接阻塞本轮的)**
-- [x] **`easyeda apply <playbook.json>` 声明式步骤回放**(设计见
+- [x] **`easyeda sch apply <playbook.json>` 声明式步骤回放**(设计见
   [`design-apply-playbook.md`](./design-apply-playbook.md))——**已落地(2026-07-04)**:
   action/run/notify 步骤、`capture`/`${}`、assert 门禁、journal+`--resume`、
   分类重试+verify 块、复写优先级;12 单测 + 真机三路径。
@@ -172,5 +172,5 @@ environment-setup.md SOP 自举,零人工。
 - [ ] 若默认外壳不可参数化 → 记平台墙,评估「导 STEP → OpenSCAD/CadQuery 后处理开孔」的自研补位;必要时向官方提 feature request(参数化外壳 API)。
 
 ## 待办勾稽
-- 探针轮次 #2 触发条件:B 列 P0(首位 = `easyeda apply`)全部落地后重跑 esp32MiniRequire 全流程。
+- 探针轮次 #2 触发条件:B 列 P0(首位 = `easyeda sch apply`)全部落地后重跑 esp32MiniRequire 全流程。
 - 外壳三件套(上节)在 apply 之后排期。

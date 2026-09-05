@@ -2,20 +2,20 @@
 
 Run `easyeda actions` for the authoritative machine-readable list.
 
-## Playbook 回放(`easyeda apply`)— 批量步骤的首选载体
+## Playbook 回放(`easyeda sch apply`)— 批量步骤的首选载体
 
 > **多步批量操作(>~5 步)不要再写 shell/python 胶水脚本**——写成 playbook JSON,
-> `easyeda apply` 按步执行,自带变量捕获、门禁、journal 断点续跑。
+> `easyeda sch apply` 按步执行,自带变量捕获、门禁、journal 断点续跑。
 > 完整格式与错误处理语义见 `docs/design-apply-playbook.md`(单一真源)。
 
 ```bash
-easyeda apply steps.json                    # 顺序执行(meta.project 定目标工程)
-easyeda apply steps.json --dry-run          # 预检 + 打印计划,不执行
-easyeda apply steps.json --project demo2    # CLI flag > 文件(同一份打到另一工程)
-easyeda apply steps.json --var LIB=<uuid>   # 变量复写(参数化)
-easyeda apply steps.json --resume           # 按 journal 跳过已完成步骤(恢复 captured 变量)
-easyeda apply steps.json --from 12 --to 30  # 区间执行
-easyeda apply steps.json --yes              # 放行确认门控(delete/clear/rip-up/import 类)
+easyeda sch apply steps.json                    # 顺序执行(meta.project 定目标工程)
+easyeda sch apply steps.json --dry-run          # 预检 + 打印计划,不执行
+easyeda sch apply steps.json --project demo2    # CLI flag > 文件(同一份打到另一工程)
+easyeda sch apply steps.json --var LIB=<uuid>   # 变量复写(参数化)
+easyeda sch apply steps.json --resume           # 按 journal 跳过已完成步骤(恢复 captured 变量)
+easyeda sch apply steps.json --from 12 --to 30  # 区间执行
+easyeda sch apply steps.json --yes              # 放行确认门控(delete/clear/rip-up/import 类)
 ```
 
 要点(实现与设计一致,已单测+真机验证):
