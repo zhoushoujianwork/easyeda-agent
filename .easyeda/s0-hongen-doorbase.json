@@ -3,10 +3,10 @@
     {"name": "POWER", "kind": "POWER", "parts": ["POWER", "C1", "C2", "R1", "R2"], "page": "POWER", "zone": "left"},
     {"name": "HOST_IO", "kind": "IO", "parts": ["U1", "J1", "R3", "R4", "R5"], "page": "HOST_IO", "zone": "center"},
     {"name": "RF_MCU", "kind": "RF", "parts": ["U1", "U2", "R3", "R4", "R5", "R7", "R10", "C1", "C2"], "page": "RF_MCU", "zone": "center"},
-    {"name": "RF_CC1101", "kind": "RF", "parts": ["U_CC1101", "J_CC1101"], "page": "RF_MCU", "zone": "right"},
-    {"name": "RF_SD", "kind": "STORAGE", "parts": ["J_SD"], "page": "RF_MCU", "zone": "left"},
+    {"name": "RF_CC1101", "kind": "RF", "parts": ["J_CC1101_MOD"], "page": "RF_FRONTEND", "zone": "right", "moduleModel": "AS07-M1101S", "moduleSource": "淘宝订单 5119358149861028529", "pinoutStatus": "待按实物/商品页确认"},
+    {"name": "RF_SD", "kind": "STORAGE", "parts": ["J_SD"], "page": "RF_FRONTEND", "zone": "left", "moduleModel": "Mini SD/TF 转接模块", "moduleSource": "淘宝订单 4502187685176292133", "pinoutStatus": "待按实物/商品页确认"},
     {"name": "TALK_MCU", "kind": "MCU", "parts": ["J_PROG_TALK", "R8", "R9"], "page": "TALK", "zone": "center"},
-    {"name": "TALK_AUDIO", "kind": "IO", "parts": ["U_PA", "J_MIC", "J_SPK"], "page": "TALK", "zone": "right"},
+    {"name": "TALK_AUDIO", "kind": "IO", "parts": ["J_AUDIO"], "page": "TALK", "zone": "right", "moduleModel": "ES8311 + NS4150B 音频模块（板载麦克风/功放）", "moduleSource": "淘宝订单 4884564097099164922", "pinoutStatus": "待按实物/商品页确认"},
     {"name": "TALK_KEYS", "kind": "IO", "parts": ["SW_BOOT", "SW_RESET"], "page": "TALK", "zone": "left"},
     {"name": "RF_PROGRAM", "kind": "IO", "parts": ["J_PROG_RF"], "page": "RF_MCU", "zone": "top"}
   ],
@@ -15,7 +15,8 @@
   "pages": [
     {"name": "POWER", "sheet": "A4", "modules": ["POWER"]},
     {"name": "HOST_IO", "sheet": "A4", "modules": ["HOST_IO"]},
-    {"name": "RF_MCU", "sheet": "A4", "modules": ["RF_MCU", "RF_CC1101", "RF_SD", "RF_PROGRAM"]},
+    {"name": "RF_MCU", "sheet": "A4", "modules": ["RF_MCU", "RF_PROGRAM"]},
+    {"name": "RF_FRONTEND", "sheet": "A4", "modules": ["RF_CC1101", "RF_SD"]},
     {"name": "TALK", "sheet": "A4", "modules": ["TALK_MCU", "TALK_AUDIO", "TALK_KEYS"]}
   ],
   "stackup": {
@@ -30,7 +31,7 @@
     {"name": "RF_PROGRAM", "ref": "J_PROG_RF", "internal": true, "pitchMm": 1.25},
     {"name": "TALK_PROGRAM", "ref": "J_PROG_TALK", "internal": true, "pitchMm": 1.25},
     {"name": "RF_SD", "ref": "J_SD", "internal": true, "pitchMm": 1.25},
-    {"name": "RF_CC1101", "ref": "J_CC1101", "internal": true, "pitchMm": 1.25},
+    {"name": "RF_CC1101", "ref": "J_CC1101_MOD", "internal": true, "pitchMm": 1.25},
     {"name": "TALK_AUDIO", "ref": "J_AUDIO", "internal": true, "pitchMm": 1.25},
     {"name": "HOST_USB", "ref": "J1", "edge": "bottom", "facing": "user-facing", "orientation": "dual"}
   ],
