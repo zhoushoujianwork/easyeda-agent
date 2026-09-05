@@ -343,13 +343,15 @@ func dispatchCapture(cfg *appConfig, action, window string, payload any, stdout 
 // healthWindow is the subset of a /health window entry the doc commands need to
 // resolve a routing target.
 type healthWindow struct {
-	WindowID         string `json:"windowId"`
-	ConnectorVersion string `json:"connectorVersion"`
+	WindowID         string    `json:"windowId"`
+	ConnectorVersion string    `json:"connectorVersion"`
+	ConnectedAt      time.Time `json:"connectedAt"`
 	Context          struct {
 		ProjectUUID  string `json:"projectUuid"`
 		ProjectName  string `json:"projectName"`
 		DocumentUUID string `json:"documentUuid"`
 		DocumentType string `json:"documentType"`
+		TabID        string `json:"tabId"`
 	} `json:"context"`
 }
 
@@ -412,6 +414,12 @@ func selectWindow(windows []healthWindow, project, window string) (string, error
 		case 0:
 			return "", fmt.Errorf("no connected window for project %q (run `easyeda daemon health`)", project)
 		default:
+			// Extension reloads can leave several registrations for the exact same
+			// project/document tab. They are transport duplicates; route to the
+			// newest registration and let daemon TTL cleanup retire the rest.
+			if id, ok := newestDuplicateWindow(matches); ok {
+				return id, nil
+			}
 			return "", fmt.Errorf("project %q maps to %d windows — pass --window <id>", project, len(matches))
 		}
 	}
@@ -423,6 +431,26 @@ func selectWindow(windows []healthWindow, project, window string) (string, error
 	default:
 		return "", fmt.Errorf("%d windows connected — pass --project <name> or --window <id>", len(windows))
 	}
+}
+
+func newestDuplicateWindow(matches []healthWindow) (string, bool) {
+	if len(matches) < 2 {
+		return "", false
+	}
+	first := matches[0]
+	if first.Context.ProjectUUID == "" || first.Context.DocumentUUID == "" || first.Context.DocumentType == "" || first.Context.TabID == "" {
+		return "", false
+	}
+	newest := first
+	for _, w := range matches[1:] {
+		if w.Context.ProjectUUID != first.Context.ProjectUUID || w.Context.DocumentUUID != first.Context.DocumentUUID || w.Context.DocumentType != first.Context.DocumentType || w.Context.TabID != first.Context.TabID {
+			return "", false
+		}
+		if w.ConnectedAt.After(newest.ConnectedAt) {
+			newest = w
+		}
+	}
+	return newest.WindowID, true
 }
 
 // cliClientID identifies this CLI process to the daemon, computed once per
