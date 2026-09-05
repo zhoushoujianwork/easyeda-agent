@@ -46,12 +46,12 @@ func Compare(a, b Document) Diff {
 		bc[c.ID] = c
 	}
 	for id := range bc {
-		if !ac[id] {
+		if _, ok := ac[id]; !ok {
 			d.AddedComponents = append(d.AddedComponents, id)
 		}
 	}
 	for id := range ac {
-		if !bc[id] {
+		if _, ok := bc[id]; !ok {
 			d.RemovedComponents = append(d.RemovedComponents, id)
 		}
 	}
