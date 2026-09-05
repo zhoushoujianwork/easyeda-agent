@@ -106,6 +106,7 @@ func (s *Server) handleFrame(ctx context.Context, c *conn, data []byte) {
 			return
 		}
 		c.applyContext(msg, now)
+		s.hub.dedupeContext(c)
 
 	case protocol.TypePing:
 		c.touch(now)

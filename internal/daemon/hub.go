@@ -233,6 +233,51 @@ func (h *hub) add(c *conn) {
 	h.mu.Unlock()
 }
 
+// dedupeContext retires older transport registrations for the exact same
+// project/document/tab. A browser reload can leave old extension sockets alive;
+// allowing them to share one EasyEDA document makes writes race in the editor.
+func (h *hub) dedupeContext(current *conn) {
+	want := current.snapshot()
+	if want.Context.ProjectUUID == "" || want.Context.DocumentUUID == "" || want.Context.TabID == "" {
+		return
+	}
+	h.mu.Lock()
+	var closeList []*conn
+	for id, other := range h.windows {
+		if other == current {
+			continue
+		}
+		got := other.snapshot()
+		if got.Context.ProjectUUID != want.Context.ProjectUUID || got.Context.DocumentUUID != want.Context.DocumentUUID || got.Context.TabID != want.Context.TabID {
+			continue
+		}
+		// Prefer the higher connector version; when equal, retain the newer socket.
+		keepCurrent := semverCore(want.ConnectorVersion) > semverCore(got.ConnectorVersion) || (semverCore(want.ConnectorVersion) == semverCore(got.ConnectorVersion) && want.ConnectedAt.After(got.ConnectedAt))
+		if keepCurrent {
+			delete(h.windows, id)
+			closeList = append(closeList, other)
+		} else {
+			delete(h.windows, want.WindowID)
+			closeList = append(closeList, current)
+			h.pruneRetiredLocked()
+			h.mu.Unlock()
+			for _, old := range closeList {
+				if old.ws != nil {
+					_ = old.ws.Close(websocket.StatusGoingAway, "duplicate connector session")
+				}
+			}
+			return
+		}
+	}
+	h.pruneRetiredLocked()
+	h.mu.Unlock()
+	for _, old := range closeList {
+		if old.ws != nil {
+			_ = old.ws.Close(websocket.StatusGoingAway, "duplicate connector session")
+		}
+	}
+}
+
 // pruneStale removes registrations whose transport stopped sending frames.
 // It is deliberately explicit instead of relying only on websocket close
 // notifications: browser extension reloads can leave the old socket half-open
