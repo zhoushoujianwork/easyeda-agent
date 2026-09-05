@@ -26,6 +26,64 @@ type Issue struct {
 	NetID       string `json:"netId,omitempty"`
 	Message     string `json:"message"`
 }
+type Diff struct {
+	AddedComponents    []string `json:"addedComponents,omitempty"`
+	RemovedComponents  []string `json:"removedComponents,omitempty"`
+	AddedNets          []string `json:"addedNets,omitempty"`
+	RemovedNets        []string `json:"removedNets,omitempty"`
+	ChangedConnections []string `json:"changedConnections,omitempty"`
+}
+
+func Compare(a, b Document) Diff {
+	d := Diff{}
+	ac, bc := map[string]bool{}, map[string]bool{}
+	for _, c := range a.Components {
+		ac[c.ID] = true
+	}
+	for _, c := range b.Components {
+		bc[c.ID] = true
+	}
+	for id := range bc {
+		if !ac[id] {
+			d.AddedComponents = append(d.AddedComponents, id)
+		}
+	}
+	for id := range ac {
+		if !bc[id] {
+			d.RemovedComponents = append(d.RemovedComponents, id)
+		}
+	}
+	an, bn := map[string]bool{}, map[string]bool{}
+	for _, n := range a.Nets {
+		an[n.ID] = true
+	}
+	for _, n := range b.Nets {
+		bn[n.ID] = true
+	}
+	for id := range bn {
+		if !an[id] {
+			d.AddedNets = append(d.AddedNets, id)
+		}
+	}
+	for id := range an {
+		if !bn[id] {
+			d.RemovedNets = append(d.RemovedNets, id)
+		}
+	}
+	am, bm := map[string]string{}, map[string]string{}
+	for _, c := range a.Connections {
+		am[c.ComponentID+":"+c.PinNumber] = c.NetID
+	}
+	for _, c := range b.Connections {
+		bm[c.ComponentID+":"+c.PinNumber] = c.NetID
+	}
+	for k, v := range bm {
+		if am[k] != v {
+			d.ChangedConnections = append(d.ChangedConnections, k)
+		}
+	}
+	return d
+}
 
 type Component struct {
 	ID        string `json:"id"`
