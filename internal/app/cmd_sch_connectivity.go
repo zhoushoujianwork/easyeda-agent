@@ -52,6 +52,10 @@ func newSchConnectivityCmd(cfg *appConfig, window *string, stdout, stderr io.Wri
 				if err != nil {
 					return fmt.Errorf("page %s: %w", doc.Name, err)
 				}
+				for i := range part.Components {
+					part.Components[i].PageID = doc.UUID
+					part.Components[i].PageName = doc.Name
+				}
 				if !haveMerged {
 					merged = part
 					haveMerged = true

@@ -34,41 +34,62 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 				return fmt.Errorf("数据结构校验失败: %w", err)
 			}
 			pb := playbook{Version: 1, Meta: playbookMeta{Name: "sch-materialize", Description: "Materialize 1.4 connectivity components", Project: d.ProjectID, Doc: d.DocumentID}, Defaults: stepPolicy{}, Steps: []playbookStep{}}
+			byID := map[string]connectivity.Component{}
 			for _, c := range d.Components {
-				if c.Device.UUID == "" || c.Device.LibraryUUID == "" {
-					return fmt.Errorf("%s 缺少 libraryUuid/deviceUuid，不能安全放置", c.Ref)
-				}
-				if c.Placement == nil {
-					return fmt.Errorf("%s 缺少 placement 坐标", c.Ref)
-				}
-				pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y}, Capture: map[string]string{c.Ref: "$.primitiveId"}})
+				byID[c.ID] = c
 			}
-			if withConnectivity {
-				byID := map[string]connectivity.Component{}
-				for _, c := range d.Components {
-					byID[c.ID] = c
+			pageOrder := []string{}
+			pages := map[string][]connectivity.Component{}
+			for _, c := range d.Components {
+				key := c.PageID
+				if key == "" {
+					key = "__active__"
 				}
-				for _, edge := range d.Connections {
-					c := byID[edge.ComponentID]
-					var pin connectivity.Pin
-					for _, p := range c.Pins {
-						if p.Number == edge.PinNumber {
-							pin = p
-							break
-						}
-					}
-					kind := "netport"
-					if n := findNet(d, edge.NetID); n != nil {
-						if n.Name == "GND" || n.Name == "AGND" {
-							kind = "ground"
-						} else if n.Role == "power" || n.Name == "+3V3" || n.Name == "+5V" {
-							kind = "power"
-						}
-					}
-					pb.Steps = append(pb.Steps, playbookStep{ID: "connect-" + c.Ref + "-" + pin.Number, Name: "connect " + c.Ref + "." + pin.Number, Action: "schematic.power.connect_pin", Payload: map[string]any{"pinX": pin.X, "pinY": pin.Y, "kind": kind, "net": findNetName(d, edge.NetID)}})
+				if _, ok := pages[key]; !ok {
+					pageOrder = append(pageOrder, key)
 				}
+				pages[key] = append(pages[key], c)
 			}
-			pb.Steps = append(pb.Steps, playbookStep{ID: "save", Action: "schematic.save", Checkpoint: true})
+			for _, page := range pageOrder {
+				parts := pages[page]
+				if page != "__active__" {
+					pb.Steps = append(pb.Steps, playbookStep{ID: "open-" + page, Name: "open " + parts[0].PageName, Action: "document.open", Payload: map[string]any{"uuid": page}})
+				}
+				for _, c := range parts {
+					if c.Device.UUID == "" || c.Device.LibraryUUID == "" {
+						return fmt.Errorf("%s 缺少 libraryUuid/deviceUuid，不能安全放置", c.Ref)
+					}
+					if c.Placement == nil {
+						return fmt.Errorf("%s 缺少 placement 坐标", c.Ref)
+					}
+					pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y}, Capture: map[string]string{c.Ref: "$.primitiveId"}})
+				}
+				if withConnectivity {
+					for _, edge := range d.Connections {
+						comp := byID[edge.ComponentID]
+						if comp.PageID != page {
+							continue
+						}
+						var pin connectivity.Pin
+						for _, p := range comp.Pins {
+							if p.Number == edge.PinNumber {
+								pin = p
+								break
+							}
+						}
+						kind := "netport"
+						if n := findNet(d, edge.NetID); n != nil {
+							if n.Name == "GND" || n.Name == "AGND" {
+								kind = "ground"
+							} else if n.Role == "power" || n.Name == "+3V3" || n.Name == "+5V" {
+								kind = "power"
+							}
+						}
+						pb.Steps = append(pb.Steps, playbookStep{ID: "connect-" + comp.Ref + "-" + pin.Number, Name: "connect " + comp.Ref + "." + pin.Number, Action: "schematic.power.connect_pin", Payload: map[string]any{"pinX": pin.X, "pinY": pin.Y, "kind": kind, "net": findNetName(d, edge.NetID)}})
+					}
+				}
+				pb.Steps = append(pb.Steps, playbookStep{ID: "save-" + page, Action: "schematic.save", Checkpoint: true})
+			}
 			encoded, _ := json.MarshalIndent(pb, "", "  ")
 			encoded = append(encoded, '\n')
 			if out != "" {

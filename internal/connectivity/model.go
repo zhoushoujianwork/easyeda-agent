@@ -124,6 +124,8 @@ type Component struct {
 	Footprint string     `json:"footprint,omitempty"`
 	Pins      []Pin      `json:"pins"`
 	Placement *Placement `json:"placement,omitempty"`
+	PageID    string     `json:"pageId,omitempty"`
+	PageName  string     `json:"pageName,omitempty"`
 }
 type Placement struct {
 	X    float64 `json:"x"`
