@@ -25,6 +25,15 @@ func FromRead(m map[string]any) (Document, error) {
 		}
 		ref, _ := x["designator"].(string)
 		c := Component{ID: "cmp-" + ref, Ref: ref}
+		if dev, ok := x["device"].(map[string]any); ok {
+			c.Device = Device{LibraryUUID: stringField(dev, "libraryUuid"), UUID: stringField(dev, "uuid"), Name: stringField(dev, "name")}
+		}
+		if c.Device.UUID == "" {
+			if dev, ok := x["component"].(map[string]any); ok {
+				c.Device = Device{LibraryUUID: stringField(dev, "libraryUuid"), UUID: stringField(dev, "uuid"), Name: stringField(dev, "name")}
+			}
+		}
+		c.Footprint = stringField(x, "footprint")
 		if xv, xok := numberValue(x["x"]); xok {
 			if yv, yok := numberValue(x["y"]); yok {
 				c.Placement = &Placement{X: xv, Y: yv}
@@ -111,6 +120,8 @@ func numberValue(v any) (float64, bool) {
 		return 0, false
 	}
 }
+
+func stringField(m map[string]any, key string) string { v, _ := m[key].(string); return v }
 
 // NamedPins compares observed connectivity using instance references and net names.
 // Null is an observed unassigned pin, not an explicit NC declaration.
