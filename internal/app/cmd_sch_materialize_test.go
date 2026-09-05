@@ -16,3 +16,16 @@ func TestIsDeviceLibraryUUID(t *testing.T) {
 		}
 	}
 }
+
+func TestOnSchematicGrid(t *testing.T) {
+	for _, v := range []float64{0, 5, 145, 250, -10, 250.0000001} {
+		if !onSchematicGrid(v) {
+			t.Errorf("%v should be accepted on the 5-unit grid", v)
+		}
+	}
+	for _, v := range []float64{2.5, 145.25, 582.57341743} {
+		if onSchematicGrid(v) {
+			t.Errorf("%v should be rejected as off-grid", v)
+		}
+	}
+}

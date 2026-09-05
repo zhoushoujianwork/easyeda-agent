@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -90,6 +91,9 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 					if c.Placement == nil {
 						return fmt.Errorf("%s 缺少 placement 坐标", c.Ref)
 					}
+					if !onSchematicGrid(c.Placement.X) || !onSchematicGrid(c.Placement.Y) {
+						return fmt.Errorf("%s placement anchor (%.4f, %.4f) 不在 5-unit schematic grid；先在 1.4 数据中吸附坐标再 Apply", c.Ref, c.Placement.X, c.Placement.Y)
+					}
 					placePayload := map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y, "designator": c.Ref}
 					if c.Placement.Rotation != 0 {
 						placePayload["rotation"] = c.Placement.Rotation
@@ -150,6 +154,11 @@ func isDeviceLibraryUUID(s string) bool {
 	}
 	_, err := hex.DecodeString(s)
 	return err == nil
+}
+
+func onSchematicGrid(v float64) bool {
+	const grid = 5.0
+	return math.Abs(v-math.Round(v/grid)*grid) <= 1e-6
 }
 
 func findNet(d connectivity.Document, id string) *connectivity.Net {
