@@ -33,7 +33,8 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 			if err := d.Validate(); err != nil {
 				return fmt.Errorf("数据结构校验失败: %w", err)
 			}
-			pb := playbook{Version: 1, Meta: playbookMeta{Name: "sch-materialize", Description: "Materialize 1.4 connectivity components", Project: d.ProjectID, Doc: d.DocumentID}, Defaults: stepPolicy{}, Steps: []playbookStep{}}
+			stepTimeout := 90
+			pb := playbook{Version: 1, Meta: playbookMeta{Name: "sch-materialize", Description: "Materialize 1.4 connectivity components", Project: d.ProjectID, Doc: d.DocumentID}, Defaults: stepPolicy{TimeoutSec: &stepTimeout}, Steps: []playbookStep{}}
 			byID := map[string]connectivity.Component{}
 			for _, c := range d.Components {
 				byID[c.ID] = c
