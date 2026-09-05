@@ -1,6 +1,6 @@
 {
 	"name": "easyeda-agent-connector",
-	"version": "1.3.1",
+	"version": "1.3.2",
 	"description": "EasyEDA Pro extension that bridges the easyeda-agent Go daemon to the official eda.* API over WebSocket.",
 	"author": "easyeda-agent",
 	"license": "(MIT AND Apache-2.0)",

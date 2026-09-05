@@ -3077,7 +3077,7 @@ interface NetlistPinNets {
 	available: boolean;
 }
 
-async function collectNetlistPinNets(): Promise<NetlistPinNets> {
+async function collectNetlistPinNets(_allPages = false): Promise<NetlistPinNets> {
 	const byDesignator = new Map<string, Map<string, string>>();
 	const muted = (): NetlistPinNets => ({ byDesignator, available: false });
 	let file: File | undefined;
@@ -4050,7 +4050,7 @@ const schematicRead: Handler = async (payload) => {
 	}
 
 	// JSON-authoritative pin→net per designator (same source as schematic.check).
-	const { byDesignator: pinNets } = await collectNetlistPinNets();
+ const { byDesignator: pinNets } = await collectNetlistPinNets(allPages);
 
 	const netToPins = new Map<string, Array<string>>();
 	const floating: Array<string> = [];
