@@ -1,14 +1,14 @@
 package daemon
 
 import (
-	"testing"
-	"time"
-
 	"encoding/json"
-	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
+	"time"
+
+	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
 )
 
 func TestRequestTimeout(t *testing.T) {
@@ -30,6 +30,21 @@ func TestRequestTimeout(t *testing.T) {
 				t.Fatalf("requestTimeout(%d) = %v, want %v", tc.timeoutMs, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestActionRequestAllowsLarge3DModelPayload(t *testing.T) {
+	// system.health is daemon-local, so this isolates the shared request decoder
+	// without needing a live connector to consume the model payload.
+	s := New(Options{})
+	body := `{"action":"system.health","payload":{"dataBase64":"` + strings.Repeat("A", 2<<20) + `"}}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/action", strings.NewReader(body))
+
+	s.handleAction(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("2 MiB base64 action payload rejected: status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

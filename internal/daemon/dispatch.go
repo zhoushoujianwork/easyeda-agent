@@ -23,6 +23,10 @@ import (
 // callers can layer their own shorter timeouts on top.
 const dispatchTimeout = 60 * time.Second
 
+// actionRequestBodyLimit accommodates base64-encoded library assets such as
+// STEP models while keeping the localhost HTTP trust boundary explicitly bounded.
+const actionRequestBodyLimit = 32 << 20
+
 // dispatchTimeoutBounds clamp a caller-supplied Request.TimeoutMs. The daemon
 // answers slightly BEFORE the caller's own deadline (see requestTimeout) so the
 // caller gets a structured DISPATCH_FAILED, not a raw HTTP timeout.
@@ -127,7 +131,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req protocol.Request
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, actionRequestBodyLimit)).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse(req.ID, "BAD_REQUEST", "invalid action request body", err.Error()))
 		return
 	}
