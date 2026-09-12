@@ -30,6 +30,8 @@ clearance; forwarded unchanged to the sheet planner. Legacy defaults otherwise.
 In unified spacing mode maxCandidates is a per-zone cap, so earlier zones cannot
 consume another zone's optimization allowance. Legacy mode shares one cap.
 Each zone: {id,title,coreComponentId,componentIds}.
+Optional zone placement:{samePageAs:<zone ID>,preferAdjacent?:true} is forwarded
+to sheet planning: hard same-page relation with an optional soft neighbor preference.
 Every component belongs to exactly one zone. Cross-zone signals use module_port.
 Output contains independent local layouts/contentBounds and compact frame plans,
 not whole-page packing or rendered frames. Add identity/sheet evidence before compose/Apply.
@@ -87,6 +89,9 @@ Example:
 func decodeSchematicZonesInput(raw []byte) (SchematicZonesInput, error) {
 	var input SchematicZonesInput
 	if err := connectivity.DecodeStrictDesignJSON(raw, &input); err != nil {
+		return input, err
+	}
+	if err := validateSchematicZonePlacementsJSON(raw); err != nil {
 		return input, err
 	}
 	// Reuse explicit measurement-field checks on original JSON, not re-marshaled

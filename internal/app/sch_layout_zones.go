@@ -8,10 +8,11 @@ import (
 
 // Explicit ownership avoids inventing functional relationships from shared rails.
 type SchematicZone struct {
-	ID              string   `json:"id"`
-	Title           string   `json:"title"`
-	CoreComponentID string   `json:"coreComponentId"`
-	ComponentIDs    []string `json:"componentIds"`
+	ID              string                  `json:"id"`
+	Title           string                  `json:"title"`
+	CoreComponentID string                  `json:"coreComponentId"`
+	ComponentIDs    []string                `json:"componentIds"`
+	Placement       *SchematicZonePlacement `json:"placement,omitempty"`
 }
 type SchematicZonesInput struct {
 	SchemaVersion int                         `json:"schemaVersion"`
@@ -23,12 +24,13 @@ type SchematicZonesInput struct {
 	Zones         []SchematicZone             `json:"zones"`
 }
 type SchematicZoneResult struct {
-	ID              string                 `json:"id"`
-	Title           string                 `json:"title"`
-	CoreComponentID string                 `json:"coreComponentId"`
-	ContentBounds   SchematicBox           `json:"contentBounds"`
-	Frame           schFrameSpec           `json:"frame"`
-	Layout          *SchematicLayoutResult `json:"layout"`
+	ID              string                  `json:"id"`
+	Title           string                  `json:"title"`
+	CoreComponentID string                  `json:"coreComponentId"`
+	ContentBounds   SchematicBox            `json:"contentBounds"`
+	Frame           schFrameSpec            `json:"frame"`
+	Layout          *SchematicLayoutResult  `json:"layout"`
+	Placement       *SchematicZonePlacement `json:"placement,omitempty"`
 }
 type SchematicZonesResult struct {
 	SchemaVersion  int                   `json:"schemaVersion"`
@@ -64,7 +66,9 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 		refs[c.Measurement.Designator] = true
 	}
 	owners, zoneIDs := map[string]string{}, map[string]bool{}
+	ids, placements := []string{}, []*SchematicZonePlacement{}
 	for _, z := range in.Zones {
+		ids, placements = append(ids, z.ID), append(placements, z.Placement)
 		if strings.TrimSpace(z.ID) == "" || strings.TrimSpace(z.Title) == "" || zoneIDs[z.ID] {
 			return nil, fmt.Errorf("duplicate/empty zone ID or title %s", z.ID)
 		}
@@ -78,6 +82,9 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 		if owners[z.CoreComponentID] != z.ID {
 			return nil, fmt.Errorf("zone %s: core must be a member", z.ID)
 		}
+	}
+	if err := validateSchematicZonePlacements(ids, placements); err != nil {
+		return nil, err
 	}
 	netOwners := map[string]map[string]bool{}
 	for _, c := range in.Components {
@@ -165,7 +172,7 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("zone %s frame: %w", z.ID, err)
 		}
-		out.Zones = append(out.Zones, SchematicZoneResult{ID: z.ID, Title: z.Title, CoreComponentID: z.CoreComponentID, ContentBounds: b, Frame: frame, Layout: layout})
+		out.Zones = append(out.Zones, SchematicZoneResult{ID: z.ID, Title: z.Title, CoreComponentID: z.CoreComponentID, ContentBounds: b, Frame: frame, Layout: layout, Placement: copySchematicZonePlacement(z.Placement)})
 	}
 	return out, nil
 }

@@ -19,6 +19,7 @@ type SchematicRenderZone struct {
 	Status          string                  `json:"status,omitempty"`
 	Error           string                  `json:"error,omitempty"`
 	SheetPosition   *SchematicSheetPosition `json:"sheetPosition,omitempty"`
+	Placement       *SchematicZonePlacement `json:"placement,omitempty"`
 }
 type SchematicRenderInput struct {
 	SchemaVersion  int                   `json:"schemaVersion"`
@@ -40,6 +41,9 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 	}
 	if in.SchemaVersion != 1 || len(in.Zones) == 0 {
 		return nil, fmt.Errorf("schemaVersion:1 and nonempty zones required")
+	}
+	if err := validateSchematicRenderPlacements(in.Zones); err != nil {
+		return nil, err
 	}
 	if in.Sheet != nil {
 		if err := validateSchematicSheet(in); err != nil {

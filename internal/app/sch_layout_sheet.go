@@ -143,6 +143,9 @@ func validateSchematicSheet(in SchematicRenderInput) error {
 	if e := validateSheetSpec(in.Sheet); e != nil {
 		return e
 	}
+	if err := validateSheetZoneRelations(in.Zones); err != nil {
+		return err
+	}
 	u := sheetPreviewUsable(*in.Sheet)
 	placed := []SchematicBox{}
 	for _, z := range in.Zones {
@@ -171,6 +174,9 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 	}
 	if len(in.Zones) > 64 {
 		return nil, fmt.Errorf("at most 64 zones per preview")
+	}
+	if err := validateSheetZoneRelations(in.Zones); err != nil {
+		return nil, err
 	}
 	validation := in
 	validation.Sheet = nil
@@ -224,6 +230,18 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 			out.Pages = []SchematicRenderInput{page}
 			return out, nil
 		}
+	}
+	if sheetHasZoneRelations(zones) {
+		in.Spacing = out.Spacing
+		pages, err := planSchematicRelatedSheets(in, zones)
+		if err != nil {
+			return nil, err
+		}
+		out.Pages = pages
+		for i := range out.Pages {
+			out.Pages[i].Title = fmt.Sprintf("%s · %d/%d", in.Title, i+1, len(out.Pages))
+		}
+		return out, nil
 	}
 	for order := 0; order < 4; order++ {
 		candidates := 0

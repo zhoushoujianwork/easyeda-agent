@@ -22,6 +22,8 @@ Only translates supplied geometry; never solves or fabricates missing wires.
 Simplified symbols/text are not official EasyEDA graphics or electrical checks.
 Without sheet: display-only zone packing. With sheet: honor exact sheetPosition
 and check padding, zone gaps and keepouts; no reflow. Output is SVG.
+--zone validates references in the full input, then renders standalone detail
+without sheet placement constraints (not an entire-page validation).
 
   easyeda sch layout-render --from geometry.json --out layout.svg
   easyeda sch layout-render --from geometry.json --zone supply --out supply.svg`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -54,6 +56,9 @@ and check padding, zone gaps and keepouts; no reflow. Output is SVG.
 		if e = validateRenderMeasurementsJSON(raw); e != nil {
 			return e
 		}
+		if e = validateSchematicRenderPlacements(input.Zones); e != nil {
+			return e
+		}
 		if zone != "" {
 			var selected []SchematicRenderZone
 			for _, z := range input.Zones {
@@ -65,6 +70,9 @@ and check padding, zone gaps and keepouts; no reflow. Output is SVG.
 				return fmt.Errorf("--zone must match exactly one zone")
 			}
 			input.Zones = selected
+			input.Sheet = nil
+			input.Zones[0].SheetPosition = nil
+			input.Zones[0].Placement = nil
 		}
 		if !diagnostic {
 			if e = validateCompleteLayoutPreview(input); e != nil {
@@ -96,6 +104,8 @@ func newSchLayoutSheetPlanCmd(stdout io.Writer) *cobra.Command {
 Units are raw (0.01 inch); padding/gap >= 10. Keeps symbol scale and internal
 connections unchanged. Tries four deterministic orders; not globally optimal.
 Optional top-level spacing unifies zone inner padding, sheet padding and zone gap.
+Optional zone placement:{samePageAs:<zone ID>,preferAdjacent?:true} keeps related
+zones on one page, preferring neighboring rectangles without changing circuits.
 Outputs pages[] accepted by layout-render. Incomplete zones require --diagnostic.
 Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if from == "" || out == "" {
@@ -210,6 +220,9 @@ func validateRenderSheetJSON(raw []byte) error {
 
 // Reject absent coordinates rather than letting JSON zero values invent them.
 func validateRenderMeasurementsJSON(raw []byte) error {
+	if err := validateSchematicZonePlacementsJSON(raw); err != nil {
+		return err
+	}
 	var top struct {
 		Zones []struct {
 			SheetPosition map[string]json.RawMessage `json:"sheetPosition"`
