@@ -124,6 +124,10 @@ SyntaxError；执行可能已经产生修改，必须回读。语法拒绝不计
 布局路径的 `connect_pin` 与 `sch connect/autoconnect` 共用 35 秒请求预算，包含 daemon 的
 2 秒回执余量。该预算不保证宿主一定完成；超时仍须回读，不能自动认定创建失败并重发。
 
+`sch place` 为 daemon 等待连接器保留 8 秒，另外预留 2 秒传回结构化错误（请求共10秒）。
+超时提示同时覆盖 HTTP 超时和 daemon 返回的 deadline 错误；先回读是否已经放置，再检查
+库 UUID、窗口状态。超时不能单独证明 UUID 错误，也不能作为再次放置的依据。
+
 ## 外部工程导入边界
 
 Altium Designer `.SchDoc` / `.PcbDoc` 当前没有可用的 typed action。官方 beta

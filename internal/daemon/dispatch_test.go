@@ -20,6 +20,7 @@ func TestRequestTimeout(t *testing.T) {
 		{"default when unset", 0, dispatchTimeout},
 		{"default when negative", -5, dispatchTimeout},
 		{"caller budget minus grace", 20000, 18 * time.Second},
+		{"place execution window plus response grace", int((8*time.Second + protocol.DispatchResponseGrace).Milliseconds()), 8 * time.Second},
 		{"clamped to minimum", 1000, minDispatchTimeout},
 		{"clamped to maximum", int((11 * time.Minute).Milliseconds()), maxDispatchTimeout},
 	}

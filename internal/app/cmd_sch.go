@@ -11,32 +11,42 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
 )
 
-// placeTimeout fails `sch place` fast instead of waiting out the full default
-// window. A successful placement returns near-instantly; a hang almost always
-// means the EasyEDA API never settled on a bad {libraryUuid, uuid} — most often
-// because --uuid is a placed-instance id (from `sch list`) rather than a device
-// library uuid (from `lib search`). See placeUUIDHint.
-const placeTimeout = 8 * time.Second
+// Preserve an eight-second connector wait plus time to return its response.
+// A timeout does not prove either an invalid UUID or absence of a placed part.
+const placeTimeout = 8*time.Second + protocol.DispatchResponseGrace
 
 // rebind/replace run a long SERIAL eda.* chain (identity resolution via online
 // library search → lib_Device copy/modify → delete → create → restore); the
 // clone fallback pushed the worst case past the default 20s dispatch window.
 const rebindTimeout = 90 * time.Second
 
-// placeUUIDHint translates a bare deadline-exceeded into an actionable message:
-// the most common cause of a hung placement is replaying an instance uuid that
-// `sch list` exposes (component/symbol/footprint/uniqueId) instead of the
-// device-library uuid that `lib search` returns.
+// placeUUIDHint prioritizes readback because timed-out writes may have landed.
 func placeUUIDHint(timeout time.Duration) error {
 	return fmt.Errorf(
-		"placement timed out after %s — the EasyEDA API never returned for this {libraryUuid, uuid}.\n"+
-			"This usually means --uuid is NOT a device-library uuid. The component/symbol/footprint/uniqueId\n"+
+		"placement confirmation timed out (request budget %s). Read back the target page first: the part may already exist; do not blindly place it again.\n"+
+			"Check editor responsiveness and the library UUID. One possible cause is an INSTANCE uuid: the component/symbol/footprint/uniqueId\n"+
 			"fields from `easyeda sch list` are placed-INSTANCE ids and cannot be replayed into `sch place`.\n"+
 			"Get a replayable device uuid first: `easyeda lib search --query \"<part>\"` → use its `uuid` + `libraryUuid`.",
 		timeout,
 	)
+}
+
+func placeDispatchError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var actionErr *actionError
+	deadline := errors.Is(err, context.DeadlineExceeded)
+	if errors.As(err, &actionErr) && actionErr.Code == "DISPATCH_FAILED" {
+		deadline = deadline || strings.Contains(actionErr.Detail, context.DeadlineExceeded.Error())
+	}
+	if deadline {
+		return fmt.Errorf("%w\n%s", err, placeUUIDHint(placeTimeout))
+	}
+	return err
 }
 
 // netflagKindAliases maps user-friendly CLI shorthands to the canonical kind
@@ -565,10 +575,7 @@ final placed state.`,
 					payload["designator"] = designator
 				}
 				err := dispatchTimed(cfg, "schematic.component.place", window, payload, placeTimeout, stdout, stderr)
-				if err != nil && errors.Is(err, context.DeadlineExceeded) {
-					return placeUUIDHint(placeTimeout)
-				}
-				return err
+				return placeDispatchError(err)
 			},
 		}
 		c.Flags().StringVar(&lib, "lib", "", "library UUID (required)")

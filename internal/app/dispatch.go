@@ -110,10 +110,22 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 	printArtifactPaths(respBody, stderr)
 
 	var parsed struct {
-		OK bool `json:"ok"`
+		OK    bool `json:"ok"`
+		Error *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Detail  string `json:"detail"`
+		} `json:"error"`
 	}
-	if err := json.Unmarshal(respBody, &parsed); err != nil || !parsed.OK {
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return errActionFailed
+	}
+	if !parsed.OK {
+		if parsed.Error == nil {
+			return errActionFailed
+		}
+		return errors.Join(errActionFailed, &actionError{Action: action, Code: parsed.Error.Code,
+			Message: parsed.Error.Message, Detail: parsed.Error.Detail})
 	}
 	return nil
 }

@@ -33,7 +33,7 @@ const actionRequestBodyLimit = 32 << 20
 const (
 	minDispatchTimeout = 3 * time.Second
 	maxDispatchTimeout = 10 * time.Minute
-	dispatchGrace      = 2 * time.Second
+	dispatchGrace      = protocol.DispatchResponseGrace
 )
 
 // requestTimeout resolves the connector-wait budget for one request: the

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Preserve the intended eight-second place execution window plus response grace, retain structured dispatch errors, and advise readback before retrying placement on either HTTP or daemon deadline failures (#213).
+
 - Use the shared 35-second connect-pin request budget in schematic layout and recovery callers (#205).
 - Observe actual, bounded bypass reads before diagnosing a blocked connector queue; missing, failed or stale evidence stops automatic queue waiting (#209).
 - Classify debug script compilation failures as non-mutating request refusals; preserve execution failures, including runtime SyntaxError, as possible partial writes (#211).

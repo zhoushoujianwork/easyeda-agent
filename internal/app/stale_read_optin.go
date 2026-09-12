@@ -110,6 +110,7 @@ type actionError struct {
 	Action  string
 	Code    string
 	Message string
+	Detail  string
 }
 
 func (e *actionError) Error() string {
