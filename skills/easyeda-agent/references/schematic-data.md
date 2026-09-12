@@ -52,13 +52,15 @@ FOOTPRINT `DOCHEAD` 和唯一 `META.source` 证明实例封装到库资产的出
 | 从实测引脚计算 Lib 内部 | `sch lib-layout --from layout-input.json --out composition.json`；核心与外围的连接图、实测姿态及网络绘制策略 → 局部器件位置/短线/标记，再交给 compose。 |
 | 非标准位号修复 | `sch designators allocate` 分配，`plan` 编译原地修改队列，`verify` 执行前后校验。 |
 | 完整 Lib 图面 | `sch compose`：完整连接核心与局部几何 → 单页布局与受保护 Apply。 |
-| 基础放置 | `sch materialize`：已知库身份和 placement → 放件队列，可选逐脚标记。它不是完整模块绘图器。 |
+| 基础放置 | `sch materialize`：已知库身份和 placement → 仅放件队列。它不是完整模块绘图器；`--with-connectivity` 已停用。 |
 | 明确的标记增量 | `sch plan before.json after.json`：仅新增 `power/ground/net_port_in/net_port_out/net_port_bi` 连接；对应脚原为 `unconnected` 时，目标移除此声明；原为 NC 时，目标须同时清 NC 并新增明确标记连接。其他器件/引脚/NC 变更、删网或重接均拒绝。 |
 | 只画框和标题 | `sch frame apply/check --from frames.json`；字段见 `sch frame --help` 与 [actions.md](actions.md)。 |
 | 执行队列 | `sch apply plan.json`，顺序等待 WebSocket 响应并记录 journal。 |
 
-`sch materialize --with-connectivity` 生成的普通信号端口使用 typed action 枚举
-`net_port_bi`；`netport` 只是部分布局规划器内部的类别别名，不能写入 Apply payload。
+`sch materialize --with-connectivity` 已停止生成队列：旧路径逐脚接线未规划碰撞，可能把相邻
+引脚短接，也不能替代模块内部短导线。完整重建走 `lib-layout → compose → apply`，保留
+接线前实测几何守卫。materialize 创建时使用零旋转、无镜像，再通过 modify 写入实测
+存储旋转和镜像，避免把创建接口的旋转语义误当成存储语义。
 
 `sch plan` 的 NC→连接转换逐脚执行：初始完整连接守卫 → `no_connect off` →
 明确空网/非 NC 的中间守卫 → autoconnect → 目标守卫 → 保存及最终守卫。
@@ -151,6 +153,53 @@ ref 引用也要按组件 ID 同步；不要对 JSON 做全局字符串替换，
 
 ## 由引脚计算 Lib 内部
 
+固定离线渲染入口：`sch layout-render --from render.json --out layout.svg`，可选 `--zone <id>`。
+输入 `schemaVersion:1,zones:[{id,title,status,layout}]`；layout 是局部布局输出，status 为
+`planned` 或 `blocked`。也可直接读取 `layout-plan --zones` 的结果（缺省 status 为 planned）。
+blocked 区只能显式提供原测量几何，不生成假导线。只转译数据，不重新求解、不调用模型或 EDA，
+不输出差异图解；SVG 中区域整体平移仅用于展示，不代表纸张/电气验收。简化符号和字形不等同官方导图。
+
+标记引线按长度从短到长搜索，同长度才采用电源/地方向偏好；同一线树的各个引脚之间也比较
+最短可行引线。两个二端器件同网面对面、共轴且已有直线连接时，优先尝试网格上的精确中点
+垂直分支，用于对称取线；不能落网格或存在碰撞时保留原命名搜索，不移动连接点伪造对称。
+
+通用 layout-plan 的网络端口错长预算以端口本体加文字的轴向占位计算：
+`min(300, ceilGrid(10 + 2 × 最大端口占位))`；最大占位取当前端口及已放置端口。
+这是有界搜索的初始工程约束，不是官方电气规则；不能为满足长短比而把短线故意拉长，
+也不能把超限候选截短后冒充合法结果。无解应调整姿态/布局；当前仍不是联合全局优化。
+命名引线不得与已有同网导线正长度重走，共享端点和垂直 T 接允许。
+同一线树只命名一次；同网外围直接连接可保留一个必要的跨区端口，不因有标签而拆网。
+渲染端口须采用与避碰相同的本体和文字占位，显示真实 T 接点；不能用小圆点代替整支端口
+后据图判断可压缩程度。框包络使用标记的实际方向，不向无符号的一侧镜像预留。
+完整线树求解后增加一次有界端口瘦身：固定器件、电源/地和对称中点，只在原线树的已知引脚
+尝试换命名点/方向；总线长至多增加 20%，每次须使内容包络面积至少减少 5%，且全部几何及
+命名连通检查通过。最多 2048 次且计入剩余 maxCandidates；这一可选优化耗尽预算时保留已
+验证的候选，不影响此前必需布局无解/耗尽时的失败规则。该启发式不保证 A4 排版全局最优。
+
+逐芯片独立功能区使用 `sch layout-plan --zones --from zones.json --out zones-geometry.json`。
+输入 `schemaVersion:1/components/netPolicies/zones`，可选 `attachments/maxCandidates`；
+每个 zone 为 `{id,title,coreComponentId,componentIds}`。components 与单区入口相同。
+每个独立芯片/接口明确声明为一个核心；所有器件恰好归属一区，公共电源/地不用于猜归属。
+共享外围先明确归属；跨区信号必须声明 `module_port`，不能用 `direct` 跨区后偷偷改标签。
+输出每区的局部 `layout` 与包含器件、线路、标记及文字占位的 `contentBounds`；
+contentBounds 不含标题；`frame` 使用既有标题/净距规则计算独立粉色虚线框预案。
+标题宽度目前是保守估算，非官方实测。每区分别交 compose 模块整页排版；
+补齐身份和纸张证据前不可 Apply。任一区失败整份不输出半成品。
+这是显式归属的通用计算入口，尚不自动识别芯片功能或推断共享器件的归属。
+
+外围在首个可行距离层优先比较连接端点到宿主出线轴的偏差，再比较线长等紧凑指标。
+直连线树合并在直线/L 形无解时尝试向两侧最多 80 raw、步进 5 raw 的双折点绕行。
+仍逐条检查异网引脚、器件、文字和已有线路；不放宽交叉判据，不保证交错多网全局可解。
+
+普通器件集合不需要建 Lib：使用 `sch layout-plan --from input.json --out geometry.json`。
+输入 `schemaVersion:1/coreComponentId/components/netPolicies`，components 每项含稳定 `id`、
+`measurement`（下表 placements 格式），无网络的物理脚还须在 `pinStates` 中按脚号声明
+`nc` 或 `unconnected`。netPolicies 按**网络名称**索引；可选 `attachments` 沿用
+`componentId/pinNumber/attachTo` 格式，可选 `maxCandidates`。输出是核心归零的局部几何、
+`score`（线长/线段数/末件轴线误差/面积）和 `candidatesUsed`，不是可直接 Apply 的队列。
+这条入口不校验库身份和纸张；交给 compose/执行适配器前仍须补齐这些证据。
+Lib 入口仍使用稳定 net ID 映射策略，由适配层转换后调用同一 `PlanSchematicLayout` 内核。
+
 `sch lib-layout --from layout-input.json --out composition.json` 全程离线，输出直接供
 `sch compose` 使用，不生成或派发 EDA 操作。输入：
 
@@ -170,12 +219,17 @@ ref 引用也要按组件 ID 同步；不要对 JSON 做全局字符串替换，
 串联支路按依赖顺序放置；环形提示、断开的模块或无法避碰的测量姿态返回具体未解决对象。
 
 核心归零后沿参考脚方向搜索，外围可正对或垂直于参考脚，全部 bbox/pin 随器件平移。
-候选保持 5 raw 网格，按连接总长递增，同长度优先直线，再检查正交折点；当前外向搜索至 400 raw、横向至 200 raw。
+候选保持 5 raw 网格，参考脚连接距离从 5 raw 递增，检查直线和正交折点；当前外向搜索至 400 raw、横向至 200 raw。
 可选 `maxCandidates` 限制整份输入的搜索次数（默认 20000，范围 1..1000000）；耗尽时明确报错，不写出半成品。
 这是有界、保持实测姿态的求解器，失败不证明电路在任意朝向下都无解。改变朝向须重新提供
 对应可信几何；不能放宽碰撞检查或修改网表来取得通过。已有手工设计好的 Lib 仍可直接 compose。
 
-当前命名引线采用贪心搜索：地优先，其余处理顺序受器件和测量引脚数组影响，不会联合回溯
+先安排仅连电源/地的外围，再安排信号相关外围，显式 attachTo 依赖仍须满足。
+首个可行距离层内比较完整导线及标记引线总长、线段数、轴线对齐误差、可见包络面积，
+不直接采用第一个可行位置。同模块电源/地优先尝试 80 raw 内的安全直线/L 形合并，
+不可短接时才保留独立命名点；不改变电气网名或跨模块引用。
+当前命名引线采用贪心搜索：GND → 电源 → 信号，同一线树比较各引脚和各方向的最短合法引线，
+符合条件的二端器件分支优先对称中点；每次候选重新计算，不会联合回溯
 已选标记。因此相同连接图与姿态可能因数组顺序产生不同结果。保留失败输入和最终计算参数，
 不把一次排序成功当作通用布局规则。若从官方实测姿态推导 90 度刚体变换，须同步变换锚点、
 完整引脚、bbox 四角和 stored rotation，并记录原始测量与变换；Apply 的写线前引脚回读必须通过。
@@ -199,6 +253,7 @@ easyeda sch compose --from composition.json --out plan.json
 | `keepouts` | bbox 数组，例如图签；从 `sch sheet-geometry --json` 取得，保留其来源与警告。空数组表示已确认没有禁放区。 |
 | `modules[]` | `id/title/placements/wires/flags`，可附 `terminals/titleMetrics`；与 connectivity 的 Lib 成员逐项对应，每件只归属一个模块。 |
 | `placements[]` | `designator/value/x/y/rotation/mirror/bbox/pins`；bbox 与引脚位置来自官方实测，器件和引脚坐标落在 5 raw 网格。 |
+| `placements[].textBboxes` | 可选外置位号/型号 bbox 数组，格式同 sheet；也用于 measurements。坐标与当前实测姿态一致，随平移进入碰撞检查和框包络。普通 list 不自动提供，须另存测量来源；不控制实际文字位置，Apply 后须导图复核。缺失不代表文字为空。 |
 | `pins[]` | 完整 `{number,name,net,x,y}`；NC 的 `net` 为空，与连接核心的 NC 状态一致。 |
 | `wires[]` | `{net,points:[[x,y],...]}`，正交、非零、落网格。JSON 网名本身不能给实际线树命名，须连接对应引脚/标记。 |
 | `flags[]` | `{net,kind,pinX,pinY,direction,offset}`；kind 为 `power/ground/net_port_in/net_port_out/net_port_bi`，方向 `up/down/left/right`，offset 为正的网格长度。转换生成真实引线。 |

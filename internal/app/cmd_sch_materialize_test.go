@@ -74,7 +74,7 @@ func TestSchMaterializePreservesCanonicalPlacementBindings(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	cmd := newSchMaterializeCmd(&stdout, &stderr)
-	cmd.SetArgs([]string{input, "--with-connectivity"})
+	cmd.SetArgs([]string{input})
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -86,17 +86,10 @@ func TestSchMaterializePreservesCanonicalPlacementBindings(t *testing.T) {
 		t.Fatalf("generated queue failed public Apply preflight: %v", errs)
 	}
 	var refs []string
-	lastBind, firstConnect := -1, -1
 	for i := range pb.Steps {
 		step := &pb.Steps[i]
-		if step.Action == "schematic.power.connect_pin" && firstConnect < 0 {
-			firstConnect = i
-		}
 		if step.Action == "schematic.power.connect_pin" {
-			kind, _ := step.Payload["kind"].(string)
-			if kind == "netport" {
-				t.Fatal("materialize emitted the planner-only netport alias instead of the typed action enum net_port_bi")
-			}
+			t.Fatal("placement-only queue must not emit unplanned wires")
 		}
 		if step.Action != "schematic.component.place" {
 			continue
@@ -108,8 +101,8 @@ func TestSchMaterializePreservesCanonicalPlacementBindings(t *testing.T) {
 		}
 		rotation, _ := toFloat(step.Payload["rotation"])
 		mirror, _ := step.Payload["mirror"].(bool)
-		if rotation != c.Placement.Rotation || mirror != c.Placement.Mirror {
-			t.Fatal("binding changed authored orientation")
+		if rotation != 0 || mirror {
+			t.Fatal("create must use neutral pose; stored pose belongs in modify")
 		}
 		if step.Payload["otherProperty"] != nil || step.Payload["customAttributes"] != nil {
 			t.Fatal("custom properties must be written through modify, not place")
@@ -122,6 +115,9 @@ func TestSchMaterializePreservesCanonicalPlacementBindings(t *testing.T) {
 			t.Fatalf("binding did not use the fresh primitive capture: %+v", binding)
 		}
 		patch := binding.Payload["patch"].(map[string]any)
+		if patch["rotation"] != c.Placement.Rotation || patch["mirror"] != c.Placement.Mirror {
+			t.Fatal("modify did not restore the measured absolute pose")
+		}
 		properties := patch["otherProperty"].(map[string]any)
 		if patch["designator"] != c.Ref || properties[connectivity.ComponentIDProperty] != c.ID {
 			t.Fatalf("binding derived identity from visible reference: %+v", patch)
@@ -134,14 +130,36 @@ func TestSchMaterializePreservesCanonicalPlacementBindings(t *testing.T) {
 			t.Fatal("functional role was not preserved")
 		}
 		assertComponentBindingReadback(t, binding, c)
-		lastBind = i + 1
 	}
-	if !reflect.DeepEqual(refs, []string{"U03", "u4", "J007"}) || firstConnect <= lastBind {
-		t.Fatalf("queue reordered/rewrote references or wired before binding: %v %d/%d", refs, firstConnect, lastBind)
+	if !reflect.DeepEqual(refs, []string{"U03", "u4", "J007"}) {
+		t.Fatalf("queue reordered/rewrote references: %v", refs)
 	}
 	after, err := os.ReadFile(input)
 	if err != nil || !bytes.Equal(original, after) {
 		t.Fatal("materialize rewrote the canonical source")
+	}
+}
+
+func TestSchMaterializeRejectsUnsafeWiringWithoutOverwritingPlan(t *testing.T) {
+	dir := t.TempDir()
+	input, output := filepath.Join(dir, "input.json"), filepath.Join(dir, "plan.json")
+	raw, _ := json.Marshal(materializeBindingFixture())
+	if err := os.WriteFile(input, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	const existing = "reviewed plan"
+	if err := os.WriteFile(output, []byte(existing), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd := newSchMaterializeCmd(&stdout, &stderr)
+	cmd.SetArgs([]string{input, "--with-connectivity", "--out", output})
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("unsafe wiring accepted")
+	}
+	after, err := os.ReadFile(output)
+	if err != nil || string(after) != existing || stdout.Len() != 0 {
+		t.Fatal("rejected wiring emitted or overwrote a queue")
 	}
 }
 

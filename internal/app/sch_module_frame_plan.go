@@ -150,8 +150,7 @@ func powerLayoutContentObstacles(plan *powerLayoutPlan) []layoutBBox {
 	}
 	for _, c := range plan.Placements {
 		boxes = append(boxes, layoutBBox{MinX: c.BBox.MinX, MinY: c.BBox.MinY - 20, MaxX: c.BBox.MaxX, MaxY: c.BBox.MaxY + 15})
-		labelWidth := math.Max(plPowerTextWidth(c.Designator), plPowerTextWidth(c.Value))
-		boxes = append(boxes, layoutBBox{MinX: c.BBox.MaxX, MinY: c.BBox.MinY - 20, MaxX: c.BBox.MaxX + 10 + labelWidth, MaxY: c.BBox.MaxY + 15})
+		boxes = append(boxes, libPartLabelBoxes(c)...)
 		for _, p := range c.Pins {
 			// Include the complete pin stem, not just the outer connection point.
 			bx := math.Max(c.BBox.MinX, math.Min(c.BBox.MaxX, p.X))
@@ -178,21 +177,9 @@ func powerLayoutContentObstacles(plan *powerLayoutPlan) []layoutBBox {
 			y -= f.Offset
 		}
 		segment(f.PinX, f.PinY, x, y)
-		// Measured ground glyph reaches 31.5 units beyond its anchor. Reserve 40
-		// plus net-name width, including rotated local VOUT labels.
-		dx, dy := math.Max(15, plPowerTextWidth(f.Net)/2), 40.0
-		if f.Direction == "left" || f.Direction == "right" {
-			dx, dy = dy, dx
-		}
-		if isNetPortKind(f.Kind) {
-			// Netports have a hexagon followed by an external name. Their
-			// occupancy cannot use the compact power-flag text envelope.
-			dx, dy = acPortTotalLen(f.Net)+10, 12
-			if f.Direction == "up" || f.Direction == "down" {
-				dx, dy = dy, dx
-			}
-		}
-		boxes = append(boxes, layoutBBox{MinX: x - dx, MinY: y - dy, MaxX: x + dx, MaxY: y + dy})
+		// Share the collision model: symbols occupy the outward side only.
+		// A symmetric radius incorrectly doubles the port's reserved length.
+		boxes = append(boxes, schTerminalMarkerBoxes(f)...)
 	}
 	return boxes
 }

@@ -55,11 +55,13 @@ func validateLibGeometry(p *powerLayoutPlan) error {
 		}
 	}
 	for i, c := range p.Placements {
-		label := libPartLabelReservation(c)
 		for _, other := range p.Placements[:i] {
-			otherLabel := libPartLabelReservation(other)
-			if boxesGapOverlap(label, other.BBox, 5) || boxesGapOverlap(otherLabel, c.BBox, 5) || boxesGapOverlap(label, otherLabel, 5) {
-				return fmt.Errorf("component label reservation collision: %s/%s", c.Designator, other.Designator)
+			for _, label := range libPartLabelBoxes(c) {
+				for _, otherLabel := range libPartLabelBoxes(other) {
+					if boxesGapOverlap(label, other.BBox, 5) || boxesGapOverlap(otherLabel, c.BBox, 5) || boxesGapOverlap(label, otherLabel, 5) {
+						return fmt.Errorf("component label reservation collision: %s/%s", c.Designator, other.Designator)
+					}
+				}
 			}
 		}
 	}
@@ -127,4 +129,11 @@ func libMeasuredStems(p *powerLayoutPlan) ([]libMeasuredStem, error) {
 func libPartLabelReservation(c powerLayoutPlacement) layoutBBox {
 	width := math.Max(plPowerTextWidth(c.Designator), plPowerTextWidth(c.Value))
 	return layoutBBox{MinX: c.BBox.MaxX, MinY: c.BBox.MinY - 20, MaxX: c.BBox.MaxX + 10 + width, MaxY: c.BBox.MaxY + 15}
+}
+
+func libPartLabelBoxes(c powerLayoutPlacement) []layoutBBox {
+	if len(c.TextBBoxes) > 0 {
+		return c.TextBBoxes
+	}
+	return []layoutBBox{libPartLabelReservation(c)}
 }

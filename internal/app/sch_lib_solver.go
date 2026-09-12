@@ -2,16 +2,12 @@ package app
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/connectivity"
 )
-
-var errLibLayoutBudget = errors.New("candidate search budget exhausted")
 
 // The electrical graph and measured poses are immutable. Only translations,
 // routes and naming markers are searched, on a bounded five-raw grid.
@@ -175,60 +171,23 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 			}
 			hints[h.ComponentID] = h
 		}
-		core := measured[intent.CoreComponentID]
-		core = plTranslate(core, -core.X, -core.Y)
-		p := powerLayoutPlan{Placements: []powerLayoutPlacement{core}}
-		placed := map[string]powerLayoutPlacement{intent.CoreComponentID: core}
-		pending := []string{}
+		input := SchematicLayoutInput{SchemaVersion: 1, CoreComponentID: intent.CoreComponentID, NetPolicies: netPolicies, Attachments: intent.Peripherals}
 		for _, id := range members {
-			if id != intent.CoreComponentID {
-				pending = append(pending, id)
+			states := map[string]string{}
+			for _, pin := range byID[id].Pins {
+				if pin.NoConnected {
+					states[pin.Number] = "nc"
+				} else if pin.ConnectionState == "unconnected" {
+					states[pin.Number] = "unconnected"
+				}
 			}
+			input.Components = append(input.Components, SchematicLayoutComponent{ID: id, Measurement: measured[id], PinStates: states})
 		}
-		for len(pending) > 0 {
-			progress := false
-			var lastErr error
-			for i, id := range pending {
-				pairs, e := libAttachmentPairs(id, measured[id], hints[id], placed, members, netPolicies)
-				if e != nil {
-					return fail("%s: %v", id, e)
-				}
-				if len(pairs) == 0 {
-					continue
-				}
-				var next *powerLayoutPlan
-				for _, pair := range pairs {
-					next, lastErr = libPlacePeripheral(p, measured[id], pair, netPolicies, &budget)
-					if errors.Is(lastErr, errLibLayoutBudget) {
-						return fail("module %s component %s: %v; revise constraints or explicitly increase maxCandidates", intent.ID, id, lastErr)
-					}
-					if next != nil {
-						break
-					}
-				}
-				if next == nil {
-					continue
-				}
-				p = *next
-				placed[id] = p.Placements[len(p.Placements)-1]
-				pending = append(pending[:i], pending[i+1:]...)
-				progress = true
-				break
-			}
-			if !progress {
-				return fail("module %s cannot place %v in 400 raw outward / 200 raw lateral search (disconnected/cyclic attachment or collision): %v", intent.ID, pending, lastErr)
-			}
+		local, e := planSchematicLayoutWithBudget(input, &budget)
+		if e != nil {
+			return fail("module %s: %v", intent.ID, e)
 		}
-		p.Flags = nil
-		if err = libJoinDirectNets(&p, netPolicies); err != nil {
-			return fail("module %s: %v", intent.ID, err)
-		}
-		if err = libNameIslands(&p, netPolicies); err != nil {
-			return fail("module %s: %v", intent.ID, err)
-		}
-		if err = validateLibGeometry(&p); err != nil {
-			return fail("module %s: %v", intent.ID, err)
-		}
+		p := powerLayoutPlan{Placements: local.Placements, Wires: local.Wires, Flags: local.Flags}
 		result.Modules = append(result.Modules, schCompositionModule{ID: intent.ID, Title: intent.Title, Placements: p.Placements, Wires: p.Wires, Flags: p.Flags})
 	}
 	if len(seenModules) != len(modules) {
@@ -238,247 +197,4 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 		return fail("composition validation: %v", err)
 	}
 	return result, nil
-}
-
-type libAttachmentPair struct {
-	host, own powerLayoutPin
-	side      string
-	rank      int
-}
-
-func libAttachmentPairs(id string, own powerLayoutPlacement, hint libLayoutPeripheral, placed map[string]powerLayoutPlacement, order []string, policies map[string]string) ([]libAttachmentPair, error) {
-	if hint.PinNumber != "" {
-		if _, ok := libPin(own, hint.PinNumber); !ok {
-			return nil, fmt.Errorf("unknown peripheral pin %s", hint.PinNumber)
-		}
-	}
-	if hint.AttachTo != nil {
-		if _, ok := placed[hint.AttachTo.ComponentID]; !ok {
-			return nil, nil
-		}
-	}
-	pairs := []libAttachmentPair{}
-	for _, hostID := range order {
-		host, ok := placed[hostID]
-		if !ok {
-			continue
-		}
-		if hint.AttachTo != nil && hint.AttachTo.ComponentID != hostID {
-			continue
-		}
-		foundPin := hint.AttachTo == nil
-		for _, hp := range host.Pins {
-			if hint.AttachTo != nil && hp.Number != hint.AttachTo.PinNumber {
-				continue
-			}
-			foundPin = true
-			if hp.Net == "" {
-				continue
-			}
-			if hint.AttachTo == nil && policies[hp.Net] == "local_ground" {
-				continue
-			}
-			side, err := libPinSide(hp, host.BBox)
-			if err != nil {
-				return nil, err
-			}
-			for _, op := range own.Pins {
-				if op.Net == "" || hp.Net != op.Net || (hint.PinNumber != "" && hint.PinNumber != op.Number) {
-					continue
-				}
-				rank := 0
-				if policies[hp.Net] == "local_power" {
-					rank = 1
-				}
-				pairs = append(pairs, libAttachmentPair{hp, op, side, rank})
-			}
-		}
-		if !foundPin {
-			return nil, fmt.Errorf("unknown attachTo pin %s.%s", hostID, hint.AttachTo.PinNumber)
-		}
-	}
-	if hint.AttachTo != nil && len(pairs) == 0 {
-		return nil, fmt.Errorf("attachTo has no shared connected pin on %s", id)
-	}
-	// A reference chooses geometry, not electrical intent. Multiple already-
-	// connected candidates are legal; authored member/pin order breaks ties.
-	sort.SliceStable(pairs, func(i, j int) bool { return pairs[i].rank < pairs[j].rank })
-	return pairs, nil
-}
-
-func libPlacePeripheral(current powerLayoutPlan, measured powerLayoutPlacement, pair libAttachmentPair, policies map[string]string, budget *int) (*powerLayoutPlan, error) {
-	current.Flags = nil // Marker reservations are recalculated for each candidate.
-	var lastErr error
-	// Minimize connection length first; prefer straight candidates at equal cost.
-	for cost := 20.0; cost <= 600; cost += 5 {
-		for lateral := 0.0; lateral <= math.Min(200, cost-20); lateral += 5 {
-			distance := cost - lateral
-			if distance > 400 {
-				continue
-			}
-			for _, sign := range []float64{1, -1} {
-				if lateral == 0 && sign < 0 {
-					continue
-				}
-				if *budget <= 0 {
-					return nil, errLibLayoutBudget
-				}
-				*budget -= 1
-				x, y := endpointFor(pair.host.X, pair.host.Y, distance, pair.side)
-				if pair.side == "left" || pair.side == "right" {
-					y += sign * lateral
-				} else {
-					x += sign * lateral
-				}
-				c := plTranslate(measured, x-pair.own.X, y-pair.own.Y)
-				trial := current
-				trial.Placements = append(append([]powerLayoutPlacement{}, current.Placements...), c)
-				if lastErr = validateLibGeometry(&trial); lastErr != nil {
-					continue
-				}
-				q, _ := libPin(c, pair.own.Number)
-				for _, route := range libRoutes(pair.host, q) {
-					candidate := trial
-					candidate.Wires = libAppendRoute(current.Wires, route)
-					if lastErr = validateLibGeometry(&candidate); lastErr != nil {
-						continue
-					}
-					if lastErr = libNameIslands(&candidate, policies); lastErr != nil {
-						continue
-					}
-					return &candidate, nil
-				}
-			}
-		}
-	}
-	return nil, lastErr
-}
-
-// Each island needs exactly one real naming lead. Local rail policies permit
-// multiple islands; a direct net is joined before this function's final call.
-type libIsland struct {
-	net  string
-	pins []powerLayoutPin
-}
-
-func libIslands(p *powerLayoutPlan) []libIsland {
-	parent := make([]int, len(p.Wires))
-	for i := range parent {
-		parent[i] = i
-	}
-	var root func(int) int
-	root = func(i int) int {
-		for parent[i] != i {
-			parent[i] = parent[parent[i]]
-			i = parent[i]
-		}
-		return i
-	}
-	for i, w := range p.Wires {
-		for j, v := range p.Wires[:i] {
-			if w.Net == v.Net && plSegmentsMeet(w.Points[0], w.Points[1], v.Points[0], v.Points[1]) {
-				parent[root(i)] = root(j)
-			}
-		}
-	}
-	indices := map[string]int{}
-	islands := []libIsland{}
-	for _, c := range p.Placements {
-		for _, q := range c.Pins {
-			if q.Net == "" {
-				continue
-			}
-			key := fmt.Sprintf("%q:pin:%g,%g", q.Net, q.X, q.Y)
-			for i, w := range p.Wires {
-				if w.Net == q.Net && plOnSegment([2]float64{q.X, q.Y}, w.Points[0], w.Points[1]) {
-					key = fmt.Sprintf("%q:wire:%d", q.Net, root(i))
-					break
-				}
-			}
-			index, ok := indices[key]
-			if !ok {
-				index = len(islands)
-				indices[key] = index
-				islands = append(islands, libIsland{net: q.Net})
-			}
-			islands[index].pins = append(islands[index].pins, q)
-		}
-	}
-	return islands
-}
-
-func libNameIslands(p *powerLayoutPlan, policies map[string]string) error {
-	p.Flags = nil
-	islands := libIslands(p)
-	// Ground constraints are tighter than signal naming at dense core pins.
-	sort.SliceStable(islands, func(i, j int) bool {
-		return policies[islands[i].net] == "local_ground" && policies[islands[j].net] != "local_ground"
-	})
-	for _, island := range islands {
-		kind := "net_port_bi"
-		if policies[island.net] == "local_ground" {
-			kind = "ground"
-		}
-		if policies[island.net] == "local_power" {
-			kind = "power"
-		}
-		found := false
-		for _, q := range island.pins {
-			if libPlaceMarker(p, q, kind) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("net %s has no safe naming lead for island at pin %s (%g,%g)", island.net, island.pins[0].Number, island.pins[0].X, island.pins[0].Y)
-		}
-	}
-	return nil
-}
-
-func libJoinDirectNets(p *powerLayoutPlan, policies map[string]string) error {
-	for {
-		islands := libIslands(p)
-		type edge struct {
-			a, b   powerLayoutPin
-			length float64
-		}
-		edges := []edge{}
-		for i, a := range islands {
-			if policies[a.net] != "direct" && policies[a.net] != "module_port" {
-				continue
-			}
-			for _, b := range islands[:i] {
-				if a.net == b.net {
-					for _, x := range a.pins {
-						for _, y := range b.pins {
-							edges = append(edges, edge{x, y, math.Abs(x.X-y.X) + math.Abs(x.Y-y.Y)})
-						}
-					}
-				}
-			}
-		}
-		if len(edges) == 0 {
-			return nil
-		}
-		sort.SliceStable(edges, func(i, j int) bool { return edges[i].length < edges[j].length })
-		joined := false
-		for _, e := range edges {
-			for _, route := range libRoutes(e.a, e.b) {
-				trial := *p
-				trial.Wires = libAppendRoute(p.Wires, route)
-				if validateLibGeometry(&trial) == nil && len(libIslands(&trial)) < len(islands) {
-					*p = trial
-					joined = true
-					break
-				}
-			}
-			if joined {
-				break
-			}
-		}
-		if !joined {
-			return fmt.Errorf("cannot route direct net %s between measured pins without crossing obstacles; revise attachment or measured pose", edges[0].a.Net)
-		}
-	}
 }

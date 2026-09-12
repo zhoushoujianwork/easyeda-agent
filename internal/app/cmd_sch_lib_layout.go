@@ -11,15 +11,8 @@ import (
 	"github.com/zhoushoujianwork/easyeda-agent/internal/connectivity"
 )
 
-type libLayoutAttach struct {
-	ComponentID string `json:"componentId"`
-	PinNumber   string `json:"pinNumber"`
-}
-type libLayoutPeripheral struct {
-	ComponentID string           `json:"componentId"`
-	PinNumber   string           `json:"pinNumber,omitempty"`
-	AttachTo    *libLayoutAttach `json:"attachTo,omitempty"`
-}
+type libLayoutAttach = SchematicLayoutAttach
+type libLayoutPeripheral = SchematicLayoutPeripheral
 type libLayoutModule struct {
 	ID              string                `json:"id"`
 	Title           string                `json:"title"`
@@ -48,8 +41,11 @@ componentId, optional pinNumber and attachTo:{componentId,pinNumber}. The target
 may be a core or another module member; connection data must already agree.
 Peripherals may face perpendicular to their reference pin (e.g. shunt capacitors).
 Placement follows existing electrical branches; no connectivity or pose is invented. Search is bounded to
-400 raw outward distance and 200 raw lateral distance, ordered by shortest connection
-length then straightness. Optional maxCandidates limits the total search (default
+400 raw outward distance and 200 raw lateral distance, starting at 5 raw. Rail-only
+peripherals are scheduled first. At the shortest feasible attachment distance,
+compare total wire/lead length, segment count, axis alignment, then visible area.
+Nearby power/ground islands try safe direct/L joins up to 80 raw before naming;
+markers are assigned ground, power, then signals. Optional maxCandidates limits the total search (default
 20000, range 1..1000000). Unresolved input fails
 without writing output. Output is a validated source for sch compose. Naming markers are local for power
 and ground islands; direct/module_port nets form an actual wire tree.
@@ -169,131 +165,4 @@ func decodeLibLayout(raw []byte) (libLayoutSource, error) {
 		}
 	}
 	return src, nil
-}
-
-func libPinSide(p powerLayoutPin, b layoutBBox) (string, error) {
-	var found []string
-	for _, d := range []string{"left", "right", "up", "down"} {
-		if schTerminalPointsOutward(p, b, d) {
-			found = append(found, d)
-		}
-	}
-	if len(found) != 1 {
-		return "", fmt.Errorf("pin %s has ambiguous/unknown measured outward side", p.Number)
-	}
-	return found[0], nil
-}
-func libPin(c powerLayoutPlacement, n string) (powerLayoutPin, bool) {
-	for _, p := range c.Pins {
-		if p.Number == n {
-			return p, true
-		}
-	}
-	return powerLayoutPin{}, false
-}
-
-// Bounded route alternatives: straight, then the two one-bend Manhattan paths.
-func libRoutes(a, b powerLayoutPin) [][]powerLayoutWire {
-	if a.Net == "" || a.Net != b.Net {
-		return nil
-	}
-	if a.X == b.X && a.Y == b.Y {
-		return [][]powerLayoutWire{{}}
-	}
-	wire := func(x, y [2]float64) powerLayoutWire { return powerLayoutWire{Net: a.Net, Points: [][2]float64{x, y}} }
-	s, t := [2]float64{a.X, a.Y}, [2]float64{b.X, b.Y}
-	if a.X == b.X || a.Y == b.Y {
-		return [][]powerLayoutWire{{wire(s, t)}}
-	}
-	m1, m2 := [2]float64{b.X, a.Y}, [2]float64{a.X, b.Y}
-	return [][]powerLayoutWire{{wire(s, m1), wire(m1, t)}, {wire(s, m2), wire(m2, t)}}
-}
-
-// Marker leads may branch off the already connected same-net tree.
-func libPlaceMarker(p *powerLayoutPlan, q powerLayoutPin, kind string) bool {
-	var body layoutBBox
-	for _, c := range p.Placements {
-		for _, cp := range c.Pins {
-			if cp == q {
-				body = c.BBox
-			}
-		}
-	}
-	side, e := libPinSide(q, body)
-	if e != nil {
-		return false
-	}
-	segments, e := schTerminalSegments(p)
-	if e != nil {
-		return false
-	}
-	directions := []string{side, "up", "down", "left", "right"}
-	if kind == "ground" {
-		directions = []string{"down", side, "left", "right", "up"}
-	}
-	if kind == "power" {
-		directions = []string{"up", side, "left", "right", "down"}
-	}
-	seen := map[string]bool{}
-	for _, direction := range directions {
-		if seen[direction] {
-			continue
-		}
-		seen[direction] = true
-		for offset := 10.0; offset <= 300; offset += 5 {
-			f := powerLayoutFlag{Net: q.Net, Kind: kind, PinX: q.X, PinY: q.Y, Direction: direction, Offset: offset}
-			if schTerminalCandidate(p, f, segments) == nil {
-				candidate := *p
-				candidate.Flags = append(append([]powerLayoutFlag(nil), p.Flags...), f)
-				if validateLibGeometry(&candidate) == nil {
-					p.Flags = candidate.Flags
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// Merge same-net collinear intervals, including a new segment that bridges two
-// old ones. Rebuild slices so searching a candidate cannot mutate its parent.
-func libAppendRoute(existing, route []powerLayoutWire) []powerLayoutWire {
-	out := make([]powerLayoutWire, len(existing))
-	for i, w := range existing {
-		out[i] = w
-		out[i].Points = append([][2]float64(nil), w.Points...)
-	}
-	for _, w := range route {
-		w.Points = append([][2]float64(nil), w.Points...)
-		for i := 0; i < len(out); {
-			old := out[i]
-			if old.Net == w.Net && len(w.Points) == 2 && len(old.Points) == 2 {
-				a, b, c, d := w.Points[0], w.Points[1], old.Points[0], old.Points[1]
-				horizontal := a[1] == b[1] && a[1] == c[1] && a[1] == d[1]
-				vertical := a[0] == b[0] && a[0] == c[0] && a[0] == d[0]
-				if (horizontal || vertical) && plSegmentsMeet(a, b, c, d) {
-					axis := 0
-					if vertical {
-						axis = 1
-					}
-					lo, hi := a, a
-					for _, point := range [][2]float64{b, c, d} {
-						if point[axis] < lo[axis] {
-							lo = point
-						}
-						if point[axis] > hi[axis] {
-							hi = point
-						}
-					}
-					w.Points = [][2]float64{lo, hi}
-					out = append(out[:i], out[i+1:]...)
-					i = 0 // The extended interval may now reach an earlier segment.
-					continue
-				}
-			}
-			i++
-		}
-		out = append(out, w)
-	}
-	return out
 }

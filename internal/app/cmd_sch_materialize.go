@@ -25,6 +25,9 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "将 1.4 原理图数据转换为器件放置 Apply 队列",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if withConnectivity {
+				return fmt.Errorf("--with-connectivity 已停用：逐脚 connect_pin 缺少碰撞规划及接线前几何验证，可能短接相邻引脚；请使用 sch lib-layout → sch compose --before <snapshot> --playbook <apply>，materialize 仅用于基础放置")
+			}
 			raw, err := os.ReadFile(args[0])
 			if err != nil {
 				return err
@@ -60,10 +63,6 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 			}
 			stepTimeout := 90
 			pb := playbook{Version: 1, Meta: playbookMeta{Name: "sch-materialize", Description: "Materialize 1.4 connectivity components", Project: d.ProjectID, Doc: d.DocumentID}, Defaults: stepPolicy{TimeoutSec: &stepTimeout}, Steps: []playbookStep{}}
-			byID := map[string]connectivity.Component{}
-			for _, c := range d.Components {
-				byID[c.ID] = c
-			}
 			pageOrder := []string{}
 			pages := map[string][]connectivity.Component{}
 			for _, c := range d.Components {
@@ -95,39 +94,13 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 						return fmt.Errorf("%s placement anchor (%.4f, %.4f) 不在 5-unit schematic grid；先在 1.4 数据中吸附坐标再 Apply", c.Ref, c.Placement.X, c.Placement.Y)
 					}
 					placePayload := map[string]any{"libraryUuid": c.Device.LibraryUUID, "uuid": c.Device.UUID, "x": c.Placement.X, "y": c.Placement.Y, "designator": c.Ref}
-					if c.Placement.Rotation != 0 {
-						placePayload["rotation"] = c.Placement.Rotation
-					}
-					if c.Placement.Mirror {
-						placePayload["mirror"] = true
-					}
 					pb.Steps = append(pb.Steps, playbookStep{ID: "place-" + c.Ref, Name: "place " + c.Ref, Action: "schematic.component.place", Payload: placePayload, Capture: map[string]string{c.Ref: "$.primitiveId"}})
 					patch, assertions := schComponentBinding(c)
+					// Creation and stored rotation differ in EasyEDA. Apply the
+					// measured pose absolutely through modify, as compose does.
+					patch["rotation"] = c.Placement.Rotation
+					patch["mirror"] = c.Placement.Mirror
 					pb.Steps = append(pb.Steps, playbookStep{ID: "bind-" + c.Ref, Name: "bind " + c.Ref, Action: "schematic.component.modify", Payload: map[string]any{"primitiveId": "${" + c.Ref + "}", "patch": patch}, Assert: assertions})
-				}
-				if withConnectivity {
-					for _, edge := range d.Connections {
-						comp := byID[edge.ComponentID]
-						if comp.PageID != page {
-							continue
-						}
-						var pin connectivity.Pin
-						for _, p := range comp.Pins {
-							if p.Number == edge.PinNumber {
-								pin = p
-								break
-							}
-						}
-						kind := "net_port_bi"
-						if n := findNet(d, edge.NetID); n != nil {
-							if n.Name == "GND" || n.Name == "AGND" {
-								kind = "ground"
-							} else if n.Role == "power" || n.Name == "+3V3" || n.Name == "+5V" {
-								kind = "power"
-							}
-						}
-						pb.Steps = append(pb.Steps, playbookStep{ID: "connect-" + comp.Ref + "-" + pin.Number, Name: "connect " + comp.Ref + "." + pin.Number, Action: "schematic.power.connect_pin", Payload: map[string]any{"pinX": pin.X, "pinY": pin.Y, "kind": kind, "net": findNetName(d, edge.NetID)}})
-					}
 				}
 				pb.Steps = append(pb.Steps, playbookStep{ID: "save-" + page, Action: "schematic.save", Checkpoint: true})
 			}
@@ -145,7 +118,7 @@ func newSchMaterializeCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&out, "out", "", "write playbook to a file instead of stdout")
-	c.Flags().BoolVar(&withConnectivity, "with-connectivity", false, "also emit pin-to-net connect_pin steps (use on an empty target page)")
+	c.Flags().BoolVar(&withConnectivity, "with-connectivity", false, "disabled: unsafe per-pin wiring; use sch lib-layout and sch compose")
 	c.Flags().StringVar(&onlyPage, "page", "", "materialize only one page by page name or UUID")
 	return c
 }

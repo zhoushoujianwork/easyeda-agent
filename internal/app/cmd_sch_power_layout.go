@@ -41,6 +41,7 @@ type powerLayoutPlacement struct {
 	Rotation    float64          `json:"rotation"`
 	Mirror      bool             `json:"mirror"`
 	BBox        layoutBBox       `json:"bbox"`
+	TextBBoxes  []layoutBBox     `json:"textBboxes,omitempty"`
 	Pins        []powerLayoutPin `json:"pins"`
 }
 
@@ -435,6 +436,10 @@ func plPowerCapRightReach(c powerLayoutPlacement) float64 {
 }
 
 func plTranslate(c powerLayoutPlacement, dx, dy float64) powerLayoutPlacement {
+	c.TextBBoxes = append([]layoutBBox(nil), c.TextBBoxes...)
+	for i, b := range c.TextBBoxes {
+		c.TextBBoxes[i] = layoutBBox{b.MinX + dx, b.MinY + dy, b.MaxX + dx, b.MaxY + dy}
+	}
 	c.X += dx
 	c.Y += dy
 	c.BBox.MinX += dx
@@ -471,6 +476,12 @@ func plRotate(c powerLayoutPlacement, quarters int) powerLayoutPlacement {
 		b.MaxY = math.Max(b.MaxY, y)
 	}
 	c.BBox = b
+	c.TextBBoxes = append([]layoutBBox(nil), c.TextBBoxes...)
+	for i, box := range c.TextBBoxes {
+		x1, y1 := rotate(box.MinX, box.MinY)
+		x2, y2 := rotate(box.MaxX, box.MaxY)
+		c.TextBBoxes[i] = layoutBBox{math.Min(x1, x2), math.Min(y1, y2), math.Max(x1, x2), math.Max(y1, y2)}
+	}
 	c.Rotation = math.Mod(c.Rotation+float64(quarters)*90, 360)
 	return c
 }
@@ -487,6 +498,9 @@ func plVertical(c powerLayoutPlacement) (powerLayoutPlacement, error) {
 }
 
 func validatePowerLayout(plan *powerLayoutPlan, sheet layoutBBox) error {
+	if err := validatePlacementText(plan, sheet); err != nil {
+		return err
+	}
 	for i, c := range plan.Placements {
 		if !plGrid(c.X) || !plGrid(c.Y) || !boxInside(c.BBox, sheet) {
 			return fmt.Errorf("%s: planned component outside sheet or off-grid", c.Designator)

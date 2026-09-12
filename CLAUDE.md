@@ -1,5 +1,9 @@
 # easyeda-agent
 
+## 项目工作流记忆
+
+布局验证交付遵循 [.claude/memory/workflow.md](.claude/memory/workflow.md)，固定编译布局图，当前不自动打印差异图解。
+
 AI-native automation layer for **EasyEDA Pro (嘉立创EDA专业版)**. A skill drives a
 Go daemon, which dispatches typed schematic actions to a connector extension
 running inside EasyEDA, which calls the official `eda.*` API.

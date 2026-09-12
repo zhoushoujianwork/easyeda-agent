@@ -8,6 +8,9 @@ import (
 // Reuse the same calibrated marker bodies and text bands as the live checker.
 // A module's overall envelope alone cannot reveal two labels inside it colliding.
 func compositionMarkerGeometry(p *powerLayoutPlan) ([]layoutBBox, error) {
+	if err := validatePlacementText(p, layoutBBox{-math.MaxFloat64, -math.MaxFloat64, math.MaxFloat64, math.MaxFloat64}); err != nil {
+		return nil, err
+	}
 	comps := []layoutComp{}
 	for _, c := range p.Placements {
 		c := c

@@ -63,6 +63,10 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
 
 ## 1.4 原理图主流程
 
+逐芯片分区：每个独立功能核心及其专属外围独立 zone；普通数据不必注册为 Lib。
+`sch layout-plan --zones` 离线计算显式分区，各区分别交 compose 生成独立框；
+字段与尚未覆盖的自动归属边界见 [schematic-data.md](references/schematic-data.md)。
+
 **先确定连接数据，再计算几何，最后转换与回读。** 新设计依据具体型号的数据手册和典型电路；
 已有图先导出 `sch connectivity`，未知引脚或网不能靠截图推断。
 器件参数按 [part-selection.md](references/part-selection.md) 留存来源原文和单位换算；
@@ -73,6 +77,8 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
   端子也不强制改为 `J`。不从 ID 反推 ref，不覆盖原生 `uniqueId`。
 - 按功能组织 Lib：核心器件加外围，以真实短线连接。VCC/GND 可局部重复放置；
   标签用于电源或模块边界，不替代连接图。多引脚同功能（例如 AMS1117 双 VOUT）逐脚核对。
+- 普通器件集合可用 `sch layout-plan` 直接计算局部布局，无需先建 Lib；它与 `lib-layout`
+  共用纯计算内核。局部结果不包含身份/纸张/现场验收，不能直接作为 Apply 队列。
 - 复用前先查 `library/modules/catalog.json`。`draft` 只表示已有脱敏功能证据，不能直接绘图；
   `topology_ready` 可转成实例连接核心；只有 `compose_ready` 且通过目录审计的资产才能直接交给
   `sch compose`。Block 是可参数化的拓扑配方，不是 Lib 实例或运行时布局层。
@@ -94,6 +100,11 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
 `sch plan` 只支持明确的标记连接增量；目标同时取消该脚 NC 并新增明确标记连接时，
 队列先清该脚 NC、核对中间状态，再连接并回读；禁止单独清 NC 或跳步执行。
 `materialize` 只负责基础放置，不能代替完整 Lib 组合。
+
+布局拥挤先判断是局部几何问题还是纸张容量不足，再明确选择分页或放大纸张；
+具体决策与恢复步骤见 [容量不足处理](references/schematic-placement.md#容量不足处理)。
+已授权分页可直接执行。当前没有可靠的纸张尺寸修改 API；选择放大纸张时，告知用户
+目标页和所需尺寸，请用户在编辑器修改，随后重新读取纸张几何再继续。
 原理图 `sch autolayout` 与 PCB 自动布线是不同功能，按各自参考使用。
 
 ## 执行与验证约束
@@ -116,6 +127,9 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
   丝印极性和制造规则要求；详见 PCB 流程。阻塞错误、未评估的 WARN 或未运行的项目不能记为通过。
 
 ## 验证交付
+
+本地预览使用固定 `sch layout-render --from render.json --out layout.svg`，不再临时生成
+绘图脚本。当前只输出布局图，不打印差异图解；输入和能力边界见 schematic-data.md。
 
 说明修改范围、源数据与实际图面的差异、验证结果、已保存页面及尚未解决的问题。
 `layout-lint` 检查几何，pin→net 黄金表检查接对与否，`sch gate --strict` 汇总原理图门禁。
