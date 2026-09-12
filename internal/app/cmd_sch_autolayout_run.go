@@ -366,19 +366,12 @@ func requireActionDocument(res *actionResult, targetUUID, phase string) error {
 func requestAutolayoutAction(cfg *appConfig, action, window string, payload any, targetUUID, phase string) (*actionResult, error) {
 	// 队列阻塞的等待在 requestActionTimed 里统一做(见 queue_blocked_retry.go)——
 	// 那是唯一的底层出口,--doc guard 的 pages.list 也从那里走,恢复段才穿得过去。
-	res, err := requestAction(cfg, action, window, payload)
-	if err != nil {
-		if res != nil {
-			if contextErr := requireActionDocument(res, targetUUID, phase); contextErr != nil {
-				return res, fmt.Errorf("%v; additionally, %w", err, contextErr)
-			}
-		}
-		return res, err
+	timeout := defaultActionTimeout
+	if action == "schematic.power.connect_pin" {
+		// Every layout/recovery caller shares the same budget as sch connect.
+		timeout = acConnectPinTimeout
 	}
-	if err := requireActionDocument(res, targetUUID, phase); err != nil {
-		return res, err
-	}
-	return res, nil
+	return requestAutolayoutActionTimed(cfg, action, window, payload, timeout, targetUUID, phase)
 }
 
 func requestAutolayoutActionTimed(cfg *appConfig, action, window string, payload any, timeout time.Duration, targetUUID, phase string) (*actionResult, error) {

@@ -82,6 +82,9 @@ func TestCheckQueueBlocked_BypassReadIsNeverRefused(t *testing.T) {
 		t.Fatal("probe must start")
 	}
 	now = now.Add(queueBlockGrace * 3)
+	// A stalled queued read alone cannot prove bypass responsiveness.
+	p := s.queueBlocks.probes["w1"]
+	s.queueBlocks.recordBypass("w1", p, true)
 
 	// document.current is the ONLY observation left during a wedge (it bypasses the
 	// connector FIFO). Refusing it would blind the one instrument that works.

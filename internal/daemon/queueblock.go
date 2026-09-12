@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
@@ -30,8 +31,8 @@ import (
 //
 // 只要一条**旁路读**(document.current,不进 FIFO)还秒回,而一条**入队的轻读**
 // (project.current,进 FIFO)已经悬了超过 queueBlockGrace 还没回,那么队列堵死
-// 就是被证明的事实 —— 不是启发式:轻读本身恒定廉价(p50 3ms),它唯一可能慢的
-// 原因就是前面有人挡着。
+// 有了近期旁路成功的证据。旁路失败/未知/过期时仍阻止新请求灌入，但返回
+// CONNECTOR_HEALTH_UNVERIFIED；不能断言 socket/editor 健康，也不自动等待队列。
 //
 // 于是:
 //   - 一条 FIFO 动作在 daemon 预算上超时 → 立刻挂一根**探针**(project.current),
@@ -64,7 +65,10 @@ const (
 	// queueProbeMaxLife 兜住探针本身:队列若长时间不通,探针到点自行结束、状态
 	// 解除,下一条 FIFO 动作重新试一次(失败则重新挂探针)。没有它,一次永不
 	// resolve 的队首会让这个窗口**永远**处于拒绝态。
-	queueProbeMaxLife = 5 * time.Minute
+	queueProbeMaxLife   = 5 * time.Minute
+	queueBypassTimeout  = time.Second
+	queueBypassInterval = 2 * time.Second
+	queueBypassMaxAge   = 5 * time.Second
 )
 
 // queueProbe 是一根在飞的队列探针。
@@ -76,6 +80,9 @@ type queueProbe struct {
 	blockerID     string
 	// blockedSince 是那条动作超时的时刻(比探针早一个预算,报出来更贴近人的感受)。
 	blockedSince time.Time
+	// Only an actual successful bypass response is evidence of responsiveness.
+	bypassOK bool
+	bypassAt time.Time
 }
 
 // queueBlockTracker 记录每个窗口是否有在飞的队列探针。
@@ -123,8 +130,8 @@ func (t *queueBlockTracker) endProbe(windowID string) {
 	t.mu.Unlock()
 }
 
-// blocked 报告该窗口的 FIFO 队列是否**被证明**堵死:有探针在飞,且它已经悬过了
-// queueBlockGrace。返回的 probe 供构造点名用的错误信息。
+// blocked 报告入队探针是否悬过 queueBlockGrace。返回快照中的 bypassOK
+// 进一步区分近期旁路成功和健康度未知；入队读超时本身不能证明旁路正常。
 func (t *queueBlockTracker) blocked(windowID string) (*queueProbe, time.Duration, bool) {
 	if t == nil || windowID == "" {
 		return nil, 0, false
@@ -139,7 +146,20 @@ func (t *queueBlockTracker) blocked(windowID string) (*queueProbe, time.Duration
 	if waited < queueBlockGrace {
 		return nil, 0, false
 	}
-	return p, waited, true
+	// Return a value snapshot: the bypass observer updates the live record.
+	snapshot := *p
+	snapshot.bypassOK = p.bypassOK && !p.bypassAt.IsZero() && t.now().Sub(p.bypassAt) <= queueBypassMaxAge
+	return &snapshot, waited, true
+}
+
+func (t *queueBlockTracker) recordBypass(windowID string, probe *queueProbe, ok bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.probes[windowID] != probe {
+		return // Ignore a result from a retired probe or an earlier connection.
+	}
+	probe.bypassOK = ok
+	probe.bypassAt = t.now()
 }
 
 // queueBlockedResponse 构造拒绝回执。措辞必须停在可证边界内并给出**能执行的
@@ -148,6 +168,12 @@ func (t *queueBlockTracker) blocked(windowID string) (*queueProbe, time.Duration
 // queueBlockedResponse 构造拒绝回执。**message 必须自带全部要点** —— CLI 的
 // requestAction 只把 message 交给上层,detail 会被丢掉。
 func queueBlockedResponse(reqID string, p *queueProbe, waited time.Duration, blockedFor time.Duration) protocol.Response {
+	if p == nil || !p.bypassOK {
+		return errorResponse(reqID, "CONNECTOR_HEALTH_UNVERIFIED",
+			"queued read unanswered after "+describeBlocker(p)+" — this action was NOT sent; do NOT re-issue the write. Bypass health is unverified; bring EasyEDA to the FOREGROUND and check document.current before continuing",
+			"The queued project.current probe has been unanswered for "+waited.Round(100*time.Millisecond).String()+
+				", but no recent successful BYPASS document.current response is available. This does not distinguish a blocked FIFO from an unresponsive editor. If the bypass read remains unresponsive, restart EasyEDA, then read back earlier writes before retrying. Automatic queue waiting is not justified.")
+	}
 	return errorResponse(reqID,
 		"CONNECTOR_QUEUE_BLOCKED",
 		"the connector's action queue is blocked by "+describeBlocker(p)+" for "+
@@ -155,7 +181,7 @@ func queueBlockedResponse(reqID string, p *queueProbe, waited time.Duration, blo
 			" — this action was NOT sent; do NOT re-issue the write (the wedged handler is still running and its effect may land later)",
 		"proof: a light QUEUED read (project.current, normally ~3ms) has been unanswered for "+
 			waited.Round(100*time.Millisecond).String()+
-			", while the BYPASS read document.current still answers — so the socket, the editor and the eda.* bridge are all fine; only the per-window FIFO is stuck behind "+
+			", while a recent BYPASS read document.current succeeded. Queued reads remain stalled after "+
 			describeBlocker(p)+". Next step: wait — the daemon re-checks by itself and this refusal stops the moment the queue drains. If it never drains, bring the EasyEDA window to the FOREGROUND (background windows are where handlers wedge) and restart EasyEDA; then verify what actually landed with a read before re-issuing anything.")
 }
 
@@ -208,7 +234,8 @@ func (s *Server) armQueueProbe(target *conn, req *protocol.Request, dispatchErr 
 		return
 	}
 	windowID := req.WindowID
-	if _, started := s.queueBlocks.beginProbe(windowID, req.Action, req.ID, s.queueBlocks.now()); !started {
+	probe, started := s.queueBlocks.beginProbe(windowID, req.Action, req.ID, s.queueBlocks.now())
+	if !started {
 		return
 	}
 	go func() {
@@ -219,6 +246,9 @@ func (s *Server) armQueueProbe(target *conn, req *protocol.Request, dispatchErr 
 		}
 		ctx, cancel := context.WithTimeout(base, queueProbeMaxLife)
 		defer cancel()
+		// The bypass must run concurrently: waiting for the FIFO first would
+		// prevent us from ever observing an editor while its queue is stalled.
+		go s.observeQueueBypass(ctx, windowID, probe, req.ID, target.dispatch)
 		p := protocol.Request{
 			Envelope: protocol.Envelope{
 				ID:        req.ID + "_qblock",
@@ -234,6 +264,29 @@ func (s *Server) armQueueProbe(target *conn, req *protocol.Request, dispatchErr 
 				windowID, queueProbeMaxLife, describeBlocker(&queueProbe{blockerAction: req.Action, blockerID: req.ID}))
 		}
 	}()
+}
+
+func (s *Server) observeQueueBypass(ctx context.Context, windowID string, probe *queueProbe, requestID string, dispatch dispatchFn) {
+	for attempt := 0; ; attempt++ {
+		if ctx.Err() != nil {
+			return
+		}
+		readCtx, cancel := context.WithTimeout(ctx, queueBypassTimeout)
+		response, err := dispatch(readCtx, protocol.Request{
+			Envelope: protocol.Envelope{ID: requestID + "_qblock_bypass_" + strconv.Itoa(attempt), Type: protocol.TypeRequest,
+				Version: "v1", WindowID: windowID, CreatedAt: time.Now().UTC()},
+			Action: "document.current", TimeoutMs: int(queueBypassTimeout / time.Millisecond),
+		})
+		cancel()
+		s.queueBlocks.recordBypass(windowID, probe, err == nil && response != nil && response.OK)
+		timer := time.NewTimer(queueBypassInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
 }
 
 // isTimeoutErr reports whether a dispatch error is "the connector never answered"

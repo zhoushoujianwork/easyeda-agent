@@ -11619,12 +11619,22 @@ const viewRegion: Handler = async (payload) => {
  */
 const debugExecJs: Handler = async (payload) => {
 	const code = requireString(payload, 'code');
+	let fn: (eda: unknown) => Promise<unknown>;
 	let value: unknown;
 	try {
 		const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as {
 			new (arg: string, body: string): (eda: unknown) => Promise<unknown>;
 		};
-		const fn = new AsyncFunction('eda', code);
+		fn = new AsyncFunction('eda', code);
+	}
+	catch (err) {
+		// Construction has no access to eda and never executes the user's code.
+		// Do not echo the script: it can contain credentials or private design data.
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'exec_js script could not be compiled; no code was executed. Fix JavaScript syntax and shell/JSON escaping before retrying.',
+			describeThrown(err));
+	}
+	try {
 		value = await fn(eda);
 	}
 	catch (err) {

@@ -112,6 +112,18 @@ Playbook 使用 `version:1`、`meta` 和有序 `steps`。每步只选一种执�
 需要底层方法时先 `easyeda api search <query>`。typed action 尚缺的行为可临时探测，
 验证后再实现 CLI；不把重复 debug 脚本积累成生产流程。
 
+`debug exec` 的脚本编译失败返回 `PRECONDITION_REFUSED`，说明代码未执行：修正语法与
+命令行转义后再提交，不原样重试。执行阶段抛错仍按 `EDA_CALL_FAILED` 处理，即使异常名为
+SyntaxError；执行可能已经产生修改，必须回读。语法拒绝不计入连接器健康度。
+
+队列拒绝只有在入队探针仍未返回、且近期旁路 `document.current` 成功时才使用
+`CONNECTOR_QUEUE_BLOCKED`，CLI 可有界等待。旁路结果未知、过期或失败时返回
+`CONNECTOR_HEALTH_UNVERIFIED`，停止自动等待，先切前台并检查旁路读取；持续不响应时
+按恢复流程重启并回读。两种拒绝均未派发当前动作，不代表此前超时的写入没有落地。
+
+布局路径的 `connect_pin` 与 `sch connect/autoconnect` 共用 35 秒请求预算，包含 daemon 的
+2 秒回执余量。该预算不保证宿主一定完成；超时仍须回读，不能自动认定创建失败并重发。
+
 ## 外部工程导入边界
 
 Altium Designer `.SchDoc` / `.PcbDoc` 当前没有可用的 typed action。官方 beta

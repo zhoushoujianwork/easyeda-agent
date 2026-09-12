@@ -14,8 +14,9 @@ import (
 )
 
 type autolayoutTestCall struct {
-	Action  string
-	Payload map[string]any
+	Action    string
+	Payload   map[string]any
+	TimeoutMs int
 }
 
 type autolayoutTestDaemon struct {
@@ -40,15 +41,16 @@ func newAutolayoutTestDaemon(t *testing.T, responder func(int, autolayoutTestCal
 			_, _ = w.Write([]byte(`{"service":"easyeda-agent","windows":[{"windowId":"w1"}]}`))
 		case "/action":
 			var body struct {
-				Action  string         `json:"action"`
-				Payload map[string]any `json:"payload"`
+				Action    string         `json:"action"`
+				Payload   map[string]any `json:"payload"`
+				TimeoutMs int            `json:"timeoutMs"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Errorf("decode action request: %v", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			call := autolayoutTestCall{Action: body.Action, Payload: body.Payload}
+			call := autolayoutTestCall{Action: body.Action, Payload: body.Payload, TimeoutMs: body.TimeoutMs}
 			state.mu.Lock()
 			state.calls = append(state.calls, call)
 			idx := len(state.calls) - 1

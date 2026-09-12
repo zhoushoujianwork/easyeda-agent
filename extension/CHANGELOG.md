@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Use the shared 35-second connect-pin request budget in schematic layout and recovery callers (#205).
+- Observe actual, bounded bypass reads before diagnosing a blocked connector queue; missing, failed or stale evidence stops automatic queue waiting (#209).
+- Classify debug script compilation failures as non-mutating request refusals; preserve execution failures, including runtime SyntaxError, as possible partial writes (#211).
+- These changes have offline regression coverage; live EDA acceptance and release are pending.
+
 ## [1.4.9-dev.1] — 2026-09-12 (local development only)
 
 - Add offline local package installation and content-verified runtime checks; no tag or upload.

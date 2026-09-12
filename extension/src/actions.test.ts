@@ -31,6 +31,30 @@ import {
 
 // ─── document.open: keep navigation on a known editor split ──────────────
 
+test('exec_js compile rejection never runs even the valid prefix', async (t) => {
+	const globals = globalThis as any;
+	const previous = globals.eda;
+	let writes = 0;
+	globals.eda = { write: () => { writes++; } };
+	t.after(() => { globals.eda = previous; });
+	await assert.rejects(runAction('debug.exec_js', {
+		code: 'eda.write(); return String(1)===\\"sheet\\";',
+	}), (err: any) => err.code === 'PRECONDITION_REFUSED' && /no code was executed/.test(err.message));
+	assert.equal(writes, 0);
+});
+
+test('exec_js runtime SyntaxError remains a possible partial write', async (t) => {
+	const globals = globalThis as any;
+	const previous = globals.eda;
+	let writes = 0;
+	globals.eda = { write: () => { writes++; } };
+	t.after(() => { globals.eda = previous; });
+	await assert.rejects(runAction('debug.exec_js', {
+		code: 'eda.write(); throw new SyntaxError("runtime parse failed");',
+	}), (err: any) => err.code === 'EDA_CALL_FAILED');
+	assert.equal(writes, 1);
+});
+
 function installDocumentOpenStub(t: { after: (fn: () => void) => void }, options: {
 	split?: string;
 	splitFails?: boolean;
