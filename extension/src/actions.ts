@@ -1007,6 +1007,9 @@ export const schematicComponentsList: Handler = async (payload) => {
 	// requests/pages. Individual identity resolution still validates its own entry.
 	let nativeFootprintInventory: Promise<NativeFootprintInventory> | undefined;
 	const getNativeFootprints = () => nativeFootprintInventory ??= loadNativeFootprintInventory(identityReadContext);
+	// Request-local only: ref/position do not affect identity, but every resolver
+	// input (including instance provenance and stable name) must match exactly.
+	const identityCache = new Map<string, DeviceResolution>();
 	const serialized: Array<Record<string, unknown>> = [];
 	for (const component of components) {
 		const record = serializeComponent(component);
@@ -1016,7 +1019,12 @@ export const schematicComponentsList: Handler = async (payload) => {
 			// A valid library uuid is already authoritative; only resolve the
 			// suspicious instance-shaped identity to avoid needless API calls.
 			if (rawUuid.length !== 32) {
-				const resolved = await resolvePlacedDevice(record, getNativeFootprints);
+				const identityKey = JSON.stringify([record.device, record.component, record.footprint, record.name, record.supplierId, record.manufacturerId]);
+				let resolved = identityCache.get(identityKey);
+				if (!resolved) {
+					resolved = await resolvePlacedDevice(record, getNativeFootprints);
+					identityCache.set(identityKey, resolved);
+				}
 				if (resolved.device) {
 					record.placedDevice = rawDevice;
 					record.device = {
@@ -5519,15 +5527,15 @@ async function loadNativeFootprintInventory(expectedContext?: { projectUuid?: st
 		let entries: unknown;
 		let documentError = '';
 		try {
-			entries = await eda.sys_FileManager.getDocumentFootprintSources();
+			entries = await withTimeout(eda.sys_FileManager.getDocumentFootprintSources(), 7000, 'identity getDocumentFootprintSources timed out after 7000ms');
 		} catch (err) { documentError = describeThrown(err); }
 		if (!Array.isArray(entries) || entries.length === 0) {
 			// The SDK's document-footprint API returns [] in schematic editors.
 			// The official current-project epro2 archive retains DOCHEAD/META.source.
 			if (typeof eda.sys_FileManager?.getProjectFile !== 'function') return { error: `official footprint source inventory unavailable; project export unavailable${documentError ? ` (${documentError})` : ''}` };
-			const archive = await eda.sys_FileManager.getProjectFile('easyeda-agent-identity.epro2', undefined, 'epro2');
+			const archive = await withTimeout(eda.sys_FileManager.getProjectFile('easyeda-agent-identity.epro2', undefined, 'epro2'), 10000, 'identity getProjectFile timed out after 10000ms');
 			if (!archive) return { error: 'official project export did not return a source archive' };
-			entries = await readProjectFootprintSourceArchive(archive, before.documentUuid);
+			entries = await withTimeout(readProjectFootprintSourceArchive(archive, before.documentUuid), 7000, 'identity source archive decoding timed out after 7000ms');
 		}
 		if (!Array.isArray(entries) || entries.length > 2048) return { error: 'official footprint source inventory is incomplete or exceeds 2048 entries' };
 		const after = await readResponseContext();
@@ -5572,7 +5580,7 @@ async function resolveInstanceFootprintDevice(
 	let raw: Array<Record<string, unknown>>;
 	try {
 		// Without allowMultiMatch=true the API may hide an equally valid device.
-		const queried = await eda.lib_Device.getByLcscIds([supplierId], undefined, true);
+		const queried = await withTimeout(eda.lib_Device.getByLcscIds([supplierId], undefined, true), 7000, `identity getByLcscIds ${supplierId} timed out after 7000ms`);
 		if (!Array.isArray(queried)) return failure('complete LCSC candidate inventory unavailable');
 		raw = queried as unknown as Array<Record<string, unknown>>;
 	} catch (err) {
@@ -5597,7 +5605,7 @@ async function resolveInstanceFootprintDevice(
 		}
 		let detail: Record<string, unknown>;
 		try {
-			detail = identityRecord(await eda.lib_Device.get(hit.uuid as string, hit.libraryUuid as string));
+			detail = identityRecord(await withTimeout(eda.lib_Device.get(hit.uuid as string, hit.libraryUuid as string), 7000, `identity device.get ${hit.uuid} timed out after 7000ms`));
 		} catch (err) {
 			unresolvedEvidence.push(`device.get ${hit.uuid} failed: ${describeThrown(err)}`);
 			continue;

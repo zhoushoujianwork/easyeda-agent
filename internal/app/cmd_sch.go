@@ -509,7 +509,7 @@ not permission to substitute a similar symbol.`,
 		c.Flags().StringVar(&page, "page", "", "switch to this page (name|uuid), wait for it to settle, then list — makes the page an explicit parameter instead of relying on the active tab (issue #67)")
 		c.Flags().BoolVar(&stay, "stay", false, "with --page, stay on the target page after listing instead of switching back")
 		c.Flags().BoolVar(&includeWires, "include-wires", false, "include existing wire segment geometry for composition comparison")
-		c.Flags().BoolVar(&includeDeviceIdentity, "include-device-identity", false, "resolve exact 32-character device-library identity for replay and composition guards")
+		c.Flags().BoolVar(&includeDeviceIdentity, "include-device-identity", false, "resolve exact 32-character device-library identity for replay and composition guards (60s request budget)")
 		c.Flags().BoolVar(&includeBBox, "include-bbox", false, "attach each component's rendered extent {minX,minY,maxX,maxY}")
 		c.Flags().BoolVar(&includePins, "include-pins", false, "attach each pin's {pinName,pinNumber,x,y,noConnected,net} — the data plane for routing/connectivity checks (net is the pin's current authoritative net, null when the netlist is unavailable; output grows, esp. with --all-pages)")
 		sch.AddCommand(c)

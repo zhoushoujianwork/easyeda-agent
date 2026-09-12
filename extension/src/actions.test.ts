@@ -11,6 +11,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import JSZip from 'jszip';
+import { sweepDeadlines } from './deadlines';
 
 import {
 	connectPinEndpoint,
@@ -2643,6 +2644,41 @@ test('device identity: native inventory is fetched once per list and refreshed o
 	mock.sch_PrimitiveComponent.getAll = async () => [mockComponent(mock.state), mockComponent({ ...mock.state, Designator: 'U2' })];
 	await readInstanceIdentity(mock); await readInstanceIdentity(mock);
 	assert.equal(mock.calls.filter((c: any) => c[0] === 'getDocumentFootprintSources').length, 2);
+	assert.equal(mock.calls.filter((c: any) => c[0] === 'getByLcscIds').length, 2, 'identical parts share proof only within one request');
+	assert.equal(mock.calls.filter((c: any) => c[0] === 'get').length, 2);
+});
+
+test('device identity: cache never merges different instance provenance or model evidence', async () => {
+	for (const change of [
+		{ Footprint: { uuid: '0123456789abcdef', libraryUuid: identityLibrary, name: identityPackage } },
+		{ ManufacturerId: 'other-model' },
+		{ Name: 'other-name' },
+		{ Component: { uuid: 'abcdef0123456789', libraryUuid: identityLibrary, name: 'other-source' } },
+	]) {
+		const mock = instanceIdentityEda();
+		mock.sch_PrimitiveComponent.getAll = async () => [mockComponent(mock.state), mockComponent({ ...mock.state, ...change, Designator: 'U2' })];
+		(globalThis as any).eda = mock;
+		try {
+			const res: any = await schematicComponentsList({ includeDeviceIdentity: true });
+			const second = res.result.components[1];
+			if ('Footprint' in change || 'ManufacturerId' in change) assert.ok(second.deviceIdentityError);
+			else assert.equal(mock.calls.filter((c: any) => c[0] === 'getByLcscIds').length, 2);
+		} finally { delete (globalThis as any).eda; }
+	}
+});
+
+test('device identity: hung candidate query reports its stage without hydrating or waiting forever', async () => {
+	const mock = instanceIdentityEda();
+	let started!: () => void;
+	const entered = new Promise<void>(resolve => { started = resolve; });
+	mock.lib_Device.getByLcscIds = () => { started(); return new Promise(() => {}); };
+	const read = readInstanceIdentity(mock);
+	await entered;
+	sweepDeadlines(Date.now() + 8000);
+	const part = await read;
+	assert.match(part.deviceIdentityError, /getByLcscIds.*timed out/);
+	assert.equal(part.device.uuid, '6e8a0f3cb342d055');
+	assert.equal(part.deviceResolution, undefined);
 });
 
 test('device identity: schematic empty source API falls back to the official current-project epro2 archive', async () => {

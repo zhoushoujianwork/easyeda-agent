@@ -831,6 +831,7 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	if timeout <= 0 {
 		timeout = defaultActionTimeout
 	}
+	timeout = schematicIdentityReadTimeout(action, payload, timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
