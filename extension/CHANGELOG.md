@@ -1,13 +1,29 @@
 # Changelog
 
-## [Unreleased]
+## [1.5.0] — 2026-09-12
 
+### Added
+
+- Expose reusable, library-independent schematic layout calculation and deterministic SVG rendering through `sch layout-plan` and `sch layout-render`.
+- Add isolated zone repair, consistent sheet/zone padding, stable Z-order packing, bounded same-page alternatives, and orientation candidates for compact layouts. Compile approved page placements without silently repacking them.
+- Add a sanitized public reusable-module catalog with explicit `draft`, `topology_ready`, and `compose_ready` readiness checks. Source exercises, reference drawings, private instance identities and local drafts are not release assets.
+- Support verified offline development packages through `update --local-dir`, exact development-runtime checks, and Makefile targets for installed local daemon restart and validation.
+
+### Fixed
+
+- Bound and reuse request-local device identity reads in the Connector, preserving strict provenance checks and a dedicated CLI response budget.
+- Preserve direct-net constraints during dense-pin naming retries; compact marker leads and module frames; normalize floating-point arithmetic tails without hiding meaningful geometry changes.
+- Use the correct net-port action kind when materializing schematic data.
 - Preserve the intended eight-second place execution window plus response grace, retain structured dispatch errors, and advise readback before retrying placement on either HTTP or daemon deadline failures (#213).
-
 - Use the shared 35-second connect-pin request budget in schematic layout and recovery callers (#205).
 - Observe actual, bounded bypass reads before diagnosing a blocked connector queue; missing, failed or stale evidence stops automatic queue waiting (#209).
 - Classify debug script compilation failures as non-mutating request refusals; preserve execution failures, including runtime SyntaxError, as possible partial writes (#211).
-- These changes have offline regression coverage; live EDA acceptance and release are pending.
+
+### Upgrade and validation scope
+
+- This release includes Connector runtime changes. Upgrade CLI/daemon and Skill together, and install a **1.5.x Connector**; a 1.4.x Connector is outside the new compatibility line. The Connector UUID remains unchanged.
+- The automated release checks cover Go, Connector, Skill data and packaging, plus native installation smoke tests. They do not replace live electrical-design or complete requirement-to-four-layer-PCB acceptance; the full board regression was not rerun for this release.
+- Official schematic image export returned no file in a live EasyEDA 3.2.186 session, including for an unchanged original symbol. The cause of this session-specific export failure remains unresolved; this release does not claim an export fix or completed button-symbol replacement.
 
 ## [1.4.9-dev.1] — 2026-09-12 (local development only)
 

@@ -5,7 +5,7 @@ license: MIT
 compatibility: "Requires the local easyeda CLI/daemon and EasyEDA Agent Connector with Allow external interaction enabled. Python 3 is used by bundled helpers; online library lookup and updates need network access."
 metadata:
   author: zhoushoujianwork
-  version: "1.4.9-dev.1"
+  version: "1.5.0"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 

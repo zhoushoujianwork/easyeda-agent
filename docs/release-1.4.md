@@ -1,9 +1,9 @@
 # 1.4 发布与验证
 
-当前维护版本为 **v1.4.5**。CLI/daemon、EDA Agent Connector 与
-`easyeda-agent` Skill 使用同一版本；EasyEDA Pro 是运行宿主。发布状态与下载以
-[GitHub Release](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.4.5)
-为准，变更明细见 [Changelog](../extension/CHANGELOG.md)。
+本页保留 1.4 系列的设计与历史验证记录。当前版本以
+[GitHub Latest Release](https://github.com/zhoushoujianwork/easyeda-agent/releases/latest)
+为准；1.5 的升级说明见 [1.5 发布与验证](release-1.5.md)，变更明细见
+[Changelog](../extension/CHANGELOG.md)。
 
 ## 版本升级与保留规则
 
