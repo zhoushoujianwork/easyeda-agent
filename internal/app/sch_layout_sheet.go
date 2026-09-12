@@ -17,6 +17,7 @@ type SchematicRenderSheet struct {
 	Padding      float64        `json:"padding"`
 	Gap          float64        `json:"gap"`
 	BorderSource string         `json:"borderSource,omitempty"`
+	Flow         string         `json:"flow,omitempty"`
 }
 type SchematicSheetsPreview struct {
 	SchemaVersion        int                    `json:"schemaVersion"`
@@ -121,6 +122,9 @@ func validateSheetSpec(s *SchematicRenderSheet) error {
 	if s == nil || !plBoxValid(s.Bounds) || !plBoxValid(s.Border) || !boxInside(s.Border, s.Bounds) || !plFinite(s.Padding) || s.Padding < 10 || !plFinite(s.Gap) || s.Gap < 10 || s.Keepouts == nil {
 		return fmt.Errorf("sheet requires valid bounds/border, explicit keepouts, padding/gap >= 10 raw")
 	}
+	if s.Flow != "" && s.Flow != "z" && s.Flow != "compact" {
+		return fmt.Errorf("sheet.flow must be z or compact")
+	}
 	if s.Bounds.MaxX-s.Bounds.MinX > 5000 || s.Bounds.MaxY-s.Bounds.MinY > 5000 {
 		return fmt.Errorf("sheet exceeds preview search bounds")
 	}
@@ -158,6 +162,9 @@ func validateSchematicSheet(in SchematicRenderInput) error {
 		}
 		placed = append(placed, r)
 	}
+	if in.Sheet.Flow == "z" {
+		return validateSchematicZSheet(in)
+	}
 	return nil
 }
 
@@ -168,6 +175,15 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 	in, err = resolveSchematicRenderSpacing(in)
 	if err != nil {
 		return nil, err
+	}
+	// Planning adopts Z flow by default; an omitted flow on an existing render
+	// remains a legacy-compatible validation mode. Never stamp the caller's sheet.
+	if in.Sheet != nil {
+		sheet := *in.Sheet
+		if sheet.Flow == "" {
+			sheet.Flow = "z"
+		}
+		in.Sheet = &sheet
 	}
 	if e := validateSheetSpec(in.Sheet); e != nil {
 		return nil, e
@@ -208,10 +224,9 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 			out.BlockedZones = append(out.BlockedZones, z.ID)
 		}
 	}
-	// Existing positions are a page-level layout hint, not electrical coordinates.
-	// Reuse the entire valid page so editing the inside of one unchanged rectangle
-	// never needlessly moves its neighbors. A grown/conflicting rectangle falls
-	// back to deterministic packing, which still cannot alter local layouts.
+	// Existing positions are page-level hints, not electrical coordinates. Z
+	// mode only reuses its exact canonical result; compact mode may reuse any
+	// complete valid page. Neither path alters immutable local layouts.
 	allPositioned := true
 	for _, z := range zones {
 		if z.SheetPosition == nil {
@@ -221,6 +236,21 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 		if !plGrid(z.SheetPosition.X) || !plGrid(z.SheetPosition.Y) {
 			return nil, fmt.Errorf("zone %s requires finite grid-aligned sheetPosition", z.ID)
 		}
+	}
+	if in.Sheet.Flow == "z" {
+		in.Spacing = out.Spacing
+		pages, err := planSchematicZSheets(in, zones)
+		if err != nil {
+			return nil, err
+		}
+		out.Pages = pages
+		if allPositioned && len(pages) == 1 && sameSchematicSheetPositions(zones, pages[0].Zones) {
+			out.PlacementMode = "reused"
+		}
+		for i := range out.Pages {
+			out.Pages[i].Title = fmt.Sprintf("%s · %d/%d", in.Title, i+1, len(out.Pages))
+		}
+		return out, nil
 	}
 	if allPositioned {
 		page := in

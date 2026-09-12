@@ -115,7 +115,10 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
 原理图 `sch autolayout` 与 PCB 自动布线是不同功能，按各自参考使用。
 
 两层布局：`layout-plan --zones` 只求解各区内部，失败可回退已放外围再接线；
-`layout-sheet-plan` 只平移完整区框，不重排区内器件。统一模式在输入顶层声明 `spacing`，
+`layout-sheet-plan` 只平移完整区框，默认 Z 型：按功能顺序从左到右、同行顶齐，
+按该行最高框换行，不回填前面空洞或已结束页；不重排区内器件。
+同页集合整体换页，软相邻不能打乱 Z 型；旧自由装箱仅显式 `--flow compact` 使用。
+统一模式在输入顶层声明 `spacing`，
 同源控制框内、框间和页边净距；保留旧模式兼容，具体字段和预算见 schematic-data。
 拥挤时可将完整功能子电路拆区，核心不限于 IC；不要单独剥离其专属电容/电阻。
 用 zone 的 placement.samePageAs 声明硬同页、preferAdjacent 声明软相邻；拆后对账连接并

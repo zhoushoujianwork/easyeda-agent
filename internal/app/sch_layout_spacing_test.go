@@ -197,6 +197,7 @@ func TestSheetUniformSpacingRejectsConflictsAndDoesNotResizeFrames(t *testing.T)
 
 func TestSheetReusesValidPositionsAndRepackagesGrownFrames(t *testing.T) {
 	in := uniformSheetFixture(t)
+	in.Sheet.Flow = "compact" // Arbitrary legal coordinates are only reusable in free-packing mode.
 	first, err := PlanSchematicSheets(in)
 	if err != nil {
 		t.Fatal(err)

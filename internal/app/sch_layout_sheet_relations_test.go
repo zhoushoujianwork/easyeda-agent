@@ -18,7 +18,8 @@ func relationZone(id string, width, height float64) SchematicRenderZone {
 }
 
 func relationSheet(width, height float64, zones ...SchematicRenderZone) SchematicRenderInput {
-	return SchematicRenderInput{SchemaVersion: 1, Title: "Relations", Zones: zones, Sheet: &SchematicRenderSheet{Bounds: SchematicBox{0, 0, width, height}, Border: SchematicBox{0, 0, width, height}, Keepouts: []SchematicBox{}, Padding: 10, Gap: 10}}
+	// These fixtures exercise the opt-in free-packing search, not Z reading order.
+	return SchematicRenderInput{SchemaVersion: 1, Title: "Relations", Zones: zones, Sheet: &SchematicRenderSheet{Bounds: SchematicBox{0, 0, width, height}, Border: SchematicBox{0, 0, width, height}, Keepouts: []SchematicBox{}, Padding: 10, Gap: 10, Flow: "compact"}}
 }
 
 func TestSheetSamePageRelationsAreTransitiveCyclicAndAtomic(t *testing.T) {

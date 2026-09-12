@@ -21,7 +21,7 @@ Also accepts layout-plan --zones output. Optional zone frame is preserved.
 Only translates supplied geometry; never solves or fabricates missing wires.
 Simplified symbols/text are not official EasyEDA graphics or electrical checks.
 Without sheet: display-only zone packing. With sheet: honor exact sheetPosition
-and check padding, zone gaps and keepouts; no reflow. Output is SVG.
+and check padding, zone gaps, keepouts and explicit sheet.flow:z; no reflow. Output is SVG.
 --zone validates references in the full input, then renders standalone detail
 without sheet placement constraints (not an entire-page validation).
 
@@ -98,14 +98,19 @@ without sheet placement constraints (not an entire-page validation).
 }
 
 func newSchLayoutSheetPlanCmd(stdout io.Writer) *cobra.Command {
-	var from, out string
+	var from, out, flow string
 	var diagnostic bool
-	c := &cobra.Command{Use: "layout-sheet-plan", Short: "Pack existing zone geometry into sheet previews offline (no Apply)", Long: `Input: layout-render JSON plus sheet:{bounds,border,keepouts,padding,gap}.
+	c := &cobra.Command{Use: "layout-sheet-plan", Short: "Pack existing zone geometry into sheet previews offline (no Apply)", Long: `Input: layout-render JSON plus sheet:{bounds,border,keepouts,padding,gap,flow?}.
 Units are raw (0.01 inch); padding/gap >= 10. Keeps symbol scale and internal
-connections unchanged. Tries four deterministic orders; not globally optimal.
+connections unchanged. Default flow:z preserves functional order, left-to-right,
+top-aligned rows, then down by the tallest frame plus gap. Never backfills holes
+under shorter frames or earlier pages. Same-page groups gather at their earliest
+input member, preserve member order, and move to a new page atomically.
+Explicit flow:compact retains the legacy free-packing search. --flow overrides
+sheet.flow. Neither mode guarantees minimum page count.
 Optional top-level spacing unifies zone inner padding, sheet padding and zone gap.
 Optional zone placement:{samePageAs:<zone ID>,preferAdjacent?:true} keeps related
-zones on one page, preferring neighboring rectangles without changing circuits.
+zones on one page; adjacency preference cannot override the selected reading flow.
 Outputs pages[] accepted by layout-render. Incomplete zones require --diagnostic.
 Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if from == "" || out == "" {
@@ -132,6 +137,15 @@ Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs,
 		if e = validateRenderMeasurementsJSON(raw); e != nil {
 			return e
 		}
+		if cmd.Flags().Changed("flow") {
+			if flow != "z" && flow != "compact" {
+				return fmt.Errorf("--flow must be z or compact")
+			}
+			if in.Sheet == nil {
+				return fmt.Errorf("sheet required for --flow")
+			}
+			in.Sheet.Flow = flow
+		}
 		if !diagnostic {
 			if e = validateCompleteLayoutPreview(in); e != nil {
 				return e
@@ -150,6 +164,7 @@ Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs,
 	}}
 	c.Flags().StringVar(&from, "from", "", "zone layouts with sheet constraints JSON")
 	c.Flags().StringVar(&out, "out", "", "page plan JSON output")
+	c.Flags().StringVar(&flow, "flow", "z", "reading flow: z or compact; overrides sheet.flow only when explicitly supplied")
 	c.Flags().BoolVar(&diagnostic, "diagnostic", false, "explicitly pack incomplete diagnostics, not a completed layout")
 	return c
 }
@@ -166,6 +181,12 @@ func validateRenderSheetJSON(raw []byte) error {
 	var sheet map[string]json.RawMessage
 	if e := json.Unmarshal(b, &sheet); e != nil {
 		return e
+	}
+	if rawFlow, present := sheet["flow"]; present {
+		var flow string
+		if json.Unmarshal(rawFlow, &flow) != nil || (flow != "z" && flow != "compact") {
+			return fmt.Errorf("explicit sheet.flow must be z or compact")
+		}
 	}
 	if len(top["spacing"]) != 0 && string(top["spacing"]) != "null" {
 		var spacing float64
