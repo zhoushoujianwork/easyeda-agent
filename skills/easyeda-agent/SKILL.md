@@ -71,7 +71,8 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
 ## 1.4 原理图主流程
 
 逐芯片分区：每个独立功能核心及其专属外围独立 zone；普通数据不必注册为 Lib。
-`sch layout-plan --zones` 离线计算显式分区，各区分别交 compose 生成独立框；
+`sch layout-plan --zones` 离线计算显式分区；已确认的纸张页用 `compose --layout-page`
+保留整套选中几何、框与位置，再生成受保护队列，不重新排版；
 字段与尚未覆盖的自动归属边界见 [schematic-data.md](references/schematic-data.md)。
 
 **先确定连接数据，再计算几何，最后转换与回读。** 新设计依据具体型号的数据手册和典型电路；
@@ -98,6 +99,8 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
   标题与内容净距 **5 raw**。标题可放上下空档；本版本不生成独立 Notes。
 - 生成 `sch apply` 队列前读取目标页新鲜快照。覆盖不同图面用 `compose --replace`，
   该路径会清目标页并保留纸张，必须在用户已授权重建的范围内使用。
+  已确认 `layout-sheet-plan` 效果时同时传 `--layout-page page.json`；先核对纸张、连接与库身份，
+  不使用默认 compose 的 10 raw 重排覆盖选中页的 spacing，不手改队列坐标。
 - 完整执行队列，回读全部 pin→net/NC、器件身份、线段及模块框；运行检查并显式保存。
   连接正确与布局可读都要验证，不能以截图或单个 DRC 数字代替数据对账。
 

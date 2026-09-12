@@ -50,7 +50,7 @@ type schCompositionPlan struct {
 }
 
 func newSchComposeCmd(stdout, stderr io.Writer) *cobra.Command {
-	var from, out, before, playbookOut string
+	var from, out, before, playbookOut, layoutPage string
 	var replace bool
 	c := &cobra.Command{Use: "compose", Short: "Compose authored Lib circuits onto one sheet and compile a guarded SCH Apply", Long: `Read schemaVersion:1 composition data containing connectivity (complete 1.4 IR),
 sheet, keepouts and ordered modules (id/title/placements/wires/flags/terminals).
@@ -72,9 +72,17 @@ device-library identity, pins, bbox and wire inventory). Rebuilding
 a differing target requires --replace; an already matching target produces only
 verification/frame steps. Apply always verifies pins before drawing wires.
 Other pages may contain different parts; duplicate designators are refused before mutation.
+Optional --layout-page consumes one selected layout-sheet-plan page. It verifies
+the source modules, canonical membership/pin intent and exact paper evidence, then
+preserves the supplied frames, titles, spacing and Z positions by rigid translation.
+It never reruns placement or chooses variants. A complete selected page without
+variants and explicit source sheetBorder/keepouts are required.
 No automatic pagination, symbol scaling or source-page deletion is performed.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if from == "" {
 			return fmt.Errorf("--from is required")
+		}
+		if err := validateSchCompositionOutputPaths([]string{from, before, layoutPage}, []string{out, playbookOut}); err != nil {
+			return err
 		}
 		raw, err := os.ReadFile(from)
 		if err != nil {
@@ -92,7 +100,21 @@ No automatic pagination, symbol scaling or source-page deletion is performed.`, 
 		if err = validateSchCompositionBorderJSON(raw); err != nil {
 			return err
 		}
-		plan, err := planSchComposition(source)
+		var page *SchematicRenderInput
+		if layoutPage != "" {
+			if err = validateSchCompositionPreplacedSourceJSON(raw); err != nil {
+				return err
+			}
+			pageRaw, e := os.ReadFile(layoutPage)
+			if e != nil {
+				return e
+			}
+			page, err = decodeSchCompositionLayoutPage(pageRaw)
+			if err != nil {
+				return err
+			}
+		}
+		plan, err := planSchCompositionWithPage(source, page)
 		if err != nil {
 			return err
 		}
@@ -140,10 +162,15 @@ No automatic pagination, symbol scaling or source-page deletion is performed.`, 
 	c.Flags().StringVar(&before, "before", "", "fresh target sch list snapshot with --include-device-identity --include-bbox --include-pins --include-wires")
 	c.Flags().StringVar(&playbookOut, "playbook", "", "also write ordered SCH Apply queue")
 	c.Flags().BoolVar(&replace, "replace", false, "compile a guarded reset of a differing target, preserving its sheet")
+	c.Flags().StringVar(&layoutPage, "layout-page", "", "selected complete layout-sheet-plan page: preserve its geometry, frames and spacing instead of repacking; requires matching source modules and explicit sheetBorder")
 	return c
 }
 
 func planSchComposition(src schCompositionSource) (*schCompositionPlan, error) {
+	return planSchCompositionWithPage(src, nil)
+}
+
+func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderInput) (*schCompositionPlan, error) {
 	// Never mutate the caller's canonical input through slices/pointers.
 	raw, _ := json.Marshal(src)
 	var cloned schCompositionSource
@@ -151,6 +178,11 @@ func planSchComposition(src schCompositionSource) (*schCompositionPlan, error) {
 		return nil, err
 	}
 	src = cloned
+	if page != nil {
+		if err := validateSchCompositionPreplaced(src, *page); err != nil {
+			return nil, err
+		}
+	}
 	d := src.Connectivity
 	if src.SchemaVersion != 1 || len(src.Modules) == 0 || !plBoxValid(src.Sheet) || d.ProjectID == "" || d.DocumentID == "" {
 		return nil, fmt.Errorf("composition requires schemaVersion:1, modules, sheet and target projectId/documentId")
@@ -205,10 +237,16 @@ func planSchComposition(src schCompositionSource) (*schCompositionPlan, error) {
 		}
 	}
 	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
+	if page != nil {
+		resolved, _ := resolveSchematicRenderSpacing(*page)
+		usable = sheetPreviewUsable(*resolved.Sheet)
+		result.UsableBounds = usable
+		result.PageMargin, result.ModuleGap = resolved.Sheet.Padding, resolved.Sheet.Gap
+	}
 	seen := map[string]bool{}
 	seenModules := map[string]bool{}
 	layouts := []powerLayoutPlan{}
-	for _, m := range src.Modules {
+	for moduleIndex, m := range src.Modules {
 		if seenModules[m.ID] || len(members[m.ID]) == 0 {
 			return nil, fmt.Errorf("missing/duplicate canonical module membership: %s", m.ID)
 		}
@@ -279,9 +317,14 @@ func planSchComposition(src schCompositionSource) (*schCompositionPlan, error) {
 		if err != nil {
 			return nil, fmt.Errorf("module %s: %w", m.ID, err)
 		}
-		frame, err := measureSchModuleFrameObstacles(m.ID, m.Title, obstacles, m.TitleMetrics, nil)
-		if err != nil {
-			return nil, err
+		var frame schFrameSpec
+		if page != nil {
+			frame = *page.Zones[moduleIndex].Frame
+		} else {
+			frame, err = measureSchModuleFrameObstacles(m.ID, m.Title, obstacles, m.TitleMetrics, nil)
+			if err != nil {
+				return nil, err
+			}
 		}
 		p.Frames = []schFrameSpec{frame}
 		// Local coordinates can be outside the eventual sheet until row placement.
@@ -294,7 +337,12 @@ func planSchComposition(src schCompositionSource) (*schCompositionPlan, error) {
 	if len(seen) != len(d.Components) || len(seenModules) != len(d.Modules) {
 		return nil, fmt.Errorf("composition must cover every IR component and module exactly once")
 	}
-	rows, err := planSchModuleRows(result.Layout.Frames, usable, 0, schModuleGap)
+	var rows []schModuleRowPlacement
+	if page != nil {
+		rows = schCompositionPreplacedRows(*page)
+	} else {
+		rows, err = planSchModuleRows(result.Layout.Frames, usable, 0, schModuleGap)
+	}
 	if err != nil {
 		return nil, err
 	}

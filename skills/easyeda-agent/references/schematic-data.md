@@ -52,6 +52,7 @@ FOOTPRINT `DOCHEAD` 和唯一 `META.source` 证明实例封装到库资产的出
 | 从实测引脚计算 Lib 内部 | `sch lib-layout --from layout-input.json --out composition.json`；核心与外围的连接图、实测姿态及网络绘制策略 → 局部器件位置/短线/标记，再交给 compose。 |
 | 非标准位号修复 | `sch designators allocate` 分配，`plan` 编译原地修改队列，`verify` 执行前后校验。 |
 | 完整 Lib 图面 | `sch compose`：完整连接核心与局部几何 → 单页布局与受保护 Apply。 |
+| 已确认的 Zone 单页 | `sch compose --layout-page page.json`：保持选中页的完整几何、框/标题、spacing 与 sheetPosition，仅转换坐标并生成相同守卫。 |
 | 基础放置 | `sch materialize`：已知库身份和 placement → 仅放件队列。它不是完整模块绘图器；`--with-connectivity` 已停用。 |
 | 明确的标记增量 | `sch plan before.json after.json`：仅新增 `power/ground/net_port_in/net_port_out/net_port_bi` 连接；对应脚原为 `unconnected` 时，目标移除此声明；原为 NC 时，目标须同时清 NC 并新增明确标记连接。其他器件/引脚/NC 变更、删网或重接均拒绝。 |
 | 只画框和标题 | `sch frame apply/check --from frames.json`；字段见 `sch frame --help` 与 [actions.md](actions.md)。 |
@@ -161,7 +162,8 @@ ref 引用也要按组件 ID 同步；不要对 JSON 做全局字符串替换，
 `layout-plan --zones` 生成具有该内边距的完整功能框，并将 spacing 带入输出；
 随后附加 sheet 给 `layout-sheet-plan`，省略 sheet.padding/gap 时二者由 P 派生，
 显式提供则必须等于 P，不能悄悄覆盖。相邻框只加一次 P，笔画半宽与网格取整另计，
-实际净距可略大于 P。spacing 不改变电气间距或引脚 pitch，也不自动修改旧 compose 契约。
+实际净距可略大于 P。spacing 不改变电气间距或引脚 pitch；已确认页通过 compose 的
+显式 `--layout-page` 保留 P，省略该参数的旧 compose 仍使用原 10 raw 契约。
 统一模式下 maxCandidates 是**每个 zone** 的独立搜索预算，candidatesUsed 为各区之和，
 防止改变一区的计算耗费影响其他区结果；显式 optimization 也启用每区独立预算。
 两者均省略的旧输入仍沿用整份共享预算。
@@ -230,7 +232,8 @@ flow 时只保持原有几何校验；规划器则默认生成显式 flow:z，�
 这是一页既有位置的复用，不是跨页迁移事务。已有 frame 不满足新的统一内边距时明确拒绝，
 须先重新生成该区的框；整页层不暗中改大框或缩放内容。
 红色 blocked 区仍未完成，不能把没有导线的占位区域当成电路验收或最终容量证明。
-合页预览不迁移 EDA 页面，不合并网、不生成 Apply；确认后仍需完整连接/身份/纸张守卫。
+合页预览不迁移 EDA 页面，不合并网、不生成 Apply；确认后用 `compose --layout-page`
+转换选中的单页，仍需完整连接/身份/纸张守卫。
 
 固定离线渲染入口：`sch layout-render --from render.json --out layout.svg`，可选 `--zone <id>`。
 输入 `schemaVersion:1,zones:[{id,title,status,layout}]`；layout 是局部布局输出，status 为
@@ -379,6 +382,24 @@ easyeda sch compose --from composition.json --out plan.json
 页边、框内最小边距、模块间距及标题内缩固定 10 raw，标题净距 5 raw；
 框为粉色 `#AA00AA` 虚线、无填充，标题为 20 raw。本版本无独立 Notes。
 它平移器件、引脚和线路，但不推断器件朝向或缩放符号。
+
+### 已确认页的固定转换
+
+`sch compose --from composition.json --layout-page page.json --out plan.json`
+消费 `layout-sheet-plan` 返回的单个 pages[] 对象。必须显式声明统一 spacing、flow:z、
+完整纸张/内框/禁放区，包含已选 layout/contentBounds/frame/sheetPosition，不能含 variants、
+blocked 或 diagnostic 数据。composition 的有序模块身份、标题、核心/成员、全部局部
+placements/wires/flags 必须与该页一致，不能有尚未求解的 terminals。
+source 与 page 的纸张、内框和禁放区须精确一致；实际 sheet bbox 另由 --before 守卫核实。
+内框、图签或文字若来自估计仍须保留来源，重复相同估计不等于官方测量。
+
+先复核原始必填坐标、canonical 引脚网络/NC、完整局部几何和 Z 型纸张约束，
+再按 `dx = sheetPosition.x - frame.rect.minX`、
+`dy = sheetPosition.y - frame.rect.maxY` 作唯一刚体平移（y-UP）。
+器件、引脚、文本 bbox、导线、标记、框、标题及标题障碍同步转换，不再选方向、缩框或重排。
+加入 `--before fresh.json --replace --playbook apply.json` 后仍使用原完整 Apply 生成器；
+拒绝输出覆盖输入或两个输出指向同一文件。此入口不创建页面，也不处理跨页迁移事务。
+若现场电路或纸张与预览不符，先重新核对/计算并展示改变后的效果，不手改队列或伪造回读。
 
 ## 从计算到现场
 

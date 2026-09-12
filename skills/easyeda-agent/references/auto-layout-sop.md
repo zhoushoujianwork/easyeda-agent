@@ -11,9 +11,9 @@
 ```bash
 easyeda doc ls --project <project> --json
 easyeda sch connectivity --all-pages --project <project> > project-connectivity.json
-easyeda sch list --project <project> --doc <page> \
+easyeda sch list --project <project> --page <page> --stay \
   --include-device-identity --include-pins --include-bbox --include-wires > page-before.json
-easyeda sch sheet-geometry --project <project> --doc <page> --json
+easyeda sch sheet-geometry --project <project> --json
 ```
 
 在副本中依据官方典型电路补齐器件、引脚和网络；修复非标准位号后再布局。
@@ -43,7 +43,21 @@ easyeda sch sheet-geometry --project <project> --doc <page> --json
 候选几何、框和连接必须整套选择；禁止在渲染脚本里旋转符号、缩框或用其他方案导线拼接。
 每页完整固定渲染与重复计算一致性验证通过后才交付本地效果，不证明 EDA 已 Apply。
 
-先用 `sch lib-layout` 计算每个 Lib 的局部几何，再组合到纸张；框按各自内容压缩上下空档，
+已确认 `layout-sheet-plan` 页时，将该页选中几何原样对应为 composition 的 modules，
+补齐同页 canonical 连接核心与新鲜身份/纸张证据；使用下列固定转换入口，不再次求解。
+page.json 是 pages[] 中的一页，不含候选包；间距、框、标题、位置均必须与预览一致。
+新鲜纸张或现场连接改变时先处理差异，不能改快照来匹配旧预览。
+
+```bash
+easyeda sch compose --from composition.json --layout-page page.json --out plan.json \
+  --before page-before.json --replace --playbook apply.json
+```
+
+该入口仅离线验证与刚体平移，仍复用完整受保护 Apply；不自动创建/合并/删除页面。
+转换功能仅在新源码中存在时，可离线编译但不能据此声称安装版已支持；实际执行前须用
+当前版本 CLI 完成队列 dry-run 和版本门禁，不能绕过运行时升级后的新会话要求。
+
+尚未确认纸张位置的 Lib 可用 `sch lib-layout` 计算局部几何，再用默认 compose 组合；框按各自内容压缩上下空档，
 按功能顺序排 Z 字行，同行顶齐，下一行按上一行最高框推进，不统一拉高。
 提供实测 `sheetBorder` 后，虚线笔画到红色图纸内框最少留 10 raw。
 标题使用粉色 0.2 inch，方框使用粉色虚线；当前不生成 Notes。
