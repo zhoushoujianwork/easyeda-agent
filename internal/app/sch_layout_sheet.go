@@ -20,15 +20,16 @@ type SchematicRenderSheet struct {
 	Flow         string         `json:"flow,omitempty"`
 }
 type SchematicSheetsPreview struct {
-	SchemaVersion        int                    `json:"schemaVersion"`
-	PreviewOnly          bool                   `json:"previewOnly"`
-	PlacementMode        string                 `json:"placementMode"`
-	Spacing              *float64               `json:"spacing,omitempty"`
-	ZoneCount            int                    `json:"zoneCount"`
-	BlockedZones         []string               `json:"blockedZones"`
-	FrameArea            float64                `json:"frameArea"`
-	UsableAreaUpperBound float64                `json:"usableAreaUpperBound"`
-	Pages                []SchematicRenderInput `json:"pages"`
+	SchemaVersion        int                          `json:"schemaVersion"`
+	PreviewOnly          bool                         `json:"previewOnly"`
+	PlacementMode        string                       `json:"placementMode"`
+	Spacing              *float64                     `json:"spacing,omitempty"`
+	ZoneCount            int                          `json:"zoneCount"`
+	BlockedZones         []string                     `json:"blockedZones"`
+	FrameArea            float64                      `json:"frameArea"`
+	UsableAreaUpperBound float64                      `json:"usableAreaUpperBound"`
+	Pages                []SchematicRenderInput       `json:"pages"`
+	VariantSearch        *SchematicSheetVariantSearch `json:"variantSearch,omitempty"`
 }
 
 // The optional top-level spacing is the only authority in unified mode.
@@ -194,8 +195,21 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 	if err := validateSheetZoneRelations(in.Zones); err != nil {
 		return nil, err
 	}
+	if err := validateSchematicZoneVariants(in); err != nil {
+		return nil, err
+	}
+	hasVariants := schematicSheetHasVariants(in.Zones)
+	if hasVariants && in.Sheet.Flow != "z" {
+		return nil, fmt.Errorf("zone variants require sheet.flow z; compact does not select variants")
+	}
 	validation := in
 	validation.Sheet = nil
+	if hasVariants {
+		validation.Zones = append([]SchematicRenderZone(nil), in.Zones...)
+		for i := range validation.Zones {
+			validation.Zones[i].Variants = nil
+		}
+	}
 	if _, e := RenderSchematicLayoutSVG(validation); e != nil {
 		return nil, e
 	}
@@ -239,12 +253,27 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 	}
 	if in.Sheet.Flow == "z" {
 		in.Spacing = out.Spacing
-		pages, err := planSchematicZSheets(in, zones)
+		var pages []SchematicRenderInput
+		var err error
+		if hasVariants {
+			pages, out.VariantSearch, err = planSchematicZVariantSheets(in, zones)
+		} else {
+			pages, err = planSchematicZSheets(in, zones)
+		}
 		if err != nil {
 			return nil, err
 		}
 		out.Pages = pages
-		if allPositioned && len(pages) == 1 && sameSchematicSheetPositions(zones, pages[0].Zones) {
+		if hasVariants {
+			out.FrameArea = 0
+			for _, page := range pages {
+				for _, z := range page.Zones {
+					w, h := sheetRelationDimensions(z)
+					out.FrameArea += w * h
+				}
+			}
+		}
+		if !hasVariants && allPositioned && len(pages) == 1 && sameSchematicSheetPositions(zones, pages[0].Zones) {
 			out.PlacementMode = "reused"
 		}
 		for i := range out.Pages {

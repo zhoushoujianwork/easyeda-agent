@@ -5,6 +5,9 @@ import "fmt"
 // This is an offline geometry/naming gate, not a library-identity or live DRC gate.
 // A status word alone must never turn an empty-wire placeholder into a deliverable.
 func validateCompleteLayoutPreview(in SchematicRenderInput) error {
+	if err := validateSchematicZoneVariants(in); err != nil {
+		return err
+	}
 	if len(in.Zones) == 0 {
 		return fmt.Errorf("complete preview requires zones")
 	}

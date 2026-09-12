@@ -22,7 +22,8 @@ Only translates supplied geometry; never solves or fabricates missing wires.
 Simplified symbols/text are not official EasyEDA graphics or electrical checks.
 Without sheet: display-only zone packing. With sheet: honor exact sheetPosition
 and check padding, zone gaps, keepouts and explicit sheet.flow:z; no reflow. Output is SVG.
---zone validates references in the full input, then renders standalone detail
+All zone-level variants are checked, including unselected ones and in diagnostic mode.
+--zone validates references and variants in the full input, then renders standalone detail
 without sheet placement constraints (not an entire-page validation).
 
   easyeda sch layout-render --from geometry.json --out layout.svg
@@ -57,6 +58,9 @@ without sheet placement constraints (not an entire-page validation).
 			return e
 		}
 		if e = validateSchematicRenderPlacements(input.Zones); e != nil {
+			return e
+		}
+		if e = validateSchematicZoneVariants(input); e != nil {
 			return e
 		}
 		if zone != "" {
@@ -112,6 +116,11 @@ Optional top-level spacing unifies zone inner padding, sheet padding and zone ga
 Optional zone placement:{samePageAs:<zone ID>,preferAdjacent?:true} keeps related
 zones on one page; adjacency preference cannot override the selected reading flow.
 Outputs pages[] accepted by layout-render. Incomplete zones require --diagnostic.
+Optional zone variants (at most 4 complete local shapes, including baseline) are
+validated before bounded Z-flow selection. The output materializes one shape per
+zone, records selectedVariantId and removes unselected variants. No local edits.
+Variants require Z flow; compact rejects them. variantSearch reports the bounded
+selection effort; page count is not a global minimum proof.
 Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if from == "" || out == "" {
 			return fmt.Errorf("--from and --out required")
@@ -241,6 +250,9 @@ func validateRenderSheetJSON(raw []byte) error {
 
 // Reject absent coordinates rather than letting JSON zero values invent them.
 func validateRenderMeasurementsJSON(raw []byte) error {
+	if err := validateRenderVariantsJSON(raw); err != nil {
+		return err
+	}
 	if err := validateSchematicZonePlacementsJSON(raw); err != nil {
 		return err
 	}
@@ -309,6 +321,17 @@ func validateRenderMeasurementsJSON(raw []byte) error {
 			}
 			if e := require(box, "minX", "minY", "maxX", "maxY"); e != nil {
 				return e
+			}
+			if rawBoxes, supplied := c["textBboxes"]; supplied {
+				var textBoxes []map[string]json.RawMessage
+				if string(rawBoxes) == "null" || json.Unmarshal(rawBoxes, &textBoxes) != nil {
+					return fmt.Errorf("textBboxes requires explicit measured boxes")
+				}
+				for _, textBox := range textBoxes {
+					if e := require(textBox, "minX", "minY", "maxX", "maxY"); e != nil {
+						return e
+					}
+				}
 			}
 			var pins []map[string]json.RawMessage
 			if e := json.Unmarshal(c["pins"], &pins); e != nil {

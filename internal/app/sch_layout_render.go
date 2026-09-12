@@ -10,16 +10,18 @@ import (
 )
 
 type SchematicRenderZone struct {
-	ID              string                  `json:"id"`
-	Title           string                  `json:"title"`
-	CoreComponentID string                  `json:"coreComponentId,omitempty"`
-	ContentBounds   *SchematicBox           `json:"contentBounds,omitempty"`
-	Frame           *schFrameSpec           `json:"frame,omitempty"`
-	Layout          *SchematicLayoutResult  `json:"layout"`
-	Status          string                  `json:"status,omitempty"`
-	Error           string                  `json:"error,omitempty"`
-	SheetPosition   *SchematicSheetPosition `json:"sheetPosition,omitempty"`
-	Placement       *SchematicZonePlacement `json:"placement,omitempty"`
+	ID                string                  `json:"id"`
+	Title             string                  `json:"title"`
+	CoreComponentID   string                  `json:"coreComponentId,omitempty"`
+	ContentBounds     *SchematicBox           `json:"contentBounds,omitempty"`
+	Frame             *schFrameSpec           `json:"frame,omitempty"`
+	Layout            *SchematicLayoutResult  `json:"layout"`
+	Status            string                  `json:"status,omitempty"`
+	Error             string                  `json:"error,omitempty"`
+	SheetPosition     *SchematicSheetPosition `json:"sheetPosition,omitempty"`
+	Placement         *SchematicZonePlacement `json:"placement,omitempty"`
+	Variants          []SchematicZoneVariant  `json:"variants,omitempty"`
+	SelectedVariantID string                  `json:"selectedVariantId,omitempty"`
 }
 type SchematicRenderInput struct {
 	SchemaVersion  int                   `json:"schemaVersion"`
@@ -43,6 +45,9 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 		return nil, fmt.Errorf("schemaVersion:1 and nonempty zones required")
 	}
 	if err := validateSchematicRenderPlacements(in.Zones); err != nil {
+		return nil, err
+	}
+	if err := validateSchematicZoneVariants(in); err != nil {
 		return nil, err
 	}
 	if in.Sheet != nil {

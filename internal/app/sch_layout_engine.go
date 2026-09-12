@@ -24,28 +24,50 @@ type SchematicLayoutPeripheral struct {
 	AttachTo    *SchematicLayoutAttach `json:"attachTo,omitempty"`
 }
 type SchematicLayoutComponent struct {
-	ID          string             `json:"id"`
-	Measurement SchematicPlacement `json:"measurement"`
-	PinStates   map[string]string  `json:"pinStates,omitempty"`
+	ID               string             `json:"id"`
+	Measurement      SchematicPlacement `json:"measurement"`
+	PinStates        map[string]string  `json:"pinStates,omitempty"`
+	AllowedRotations []float64          `json:"allowedRotations,omitempty"`
+}
+
+type SchematicLayoutOptimization struct {
+	MaxVariants int `json:"maxVariants,omitempty"`
+	MaxAttempts int `json:"maxAttempts,omitempty"`
+}
+
+type SchematicLayoutVariant struct {
+	ID     string                 `json:"id"`
+	Layout *SchematicLayoutResult `json:"layout"`
+}
+
+type SchematicOptimizationReport struct {
+	AttemptsUsed        int    `json:"attemptsUsed"`
+	AcceptedCandidates  int    `json:"acceptedCandidates"`
+	RemainingCandidates int    `json:"remainingCandidates"`
+	StopReason          string `json:"stopReason"`
 }
 type SchematicLayoutInput struct {
-	SchemaVersion   int                         `json:"schemaVersion"`
-	CoreComponentID string                      `json:"coreComponentId"`
-	Components      []SchematicLayoutComponent  `json:"components"`
-	NetPolicies     map[string]string           `json:"netPolicies"`
-	Attachments     []SchematicLayoutPeripheral `json:"attachments,omitempty"`
-	MaxCandidates   int                         `json:"maxCandidates,omitempty"`
+	SchemaVersion   int                          `json:"schemaVersion"`
+	CoreComponentID string                       `json:"coreComponentId"`
+	Components      []SchematicLayoutComponent   `json:"components"`
+	NetPolicies     map[string]string            `json:"netPolicies"`
+	Attachments     []SchematicLayoutPeripheral  `json:"attachments,omitempty"`
+	MaxCandidates   int                          `json:"maxCandidates,omitempty"`
+	Optimization    *SchematicLayoutOptimization `json:"optimization,omitempty"`
 }
 type SchematicLayoutResult struct {
-	SchemaVersion  int                               `json:"schemaVersion"`
-	ComponentIDs   map[string]string                 `json:"componentIds"`
-	PinStates      map[string]map[string]string      `json:"pinStates"`
-	Placements     []SchematicPlacement              `json:"placements"`
-	Wires          []SchematicWire                   `json:"wires"`
-	Flags          []SchematicMarker                 `json:"flags"`
-	Score          [4]float64                        `json:"score"`
-	CandidatesUsed int                               `json:"candidatesUsed"`
-	Search         *SchematicLayoutSearchDiagnostics `json:"search,omitempty"`
+	SchemaVersion      int                               `json:"schemaVersion"`
+	ComponentIDs       map[string]string                 `json:"componentIds"`
+	PinStates          map[string]map[string]string      `json:"pinStates"`
+	Placements         []SchematicPlacement              `json:"placements"`
+	Wires              []SchematicWire                   `json:"wires"`
+	Flags              []SchematicMarker                 `json:"flags"`
+	Score              [4]float64                        `json:"score"`
+	CandidatesUsed     int                               `json:"candidatesUsed"`
+	Search             *SchematicLayoutSearchDiagnostics `json:"search,omitempty"`
+	Variants           []SchematicLayoutVariant          `json:"variants,omitempty"`
+	AllowedRotations   map[string][]float64              `json:"allowedRotations,omitempty"`
+	OptimizationReport *SchematicOptimizationReport      `json:"optimizationReport,omitempty"`
 }
 
 // PlanSchematicLayout is side-effect-free. No project, library, sheet, module
@@ -147,6 +169,10 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		}
 		hints[h.ComponentID] = h
 	}
+	optimization, allowed, err := schematicOptimizationSettings(input)
+	if err != nil {
+		return nil, err
+	}
 	before := *budget
 	result, err := solveSchematicLayout(input, measured, members, hints, budget)
 	if err != nil {
@@ -159,5 +185,9 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		result.PinStates[c.ID] = c.PinStates
 	}
 	result.CandidatesUsed = before - *budget
+	if optimization != nil {
+		result = optimizeSchematicLayout(input, result, measured, members, hints, *optimization, allowed, budget)
+		result.CandidatesUsed = before - *budget
+	}
 	return result, nil
 }

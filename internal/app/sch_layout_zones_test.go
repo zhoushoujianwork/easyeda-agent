@@ -140,6 +140,49 @@ func TestSchematicZonesShareBudget(t *testing.T) {
 	}
 }
 
+func TestSchematicZonesOptimizationIsolatedWithCompleteVariantBridge(t *testing.T) {
+	in := zonesFixture()
+	in.MaxCandidates = 100000
+	in.Optimization = &SchematicLayoutOptimization{MaxVariants: 4, MaxAttempts: 24}
+	out, err := PlanSchematicZones(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No spacing supplied: optimization itself must isolate local budgets.
+	in.Components[1].AllowedRotations = []float64{0, 90, 180, 270}
+	changed, err := PlanSchematicZones(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out.Zones[1], changed.Zones[1]) {
+		t.Fatal("first-zone optimization changed second-zone geometry or budget")
+	}
+	total := 0
+	for _, z := range changed.Zones {
+		total += z.Layout.CandidatesUsed
+		if z.Layout.OptimizationReport == nil || len(z.Layout.Variants) != 0 || len(z.Variants) == 0 || len(z.Variants) > 4 || z.Variants[0].ID != "baseline" || z.SelectedVariantID == "" {
+			t.Fatal("zone adapter lost report, selection, baseline or candidate boundary")
+		}
+	}
+	if total != changed.CandidatesUsed {
+		t.Fatal("zone totals lost optimization cost")
+	}
+	raw, _ := json.Marshal(changed)
+	if err := validateRenderMeasurementsJSON(raw); err != nil {
+		t.Fatal("generated variants rejected by raw CLI guard", err)
+	}
+	var render SchematicRenderInput
+	if err := json.Unmarshal(raw, &render); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateSchematicZoneVariants(render); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RenderSchematicLayoutSVG(render); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDirectDetourAvoidsInterveningForeignPin(t *testing.T) {
 	p := powerLayoutPlan{Placements: []powerLayoutPlacement{{Designator: "U1", BBox: layoutBBox{-20, -20, 0, 40}, Pins: []powerLayoutPin{
 		{Number: "1", Net: "SIGNAL", X: 10, Y: 30}, {Number: "2", Net: "FOREIGN", X: 10, Y: 20}, {Number: "3", Net: "SIGNAL", X: 10, Y: 10},

@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"strings"
 )
 
@@ -15,22 +16,31 @@ type SchematicZone struct {
 	Placement       *SchematicZonePlacement `json:"placement,omitempty"`
 }
 type SchematicZonesInput struct {
-	SchemaVersion int                         `json:"schemaVersion"`
-	Spacing       *float64                    `json:"spacing,omitempty"`
-	Components    []SchematicLayoutComponent  `json:"components"`
-	NetPolicies   map[string]string           `json:"netPolicies"`
-	Attachments   []SchematicLayoutPeripheral `json:"attachments,omitempty"`
-	MaxCandidates int                         `json:"maxCandidates,omitempty"`
-	Zones         []SchematicZone             `json:"zones"`
+	SchemaVersion int                          `json:"schemaVersion"`
+	Spacing       *float64                     `json:"spacing,omitempty"`
+	Components    []SchematicLayoutComponent   `json:"components"`
+	NetPolicies   map[string]string            `json:"netPolicies"`
+	Attachments   []SchematicLayoutPeripheral  `json:"attachments,omitempty"`
+	MaxCandidates int                          `json:"maxCandidates,omitempty"`
+	Zones         []SchematicZone              `json:"zones"`
+	Optimization  *SchematicLayoutOptimization `json:"optimization,omitempty"`
+}
+type SchematicZoneVariant struct {
+	ID            string                 `json:"id"`
+	ContentBounds SchematicBox           `json:"contentBounds"`
+	Frame         schFrameSpec           `json:"frame"`
+	Layout        *SchematicLayoutResult `json:"layout"`
 }
 type SchematicZoneResult struct {
-	ID              string                  `json:"id"`
-	Title           string                  `json:"title"`
-	CoreComponentID string                  `json:"coreComponentId"`
-	ContentBounds   SchematicBox            `json:"contentBounds"`
-	Frame           schFrameSpec            `json:"frame"`
-	Layout          *SchematicLayoutResult  `json:"layout"`
-	Placement       *SchematicZonePlacement `json:"placement,omitempty"`
+	ID                string                  `json:"id"`
+	Title             string                  `json:"title"`
+	CoreComponentID   string                  `json:"coreComponentId"`
+	ContentBounds     SchematicBox            `json:"contentBounds"`
+	Frame             schFrameSpec            `json:"frame"`
+	Layout            *SchematicLayoutResult  `json:"layout"`
+	Placement         *SchematicZonePlacement `json:"placement,omitempty"`
+	Variants          []SchematicZoneVariant  `json:"variants,omitempty"`
+	SelectedVariantID string                  `json:"selectedVariantId,omitempty"`
 }
 type SchematicZonesResult struct {
 	SchemaVersion  int                   `json:"schemaVersion"`
@@ -128,7 +138,7 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 		out.Spacing = &spacing
 	}
 	for _, z := range in.Zones {
-		local := SchematicLayoutInput{SchemaVersion: 1, CoreComponentID: z.CoreComponentID, NetPolicies: map[string]string{}}
+		local := SchematicLayoutInput{SchemaVersion: 1, CoreComponentID: z.CoreComponentID, NetPolicies: map[string]string{}, Optimization: in.Optimization}
 		for _, id := range z.ComponentIDs {
 			c := components[id]
 			local.Components = append(local.Components, c)
@@ -144,7 +154,7 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 			}
 		}
 		zoneBudget := &budget
-		if in.Spacing != nil {
+		if in.Spacing != nil || in.Optimization != nil {
 			// Unified two-level mode is isolated: a harder earlier zone cannot
 			// consume a later zone's search/compaction allowance.
 			isolatedBudget := initial
@@ -156,23 +166,55 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 			return nil, fmt.Errorf("zone %s (%s): %w", z.ID, z.Title, err)
 		}
 		out.CandidatesUsed += before - *zoneBudget
-		p := powerLayoutPlan{Placements: layout.Placements, Wires: layout.Wires, Flags: layout.Flags}
-		boxes := powerLayoutContentObstacles(&p)
-		if len(boxes) == 0 {
-			return nil, fmt.Errorf("zone %s has no content geometry", z.ID)
-		}
-		b := boxes[0]
-		for _, a := range boxes[1:] {
-			b.MinX = math.Min(b.MinX, a.MinX)
-			b.MinY = math.Min(b.MinY, a.MinY)
-			b.MaxX = math.Max(b.MaxX, a.MaxX)
-			b.MaxY = math.Max(b.MaxY, a.MaxY)
-		}
-		frame, err := measureSchModuleFrameObstaclesSpacing(z.ID, z.Title, boxes, nil, nil, in.Spacing)
+		main, err := measureSchematicZoneVariant(z, "", layout, in.Spacing)
 		if err != nil {
-			return nil, fmt.Errorf("zone %s frame: %w", z.ID, err)
+			return nil, err
 		}
-		out.Zones = append(out.Zones, SchematicZoneResult{ID: z.ID, Title: z.Title, CoreComponentID: z.CoreComponentID, ContentBounds: b, Frame: frame, Layout: layout, Placement: copySchematicZonePlacement(z.Placement)})
+		result := SchematicZoneResult{ID: z.ID, Title: z.Title, CoreComponentID: z.CoreComponentID,
+			ContentBounds: main.ContentBounds, Frame: main.Frame, Layout: main.Layout, Placement: copySchematicZonePlacement(z.Placement)}
+		for _, alternative := range layout.Variants {
+			variant, err := measureSchematicZoneVariant(z, alternative.ID, alternative.Layout, in.Spacing)
+			if err != nil {
+				return nil, err
+			}
+			result.Variants = append(result.Variants, variant)
+			if reflect.DeepEqual(main.Layout.Placements, variant.Layout.Placements) && reflect.DeepEqual(main.Layout.Wires, variant.Layout.Wires) && reflect.DeepEqual(main.Layout.Flags, variant.Layout.Flags) {
+				result.SelectedVariantID = variant.ID
+				// Main retains whole-search cost/report; the alternative retains
+				// its own cost. Geometry must match, diagnostics need not.
+				result.Frame, result.ContentBounds = variant.Frame, variant.ContentBounds
+			}
+		}
+		if len(result.Variants) > 0 && result.SelectedVariantID == "" {
+			return nil, fmt.Errorf("zone %s selected layout missing from variants", z.ID)
+		}
+		out.Zones = append(out.Zones, result)
 	}
 	return out, nil
+}
+
+func measureSchematicZoneVariant(z SchematicZone, id string, layout *SchematicLayoutResult, spacing *float64) (SchematicZoneVariant, error) {
+	if layout == nil {
+		return SchematicZoneVariant{}, fmt.Errorf("zone %s variant lacks layout", z.ID)
+	}
+	copyLayout := *layout
+	copyLayout.Variants = nil
+	layout = &copyLayout
+	p := powerLayoutPlan{Placements: layout.Placements, Wires: layout.Wires, Flags: layout.Flags}
+	boxes := powerLayoutContentObstacles(&p)
+	if len(boxes) == 0 {
+		return SchematicZoneVariant{}, fmt.Errorf("zone %s has no content geometry", z.ID)
+	}
+	b := boxes[0]
+	for _, a := range boxes[1:] {
+		b.MinX = math.Min(b.MinX, a.MinX)
+		b.MinY = math.Min(b.MinY, a.MinY)
+		b.MaxX = math.Max(b.MaxX, a.MaxX)
+		b.MaxY = math.Max(b.MaxY, a.MaxY)
+	}
+	frame, err := measureSchModuleFrameObstaclesSpacing(z.ID, z.Title, boxes, nil, nil, spacing)
+	if err != nil {
+		return SchematicZoneVariant{}, fmt.Errorf("zone %s frame: %w", z.ID, err)
+	}
+	return SchematicZoneVariant{ID: id, ContentBounds: b, Frame: frame, Layout: layout}, nil
 }

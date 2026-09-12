@@ -12,4 +12,10 @@ func TestPublicSchematicLayoutAPI(t *testing.T) {
 	if err != nil || len(out.Placements) != 1 || out.PinStates["one"]["1"] != "nc" {
 		t.Fatalf("standalone API failed: %v", err)
 	}
+	in.Optimization = &app.SchematicLayoutOptimization{MaxVariants: 1}
+	in.Components[0].AllowedRotations = []float64{0}
+	out, err = app.PlanSchematicLayout(in)
+	if err != nil || len(out.Variants) != 1 || out.OptimizationReport == nil || out.OptimizationReport.StopReason != "baseline-only" {
+		t.Fatalf("standalone optimization API failed: %v", err)
+	}
 }

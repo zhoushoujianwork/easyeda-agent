@@ -15,16 +15,27 @@ func newSchLayoutPlanCmd(stdout io.Writer) *cobra.Command {
 	var from, out string
 	var zones bool
 	c := &cobra.Command{Use: "layout-plan", Short: "Plan a measured component set offline without Lib or project metadata", Long: `Compute local placements, wires, markers and score from schemaVersion:1,
-coreComponentId, components:[{id,measurement,pinStates?}], netPolicies keyed by
+coreComponentId, components:[{id,measurement,pinStates?,allowedRotations?}], netPolicies keyed by
 net NAME, optional attachments and maxCandidates. measurement contains explicit
 designator,x,y,rotation,mirror,bbox,pins (number,name,net,x,y), optional textBboxes.
 Every empty-net pin requires pinStates[number] = nc or unconnected.
 Policies: direct, module_port, local_power, local_ground.
 Attachments: {componentId,pinNumber?,attachTo?:{componentId,pinNumber}}.
 Core is normalized to 0,0. Output preserves pin states and component IDs.
+Optional optimization:{maxVariants?:4,maxAttempts?:24} enables bounded rotation
+and geometry refinement after a complete baseline. maxVariants is 1..4 (including
+baseline); maxAttempts is 1..64. Allowed rotations are absolute stored angles from
+0,90,180,270 and must include the measured angle; omitted means locked. Core and
+mirroring stay locked. Pin geometry and wires are recomputed and checked, not scaled.
+Previously directly connected pin islands cannot be split into same-name labels.
+Failed optional refinements keep a validated candidate; an unsolved baseline fails.
+The same maxCandidates budget covers solving and refinement. In --zones mode an
+optimization request isolates per-zone budgets, even without unified spacing.
+Zone output includes variants:[{id,layout,contentBounds,frame}], selectedVariantId.
+Pass the complete packet to layout-sheet-plan --flow z for bounded shape selection.
 No library UUID, Lib membership, project, sheet or daemon required. No Apply.
 With --zones: input schemaVersion, components, netPolicies, zones, optional
-attachments/maxCandidates/spacing. Optional spacing is the shared zone inner,
+attachments/maxCandidates/spacing/optimization. Optional spacing is the shared zone inner,
 page and inter-zone minimum clearance (>=10 raw, 5-raw grid), including stroke
 clearance; forwarded unchanged to the sheet planner. Legacy defaults otherwise.
 In unified spacing mode maxCandidates is a per-zone cap, so earlier zones cannot
@@ -124,6 +135,9 @@ func decodeSchematicLayoutInput(raw []byte) (SchematicLayoutInput, error) {
 	}
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &fields)
+	if err := validateLayoutOptimizationJSON(fields); err != nil {
+		return input, err
+	}
 	require := func(raw json.RawMessage, where string, keys ...string) error {
 		var object map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &object); err != nil {
@@ -142,6 +156,20 @@ func decodeSchematicLayoutInput(raw []byte) (SchematicLayoutInput, error) {
 	var components []map[string]json.RawMessage
 	_ = json.Unmarshal(fields["components"], &components)
 	for i, c := range components {
+		if angles, ok := c["allowedRotations"]; ok {
+			var values []json.RawMessage
+			if string(angles) == "null" || json.Unmarshal(angles, &values) != nil || len(values) == 0 || len(values) > 4 {
+				return input, fmt.Errorf("allowedRotations requires 1..4 explicit angles")
+			}
+			seen := map[float64]bool{}
+			for _, value := range values {
+				var angle float64
+				if string(value) == "null" || json.Unmarshal(value, &angle) != nil || (angle != 0 && angle != 90 && angle != 180 && angle != 270) || seen[angle] {
+					return input, fmt.Errorf("allowedRotations requires unique angles 0,90,180,270")
+				}
+				seen[angle] = true
+			}
+		}
 		where := fmt.Sprintf("components[%d].measurement", i)
 		if err := require(c["measurement"], where, "designator", "x", "y", "rotation", "mirror", "bbox", "pins"); err != nil {
 			return input, err
@@ -167,4 +195,24 @@ func decodeSchematicLayoutInput(raw []byte) (SchematicLayoutInput, error) {
 		}
 	}
 	return input, nil
+}
+
+func validateLayoutOptimizationJSON(fields map[string]json.RawMessage) error {
+	raw, ok := fields["optimization"]
+	if !ok {
+		return nil
+	}
+	var options map[string]json.RawMessage
+	if string(raw) == "null" || json.Unmarshal(raw, &options) != nil {
+		return fmt.Errorf("optimization requires an object")
+	}
+	for name, maximum := range map[string]int{"maxVariants": 4, "maxAttempts": 64} {
+		if value, ok := options[name]; ok {
+			var n int
+			if string(value) == "null" || json.Unmarshal(value, &n) != nil || n < 1 || n > maximum {
+				return fmt.Errorf("optimization.%s must be 1..%d", name, maximum)
+			}
+		}
+	}
+	return nil
 }
