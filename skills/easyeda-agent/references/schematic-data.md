@@ -397,6 +397,8 @@ source 与 page 的纸张、内框和禁放区须精确一致；实际 sheet bbo
 再按 `dx = sheetPosition.x - frame.rect.minX`、
 `dy = sheetPosition.y - frame.rect.maxY` 作唯一刚体平移（y-UP）。
 器件、引脚、文本 bbox、导线、标记、框、标题及标题障碍同步转换，不再选方向、缩框或重排。
+编译输出的坐标使用统一小数点后 9 位精度消除 API 浮点尾差，保留原始测量快照；
+这不是吸附到 5 raw 网格或放宽现场差异守卫，真实位移仍须报告。
 加入 `--before fresh.json --replace --playbook apply.json` 后仍使用原完整 Apply 生成器；
 拒绝输出覆盖输入或两个输出指向同一文件。此入口不创建页面，也不处理跨页迁移事务。
 若现场电路或纸张与预览不符，先重新核对/计算并展示改变后的效果，不手改队列或伪造回读。

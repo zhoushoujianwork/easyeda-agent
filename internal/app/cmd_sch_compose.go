@@ -370,6 +370,9 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 		result.RowHeights[r.Row] = math.Max(result.RowHeights[r.Row], height)
 		result.RowHeight = math.Max(result.RowHeight, height)
 	}
+	// Translated official coordinates can retain arithmetic tails. Normalize
+	// only the newly compiled drawing, never the caller's measurement/baseline.
+	normalizeSchCompositionGeometry(&result.Layout)
 	if err = validatePowerLayout(&result.Layout, src.Sheet); err != nil {
 		return nil, err
 	}
