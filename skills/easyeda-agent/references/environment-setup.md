@@ -5,6 +5,30 @@
 
 ## 安装与升级
 
+### 本地开发版（用户明确选择时）
+
+仓库中显式同步 connector/npm/lock 和 Skill 元数据到独立 `X.Y.Z-dev.N`，补 changelog，
+再运行 `make local-build VERSION=vX.Y.Z-dev.N`。构建真实 CLI、连接器与 tracked-only Skill 包，
+生成 checksums；不打 tag、不 push、不上传。每次源码改变递增 N，不复用同版不同内容。
+正式版 `make release` 仍只接受纯 `vX.Y.Z`。
+
+```bash
+# 首次用刚构建的本机二进制调用；--binary 指向实际 PATH 安装位置，不是 dist 内二进制。
+dist/easyeda_darwin_arm64 update --local-dir dist --binary /usr/local/bin/easyeda
+# 安装后新 Agent 会话的第一条命令；不访问 GitHub
+easyeda update --local-dir /absolute/path/to/dist --check --exit-code
+```
+
+本地安装替换 CLI 和已安装客户端的完整 Skill（备份路径输出），不自动重启进程或导入插件。
+保存文档，用安装后的 CLI 重启 daemon；卸载旧侧载连接器、导入输出的 `.eext`，完全退出并重开
+EasyEDA，然后新开 Agent 会话。开发版必须精确同版，不能套用正式版的 patch 兼容规则。
+检查比对包 SHA-256、实际 CLI 字节、Skill 全部文件（含 metadata 和 `.version`）及实时版本。
+checksum 只防意外损坏，不是签名：只使用自己构建或可信来源的本地包。
+无连接、旧 daemon、混合 Skill 或任一旧 Connector 均返回非零；目标页/身份/连通性守卫不变。
+未安装前可以用 dist 二进制进行离线测试，不能据此声称现场 READY。
+
+### 正式版
+
 CLI/daemon、`easyeda-agent` Skill 和 EDA Agent Connector 是三个配套组成部分；CLI、daemon
 与 Skill 必须精确同版，Connector 按 major.minor 兼容线对齐。EasyEDA Pro 是宿主，不参与
 项目版本号对齐。

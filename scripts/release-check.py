@@ -25,9 +25,13 @@ def skill_version(text: str) -> str:
     return match.group(1)
 
 
-def check_sources(repo: Path, tag: str) -> str:
-    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
-        raise ValueError("VERSION must be a complete release tag: vX.Y.Z")
+def check_sources(repo: Path, tag: str, local_dev: bool = False) -> str:
+    pattern = r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    if local_dev:
+        pattern += r"-dev\.[1-9][0-9]*"
+    if not re.fullmatch(pattern, tag):
+        expected = "vX.Y.Z-dev.N (N >= 1)" if local_dev else "vX.Y.Z"
+        raise ValueError(f"VERSION must be a complete {'local development version' if local_dev else 'release tag'}: {expected}")
     version = tag[1:]
     for name in ["extension/extension.json", "extension/package.json", "extension/package-lock.json"]:
         data = json.loads((repo / name).read_text())
@@ -94,13 +98,14 @@ def check_artifacts(repo: Path, dist: Path, version: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version")
+    parser.add_argument("--local-dev", action="store_true", help="require vX.Y.Z-dev.N; never publish")
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--connector", type=Path)
     parser.add_argument("--write-checksums", type=Path)
     parser.add_argument("--artifacts", type=Path)
     args = parser.parse_args()
     try:
-        version = check_sources(args.repo, args.version)
+        version = check_sources(args.repo, args.version, args.local_dev)
         if args.connector:
             uuid = json.loads((args.repo / "extension/extension.json").read_text())["uuid"]
             check_connector(args.connector, version, uuid)

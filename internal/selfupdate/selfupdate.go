@@ -521,10 +521,10 @@ func skillMetadataVersion(body string) (string, error) {
 			}
 			value := strings.TrimSpace(strings.TrimPrefix(line, "  version:"))
 			value = strings.Trim(value, "\"'")
-			if !IsCleanRelease(value) {
+			if !IsCleanRelease(value) && !IsLocalVersion(value) {
 				return "", fmt.Errorf("invalid metadata.version %q", value)
 			}
-			version = SemverCore(value)
+			version = strings.TrimPrefix(value, "v")
 		}
 	}
 	if !closed {

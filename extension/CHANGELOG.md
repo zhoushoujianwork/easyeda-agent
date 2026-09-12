@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.4.9-dev.1] — 2026-09-12 (local development only)
+
+- Add offline local package installation and content-verified runtime checks; no tag or upload.
+- Require exact development versions across CLI, daemon, Skill and all connectors.
+- Include bounded, request-local cached device identity reads and decoupled compact schematic layout/rendering fixes.
+- Local automated validation does not constitute live EDA or full board acceptance.
+
 ## [1.4.8] — 2026-09-10
 
 ### Fixed

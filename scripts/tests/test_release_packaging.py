@@ -86,6 +86,16 @@ class TrackedSkillPackageTests(unittest.TestCase):
 
 
 class ReleaseVersionAndAssetTests(unittest.TestCase):
+    def test_local_prerelease_is_not_a_publishable_release(self):
+        for file in ["extension/extension.json", "extension/package.json", "extension/package-lock.json", "skills/easyeda-agent/SKILL.md", "extension/CHANGELOG.md"]:
+            path = self.repo / file
+            path.write_text(path.read_text().replace("1.4.2", "1.4.3-dev.1"))
+        self.assertEqual(release.check_sources(self.repo, "v1.4.3-dev.1", local_dev=True), "1.4.3-dev.1")
+        with self.assertRaises(ValueError):
+            release.check_sources(self.repo, "v1.4.3-dev.1")
+        with self.assertRaises(ValueError):
+            release.check_sources(self.repo, "v1.4.3", local_dev=True)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

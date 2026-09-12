@@ -82,6 +82,9 @@ type versionGateReport struct {
 // returns the graded verdict. No I/O, no globals — the whole rule set is
 // unit-testable from here.
 func evaluateVersionGate(cli, daemon string, connectors []string) versionGateReport {
+	if selfupdate.IsLocalVersion(normVersion(cli)) {
+		return evaluateLocalRuntime(cli, daemon, connectors)
+	}
 	rep := versionGateReport{CLI: strings.TrimSpace(cli), Daemon: strings.TrimSpace(daemon)}
 	rep.Findings = append(rep.Findings, daemonFinding(cli, daemon))
 
@@ -276,6 +279,14 @@ var (
 // prints warnings once, and honours the audited escape hatch. Evaluated once
 // per process; later calls replay the cached decision.
 func checkVersionGate(cfg *appConfig, healthRaw []byte, stderr io.Writer) error {
+	if selfupdate.IsLocalVersion(normVersion(version.Version)) {
+		// Re-check each fresh health snapshot: a reconnect must not inherit a pass.
+		rep := versionGateFromHealth(healthRaw)
+		if rep.Verdict != versionSevOK {
+			return fmt.Errorf("local runtime mismatch: %v", rep.Findings)
+		}
+		return nil
+	}
 	versionGateOnce.Do(func() {
 		versionGateCached = runVersionGate(cfg, healthRaw, stderr)
 	})

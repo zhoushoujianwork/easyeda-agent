@@ -1,6 +1,7 @@
 .PHONY: help test mcp-test fmt actions api-index build install dev-build daemon dev eext eext-fresh connector lint-test blocks-audit modules-audit layout-calibrate release release-check release-build release-script-test release-smoke skill-check publish-skill publish-skill-hub skillhub-check replay demo-replay replay-sch replay-pcb
 
 DIST := dist
+.PHONY: local-build release-assets
 
 # Bare `make` prints the cheatsheet below.
 .DEFAULT_GOAL := help
@@ -162,11 +163,19 @@ release-check: ## check VERSION, changelog and package inputs without building o
 	python3 scripts/release-check.py "$(VERSION)"
 	python3 scripts/pack-skill.py --check
 
-release-build: release-check ## build and verify all release assets locally; no bump, tag, commit or upload
+release-build: release-check ## build verified release assets locally; no tag or upload
+	$(MAKE) release-assets VERSION="$(VERSION)" DIST="$(DIST)"
+
+local-build: ## build vX.Y.Z-dev.N assets locally without tags or uploads
+	python3 scripts/release-check.py "$(VERSION)" --local-dev
+	python3 scripts/pack-skill.py --check
+	$(MAKE) release-assets VERSION="$(VERSION)" DIST="$(DIST)" LOCAL_CHECK=--local-dev
+
+release-assets:
 	mkdir -p "$(DIST)"
 	npm --prefix extension run typecheck
 	npm --prefix extension run build
-	python3 scripts/release-check.py "$(VERSION)" --connector "extension/build/dist/easyeda-agent-connector_$(VERSION).eext"
+	python3 scripts/release-check.py "$(VERSION)" $(LOCAL_CHECK) --connector "extension/build/dist/easyeda-agent-connector_$(VERSION).eext"
 	@echo "  compiling CLI..."
 	GOOS=darwin  GOARCH=amd64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_darwin_amd64      ./cmd/easyeda
 	GOOS=darwin  GOARCH=arm64  go build -ldflags "$(_LDFLAGS)" -o $(DIST)/easyeda_darwin_arm64      ./cmd/easyeda
@@ -178,7 +187,7 @@ release-build: release-check ## build and verify all release assets locally; no 
 	@echo "  packaging skills..."
 	python3 scripts/pack-skill.py --out "$(DIST)/skills.tar.gz"
 	cp install.sh $(DIST)/install.sh
-	python3 scripts/release-check.py "$(VERSION)" --write-checksums "$(DIST)" --artifacts "$(DIST)"
+	python3 scripts/release-check.py "$(VERSION)" $(LOCAL_CHECK) --write-checksums "$(DIST)" --artifacts "$(DIST)"
 	@echo "✅ Local release assets ready in $(DIST)/ — nothing published"
 
 release: ## build reviewed sources, tag and publish GitHub Release (explicit publication only)

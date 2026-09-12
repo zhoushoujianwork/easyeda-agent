@@ -56,13 +56,14 @@ type updateSkillRow struct {
 // programmatic in-place update for sideloads, so `update` can only tell the
 // truth about it and print the re-import path.
 type connectorReport struct {
-	DaemonRunning bool     `json:"daemonRunning"`
-	DaemonVersion string   `json:"daemonVersion,omitempty"`
-	DaemonStatus  string   `json:"daemonStatus"` // current | mismatch | unknown | not-running
-	DaemonPort    int      `json:"daemonPort,omitempty"`
-	Versions      []string `json:"versions,omitempty"` // distinct connector versions across windows
-	Windows       int      `json:"windows"`
-	Status        string   `json:"status"` // ok | compatible | behind | mismatch | unknown | no-daemon | no-window
+	UnknownVersions bool     `json:"unknownVersions,omitempty"`
+	DaemonRunning   bool     `json:"daemonRunning"`
+	DaemonVersion   string   `json:"daemonVersion,omitempty"`
+	DaemonStatus    string   `json:"daemonStatus"` // current | mismatch | unknown | not-running
+	DaemonPort      int      `json:"daemonPort,omitempty"`
+	Versions        []string `json:"versions,omitempty"` // distinct connector versions across windows
+	Windows         int      `json:"windows"`
+	Status          string   `json:"status"` // ok | compatible | behind | mismatch | unknown | no-daemon | no-window
 }
 
 func newUpdateCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
@@ -77,6 +78,8 @@ func newUpdateCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		force         bool
 		createMissing bool
 		jsonOut       bool
+		localDir      string
+		localBinary   string
 	)
 	c := &cobra.Command{
 		Use:     "update",
@@ -102,8 +105,24 @@ If the binary lives in a root-owned dir, re-run with sudo.`,
   easyeda update --check --exit-code  # exit 10 unless the release-compatibility gate is ready
   easyeda update --version 0.25.0   # pin a release
   easyeda update --skill-only       # leave the binary alone
-  easyeda update --json`,
+  easyeda update --json
+  easyeda update --local-dir ./dist --binary /absolute/path/to/easyeda  # install trusted local dev assets
+  easyeda update --local-dir ./dist --check --exit-code                 # offline, exact local runtime gate`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if localDir != "" {
+				for _, flag := range []string{"version", "cli-only", "skill-only", "client", "preserve", "force", "create-missing"} {
+					if cmd.Flags().Changed(flag) {
+						return fmt.Errorf("--local-dir cannot be combined with --%s", flag)
+					}
+				}
+				if checkOnly && localBinary != "" {
+					return fmt.Errorf("local check verifies the running CLI; --binary is install-only")
+				}
+				return runLocalUpdate(cfg, localDir, localBinary, checkOnly, exitCode, jsonOut, stdout)
+			}
+			if localBinary != "" {
+				return fmt.Errorf("--binary requires --local-dir")
+			}
 			if cliOnly && skillOnly {
 				return fmt.Errorf("--cli-only and --skill-only are mutually exclusive")
 			}
@@ -232,8 +251,10 @@ If the binary lives in a root-owned dir, re-run with sudo.`,
 		},
 	}
 	c.Flags().BoolVar(&checkOnly, "check", false, "verify target versions and connector compatibility without changing anything")
+	c.Flags().StringVar(&localDir, "local-dir", "", "install/check trusted X.Y.Z-dev.N assets from this local directory; never query GitHub")
+	c.Flags().StringVar(&localBinary, "binary", "", "with --local-dir install: absolute destination of the PATH CLI (required)")
 	c.Flags().BoolVar(&exitCode, "exit-code", false,
-		fmt.Sprintf("with --check: exit %d unless CLI/Skills/daemon are exact and connectors share target major.minor", exitCodeUpdatesAvailable))
+		fmt.Sprintf("with --check: exit %d unless ready (local-dir requires exact dev versions and file contents)", exitCodeUpdatesAvailable))
 	c.Flags().StringVar(&pinVersion, "version", "", "pin a release version (default: latest)")
 	c.Flags().BoolVar(&cliOnly, "cli-only", false, "update only the CLI binary")
 	c.Flags().BoolVar(&skillOnly, "skill-only", false, "update only the skill dirs")
@@ -342,6 +363,7 @@ func probeConnector(cfg *appConfig, target string) *connectorReport {
 	for _, w := range parsed.Windows {
 		v := strings.TrimSpace(w.ConnectorVersion)
 		if v == "" {
+			rep.UnknownVersions = true
 			unknown = true
 			continue
 		}

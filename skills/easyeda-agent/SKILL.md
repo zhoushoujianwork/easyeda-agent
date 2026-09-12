@@ -5,7 +5,7 @@ license: MIT
 compatibility: "Requires the local easyeda CLI/daemon and EasyEDA Agent Connector with Allow external interaction enabled. Python 3 is used by bundled helpers; online library lookup and updates need network access."
 metadata:
   author: zhoushoujianwork
-  version: "1.4.8"
+  version: "1.4.9-dev.1"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
@@ -19,6 +19,13 @@ EasyEDA Pro 是宿主。安装、升级或连接异常时读
 ## 开始工作
 
 ### 强制会话版本门禁
+
+用户明确选择本地开发验证时，第一条命令改为
+`easyeda update --local-dir <已构建目录> --check --exit-code`，不查询 GitHub。
+该模式要求本地包校验、CLI 文件及完整 Skill 内容一致，daemon 和每个 Connector 精确同开发版
+（含 `-dev.N`）；失败不允许 Apply。构建/安装见 environment-setup；不是改 `.version` 或跳过检查。
+离线开发、构建和单元测试可在运行时尚未安装时进行，不能称为现场验证通过。
+以下 latest 规则用于默认正式版模式；升级后的新会话要求两种模式都适用。
 
 每个新 Agent 会话必须先运行 `easyeda update --check --exit-code`。这是本 Skill 的第一条
 命令，先于项目读取、离线规划、`health` 和任何 EDA action。该命令查询 GitHub latest
