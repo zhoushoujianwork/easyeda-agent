@@ -2,6 +2,23 @@
 
 DIST := dist
 .PHONY: local-build release-assets
+.PHONY: local-daemon-restart local-check
+
+# Installed local runtime, not `go run`/git-describe. Restart is a recovery
+# operation: it must remain usable while the full runtime gate is NOT READY.
+LOCAL_EASYEDA ?= easyeda
+LOCAL_VERSION ?= $(shell python3 -c 'import json; print(json.load(open("extension/extension.json"))["version"])')
+LOCAL_DIST ?= $(CURDIR)/dist/local-v$(LOCAL_VERSION)
+
+local-daemon-restart: ## restart installed dev daemon in foreground; keep this terminal open (no build/install)
+	@case "$(LOCAL_VERSION)" in *-dev.*) ;; *) echo "Expected a local development version, got $(LOCAL_VERSION)" >&2; exit 1;; esac
+	@test "$$("$(LOCAL_EASYEDA)" --version)" = "easyeda-agent v$(LOCAL_VERSION)" || { echo "Installed CLI does not match v$(LOCAL_VERSION); install the local package first." >&2; exit 1; }
+	@echo "Starting installed v$(LOCAL_VERSION); daemon start safely replaces the old daemon on port 60832."
+	@echo "No connector import or EDA restart is performed. Check separately with make local-check."
+	@exec "$(LOCAL_EASYEDA)" daemon start --auto-update-skill=false
+
+local-check: ## offline installed CLI/Skill/daemon/connector gate (LOCAL_DIST overridable)
+	"$(LOCAL_EASYEDA)" update --local-dir "$(LOCAL_DIST)" --check --exit-code
 
 # Bare `make` prints the cheatsheet below.
 .DEFAULT_GOAL := help
