@@ -22,6 +22,12 @@ easyeda sch sheet-geometry --project <project> --doc <page> --json
 
 ## 2. 离线计算模块与单页组合
 
+普通 zones 的本地效果先走固定链路：
+`layout-plan --zones → layout-sheet-plan → layout-render`，所有区完整通过才出效果。
+输入顶层 spacing 统一内边距、框间距和页边距；区内回退只影响本区，整页仅平移区框。
+用户只授权预览时止于离线结果，不执行下文 Apply。诊断模式不能替代完整候选；
+保留源数据、参数、源码提交和输出哈希，使相同输入能重现同一图面。
+
 先用 `sch lib-layout` 计算每个 Lib 的局部几何，再组合到纸张；框按各自内容压缩上下空档，
 按功能顺序排 Z 字行，同行顶齐，下一行按上一行最高框推进，不统一拉高。
 提供实测 `sheetBorder` 后，虚线笔画到红色图纸内框最少留 10 raw。

@@ -60,7 +60,21 @@ func schBoundsUnion(boxes []layoutBBox) layoutBBox {
 // otherwise grow only enough to fit. Height wins, then area, leftmost X, top.
 // Restrict horizontal expansion to that required by the title itself.
 func measureSchModuleFrameObstacles(id, title string, obstacles []layoutBBox, metrics *schTitleMetrics, sheet *layoutBBox) (schFrameSpec, error) {
-	const padding, inset = schModuleFramePadding, schModuleTitleInset
+	return measureSchModuleFrameObstaclesSpacing(id, title, obstacles, metrics, sheet, nil)
+}
+
+// Optional spacing is the minimum visible clearance, not a distance between
+// stroke centerlines. The legacy path is unchanged; unified spacing reserves a
+// half-unit frame stroke and rounds outwards to the schematic's 5-unit grid.
+func measureSchModuleFrameObstaclesSpacing(id, title string, obstacles []layoutBBox, metrics *schTitleMetrics, sheet *layoutBBox, spacing *float64) (schFrameSpec, error) {
+	if err := validateSchematicSpacing(spacing); err != nil {
+		return schFrameSpec{}, err
+	}
+	padding, inset := schModuleFramePadding, schModuleTitleInset
+	if spacing != nil {
+		padding = *spacing + .5
+		inset = plCeil(padding)
+	}
 	const fontSize, clearance = schModuleTitleFontSize, schModuleTitleClearance
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(title) == "" || strings.ContainsAny(title, "\r\n") || len(obstacles) == 0 {
 		return schFrameSpec{}, fmt.Errorf("module frame requires an id, single-line title and finite content bounds")
@@ -124,6 +138,56 @@ func measureSchModuleFrameObstacles(id, title string, obstacles []layoutBBox, me
 		return schFrameSpec{}, fmt.Errorf("module %s frame/title outside sheet; revise the input layout (no automatic pagination)", id)
 	}
 	return best, nil
+}
+
+func validateSchematicSpacing(spacing *float64) error {
+	if spacing != nil && (!plGrid(*spacing) || *spacing < 10) {
+		return fmt.Errorf("spacing must be finite, >= 10 raw and on the 5-raw grid")
+	}
+	return nil
+}
+
+// Supplied frames are immutable sheet inputs. A different page padding must
+// never silently rebuild a too-small local frame around unchanged content.
+func validateSchematicFrameSpacing(f schFrameSpec, obstacles []layoutBBox, spacing *float64) error {
+	if err := validateSchematicSpacing(spacing); err != nil || spacing == nil {
+		return err
+	}
+	if !plBoxValid(f.Rect) || !plFinite(f.TitleX) || !plFinite(f.TitleY) || !plFinite(f.FontSize) || f.FontSize <= 0 || len(obstacles) == 0 {
+		return fmt.Errorf("frame %s requires complete geometry for unified spacing", f.ID)
+	}
+	n := *spacing + .5
+	inside := layoutBBox{MinX: f.Rect.MinX + n, MinY: f.Rect.MinY + n, MaxX: f.Rect.MaxX - n, MaxY: f.Rect.MaxY - n}
+	if !plBoxValid(inside) {
+		return fmt.Errorf("frame %s cannot contain spacing %g", f.ID, *spacing)
+	}
+	for _, b := range obstacles {
+		if !plBoxValid(b) || !boxInside(b, inside) {
+			return fmt.Errorf("frame %s violates zone inner spacing %g; replan this zone before sheet packing", f.ID, *spacing)
+		}
+	}
+	title := layoutBBox{MinX: f.TitleX, MinY: f.TitleY - f.FontSize, MaxX: f.TitleX + schModuleTitleWidth(f.Title, f.FontSize), MaxY: f.TitleY}
+	if f.TitleLayout != nil {
+		if err := checkSchFrameTitleOccupancy(f, f.titleBounds()); err != nil {
+			return err
+		}
+		title = f.titleBounds()
+	}
+	if !boxInside(title, inside) {
+		return fmt.Errorf("frame %s title violates zone inner spacing %g", f.ID, *spacing)
+	}
+	clearance := schModuleTitleClearance
+	if f.TitleLayout != nil {
+		clearance = f.TitleLayout.Clearance
+	}
+	// A retained frame may accompany newly solved local geometry. Its saved
+	// title obstacles describe the old result, so check current occupancy too.
+	for _, b := range obstacles {
+		if title.MinX < b.MaxX+clearance-1e-6 && title.MaxX > b.MinX-clearance+1e-6 && title.MinY < b.MaxY+clearance-1e-6 && title.MaxY > b.MinY-clearance+1e-6 {
+			return fmt.Errorf("frame %s title collides with current zone content; replan this zone before sheet packing", f.ID)
+		}
+	}
+	return nil
 }
 
 func schFrameMoreCompact(a, b schFrameSpec) bool {

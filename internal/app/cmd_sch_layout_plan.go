@@ -24,7 +24,12 @@ Attachments: {componentId,pinNumber?,attachTo?:{componentId,pinNumber}}.
 Core is normalized to 0,0. Output preserves pin states and component IDs.
 No library UUID, Lib membership, project, sheet or daemon required. No Apply.
 With --zones: input schemaVersion, components, netPolicies, zones, optional
-attachments/maxCandidates. Each zone: {id,title,coreComponentId,componentIds}.
+attachments/maxCandidates/spacing. Optional spacing is the shared zone inner,
+page and inter-zone minimum clearance (>=10 raw, 5-raw grid), including stroke
+clearance; forwarded unchanged to the sheet planner. Legacy defaults otherwise.
+In unified spacing mode maxCandidates is a per-zone cap, so earlier zones cannot
+consume another zone's optimization allowance. Legacy mode shares one cap.
+Each zone: {id,title,coreComponentId,componentIds}.
 Every component belongs to exactly one zone. Cross-zone signals use module_port.
 Output contains independent local layouts/contentBounds and compact frame plans,
 not whole-page packing or rendered frames. Add identity/sheet evidence before compose/Apply.
@@ -74,7 +79,7 @@ Example:
 		return os.WriteFile(out, raw, 0644)
 	}}
 	c.Flags().StringVar(&from, "from", "", "measured component-set JSON, without Lib metadata")
-	c.Flags().BoolVar(&zones, "zones", false, "plan explicitly owned per-core zones with a shared search budget")
+	c.Flags().BoolVar(&zones, "zones", false, "plan explicitly owned per-core zones; unified spacing isolates per-zone budgets")
 	c.Flags().StringVar(&out, "out", "", "write local geometry only after validation; defaults to stdout")
 	return c
 }
@@ -90,7 +95,14 @@ func decodeSchematicZonesInput(raw []byte) (SchematicZonesInput, error) {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return input, err
 	}
+	if b, ok := fields["spacing"]; ok && string(b) == "null" {
+		return input, fmt.Errorf("spacing must be a number, not null")
+	}
+	if err := validateSchematicSpacing(input.Spacing); err != nil {
+		return input, err
+	}
 	delete(fields, "zones")
+	delete(fields, "spacing")
 	fields["coreComponentId"] = json.RawMessage(`"zone-validation"`)
 	measurementJSON, err := json.Marshal(fields)
 	if err != nil {

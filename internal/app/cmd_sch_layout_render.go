@@ -13,8 +13,10 @@ import (
 
 func newSchLayoutRenderCmd(stdout io.Writer) *cobra.Command {
 	var from, out, zone string
+	var diagnostic bool
 	c := &cobra.Command{Use: "layout-render", Short: "Compile layout JSON to SVG offline (no AI, EDA or diff panels)", Long: `Render schemaVersion:1, optional title, zones:[{id,title,layout,status?}].
-layout is a SchematicLayoutResult. status: planned (default) or blocked.
+layout is a SchematicLayoutResult. Complete named connectivity is checked by default.
+--diagnostic explicitly permits incomplete/blocked layouts, never for final delivery.
 Also accepts layout-plan --zones output. Optional zone frame is preserved.
 Only translates supplied geometry; never solves or fabricates missing wires.
 Simplified symbols/text are not official EasyEDA graphics or electrical checks.
@@ -64,6 +66,12 @@ and check padding, zone gaps and keepouts; no reflow. Output is SVG.
 			}
 			input.Zones = selected
 		}
+		if !diagnostic {
+			if e = validateCompleteLayoutPreview(input); e != nil {
+				return e
+			}
+		}
+		input.Diagnostic = input.Diagnostic || diagnostic
 		svg, e := RenderSchematicLayoutSVG(input)
 		if e != nil {
 			return e
@@ -77,15 +85,18 @@ and check padding, zone gaps and keepouts; no reflow. Output is SVG.
 	c.Flags().StringVar(&from, "from", "", "layout/diagnostic JSON")
 	c.Flags().StringVar(&out, "out", "", "SVG output, defaults to stdout")
 	c.Flags().StringVar(&zone, "zone", "", "render a single zone ID")
+	c.Flags().BoolVar(&diagnostic, "diagnostic", false, "explicitly render incomplete diagnostics, not a completed layout")
 	return c
 }
 
 func newSchLayoutSheetPlanCmd(stdout io.Writer) *cobra.Command {
 	var from, out string
+	var diagnostic bool
 	c := &cobra.Command{Use: "layout-sheet-plan", Short: "Pack existing zone geometry into sheet previews offline (no Apply)", Long: `Input: layout-render JSON plus sheet:{bounds,border,keepouts,padding,gap}.
 Units are raw (0.01 inch); padding/gap >= 10. Keeps symbol scale and internal
 connections unchanged. Tries four deterministic orders; not globally optimal.
-Outputs pages[] accepted by layout-render, preserving blocked zone status.
+Optional top-level spacing unifies zone inner padding, sheet padding and zone gap.
+Outputs pages[] accepted by layout-render. Incomplete zones require --diagnostic.
 Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if from == "" || out == "" {
 			return fmt.Errorf("--from and --out required")
@@ -111,6 +122,12 @@ Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs,
 		if e = validateRenderMeasurementsJSON(raw); e != nil {
 			return e
 		}
+		if !diagnostic {
+			if e = validateCompleteLayoutPreview(in); e != nil {
+				return e
+			}
+		}
+		in.Diagnostic = in.Diagnostic || diagnostic
 		plan, e := PlanSchematicSheets(in)
 		if e != nil {
 			return e
@@ -123,6 +140,7 @@ Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs,
 	}}
 	c.Flags().StringVar(&from, "from", "", "zone layouts with sheet constraints JSON")
 	c.Flags().StringVar(&out, "out", "", "page plan JSON output")
+	c.Flags().BoolVar(&diagnostic, "diagnostic", false, "explicitly pack incomplete diagnostics, not a completed layout")
 	return c
 }
 
@@ -139,7 +157,28 @@ func validateRenderSheetJSON(raw []byte) error {
 	if e := json.Unmarshal(b, &sheet); e != nil {
 		return e
 	}
-	for _, key := range []string{"bounds", "border", "keepouts", "padding", "gap"} {
+	if len(top["spacing"]) != 0 && string(top["spacing"]) != "null" {
+		var spacing float64
+		if e := json.Unmarshal(top["spacing"], &spacing); e != nil {
+			return e
+		}
+		if e := validateSchematicSpacing(&spacing); e != nil {
+			return e
+		}
+		for _, key := range []string{"padding", "gap"} {
+			if value, supplied := sheet[key]; supplied {
+				var n float64
+				if string(value) == "null" || json.Unmarshal(value, &n) != nil || n != spacing {
+					return fmt.Errorf("explicit sheet.%s must equal spacing", key)
+				}
+			}
+		}
+	}
+	required := []string{"bounds", "border", "keepouts"}
+	if len(top["spacing"]) == 0 || string(top["spacing"]) == "null" {
+		required = append(required, "padding", "gap")
+	}
+	for _, key := range required {
 		if len(sheet[key]) == 0 || string(sheet[key]) == "null" {
 			return fmt.Errorf("sheet requires explicit %s", key)
 		}
@@ -176,6 +215,8 @@ func validateRenderMeasurementsJSON(raw []byte) error {
 			SheetPosition map[string]json.RawMessage `json:"sheetPosition"`
 			Layout        struct {
 				Placements []map[string]json.RawMessage `json:"placements"`
+				Flags      []map[string]json.RawMessage `json:"flags"`
+				Wires      []map[string]json.RawMessage `json:"wires"`
 			} `json:"layout"`
 		} `json:"zones"`
 	}
@@ -191,6 +232,34 @@ func validateRenderMeasurementsJSON(raw []byte) error {
 		return nil
 	}
 	for _, z := range top.Zones {
+		for _, w := range z.Layout.Wires {
+			if e := require(w, "net", "points"); e != nil {
+				return e
+			}
+			var points [][]json.RawMessage
+			if e := json.Unmarshal(w["points"], &points); e != nil {
+				return e
+			}
+			if len(points) < 2 {
+				return fmt.Errorf("wire requires at least two explicit points")
+			}
+			for _, p := range points {
+				if len(p) != 2 {
+					return fmt.Errorf("wire point requires exactly two coordinates")
+				}
+				for _, v := range p {
+					var n float64
+					if string(v) == "null" || json.Unmarshal(v, &n) != nil {
+						return fmt.Errorf("wire requires explicit numeric coordinates")
+					}
+				}
+			}
+		}
+		for _, f := range z.Layout.Flags {
+			if e := require(f, "net", "kind", "pinX", "pinY", "direction", "offset"); e != nil {
+				return e
+			}
+		}
 		if z.SheetPosition != nil {
 			if e := require(z.SheetPosition, "x", "y"); e != nil {
 				return e

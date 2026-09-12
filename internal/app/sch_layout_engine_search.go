@@ -73,13 +73,36 @@ func libAttachmentPairs(id string, own powerLayoutPlacement, hint SchematicLayou
 }
 
 func libPlacePeripheral(current powerLayoutPlan, measured powerLayoutPlacement, pair libAttachmentPair, policies map[string]string, budget *int) (*powerLayoutPlan, error) {
-	current.Flags = nil // Marker reservations are recalculated for each candidate.
+	return libPlacePeripheralPairs(current, measured, []libAttachmentPair{pair}, policies, budget, nil)
+}
+
+// Try every attachment pair at each distance shell before extending any pair.
+// Previously one unsuitable pair could spend the entire global allowance while
+// another pair had a legal short connection. Rejected XYs are checkpoint-local:
+// they request an actual relocation, not merely a different processing order.
+func libPlacePeripheralPairs(current powerLayoutPlan, measured powerLayoutPlacement, pairs []libAttachmentPair, policies map[string]string, budget *int, rejected map[[2]float64]bool, cursor ...*float64) (*powerLayoutPlan, error) {
+	current.Flags = nil // Full marker placement is deferred to the final gate.
 	var lastErr error
 	// Search complete distance shells: don't accept the first legal coordinate.
 	// All candidates in the first feasible shell compete on the full objective.
-	for cost := 5.0; cost <= 600; cost += 5 {
+	start := 5.0
+	if len(cursor) > 0 && *cursor[0] > start {
+		start = *cursor[0]
+	}
+	for cost := start; cost <= 600; cost += 5 {
 		var best *powerLayoutPlan
 		var bestRouting []powerLayoutWire
+		var bestPair libAttachmentPair
+		finishBest := func() *powerLayoutPlan {
+			if best != nil {
+				if len(cursor) > 0 {
+					*cursor[0] = cost
+				}
+				best.Wires = bestRouting
+				best.Flags = nil
+			}
+			return best
+		}
 		for lateral := 0.0; lateral <= math.Min(200, cost-5); lateral += 5 {
 			distance := cost - lateral
 			if distance > 400 {
@@ -89,58 +112,90 @@ func libPlacePeripheral(current powerLayoutPlan, measured powerLayoutPlacement, 
 				if lateral == 0 && sign < 0 {
 					continue
 				}
-				if *budget <= 0 {
-					return nil, errLibLayoutBudget
-				}
-				*budget -= 1
-				x, y := endpointFor(pair.host.X, pair.host.Y, distance, pair.side)
-				if pair.side == "left" || pair.side == "right" {
-					y += sign * lateral
-				} else {
-					x += sign * lateral
-				}
-				c := plTranslate(measured, x-pair.own.X, y-pair.own.Y)
-				trial := current
-				trial.Placements = append(append([]powerLayoutPlacement{}, current.Placements...), c)
-				if lastErr = validateLibGeometry(&trial); lastErr != nil {
-					continue
-				}
-				q, _ := libPin(c, pair.own.Number)
-				// A facing two-terminal signal branch needs an exact grid midpoint
-				// for symmetric tapping; reserve it during placement, not by bending
-				// or shifting a finished wire in the renderer.
-				if libNetPriority(policies[q.Net]) == 2 && libFacingTwoTerminalPins(&trial, pair.host, q) && (!plGrid((pair.host.X+q.X)/2) || !plGrid((pair.host.Y+q.Y)/2)) {
-					continue
-				}
-				for _, route := range libRoutes(pair.host, q) {
-					candidate := trial
-					candidate.Wires = libAppendRoute(current.Wires, route)
-					if lastErr = validateLibGeometry(&candidate); lastErr != nil {
+				for _, pair := range pairs {
+					if *budget <= 0 {
+						if best != nil {
+							return finishBest(), nil
+						}
+						return nil, errLibLayoutBudget
+					}
+					*budget -= 1
+					x, y := endpointFor(pair.host.X, pair.host.Y, distance, pair.side)
+					if pair.side == "left" || pair.side == "right" {
+						y += sign * lateral
+					} else {
+						x += sign * lateral
+					}
+					c := plTranslate(measured, x-pair.own.X, y-pair.own.Y)
+					if rejected[[2]float64{c.X, c.Y}] {
 						continue
 					}
-					if lastErr = libJoinNearbyRails(&candidate, policies); lastErr != nil {
+					trial := current
+					trial.Placements = append(append([]powerLayoutPlacement{}, current.Placements...), c)
+					if lastErr = validateLibGeometry(&trial); lastErr != nil {
 						continue
 					}
-					routing := candidate.Wires
-					if lastErr = libNameIslands(&candidate, policies, budget); lastErr != nil {
+					q, _ := libPin(c, pair.own.Number)
+					// A facing two-terminal signal branch needs an exact grid midpoint
+					// for symmetric tapping; reserve it during placement, not by bending
+					// or shifting a finished wire in the renderer.
+					if libNetPriority(policies[q.Net]) == 2 && libFacingTwoTerminalPins(&trial, pair.host, q) && (!plGrid((pair.host.X+q.X)/2) || !plGrid((pair.host.Y+q.Y)/2)) {
 						continue
 					}
-					if best == nil || libAlignedCandidateLess(&candidate, best, pair) {
-						best = &candidate
-						bestRouting = routing
+					for _, route := range libRoutes(pair.host, q) {
+						candidate := trial
+						candidate.Wires = libAppendRoute(current.Wires, route)
+						if lastErr = validateLibGeometry(&candidate); lastErr != nil {
+							continue
+						}
+						if lastErr = libJoinNearbyRails(&candidate, policies); lastErr != nil {
+							continue
+						}
+						routing := candidate.Wires
+						// This is a geometry/routing checkpoint, not a completed
+						// schematic. Naming every unchanged core pin here made a
+						// dense core cost O(proposals * all pins * escape routes).
+						// The full naming/electrical gate runs at the final checkpoint;
+						// any failure rolls back these provisional placements.
+						if best == nil || libPairCandidateLess(&candidate, pair, best, bestPair) {
+							best = &candidate
+							bestRouting = routing
+							bestPair = pair
+						}
 					}
 				}
 			}
 		}
 		if best != nil {
-			// Naming is a feasibility probe during placement. Its escape wires
-			// must not survive after their temporary markers are discarded.
-			best.Wires = bestRouting
-			best.Flags = nil
-			return best, nil
+			// Return provisional geometry; complete naming is the terminal gate.
+			return finishBest(), nil
 		}
 	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no untried coordinate in 400 raw outward / 200 raw lateral search")
+	}
 	return nil, lastErr
+}
+
+func libPairCandidateLess(a *powerLayoutPlan, ap libAttachmentPair, b *powerLayoutPlan, bp libAttachmentPair) bool {
+	if ap == bp {
+		return libAlignedCandidateLess(a, b, ap)
+	}
+	if ap.rank != bp.rank {
+		return ap.rank < bp.rank
+	}
+	axisError := func(p *powerLayoutPlan, pair libAttachmentPair) float64 {
+		q, _ := libPin(p.Placements[len(p.Placements)-1], pair.own.Number)
+		if pair.side == "left" || pair.side == "right" {
+			return math.Abs(q.Y - pair.host.Y)
+		}
+		return math.Abs(q.X - pair.host.X)
+	}
+	x, y := axisError(a, ap), axisError(b, bp)
+	if x != y {
+		return x < y
+	}
+	return libCandidateLess(a, b)
 }
 
 // Each island needs exactly one real naming lead. Local rail policies permit
@@ -333,7 +388,35 @@ func libJoinNetsMode(p *powerLayoutPlan, policies map[string]string, railsOnly, 
 			}
 			for _, e := range edges {
 				if policies[e.a.Net] == "direct" {
-					return fmt.Errorf("cannot route direct net %s between measured pins without crossing obstacles; revise attachment or measured pose", e.a.Net)
+					conflict := &schematicRouteConflict{net: e.a.Net, blockers: map[string]bool{}, ownersComplete: true}
+					// This diagnostic runs only after all real route candidates
+					// failed. It changes search order, never electrical validity.
+					for _, route := range append(libRoutes(e.a, e.b), libDetourRoutes(e.a, e.b)...) {
+						for _, c := range p.Placements {
+							probe := powerLayoutPlan{Placements: []powerLayoutPlacement{c}, Wires: route}
+							if validateLibGeometry(&probe) != nil {
+								conflict.blockers[c.Designator] = true
+							}
+						}
+						// A body can be outside the corridor while one of its wires
+						// blocks it. Conservatively include every member of that net;
+						// missing ownership disables strong conflict pruning entirely.
+						for _, existing := range p.Wires {
+							if existing.Net == e.a.Net || !libRoutesIntersect(route, existing) {
+								continue
+							}
+							owned := false
+							for _, c := range p.Placements {
+								for _, q := range c.Pins {
+									if q.Net == existing.Net {
+										conflict.blockers[c.Designator], owned = true, true
+									}
+								}
+							}
+							conflict.ownersComplete = conflict.ownersComplete && owned
+						}
+					}
+					return conflict
 				}
 			}
 			// An explicitly cross-zone net may retain separately named trees.
@@ -341,4 +424,17 @@ func libJoinNetsMode(p *powerLayoutPlan, policies map[string]string, railsOnly, 
 			return nil
 		}
 	}
+}
+
+func libRoutesIntersect(route []powerLayoutWire, wire powerLayoutWire) bool {
+	for _, part := range route {
+		for i := 1; i < len(part.Points); i++ {
+			for j := 1; j < len(wire.Points); j++ {
+				if plSegmentsMeet(part.Points[i-1], part.Points[i], wire.Points[j-1], wire.Points[j]) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

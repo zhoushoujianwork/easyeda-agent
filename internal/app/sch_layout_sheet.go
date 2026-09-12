@@ -21,6 +21,8 @@ type SchematicRenderSheet struct {
 type SchematicSheetsPreview struct {
 	SchemaVersion        int                    `json:"schemaVersion"`
 	PreviewOnly          bool                   `json:"previewOnly"`
+	PlacementMode        string                 `json:"placementMode"`
+	Spacing              *float64               `json:"spacing,omitempty"`
 	ZoneCount            int                    `json:"zoneCount"`
 	BlockedZones         []string               `json:"blockedZones"`
 	FrameArea            float64                `json:"frameArea"`
@@ -28,22 +30,62 @@ type SchematicSheetsPreview struct {
 	Pages                []SchematicRenderInput `json:"pages"`
 }
 
+// The optional top-level spacing is the only authority in unified mode.
+// Explicit legacy fields may confirm it, never override it. Copy the sheet so
+// resolving omitted values cannot mutate a caller's geometry evidence.
+func resolveSchematicRenderSpacing(in SchematicRenderInput) (SchematicRenderInput, error) {
+	if err := validateSchematicSpacing(in.Spacing); err != nil {
+		return in, err
+	}
+	if in.Spacing == nil || in.Sheet == nil {
+		return in, nil
+	}
+	s := *in.Sheet
+	for _, field := range []struct {
+		name  string
+		value float64
+	}{{"padding", s.Padding}, {"gap", s.Gap}} {
+		if field.value != 0 && field.value != *in.Spacing {
+			return in, fmt.Errorf("sheet.%s must match unified spacing %g", field.name, *in.Spacing)
+		}
+	}
+	s.Padding, s.Gap = *in.Spacing, *in.Spacing
+	in.Sheet = &s
+	return in, nil
+}
+
 func sheetPreviewUsable(s SchematicRenderSheet) SchematicBox {
 	n := s.Padding + 0.5
 	return SchematicBox{MinX: plCeil(s.Border.MinX + n), MinY: plCeil(s.Border.MinY + n), MaxX: plFloor(s.Border.MaxX - n), MaxY: plFloor(s.Border.MaxY - n)}
 }
-func sheetPreviewFrame(z SchematicRenderZone) (schFrameSpec, error) {
+func sheetPreviewFrame(z SchematicRenderZone, spacingArg ...*float64) (schFrameSpec, error) {
+	var spacing *float64
+	if len(spacingArg) > 0 {
+		spacing = spacingArg[0]
+	}
+	if err := validateSchematicSpacing(spacing); err != nil {
+		return schFrameSpec{}, err
+	}
 	if z.Frame != nil {
+		if spacing != nil {
+			if z.Layout == nil {
+				return schFrameSpec{}, fmt.Errorf("zone %s lacks layout", z.ID)
+			}
+			p := powerLayoutPlan{Placements: z.Layout.Placements, Wires: z.Layout.Wires, Flags: z.Layout.Flags}
+			if err := validateSchematicFrameSpacing(*z.Frame, powerLayoutContentObstacles(&p), spacing); err != nil {
+				return schFrameSpec{}, err
+			}
+		}
 		return *z.Frame, nil
 	}
 	if z.Layout == nil {
 		return schFrameSpec{}, fmt.Errorf("zone %s lacks layout", z.ID)
 	}
 	p := powerLayoutPlan{Placements: z.Layout.Placements, Wires: z.Layout.Wires, Flags: z.Layout.Flags}
-	return measureSchModuleFrameObstacles(z.ID, z.Title, powerLayoutContentObstacles(&p), nil, nil)
+	return measureSchModuleFrameObstaclesSpacing(z.ID, z.Title, powerLayoutContentObstacles(&p), nil, nil, spacing)
 }
-func sheetPreviewRect(z SchematicRenderZone) (SchematicBox, error) {
-	f, e := sheetPreviewFrame(z)
+func sheetPreviewRect(z SchematicRenderZone, spacingArg ...*float64) (SchematicBox, error) {
+	f, e := sheetPreviewFrame(z, spacingArg...)
 	if e != nil {
 		return SchematicBox{}, e
 	}
@@ -55,6 +97,25 @@ func sheetPreviewRect(z SchematicRenderZone) (SchematicBox, error) {
 }
 func sheetPreviewConflict(a, b SchematicBox, gap float64) bool {
 	return !(a.MaxX+gap <= b.MinX || b.MaxX+gap <= a.MinX || a.MaxY+gap <= b.MinY || b.MaxY+gap <= a.MinY)
+}
+
+func sheetPreviewPlacementError(id string, r, usable SchematicBox, sheet SchematicRenderSheet, placed []SchematicBox) error {
+	if !boxInside(r, usable) {
+		return fmt.Errorf("zone %s violates page padding", id)
+	}
+	for _, k := range sheet.Keepouts {
+		if sheetPreviewConflict(r, k, sheet.Gap+.5) {
+			return fmt.Errorf("zone %s enters keepout clearance", id)
+		}
+	}
+	for _, b := range placed {
+		// One requested gap, plus only the two half-strokes. Padding both
+		// rectangles by Gap would incorrectly reserve twice the user's value.
+		if sheetPreviewConflict(r, b, sheet.Gap+1) {
+			return fmt.Errorf("zone %s overlaps another zone/clearance", id)
+		}
+	}
+	return nil
 }
 func validateSheetSpec(s *SchematicRenderSheet) error {
 	if s == nil || !plBoxValid(s.Bounds) || !plBoxValid(s.Border) || !boxInside(s.Border, s.Bounds) || !plFinite(s.Padding) || s.Padding < 10 || !plFinite(s.Gap) || s.Gap < 10 || s.Keepouts == nil {
@@ -74,28 +135,23 @@ func validateSheetSpec(s *SchematicRenderSheet) error {
 	return nil
 }
 func validateSchematicSheet(in SchematicRenderInput) error {
+	var err error
+	in, err = resolveSchematicRenderSpacing(in)
+	if err != nil {
+		return err
+	}
 	if e := validateSheetSpec(in.Sheet); e != nil {
 		return e
 	}
 	u := sheetPreviewUsable(*in.Sheet)
 	placed := []SchematicBox{}
 	for _, z := range in.Zones {
-		r, e := sheetPreviewRect(z)
+		r, e := sheetPreviewRect(z, in.Spacing)
 		if e != nil {
 			return e
 		}
-		if !boxInside(r, u) {
-			return fmt.Errorf("zone %s violates page padding", z.ID)
-		}
-		for _, k := range in.Sheet.Keepouts {
-			if sheetPreviewConflict(r, k, in.Sheet.Gap+.5) {
-				return fmt.Errorf("zone %s enters keepout clearance", z.ID)
-			}
-		}
-		for _, b := range placed {
-			if sheetPreviewConflict(r, b, in.Sheet.Gap+1) {
-				return fmt.Errorf("zone %s overlaps another zone/clearance", z.ID)
-			}
+		if e := sheetPreviewPlacementError(z.ID, r, u, *in.Sheet, placed); e != nil {
+			return e
 		}
 		placed = append(placed, r)
 	}
@@ -105,6 +161,11 @@ func validateSchematicSheet(in SchematicRenderInput) error {
 // PlanSchematicSheets packs immutable local layouts. It does not merge nets,
 // resize symbols, alter source pages or establish a live Apply baseline.
 func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, error) {
+	var err error
+	in, err = resolveSchematicRenderSpacing(in)
+	if err != nil {
+		return nil, err
+	}
 	if e := validateSheetSpec(in.Sheet); e != nil {
 		return nil, e
 	}
@@ -117,7 +178,11 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 		return nil, e
 	}
 	zones := append([]SchematicRenderZone(nil), in.Zones...)
-	out := &SchematicSheetsPreview{SchemaVersion: 1, PreviewOnly: true, ZoneCount: len(zones), BlockedZones: []string{}}
+	out := &SchematicSheetsPreview{SchemaVersion: 1, PreviewOnly: true, PlacementMode: "repacked", ZoneCount: len(zones), BlockedZones: []string{}}
+	if in.Spacing != nil {
+		spacing := *in.Spacing
+		out.Spacing = &spacing
+	}
 	u := sheetPreviewUsable(*in.Sheet)
 	out.UsableAreaUpperBound = (u.MaxX - u.MinX) * (u.MaxY - u.MinY)
 	// Subtract only non-overlapping intersections to keep this an upper bound.
@@ -127,7 +192,7 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 	}
 	out.UsableAreaUpperBound -= maxKeepout
 	for i, z := range zones {
-		f, e := sheetPreviewFrame(z)
+		f, e := sheetPreviewFrame(z, in.Spacing)
 		if e != nil {
 			return nil, e
 		}
@@ -135,6 +200,29 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 		out.FrameArea += (f.Rect.MaxX - f.Rect.MinX) * (f.Rect.MaxY - f.Rect.MinY)
 		if z.Status == "blocked" {
 			out.BlockedZones = append(out.BlockedZones, z.ID)
+		}
+	}
+	// Existing positions are a page-level layout hint, not electrical coordinates.
+	// Reuse the entire valid page so editing the inside of one unchanged rectangle
+	// never needlessly moves its neighbors. A grown/conflicting rectangle falls
+	// back to deterministic packing, which still cannot alter local layouts.
+	allPositioned := true
+	for _, z := range zones {
+		if z.SheetPosition == nil {
+			allPositioned = false
+			continue
+		}
+		if !plGrid(z.SheetPosition.X) || !plGrid(z.SheetPosition.Y) {
+			return nil, fmt.Errorf("zone %s requires finite grid-aligned sheetPosition", z.ID)
+		}
+	}
+	if allPositioned {
+		page := in
+		page.Zones = zones
+		if validateSchematicSheet(page) == nil {
+			out.PlacementMode = "reused"
+			out.Pages = []SchematicRenderInput{page}
+			return out, nil
 		}
 	}
 	for order := 0; order < 4; order++ {
@@ -159,9 +247,17 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 			found := false
 			for p := 0; p <= len(pages); p++ {
 				fresh := p == len(pages)
-				page := SchematicRenderInput{SchemaVersion: 1, Title: in.Title, Sheet: in.Sheet}
+				page := SchematicRenderInput{SchemaVersion: 1, Title: in.Title, Sheet: in.Sheet, Spacing: out.Spacing, Diagnostic: in.Diagnostic}
 				if !fresh {
 					page = pages[p]
+				}
+				placed := make([]SchematicBox, 0, len(page.Zones))
+				for _, placedZone := range page.Zones {
+					r, e := sheetPreviewRect(placedZone)
+					if e != nil {
+						return nil, e
+					}
+					placed = append(placed, r)
 				}
 				w, h := z.Frame.Rect.MaxX-z.Frame.Rect.MinX, z.Frame.Rect.MaxY-z.Frame.Rect.MinY
 				for y := u.MaxY; y-h >= u.MinY && !found; y -= 5 {
@@ -170,12 +266,11 @@ func PlanSchematicSheets(in SchematicRenderInput) (*SchematicSheetsPreview, erro
 						if candidates > 2000000 {
 							return nil, fmt.Errorf("sheet preview search budget exhausted; no capacity conclusion")
 						}
-						candidate := z
-						candidate.SheetPosition = &SchematicSheetPosition{X: x, Y: y}
-						trial := page
-						trial.Zones = append(append([]SchematicRenderZone(nil), page.Zones...), candidate)
-						if validateSchematicSheet(trial) == nil {
-							page = trial
+						r := SchematicBox{MinX: x, MinY: y - h, MaxX: x + w, MaxY: y}
+						if sheetPreviewPlacementError(z.ID, r, u, *page.Sheet, placed) == nil {
+							candidate := z
+							candidate.SheetPosition = &SchematicSheetPosition{X: x, Y: y}
+							page.Zones = append(append([]SchematicRenderZone(nil), page.Zones...), candidate)
 							found = true
 						}
 					}

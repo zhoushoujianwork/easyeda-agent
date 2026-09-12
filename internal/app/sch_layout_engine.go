@@ -37,14 +37,15 @@ type SchematicLayoutInput struct {
 	MaxCandidates   int                         `json:"maxCandidates,omitempty"`
 }
 type SchematicLayoutResult struct {
-	SchemaVersion  int                          `json:"schemaVersion"`
-	ComponentIDs   map[string]string            `json:"componentIds"`
-	PinStates      map[string]map[string]string `json:"pinStates"`
-	Placements     []SchematicPlacement         `json:"placements"`
-	Wires          []SchematicWire              `json:"wires"`
-	Flags          []SchematicMarker            `json:"flags"`
-	Score          [4]float64                   `json:"score"`
-	CandidatesUsed int                          `json:"candidatesUsed"`
+	SchemaVersion  int                               `json:"schemaVersion"`
+	ComponentIDs   map[string]string                 `json:"componentIds"`
+	PinStates      map[string]map[string]string      `json:"pinStates"`
+	Placements     []SchematicPlacement              `json:"placements"`
+	Wires          []SchematicWire                   `json:"wires"`
+	Flags          []SchematicMarker                 `json:"flags"`
+	Score          [4]float64                        `json:"score"`
+	CandidatesUsed int                               `json:"candidatesUsed"`
+	Search         *SchematicLayoutSearchDiagnostics `json:"search,omitempty"`
 }
 
 // PlanSchematicLayout is side-effect-free. No project, library, sheet, module

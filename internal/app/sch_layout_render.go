@@ -26,11 +26,18 @@ type SchematicRenderInput struct {
 	Zones          []SchematicRenderZone `json:"zones"`
 	CandidatesUsed int                   `json:"candidatesUsed,omitempty"`
 	Sheet          *SchematicRenderSheet `json:"sheet,omitempty"`
+	Spacing        *float64              `json:"spacing,omitempty"`
+	Diagnostic     bool                  `json:"diagnostic,omitempty"`
 }
 
 // RenderSchematicLayoutSVG translates existing geometry only. Zone translations
 // are display packing, never new component positions for Apply. No AI/EDA calls.
 func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
+	var spacingErr error
+	in, spacingErr = resolveSchematicRenderSpacing(in)
+	if spacingErr != nil {
+		return nil, spacingErr
+	}
 	if in.SchemaVersion != 1 || len(in.Zones) == 0 {
 		return nil, fmt.Errorf("schemaVersion:1 and nonempty zones required")
 	}
@@ -107,7 +114,7 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 			}
 		}
 		boxes := powerLayoutContentObstacles(&p)
-		frame, err := measureSchModuleFrameObstacles(z.ID, z.Title, boxes, nil, nil)
+		frame, err := sheetPreviewFrame(z, in.Spacing)
 		if err != nil {
 			return nil, err
 		}
@@ -166,9 +173,16 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 	if len(panels) == 1 {
 		title = panels[0].zone.Title + " · 布局预览"
 	}
+	if in.Diagnostic {
+		title = "诊断模式 · " + title
+	}
 	text(20, 28, 20, "#22344d", title, "start")
 	text(20, 49, 9, "#546579", "离线转译 / 简化符号 / 非仿真、非官方导图", "start")
-	text(20, 65, 9, "#546579", "不自动补线；红区未完成，预览不等于 Apply 验收。", "start")
+	if in.Diagnostic {
+		text(20, 65, 9, "#c53b45", "诊断输出：未通过完整性门禁，不得作为完成效果或 Apply 依据。", "start")
+	} else {
+		text(20, 65, 9, "#546579", "只转译输入几何；离线预览不等于现场 Apply 验收。", "start")
+	}
 	if in.Sheet != nil {
 		s := in.Sheet
 		rect := func(r SchematicBox, fill, stroke, dash string) {
@@ -190,6 +204,9 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 	for _, v := range panels {
 		z, f := v.zone, v.frame
 		color, status := "#aa00aa", "预案"
+		if in.Diagnostic {
+			color, status = "#c53b45", "诊断"
+		}
 		if z.Status == "blocked" {
 			color, status = "#c53b45", "未完成"
 		}

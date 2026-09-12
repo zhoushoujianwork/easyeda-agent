@@ -15,6 +15,7 @@ type SchematicZone struct {
 }
 type SchematicZonesInput struct {
 	SchemaVersion int                         `json:"schemaVersion"`
+	Spacing       *float64                    `json:"spacing,omitempty"`
 	Components    []SchematicLayoutComponent  `json:"components"`
 	NetPolicies   map[string]string           `json:"netPolicies"`
 	Attachments   []SchematicLayoutPeripheral `json:"attachments,omitempty"`
@@ -31,6 +32,7 @@ type SchematicZoneResult struct {
 }
 type SchematicZonesResult struct {
 	SchemaVersion  int                   `json:"schemaVersion"`
+	Spacing        *float64              `json:"spacing,omitempty"`
 	Zones          []SchematicZoneResult `json:"zones"`
 	CandidatesUsed int                   `json:"candidatesUsed"`
 }
@@ -40,6 +42,9 @@ type SchematicZonesResult struct {
 func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 	if in.SchemaVersion != 1 || len(in.Zones) == 0 || len(in.Components) == 0 {
 		return nil, fmt.Errorf("schemaVersion:1, zones and components required")
+	}
+	if err := validateSchematicSpacing(in.Spacing); err != nil {
+		return nil, err
 	}
 	budget := in.MaxCandidates
 	if budget == 0 {
@@ -111,6 +116,10 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 		}
 	}
 	out := &SchematicZonesResult{SchemaVersion: 1}
+	if in.Spacing != nil {
+		spacing := *in.Spacing
+		out.Spacing = &spacing
+	}
 	for _, z := range in.Zones {
 		local := SchematicLayoutInput{SchemaVersion: 1, CoreComponentID: z.CoreComponentID, NetPolicies: map[string]string{}}
 		for _, id := range z.ComponentIDs {
@@ -127,10 +136,19 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 				local.Attachments = append(local.Attachments, h)
 			}
 		}
-		layout, err := planSchematicLayoutWithBudget(local, &budget)
+		zoneBudget := &budget
+		if in.Spacing != nil {
+			// Unified two-level mode is isolated: a harder earlier zone cannot
+			// consume a later zone's search/compaction allowance.
+			isolatedBudget := initial
+			zoneBudget = &isolatedBudget
+		}
+		before := *zoneBudget
+		layout, err := planSchematicLayoutWithBudget(local, zoneBudget)
 		if err != nil {
 			return nil, fmt.Errorf("zone %s (%s): %w", z.ID, z.Title, err)
 		}
+		out.CandidatesUsed += before - *zoneBudget
 		p := powerLayoutPlan{Placements: layout.Placements, Wires: layout.Wires, Flags: layout.Flags}
 		boxes := powerLayoutContentObstacles(&p)
 		if len(boxes) == 0 {
@@ -143,12 +161,11 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 			b.MaxX = math.Max(b.MaxX, a.MaxX)
 			b.MaxY = math.Max(b.MaxY, a.MaxY)
 		}
-		frame, err := measureSchModuleFrameObstacles(z.ID, z.Title, boxes, nil, nil)
+		frame, err := measureSchModuleFrameObstaclesSpacing(z.ID, z.Title, boxes, nil, nil, in.Spacing)
 		if err != nil {
 			return nil, fmt.Errorf("zone %s frame: %w", z.ID, err)
 		}
 		out.Zones = append(out.Zones, SchematicZoneResult{ID: z.ID, Title: z.Title, CoreComponentID: z.CoreComponentID, ContentBounds: b, Frame: frame, Layout: layout})
 	}
-	out.CandidatesUsed = initial - budget
 	return out, nil
 }

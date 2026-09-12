@@ -114,6 +114,10 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
 目标页和所需尺寸，请用户在编辑器修改，随后重新读取纸张几何再继续。
 原理图 `sch autolayout` 与 PCB 自动布线是不同功能，按各自参考使用。
 
+两层布局：`layout-plan --zones` 只求解各区内部，失败可回退已放外围再接线；
+`layout-sheet-plan` 只平移完整区框，不重排区内器件。统一模式在输入顶层声明 `spacing`，
+同源控制框内、框间和页边净距；保留旧模式兼容，具体字段和预算见 schematic-data。
+
 ## 执行与验证约束
 
 - typed action 已有对应能力时使用它；无对应能力且用户接受调试路径时，才用 `debug.exec_js`。
@@ -137,6 +141,8 @@ EasyEDA。纯 patch 更新不升级 Connector，也不要求重开 EasyEDA。不
 
 本地预览使用固定 `sch layout-render --from render.json --out layout.svg`，不再临时生成
 绘图脚本。当前只输出布局图，不打印差异图解；输入和能力边界见 schematic-data.md。
+默认出图/合页拒绝 blocked 或未接到命名线树的区域；`--diagnostic` 仅用于排查失败，
+不得用诊断输出替代完整效果。出图与后续 Apply 必须来自同一份已验证目标，渲染器不补线。
 
 说明修改范围、源数据与实际图面的差异、验证结果、已保存页面及尚未解决的问题。
 `layout-lint` 检查几何，pin→net 黄金表检查接对与否，`sch gate --strict` 汇总原理图门禁。
