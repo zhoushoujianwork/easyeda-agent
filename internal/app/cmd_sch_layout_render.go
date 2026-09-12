@@ -18,7 +18,8 @@ layout is a SchematicLayoutResult. status: planned (default) or blocked.
 Also accepts layout-plan --zones output. Optional zone frame is preserved.
 Only translates supplied geometry; never solves or fabricates missing wires.
 Simplified symbols/text are not official EasyEDA graphics or electrical checks.
-Zone packing is display-only, not paper layout. Output is SVG, no external runtime.
+Without sheet: display-only zone packing. With sheet: honor exact sheetPosition
+and check padding, zone gaps and keepouts; no reflow. Output is SVG.
 
   easyeda sch layout-render --from geometry.json --out layout.svg
   easyeda sch layout-render --from geometry.json --zone supply --out supply.svg`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,41 +46,11 @@ Zone packing is display-only, not paper layout. Output is SVG, no external runti
 		if e = connectivity.DecodeStrictDesignJSON(raw, &input); e != nil {
 			return e
 		}
-		// Missing geometry must not silently become coordinates at zero.
-		var fields struct {
-			Zones []struct {
-				Layout struct {
-					Placements []map[string]json.RawMessage `json:"placements"`
-				} `json:"layout"`
-			} `json:"zones"`
-		}
-		if e = json.Unmarshal(raw, &fields); e != nil {
+		if e = validateRenderSheetJSON(raw); e != nil {
 			return e
 		}
-		for _, z := range fields.Zones {
-			for _, m := range z.Layout.Placements {
-				for _, key := range []string{"x", "y", "rotation", "mirror", "bbox", "pins"} {
-					if len(m[key]) == 0 || string(m[key]) == "null" {
-						return fmt.Errorf("measurement requires %s", key)
-					}
-				}
-				var box map[string]json.RawMessage
-				_ = json.Unmarshal(m["bbox"], &box)
-				for _, key := range []string{"minX", "minY", "maxX", "maxY"} {
-					if len(box[key]) == 0 || string(box[key]) == "null" {
-						return fmt.Errorf("bbox requires %s", key)
-					}
-				}
-				var pins []map[string]json.RawMessage
-				_ = json.Unmarshal(m["pins"], &pins)
-				for _, p := range pins {
-					for _, key := range []string{"number", "net", "x", "y"} {
-						if len(p[key]) == 0 || string(p[key]) == "null" {
-							return fmt.Errorf("pin requires %s", key)
-						}
-					}
-				}
-			}
+		if e = validateRenderMeasurementsJSON(raw); e != nil {
+			return e
 		}
 		if zone != "" {
 			var selected []SchematicRenderZone
@@ -107,4 +78,145 @@ Zone packing is display-only, not paper layout. Output is SVG, no external runti
 	c.Flags().StringVar(&out, "out", "", "SVG output, defaults to stdout")
 	c.Flags().StringVar(&zone, "zone", "", "render a single zone ID")
 	return c
+}
+
+func newSchLayoutSheetPlanCmd(stdout io.Writer) *cobra.Command {
+	var from, out string
+	c := &cobra.Command{Use: "layout-sheet-plan", Short: "Pack existing zone geometry into sheet previews offline (no Apply)", Long: `Input: layout-render JSON plus sheet:{bounds,border,keepouts,padding,gap}.
+Units are raw (0.01 inch); padding/gap >= 10. Keeps symbol scale and internal
+connections unchanged. Tries four deterministic orders; not globally optimal.
+Outputs pages[] accepted by layout-render, preserving blocked zone status.
+Does not edit EDA, merge nets, or generate an Apply queue.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		if from == "" || out == "" {
+			return fmt.Errorf("--from and --out required")
+		}
+		a, _ := filepath.Abs(from)
+		b, _ := filepath.Abs(out)
+		fi, _ := os.Stat(from)
+		fo, _ := os.Stat(out)
+		if a == b || (fi != nil && fo != nil && os.SameFile(fi, fo)) {
+			return fmt.Errorf("output must not overwrite input")
+		}
+		raw, e := os.ReadFile(from)
+		if e != nil {
+			return e
+		}
+		var in SchematicRenderInput
+		if e = connectivity.DecodeStrictDesignJSON(raw, &in); e != nil {
+			return e
+		}
+		if e = validateRenderSheetJSON(raw); e != nil {
+			return e
+		}
+		if e = validateRenderMeasurementsJSON(raw); e != nil {
+			return e
+		}
+		plan, e := PlanSchematicSheets(in)
+		if e != nil {
+			return e
+		}
+		data, e := json.MarshalIndent(plan, "", "  ")
+		if e != nil {
+			return e
+		}
+		return os.WriteFile(out, append(data, '\n'), 0644)
+	}}
+	c.Flags().StringVar(&from, "from", "", "zone layouts with sheet constraints JSON")
+	c.Flags().StringVar(&out, "out", "", "page plan JSON output")
+	return c
+}
+
+func validateRenderSheetJSON(raw []byte) error {
+	var top map[string]json.RawMessage
+	if e := json.Unmarshal(raw, &top); e != nil {
+		return e
+	}
+	b, ok := top["sheet"]
+	if !ok {
+		return nil
+	}
+	var sheet map[string]json.RawMessage
+	if e := json.Unmarshal(b, &sheet); e != nil {
+		return e
+	}
+	for _, key := range []string{"bounds", "border", "keepouts", "padding", "gap"} {
+		if len(sheet[key]) == 0 || string(sheet[key]) == "null" {
+			return fmt.Errorf("sheet requires explicit %s", key)
+		}
+	}
+	for _, key := range []string{"bounds", "border"} {
+		var box map[string]json.RawMessage
+		if e := json.Unmarshal(sheet[key], &box); e != nil {
+			return e
+		}
+		for _, coord := range []string{"minX", "minY", "maxX", "maxY"} {
+			if len(box[coord]) == 0 || string(box[coord]) == "null" {
+				return fmt.Errorf("sheet.%s requires %s", key, coord)
+			}
+		}
+	}
+	var keepouts []map[string]json.RawMessage
+	if e := json.Unmarshal(sheet["keepouts"], &keepouts); e != nil {
+		return e
+	}
+	for _, box := range keepouts {
+		for _, coord := range []string{"minX", "minY", "maxX", "maxY"} {
+			if len(box[coord]) == 0 || string(box[coord]) == "null" {
+				return fmt.Errorf("keepout requires %s", coord)
+			}
+		}
+	}
+	return nil
+}
+
+// Reject absent coordinates rather than letting JSON zero values invent them.
+func validateRenderMeasurementsJSON(raw []byte) error {
+	var top struct {
+		Zones []struct {
+			SheetPosition map[string]json.RawMessage `json:"sheetPosition"`
+			Layout        struct {
+				Placements []map[string]json.RawMessage `json:"placements"`
+			} `json:"layout"`
+		} `json:"zones"`
+	}
+	if e := json.Unmarshal(raw, &top); e != nil {
+		return e
+	}
+	require := func(m map[string]json.RawMessage, keys ...string) error {
+		for _, k := range keys {
+			if len(m[k]) == 0 || string(m[k]) == "null" {
+				return fmt.Errorf("explicit geometry field required: %s", k)
+			}
+		}
+		return nil
+	}
+	for _, z := range top.Zones {
+		if z.SheetPosition != nil {
+			if e := require(z.SheetPosition, "x", "y"); e != nil {
+				return e
+			}
+		}
+		for _, c := range z.Layout.Placements {
+			if e := require(c, "x", "y", "rotation", "mirror", "bbox", "pins"); e != nil {
+				return e
+			}
+			var box map[string]json.RawMessage
+			if e := json.Unmarshal(c["bbox"], &box); e != nil {
+				return e
+			}
+			if e := require(box, "minX", "minY", "maxX", "maxY"); e != nil {
+				return e
+			}
+			var pins []map[string]json.RawMessage
+			if e := json.Unmarshal(c["pins"], &pins); e != nil {
+				return e
+			}
+			for _, p := range pins {
+				if e := require(p, "number", "net", "x", "y"); e != nil {
+					return e
+				}
+			}
+		}
+	}
+	return nil
 }

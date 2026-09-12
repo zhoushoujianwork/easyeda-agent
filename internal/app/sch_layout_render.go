@@ -10,20 +10,22 @@ import (
 )
 
 type SchematicRenderZone struct {
-	ID              string                 `json:"id"`
-	Title           string                 `json:"title"`
-	CoreComponentID string                 `json:"coreComponentId,omitempty"`
-	ContentBounds   *SchematicBox          `json:"contentBounds,omitempty"`
-	Frame           *schFrameSpec          `json:"frame,omitempty"`
-	Layout          *SchematicLayoutResult `json:"layout"`
-	Status          string                 `json:"status,omitempty"`
-	Error           string                 `json:"error,omitempty"`
+	ID              string                  `json:"id"`
+	Title           string                  `json:"title"`
+	CoreComponentID string                  `json:"coreComponentId,omitempty"`
+	ContentBounds   *SchematicBox           `json:"contentBounds,omitempty"`
+	Frame           *schFrameSpec           `json:"frame,omitempty"`
+	Layout          *SchematicLayoutResult  `json:"layout"`
+	Status          string                  `json:"status,omitempty"`
+	Error           string                  `json:"error,omitempty"`
+	SheetPosition   *SchematicSheetPosition `json:"sheetPosition,omitempty"`
 }
 type SchematicRenderInput struct {
 	SchemaVersion  int                   `json:"schemaVersion"`
 	Title          string                `json:"title,omitempty"`
 	Zones          []SchematicRenderZone `json:"zones"`
 	CandidatesUsed int                   `json:"candidatesUsed,omitempty"`
+	Sheet          *SchematicRenderSheet `json:"sheet,omitempty"`
 }
 
 // RenderSchematicLayoutSVG translates existing geometry only. Zone translations
@@ -31,6 +33,11 @@ type SchematicRenderInput struct {
 func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 	if in.SchemaVersion != 1 || len(in.Zones) == 0 {
 		return nil, fmt.Errorf("schemaVersion:1 and nonempty zones required")
+	}
+	if in.Sheet != nil {
+		if err := validateSchematicSheet(in); err != nil {
+			return nil, err
+		}
 	}
 	type panel struct {
 		zone       SchematicRenderZone
@@ -125,6 +132,11 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 			row = 0
 		}
 		panels = append(panels, panel{z, frame, x, y, w, h})
+		if in.Sheet != nil {
+			p := &panels[len(panels)-1]
+			p.x = 20 + z.SheetPosition.X - in.Sheet.Bounds.MinX
+			p.y = 85 + in.Sheet.Bounds.MaxY - z.SheetPosition.Y - 25
+		}
 		row = math.Max(row, h)
 		maxX = math.Max(maxX, x+w+20)
 		x += w + 20
@@ -137,8 +149,13 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 	}
 	// Square viewport also avoids platform thumbnailers cropping tall/wide SVGs.
 	extent := math.Max(maxX, height)
+	canvasW, canvasH := extent, extent
+	if in.Sheet != nil {
+		canvasW = in.Sheet.Bounds.MaxX - in.Sheet.Bounds.MinX + 40
+		canvasH = in.Sheet.Bounds.MaxY - in.Sheet.Bounds.MinY + 105
+	}
 	var b bytes.Buffer
-	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="%g" height="%g" viewBox="0 0 %g %g"><rect width="100%%" height="100%%" fill="#f8fafc"/><g font-family="Arial,PingFang SC,sans-serif">`, extent*2, extent*2, extent, extent)
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" width="%g" height="%g" viewBox="0 0 %g %g"><rect width="100%%" height="100%%" fill="#f8fafc"/><g font-family="Arial,PingFang SC,sans-serif">`, canvasW*2, canvasH*2, canvasW, canvasH)
 	text := func(x, y, size float64, color, value, anchor string) {
 		fmt.Fprintf(&b, `<text x="%g" y="%g" font-size="%g" fill="%s" text-anchor="%s">%s</text>`, x, y, size, color, anchor, html.EscapeString(value))
 	}
@@ -152,13 +169,33 @@ func RenderSchematicLayoutSVG(in SchematicRenderInput) ([]byte, error) {
 	text(20, 28, 20, "#22344d", title, "start")
 	text(20, 49, 9, "#546579", "离线转译 / 简化符号 / 非仿真、非官方导图", "start")
 	text(20, 65, 9, "#546579", "不自动补线；红区未完成，预览不等于 Apply 验收。", "start")
+	if in.Sheet != nil {
+		s := in.Sheet
+		rect := func(r SchematicBox, fill, stroke, dash string) {
+			fmt.Fprintf(&b, `<rect x="%g" y="%g" width="%g" height="%g" fill="%s" stroke="%s" stroke-dasharray="%s"/>`, 20+r.MinX-s.Bounds.MinX, 85+s.Bounds.MaxY-r.MaxY, r.MaxX-r.MinX, r.MaxY-r.MinY, fill, stroke, dash)
+		}
+		rect(s.Bounds, "white", "#94a3b8", "")
+		rect(s.Border, "none", "#c74747", "")
+		usable := sheetPreviewUsable(*s)
+		rect(usable, "none", "#4a998e", "3 4")
+		for _, k := range s.Keepouts {
+			rect(k, "#f1f5f9", "#9ca8b8", "3 3")
+			text(24+k.MinX-s.Bounds.MinX, 99+s.Bounds.MaxY-k.MaxY, 9, "#64748b", "图签禁放区", "start")
+		}
+		text(20, canvasH-7, 9, "#546579", fmt.Sprintf("原比例 / 页边净距 ≥ %g raw (%.2f mm) / 区间净距 ≥ %g raw / 绿色虚线：排版边界", s.Padding, s.Padding*.254, s.Gap), "start")
+		if s.BorderSource != "" {
+			text(canvasW-20, canvasH-7, 8, "#546579", s.BorderSource, "end")
+		}
+	}
 	for _, v := range panels {
 		z, f := v.zone, v.frame
 		color, status := "#aa00aa", "预案"
 		if z.Status == "blocked" {
 			color, status = "#c53b45", "未完成"
 		}
-		text(v.x, v.y+10, 9, color, fmt.Sprintf("%s · %d 个器件", status, len(z.Layout.Placements)), "start")
+		if in.Sheet == nil {
+			text(v.x, v.y+10, 9, color, fmt.Sprintf("%s · %d 个器件", status, len(z.Layout.Placements)), "start")
+		}
 		X := func(x float64) float64 { return v.x + x - f.Rect.MinX }
 		Y := func(y float64) float64 { return v.y + 25 + f.Rect.MaxY - y }
 		fmt.Fprintf(&b, `<rect x="%g" y="%g" width="%g" height="%g" fill="white" stroke="%s" stroke-dasharray="5 3"/>`, v.x, v.y+25, v.w, v.h-25, color)

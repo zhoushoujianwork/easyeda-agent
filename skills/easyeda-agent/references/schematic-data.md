@@ -153,6 +153,17 @@ ref 引用也要按组件 ID 同步；不要对 JSON 做全局字符串替换，
 
 ## 由引脚计算 Lib 内部
 
+合页预览使用 `sch layout-sheet-plan --from render.json --out pages.json`。
+输入沿用 render zones，增加 `sheet:{bounds,border,keepouts,padding,gap}`，坐标单位 raw。
+bounds 是原纸张，border 是内框，不能为放下内容而篡改；padding 指虚线笔画到内框的净距，
+gap 是功能框之间的净距。用户未给具体值时可先提出更宽的预览值，不改变默认 compose 契约。
+规划器保持区域内部全部几何与连接不变，只计算各区 `sheetPosition:{x,y}`（框左上角，y-UP）。
+以数种确定顺序尝试无旋转、5 raw 网格装箱，选择页数较少的结果；不是最优性证明。
+输出 `pages[]` 各项交 `sch layout-render`，绘制纸张、内框、padding 线和图签禁放区。
+此模式渲染器严格使用给定位置、不重排；拒绝越界、相互重叠或侵入 keepout 的框。
+红色 blocked 区仍未完成，不能把没有导线的占位区域当成电路验收或最终容量证明。
+合页预览不迁移 EDA 页面，不合并网、不生成 Apply；确认后仍需完整连接/身份/纸张守卫。
+
 固定离线渲染入口：`sch layout-render --from render.json --out layout.svg`，可选 `--zone <id>`。
 输入 `schemaVersion:1,zones:[{id,title,status,layout}]`；layout 是局部布局输出，status 为
 `planned` 或 `blocked`。也可直接读取 `layout-plan --zones` 的结果（缺省 status 为 planned）。
