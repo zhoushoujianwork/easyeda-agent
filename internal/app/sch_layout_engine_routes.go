@@ -71,7 +71,18 @@ func libDetourRoutes(a, b powerLayoutPin) [][]powerLayoutWire {
 }
 
 // Marker leads may branch off the already connected same-net tree.
-func libPlaceMarker(p *powerLayoutPlan, q powerLayoutPin, kind string) bool {
+func libSpendNamingBudget(budget []*int) bool {
+	if len(budget) == 0 {
+		return true
+	}
+	if *budget[0] <= 0 {
+		return false
+	}
+	*budget[0]--
+	return true
+}
+
+func libPlaceMarker(p *powerLayoutPlan, q powerLayoutPin, kind string, budget ...*int) bool {
 	var body layoutBBox
 	for _, c := range p.Placements {
 		for _, cp := range c.Pins {
@@ -91,7 +102,46 @@ func libPlaceMarker(p *powerLayoutPlan, q powerLayoutPin, kind string) bool {
 	if kind == "power" {
 		directions = []string{"up", side, "left", "right", "down"}
 	}
-	return libPlaceMarkerAt(p, q, kind, directions, libMarkerOffsetCap(p, q.Net, kind))
+	cap := libMarkerOffsetCap(p, q.Net, kind)
+	if libPlaceMarkerAt(p, q, kind, directions, cap, budget...) {
+		return true
+	}
+	// A straight lead can be trapped by an adjacent pin's marker. Escape
+	// outward before turning; never relax the full electrical/geometry gate.
+	for shell := 10.0; shell <= 100; shell += 5 {
+		for outward := 5.0; outward < shell && outward <= 50; outward += 5 {
+			lateral := shell - outward
+			if lateral > 50 {
+				continue
+			}
+			for _, sign := range []float64{1, -1} {
+				if !libSpendNamingBudget(budget) {
+					return false
+				}
+				x, y := endpointFor(q.X, q.Y, outward, side)
+				bend := [2]float64{x, y}
+				if side == "left" || side == "right" {
+					y += sign * lateral
+				} else {
+					x += sign * lateral
+				}
+				trial := *p
+				trial.Wires = libAppendRoute(p.Wires, []powerLayoutWire{
+					{Net: q.Net, Points: [][2]float64{{q.X, q.Y}, bend}},
+					{Net: q.Net, Points: [][2]float64{bend, {x, y}}},
+				})
+				if validateLibGeometry(&trial) != nil {
+					continue
+				}
+				tap := powerLayoutPin{Net: q.Net, X: x, Y: y}
+				if libPlaceMarkerAt(&trial, tap, kind, directions, math.Min(50, cap-shell), budget...) {
+					*p = trial
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func libMarkerOffsetCap(p *powerLayoutPlan, net, kind string) float64 {
@@ -108,7 +158,7 @@ func libMarkerOffsetCap(p *powerLayoutPlan, net, kind string) float64 {
 	return cap
 }
 
-func libPlaceMarkerAt(p *powerLayoutPlan, q powerLayoutPin, kind string, directions []string, cap float64) bool {
+func libPlaceMarkerAt(p *powerLayoutPlan, q powerLayoutPin, kind string, directions []string, cap float64, budget ...*int) bool {
 	segments, e := schTerminalSegments(p)
 	if e != nil {
 		return false
@@ -120,6 +170,9 @@ func libPlaceMarkerAt(p *powerLayoutPlan, q powerLayoutPin, kind string, directi
 				continue
 			}
 			seen[direction] = true
+			if !libSpendNamingBudget(budget) {
+				return false
+			}
 			f := powerLayoutFlag{Net: q.Net, Kind: kind, PinX: q.X, PinY: q.Y, Direction: direction, Offset: offset}
 			if libMarkerRetraces(f, segments) {
 				continue
@@ -189,7 +242,7 @@ func libFacingTwoTerminalPins(p *powerLayoutPlan, a, b powerLayoutPin) bool {
 	return (a.X == b.X && ((a.Y < b.Y && as == "up" && bs == "down") || (a.Y > b.Y && as == "down" && bs == "up"))) || (a.Y == b.Y && ((a.X < b.X && as == "right" && bs == "left") || (a.X > b.X && as == "left" && bs == "right")))
 }
 
-func libPlaceMidpointMarker(p *powerLayoutPlan, island libIsland, kind string) bool {
+func libPlaceMidpointMarker(p *powerLayoutPlan, island libIsland, kind string, budget ...*int) bool {
 	if kind != "net_port_bi" {
 		return false
 	}
@@ -238,7 +291,7 @@ func libPlaceMidpointMarker(p *powerLayoutPlan, island libIsland, kind string) b
 					if horizontal {
 						dirs = []string{"up", "down"}
 					}
-					if libPlaceMarkerAt(p, q, kind, dirs, 80) {
+					if libPlaceMarkerAt(p, q, kind, dirs, 80, budget...) {
 						return true
 					}
 				}

@@ -79,6 +79,7 @@ func libPlacePeripheral(current powerLayoutPlan, measured powerLayoutPlacement, 
 	// All candidates in the first feasible shell compete on the full objective.
 	for cost := 5.0; cost <= 600; cost += 5 {
 		var best *powerLayoutPlan
+		var bestRouting []powerLayoutWire
 		for lateral := 0.0; lateral <= math.Min(200, cost-5); lateral += 5 {
 			distance := cost - lateral
 			if distance > 400 {
@@ -120,16 +121,22 @@ func libPlacePeripheral(current powerLayoutPlan, measured powerLayoutPlacement, 
 					if lastErr = libJoinNearbyRails(&candidate, policies); lastErr != nil {
 						continue
 					}
-					if lastErr = libNameIslands(&candidate, policies); lastErr != nil {
+					routing := candidate.Wires
+					if lastErr = libNameIslands(&candidate, policies, budget); lastErr != nil {
 						continue
 					}
 					if best == nil || libAlignedCandidateLess(&candidate, best, pair) {
 						best = &candidate
+						bestRouting = routing
 					}
 				}
 			}
 		}
 		if best != nil {
+			// Naming is a feasibility probe during placement. Its escape wires
+			// must not survive after their temporary markers are discarded.
+			best.Wires = bestRouting
+			best.Flags = nil
 			return best, nil
 		}
 	}
@@ -189,13 +196,39 @@ func libIslands(p *powerLayoutPlan) []libIsland {
 	return islands
 }
 
-func libNameIslands(p *powerLayoutPlan, policies map[string]string) error {
-	p.Flags = nil
-	islands := libIslands(p)
+func libNameIslands(p *powerLayoutPlan, policies map[string]string, budget ...*int) error {
+	base := *p
+	base.Flags = nil
+	var lastErr error
+	for order := 0; order < 3; order++ {
+		trial := base
+		islands := libIslands(&trial)
+		sort.SliceStable(islands, func(i, j int) bool {
+			if order == 0 {
+				return libNetPriority(policies[islands[i].net]) < libNetPriority(policies[islands[j].net])
+			}
+			a, b := islands[i].pins[0], islands[j].pins[0]
+			if a.Y != b.Y {
+				if order == 1 {
+					return a.Y > b.Y
+				}
+				return a.Y < b.Y
+			}
+			return a.X < b.X
+		})
+		if lastErr = libNameOrderedIslands(&trial, policies, islands, budget...); lastErr == nil {
+			*p = trial
+			return nil
+		}
+		if len(budget) > 0 && *budget[0] <= 0 {
+			return errLibLayoutBudget
+		}
+	}
+	return lastErr
+}
+
+func libNameOrderedIslands(p *powerLayoutPlan, policies map[string]string, islands []libIsland, budget ...*int) error {
 	// Ground constraints are tighter than signal naming at dense core pins.
-	sort.SliceStable(islands, func(i, j int) bool {
-		return libNetPriority(policies[islands[i].net]) < libNetPriority(policies[islands[j].net])
-	})
 	for _, island := range islands {
 		kind := "net_port_bi"
 		if policies[island.net] == "local_ground" {
@@ -204,14 +237,14 @@ func libNameIslands(p *powerLayoutPlan, policies map[string]string) error {
 		if policies[island.net] == "local_power" {
 			kind = "power"
 		}
-		if libPlaceMidpointMarker(p, island, kind) {
+		if libPlaceMidpointMarker(p, island, kind, budget...) {
 			continue
 		}
 		var best *powerLayoutPlan
 		for _, q := range island.pins {
 			trial := *p
-			if libPlaceMarker(&trial, q, kind) {
-				if best == nil || trial.Flags[len(trial.Flags)-1].Offset < best.Flags[len(best.Flags)-1].Offset {
+			if libPlaceMarker(&trial, q, kind, budget...) {
+				if best == nil || libCandidateLess(&trial, best) {
 					best = &trial
 				}
 			}
@@ -233,6 +266,10 @@ func libJoinNearbyRails(p *powerLayoutPlan, policies map[string]string) error {
 }
 
 func libJoinNets(p *powerLayoutPlan, policies map[string]string, railsOnly bool) error {
+	return libJoinNetsMode(p, policies, railsOnly, true)
+}
+
+func libJoinNetsMode(p *powerLayoutPlan, policies map[string]string, railsOnly, joinPorts bool) error {
 	for {
 		islands := libIslands(p)
 		type edge struct {
@@ -241,6 +278,9 @@ func libJoinNets(p *powerLayoutPlan, policies map[string]string, railsOnly bool)
 		}
 		edges := []edge{}
 		for i, a := range islands {
+			if !joinPorts && policies[a.net] == "module_port" {
+				continue
+			}
 			isRail := libNetPriority(policies[a.net]) < 2
 			if isRail != railsOnly {
 				continue
@@ -291,7 +331,14 @@ func libJoinNets(p *powerLayoutPlan, policies map[string]string, railsOnly bool)
 			if railsOnly {
 				return nil
 			}
-			return fmt.Errorf("cannot route direct net %s between measured pins without crossing obstacles; revise attachment or measured pose", edges[0].a.Net)
+			for _, e := range edges {
+				if policies[e.a.Net] == "direct" {
+					return fmt.Errorf("cannot route direct net %s between measured pins without crossing obstacles; revise attachment or measured pose", e.a.Net)
+				}
+			}
+			// An explicitly cross-zone net may retain separately named trees.
+			// libNameIslands must still name every island; direct nets never fall back.
+			return nil
 		}
 	}
 }

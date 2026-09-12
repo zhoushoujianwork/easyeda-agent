@@ -62,11 +62,25 @@ func solveSchematicLayout(input SchematicLayoutInput, measured map[string]powerL
 	if err = libJoinNearbyRails(&p, netPolicies); err != nil {
 		return nil, err
 	}
-	if err = libJoinDirectNets(&p, netPolicies); err != nil {
-		return nil, err
+	beforePortJoins := p
+	err = libJoinDirectNets(&p, netPolicies)
+	if err == nil {
+		err = libNameIslands(&p, netPolicies, budget)
 	}
-	if err = libNameIslands(&p, netPolicies); err != nil {
-		return nil, err
+	if err != nil {
+		if errors.Is(err, errLibLayoutBudget) {
+			return nil, err
+		}
+		// Joining interleaved cross-zone pins may trap another net's naming
+		// corridor. Retry without optional port joins, retaining mandatory
+		// peripheral routes and all direct-net joins.
+		p = beforePortJoins
+		if err = libJoinNetsMode(&p, netPolicies, false, false); err != nil {
+			return nil, err
+		}
+		if err = libNameIslands(&p, netPolicies, budget); err != nil {
+			return nil, err
+		}
 	}
 	libCompactMarkerEnvelope(&p, budget)
 	if err = validateLibGeometry(&p); err != nil {
