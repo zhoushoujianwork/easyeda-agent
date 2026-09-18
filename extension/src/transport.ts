@@ -380,6 +380,7 @@ export function reconnect(): void {
  * @param showToast - whether to show a toast confirming the stop
  */
 export function stop(showToast = true): void {
+	bootstrapGeneration += 1;
 	connectionAnnounced = false;
 	suspended = true; // keep the watchdog from auto-reconnecting after an explicit stop
 	cancelConnectionFlow();
@@ -394,9 +395,84 @@ export function stop(showToast = true): void {
 export function start(): void {
 	suspended = false;
 	startWatchdog(); // always-on background-immune reconnect driver
-	if (autoConnectEnabled()) {
+	// Skip the kick when a connection is already established or in flight: the
+	// host re-dispatches activation events (and re-evaluates this bundle) on more
+	// than one occasion, and re-running scanAndConnect() on a verified session
+	// would tear down a working socket for nothing.
+	if (!handshakeVerified && !isConnecting && autoConnectEnabled()) {
 		void scanAndConnect();
 	}
+}
+
+// ─── Module-load bootstrap ────────────────────────────────────────────
+// Do not depend solely on the host calling activate().
+//
+// EasyEDA Pro (pro-api 0.3.4, api.js) activates user extensions from exactly one
+// place, and that place is behind a login gate with no retry:
+//
+//   function ec() { return globalVariableUserInfo?.uuid === undefined ? false : !!Cl(...) }
+//   async function Ig(e, t) {
+//     if (!t && !ec()) return;                                  // <-- gives up here
+//     async function n(r) {
+//       Us(r, OnStartupFinished) && (await Ta(r, {onStartupFinished: true}), s = true);
+//       Us(r, OnLogged)          && (await Ta(r, {onLogged: true}),          s = true);
+//       s || await Ta(r);
+//     }
+//     if (e) await n(e);
+//     else if (t) for (const r of loadedBuiltinExtensions) await i(r);   // system.startupFinished
+//     else        for (const r of loadedExtensions)        await n(r);
+//   }
+//   bus.pull("system.startupFinished", () => Ig(void 0, TRUE));          // builtins only
+//   bus.rpcService("user.setUserInfo", async t => { ...; changed && (...) && gw() });
+//   async function gw() { ...; isExtensionsInitialized || await hw(); ... }
+//   async function hw() { ...; isExtensionsInitialized = true; await Ig(void 0, false); }
+//
+// hw() marks the extension system initialized BEFORE calling Ig(), so a cold
+// start where the extension init wins the race against the user info leaves
+// every user extension unactivated, and the later user.setUserInfo -> gw() retry
+// skips hw()/Ig() forever. Field symptom: the connector works right after an
+// import or an extension reload, then silently never comes back on any later
+// cold start — the shape recorded in issue #185 ("never self-heals").
+//
+// The host evaluates this bundle in order to build its sandbox, so module scope
+// is the earliest execution point we own. Bootstrapping here means a skipped
+// activate() can no longer strand the connector. When the host DOES activate us
+// normally, this has already run and activate() becomes a no-op (start() is
+// guarded above, startWatchdog() is guarded internally).
+let bootstrappedFromModuleLoad = false;
+let bootstrapGeneration = 0;
+
+/**
+ * Start the transport from the extension module body.
+ *
+ * Called at module scope by `index.ts`. Whichever of this and the host-driven
+ * `activate()` runs first wins; the other is a no-op for this evaluation.
+ */
+export function bootstrapFromModuleLoad(): void {
+	if (bootstrappedFromModuleLoad) {
+		return;
+	}
+	bootstrappedFromModuleLoad = true;
+	const generation = bootstrapGeneration;
+	// Also the load-time probe: seeing this line in the editor's 日志 panel proves
+	// the host evaluated the bundle even though it never called activate().
+	diag('module evaluated — self-bootstrapping the transport (host activate() is not required)');
+	const begin = (): void => {
+		if (generation !== bootstrapGeneration || handshakeVerified) {
+			return;
+		}
+		try {
+			start();
+		}
+		catch { /* sandbox globals not ready mid-evaluation — retried right below */ }
+	};
+	begin();
+	// The sandbox globals are injected around the module body; anything missing
+	// during it is present one macrotask later. Both calls are idempotent.
+	try {
+		setTimeout(begin, 0);
+	}
+	catch { /* no timers in this sandbox — the synchronous call already ran */ }
 }
 
 // ─── Connect (pinned port) ────────────────────────────────────────────

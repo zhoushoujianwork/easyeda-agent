@@ -12,6 +12,7 @@
 
 import * as extensionConfig from '../extension.json';
 import {
+	bootstrapFromModuleLoad,
 	getConnectionStatus,
 	reconnect as transportReconnect,
 	start as transportStart,
@@ -19,6 +20,14 @@ import {
 } from './transport';
 
 const STORAGE_KEY_AUTO_CONNECT = 'autoConnectEnabled';
+
+// ─── Module-load bootstrap ────────────────────────────────────────────
+// EasyEDA Pro does not reliably call activate() for user extensions: its only
+// user-extension activation path is gated on the user info already being known
+// and is never retried (full evidence in transport.ts). Bootstrap from module
+// scope so a skipped activate() cannot leave the connector inert. Idempotent
+// with activate() below.
+bootstrapFromModuleLoad();
 
 // ─── Lifecycle ────────────────────────────────────────────────────────
 

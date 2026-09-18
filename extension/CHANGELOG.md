@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Bootstrap the connector transport from the extension module body, so it starts even when the host never calls `activate()`. EasyEDA Pro activates user extensions from one location that returns early unless the user info is already known (`Ig(e, t) { if (!t && !ec()) return; ... }`), and its only retry skips that call once the extension system is marked initialized (`gw()`: `isExtensionsInitialized || await hw()`), while `system.startupFinished` iterates builtin extensions only. A cold start that loses that race leaves every user extension inert for the whole session and never retries: the connector worked after an `.eext` import and then never came back on later launches (#185). `start()` also skips its connect kick when a session is already verified or in flight, so the host re-dispatching an activation event cannot tear down a live socket.
+
 ## [1.5.1] — 2026-09-17
 
 - Add offline `sch zone-review` ownership diagnostics and run them automatically before `layout-plan --zones`. Reports preserve source hashes and explicit component/pin/net evidence for multi-core hints, non-rail subgraphs detached from the declared core, and rail-only attachment endpoints, while leaving the source JSON and Apply state untouched for AI review.
