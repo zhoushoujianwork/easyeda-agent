@@ -119,6 +119,13 @@ Web 编辑器并核对新窗口/运行版本；CLI、daemon、全部 Skill 与�
 “允许外部交互”。可使用现有浏览器或桌面工具完成已授权的打开操作；只有登录、权限
 或界面操作确实无法代办时才请用户介入，不因连接失败擅自换到另一个宿主。
 
+V3.2 桌面版的权限入口：**高级 → 扩展管理器 → 已安装 → 选中连接器**。状态按钮的
+`Enabled` / `Disabled` 表示**当前状态**（点击切换），不是动作；只有处于 `Enabled` 时才显示
+`Config` 页签，“允许外部交互 / Allow interactive with external”和“Show at header menu”
+都在该页签。未开启外部交互时平台的 `sys_WebSocket.register()` 直接抛错，连接器侧只表现为
+“Daemon not found”，daemon 看不到任何连接尝试；此时先核对权限，不要重启 daemon。
+Online 与 Half Offline 模式的扩展存储互不共用，切换运行模式后需在新模式下重新导入并授权。
+
 非开发环境在单独终端运行：
 
 ```bash
@@ -142,6 +149,21 @@ easyeda doc switch "<doc-name-or-uuid>" --project "<project>"
   `--skip-version-check` 不是常规升级或恢复方法。
 - 写操作使用 `--project` 和 `--doc`，由 CLI 在派发前实时确认目标文档。没有独立的
   `easyeda context` 命令；`health` 显示连接状态，`doc ls/switch` 读取/切换实时文档。
+
+### 扩展已启用、权限已开，但始终没有连接尝试
+
+以下两种情况 daemon 侧都完全不可见（`windows` 为空、无 `connector connected` 日志），
+`health` 无法区分，需要在编辑器一侧判断：
+
+- **跨大版本导入残留**：在 2.2.x 客户端导入过本连接器（`engines.eda` 为 `~3.2.0`）后再升级到
+  3.2.x，可能留下只有扩展索引记录、没有文件内容的安装：扩展列表里可见、状态也能切换，但
+  永远不加载。在扩展管理器卸载该项，完全退出并重开 EasyEDA，再重新导入 `.eext`。
+- **重启后不自启（#221，根因未明）**：国际版桌面客户端 3.2.149（Half Offline 与 Full Online
+  均复现）上，侧载的连接器只在“导入当次”的运行期间工作；EasyEDA 重启后不再 activate，
+  顶部菜单栏里也看不到 `EDA Agent`。当前只有规避手段：每次启动 EasyEDA 后重新导入同一个
+  `.eext`。覆盖导入会保留外部交互设置，但状态可能变为 `Disabled`，需点回 `Enabled`；
+  当次运行内即可注册，`easyeda update --check --exit-code` 返回 `READY`。这不是修复，
+  其他客户端版本是否受影响未验证。
 
 ## 上下文与缓存
 
