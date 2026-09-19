@@ -18,6 +18,7 @@ import {
 	constraintList,
 	detectPolarityConventionOutliers,
 	getComponentOrThrow,
+	importConfirmStepSource,
 	isGroundLikeNet,
 	isPowerRailNet,
 	normalizeDeviceRef,
@@ -3113,4 +3114,39 @@ test('PCB silk creation supplies a registered font and legal top-left anchor', a
 		assert.deepEqual(stored, [3, 100, 200, 'TEST', 'default', 40, 6, 1, 0, false, 0, false, false]);
 	}
 	finally { delete (globalThis as any).eda; }
+});
+
+// ─── import_changes confirm dialog follows the UI language ─────────────
+
+// Runs the real DOM probe body against a fake document, the same way
+// clickImportConfirm does (AsyncFunction resolving `document` from the global).
+async function runImportConfirmStep(modalText: string, buttonLabels: string[]): Promise<{ outcome: unknown; clicked: string[] }> {
+	const clicked: string[] = [];
+	const buttons = buttonLabels.map(label => ({ innerText: label, offsetParent: {}, click: () => clicked.push(label) }));
+	const footer = { offsetParent: {}, innerText: [modalText, ...buttonLabels].join('\n'), querySelectorAll: () => buttons };
+	// Nested wrapper that carries the title but no footer buttons (live-verified shape).
+	const inner = { offsetParent: {}, innerText: modalText, querySelectorAll: () => [] };
+	(globalThis as any).document = { querySelectorAll: () => [inner, footer] };
+	try {
+		const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as { new (body: string): () => Promise<unknown> };
+		return { outcome: await new AsyncFunction(importConfirmStepSource())(), clicked };
+	}
+	finally { delete (globalThis as any).document; }
+}
+
+test('import confirm probe clicks the zh-Hans 应用修改 button', async () => {
+	const r = await runImportConfirmStep('确认导入信息', ['导出报告', '应用修改', '取消']);
+	assert.deepEqual(r, { outcome: 'clicked', clicked: ['应用修改'] });
+});
+
+test('import confirm probe clicks Apply Changes on the English UI', async () => {
+	const r = await runImportConfirmStep('Confirm Importing changes information\nGroup by\nAction\nObject', ['Export Report', ' Apply  changes ', 'Cancel']);
+	assert.deepEqual(r, { outcome: 'clicked', clicked: [' Apply  changes '] });
+});
+
+test('import confirm probe never clicks a non-apply button and ignores unrelated modals', async () => {
+	const noButton = await runImportConfirmStep('Confirm Importing changes information', ['Export Report', 'Cancel']);
+	assert.deepEqual(noButton, { outcome: 'no-button', clicked: [] });
+	const unrelated = await runImportConfirmStep('Design Rule Check', ['Apply Changes']);
+	assert.deepEqual(unrelated, { outcome: 'none', clicked: [] });
 });

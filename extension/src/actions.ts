@@ -8798,7 +8798,46 @@ const systemNotify: Handler = async (payload) => {
  * opt-out leaves it for manual review), then reports the component count delta.
  */
 
-// clickImportConfirm waits for the 确认导入信息 modal and clicks 应用修改.
+// The confirm modal follows the editor UI language. Matching only the zh-Hans
+// strings made every English-UI import report confirm:'no-dialog' with
+// componentsAfter:0 while the dialog sat open unclicked (live: EasyEDA Pro
+// 3.2.149 desktop, EN UI — clicking "Apply Changes" by hand landed 12/12 parts).
+// Add further UI languages here only with a live-verified string.
+export const IMPORT_CONFIRM_DIALOG_TITLES: ReadonlyArray<string> = [
+	'确认导入信息',
+	'Confirm Importing changes information',
+];
+export const IMPORT_CONFIRM_APPLY_LABELS: ReadonlyArray<string> = [
+	'应用修改',
+	'Apply Changes',
+];
+
+// importConfirmStepSource builds the DOM probe body for clickImportConfirm.
+// Text is compared trimmed, whitespace-collapsed and case-insensitively: the
+// title by containment (wrapper nodes carry extra text), the button exactly
+// (so "Export Report" / "Cancel" can never be mistaken for the apply button).
+export function importConfirmStepSource(
+	titles: ReadonlyArray<string> = IMPORT_CONFIRM_DIALOG_TITLES,
+	applyLabels: ReadonlyArray<string> = IMPORT_CONFIRM_APPLY_LABELS,
+): string {
+	const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+	return `
+		const norm = s => String(s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+		const titles = ${JSON.stringify(titles.map(norm))};
+		const applyLabels = ${JSON.stringify(applyLabels.map(norm))};
+		const modals = Array.from(document.querySelectorAll('.arco-modal, [class*=modal]'))
+			.filter(e => e.offsetParent !== null && titles.some(t => norm(e.innerText).includes(t)));
+		if (!modals.length) return 'none';
+		const btn = modals.flatMap(m => Array.from(m.querySelectorAll('button')))
+			.find(b => applyLabels.includes(norm(b.innerText)) && b.offsetParent !== null);
+		if (!btn) return 'no-button';
+		btn.click();
+		return 'clicked';
+	`;
+}
+
+// clickImportConfirm waits for the 确认导入信息 / "Confirm Importing changes
+// information" modal and clicks 应用修改 / "Apply Changes".
 // Returns 'applied', 'no-dialog' (import needed no confirmation), or 'no-button'.
 //
 // DOM access MUST go through an AsyncFunction escape: the extension sandbox
@@ -8813,16 +8852,7 @@ async function clickImportConfirm(timeoutMs: number): Promise<string> {
 	// NOTE: '[class*=modal]' matches NESTED wrapper nodes — an inner node can
 	// carry the 确认导入信息 text without the footer buttons (live-verified
 	// 'no-button' miss), so the button search must span ALL matching nodes.
-	const step = new AsyncFunction(`
-		const modals = Array.from(document.querySelectorAll('.arco-modal, [class*=modal]'))
-			.filter(e => e.offsetParent !== null && (e.innerText || '').includes('确认导入信息'));
-		if (!modals.length) return 'none';
-		const btn = modals.flatMap(m => Array.from(m.querySelectorAll('button')))
-			.find(b => (b.innerText || '').trim() === '应用修改' && b.offsetParent !== null);
-		if (!btn) return 'no-button';
-		btn.click();
-		return 'clicked';
-	`);
+	const step = new AsyncFunction(importConfirmStepSource());
 	const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -8935,7 +8965,7 @@ const pcbImportChanges: Handler = async (payload) => {
 				: null,
 			reason: imported
 				? (confirmOutcome === 'no-button'
-					? 'the 确认导入信息 dialog is open but its 应用修改 button was not found — apply it manually in the editor'
+					? 'the 确认导入信息 / "Confirm Importing changes information" dialog is open but its 应用修改 / "Apply Changes" button was not found — apply it manually in the editor'
 					: null)
 				: 'importChanges returned false — the PCB may be floating (no linked schematic) or schematicUuid is invalid.',
 		},
