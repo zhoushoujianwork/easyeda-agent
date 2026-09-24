@@ -18,6 +18,7 @@
 | 2026-09-24 dev.18 基础 CLI 续测 | [B00/B02、B10 过期 ID 保护与剩余门禁缺口](2026-09-24-v1.6.0-dev18-basic-cli-continuation.md) |
 | 2026-09-24 dev.18 B03 单项 | [工程容器查找：reload 后延长超时，两次完整查找通过](2026-09-24-v1.6.0-dev18-B03-project-container.md) |
 | 2026-09-24 dev.18 B03 创建子项 | [个人工程创建通过；个人归属 UUID 与团队创建参数的差异](2026-09-24-v1.6.0-dev18-B03-project-create.md) |
+| 2026-09-24 dev.18 B03 打开/导出 | [工程与页面身份核对、原生归档和 CRC 验证通过](2026-09-24-v1.6.0-dev18-B03-project-open-export.md) |
 | 2026-08 回归与端到端缺陷 | [08-16](regression-2026-08-16.md)、[08-19 第一轮](e2e-report-esp32mini-2026-08-19.md)、[08-19 第二轮](e2e-report-esp32mini-round2-2026-08-19.md)、[08-25](e2e-round-2026-08-25-findings.md)、[08-26](regression-findings-2026-08-26.md) |
 | 原理图与模块算法验证 | [算法验证](schematic-algorithm-validation.md)、[Lib 组合](schematic-composition-validation.md)、[LDO 布局](power-layout-validation.md) |
 | PR、issue 与现场复核 | [09-08 分流](2026-09-08-pr-issue-triage.md)、[09-09 电阻证据](2026-09-09-issue-202-resistance-evidence.md)、[09-12 分类](2026-09-12-open-issue-classification.md) |
