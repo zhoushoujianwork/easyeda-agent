@@ -109,8 +109,32 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newSkillCmd(stdout, stderr),
 		newUpdateCmd(cfg, stdout, stderr),
 	)
+	installMissingSubcommandErrors(root)
 
 	return root
+}
+
+// Cobra treats an unhandled argument after a non-runnable command group as a
+// request for help and exits successfully. A misspelled subcommand must fail so
+// shell scripts cannot mistake an unexecuted operation for a completed one.
+func installMissingSubcommandErrors(root *cobra.Command) {
+	var visit func(*cobra.Command)
+	visit = func(command *cobra.Command) {
+		if len(command.Commands()) > 0 && command.Run == nil && command.RunE == nil {
+			command.RunE = func(cmd *cobra.Command, args []string) error {
+				if len(args) > 0 {
+					return fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
+				}
+				return cmd.Help()
+			}
+		}
+		for _, child := range command.Commands() {
+			visit(child)
+		}
+	}
+	for _, child := range root.Commands() {
+		visit(child)
+	}
 }
 
 // ── version ───────────────────────────────────────────────────────────────

@@ -18,6 +18,9 @@ CLI 回包，以及写入后的 save → reload → fresh readback。全部工�
 4. 每条命令保存原始 stdout/stderr、退出码、时间、适用的参数文件/快照 SHA-256、目标工程/页 UUID、
    返回 `context`、关键对象 ID 和前后完整对象差分。失败或超时先 fresh 回读，禁止盲重放。
    结论只用 `pass` / `fail` / `blocked` / `not-run`；`offline-only` 不计现场通过。
+   单条命令可用 `python3 scripts/cli-live-record.py --out <新证据.json> -- easyeda ...` 执行；
+   它保留命令、UTC 时间、原始回包和退出码，拒绝覆盖已有证据。同步保存 `health` 与
+   输入文件副本，才能让独立复核员重算版本、上下文和哈希。
 5. 写测试先看 `easyeda <domain> <command> --help` 确认当前签名。所有可写命令显式传
    `--project <UUID> --doc <UUID>`；创建尚不存在工程时只传 `--window`，不用假工程/页路由。
    现场检查和截图不替代对象回读。PCB Layout 完成仍需用户确认回读版本后才能测整板布线。
