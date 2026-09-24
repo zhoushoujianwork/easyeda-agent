@@ -2,6 +2,8 @@
 
 本文件记录当前可用能力；typed action 的权威来源是 `make actions`，实现映射见 `internal/protocol/actions.go` 与 `extension/src/actions.ts`。相关领域的待办与边界在本页及 [CLI 索引](cli/README.md) 维护，生态调研见 [`ecosystem-survey.md`](ecosystem-survey.md)。
 
+本页按功能领域盘点能力，不表示测试层级。单个 CLI 动作的真实链路按[基础测试](cli-live-test.md)验收；选型、规划、求解、Apply 和整板设计结果按[高级测试](cli-advanced-test.md)验收。基础门禁全部通过后才进入高级现场验收。
+
 > 主线宿主已切换到 EasyEDA Pro V4；推荐 V4.1.60+。当前 V4 状态、P0 门禁和现场验证边界见
 > [`v4-development.md`](v4-development.md)。V3 历史实测记录仅作回归参考，不再代表当前主线。
 

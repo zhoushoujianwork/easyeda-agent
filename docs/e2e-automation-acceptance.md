@@ -1,5 +1,9 @@
 # E2E 自动化验收标准(Automation Acceptance Standard)
 
+本标准属于[高级 CLI 业务验收](cli-advanced-test.md)。先完成
+[基础 CLI B00–B10](cli-live-test.md) 的同版真实链路门禁；基础动作仍有故障或缺测时，
+不以本标准的求解、DRC 或设计结果补签基础层。
+
 ## 现行原理图验收入口（2026-09-14）
 
 统一遵守 [数据驱动架构基准](../.agents/skills/easyeda-agent/references/schematic-data.md#数据驱动架构基准)

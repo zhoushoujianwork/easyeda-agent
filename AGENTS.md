@@ -114,6 +114,12 @@ Web 项目已打开不代表 connector 已连接；`easyeda health` 的 `windows
 
 ## 首要准则 — 固定测试用例（端到端验收）
 
+验收先分层：基础 CLI 的单动作真实调用链（命令解析、连接与路由、对象增删改查、
+保存重载和错误拒绝）按 [`docs/cli-live-test.md`](docs/cli-live-test.md) 的 B00–B10
+逐项验证，全部通过后才进入求解、Compose/Apply、DRC 和需求到成品等
+[`高级 CLI 业务验收`](docs/cli-advanced-test.md)。高级结果不能补签基础门禁。
+下述固定用例专指高级层的设计端到端验收，不把单动作链路测试误当成设计 E2E。
+
 **每次做端到端测试，都必须把 [`esp32MiniRequire.md`](esp32MiniRequire.md) 的
 **「一、客户原始需求」那一节**（4 层板 + 点灯 + 5V 供电端子 + 降压到 3V3 + CH340 USB
 烧录 + BOOT/RESET 按键 + 四角 M3 固定，**故意不含 BOM/UUID/网表**）当输入，让 agent 自己

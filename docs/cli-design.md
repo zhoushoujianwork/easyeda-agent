@@ -23,6 +23,19 @@ easyeda <domain> <action> [flags]
 | `easyeda skill` | skill 目录单独管理（status / sync；`update` 已含其能力） |
 | `easyeda debug` | 逃生舱（exec-js 等开发/调试命令） |
 
+## 验收分层：基础动作先行
+
+`sch`、`pcb` 等 Cobra 域同时包含基础动作和高级业务能力，不能按顶级命令名判断测试层级。
+
+| 层级 | 验证的问题 | 例子 |
+|---|---|---|
+| 基础 CLI | 命令解析、版本/连接、工程和页面路由、单个 typed 对象的增删改查、导出、保存重载及错误页拒绝是否可靠 | `project/doc`、`lib search`、`sch place/list/modify/wire/save`、`pcb list/track/via/save` |
+| 高级 CLI | 从需求和参数推导方案、跨对象规划/求解/Apply、设计正确性与整板质量是否达标 | `sch layout-plan/compose/apply/gate`、`pcb layout solve/route`、DRC、完整 S0–S6/P0–P10 |
+
+同一基础命令可以在高级流程中复用，但基础验收只核对该动作的输入、回包、对象差分与持久化，
+不以求解结果、DRC 警告或整板完成度判其成败。必须先让[基础 CLI 真实链路测试](cli-live-test.md)
+全部通过，才进入[高级 CLI 业务验收](cli-advanced-test.md)；高级测试结果不能补签基础门禁。
+
 ## 设计约束
 
 1. **接口优先**：新增功能先设计子命令签名（命令名 + flags + `--help` 示例），再写实现逻辑。

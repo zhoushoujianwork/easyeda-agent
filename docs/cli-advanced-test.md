@@ -1,0 +1,23 @@
+# 高级 CLI 业务验收
+
+高级 CLI 用参数和真实工程数据完成选型、规划、求解、Compose/Apply、设计检查、PCB 布局布线
+及从需求到成品的闭环。它回答“设计结果是否正确”，与
+[基础 CLI 真实链路测试](cli-live-test.md)回答的“单个命令动作是否可靠”分开判定。
+
+## 进入条件
+
+同一安装包、daemon、连接器和测试工程的基础用例 B00–B10 必须全部 `pass`。
+基础层仍有 `fail`、`blocked` 或 `not-run` 时，不启动高级 CLI 的现场验收；
+已有求解或 DRC 回包只作为历史观察，不能补签基础门禁，也不能称高级验收通过。
+
+## 本期范围
+
+通过基础门禁后，按[高级用例与前置条件](cli-advanced-test-detail.md)检查：
+原理图数据驱动选型与布局、保护 Apply、严格质量门；PCB 同步、规则、布局、用户确认、
+布线与铜、保存重载和独立复核。完整端到端只把
+[`esp32MiniRequire.md` 第一节](../esp32MiniRequire.md)的客户原始需求交给执行 Agent，
+按[现行验收标准](e2e-automation-acceptance.md)及公开 Skill 的 S0–S6/P0–P10 流程执行。
+
+高级结论按每个设计事实给出 `pass`、`fail`、`blocked` 或 `not-run`，保留输入哈希、
+候选报告、Apply journal、DRC 和 save→reload→fresh readback。离线候选、单页 gate
+或截图均不等于完整设计通过。

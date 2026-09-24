@@ -3,6 +3,10 @@
 `easyeda` CLI 的功能地图入口——**只记最终功能形态**,按域分文档;每个动作都以 typed
 Cobra 子命令暴露(`--help` 自描述),机器可读真值是 `easyeda actions` / `make actions`。
 
+本索引按 `sch`/`pcb` 等命令域组织，不表示验收层级。单对象增删改查、路由与持久化先按
+[基础 CLI 测试](../cli-live-test.md)验收；求解、Compose/Apply、DRC 和整板结果在基础门禁
+全部通过后按[高级 CLI 验收](../cli-advanced-test.md)检查。
+
 | 域 | 状态 | 文档 | 一句话 |
 |---|---|---|---|
 | **原理图**(`easyeda sch` + `blocks`) | ✅ 已支持(40+ 子命令) | [schematic.md](./schematic.md) | 器件/连线/布局/持久编组/分区三件套/校验门/电路块库/导出,含布局质量五维打分(归因带可执行 fix) |
