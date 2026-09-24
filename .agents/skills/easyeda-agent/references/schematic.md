@@ -150,7 +150,15 @@ PowerShell 可用 `'{"rotation":90}' | Set-Content -Encoding UTF8 patch.json` �
 原理图的显式 `--x/--y/--rotation/--designator` 仍覆盖文件中的同名键；
 PCB 的 `--center` 仍不允许补丁包含 x/y/rotation。
 
-### 原生 net_label 超时（#191）
+### 引脚读取后的编辑失败（Web 4.1.60）
+
+基础调用链现场观察到 `sch list --include-pins` 后紧接 `sch modify` 返回
+`cmdKey` 异常；同样的读取后清除 NC 也曾未持久化。先 fresh 回读确认失败调用没有改变
+目标，再 typed `doc open <原页UUID>`，核对工程/页身份后执行原操作，两个单项均恢复成功。
+这只证明特定时序及恢复办法，尚未证明所有失败都由网表读取引起。不能盲重放可能部分
+成功的写入，也不能把增加 reopen 的成功补签为原始连续调用通过；基础门禁仍记录失败。
+
+### 原生 net_label 兼容性（#191）
 
 `createNetLabel(x, y, net)` 是标注 EDA v4 起提供的 BETA API。仓库在
 EasyEDA 3.2.186 的实测仍会挂起，交互界面存在该功能不代表扩展 API 可用。
@@ -161,6 +169,9 @@ daemon 在派发 `net_label` 创建/连接前检查宿主产品版本：V3 或�
 `HOST_API_UNSUPPORTED`，不会创建桩线；`autoconnect --dry-run` 使用相同检查，批次含不支持的
 label 时在任何写入前整体拒绝。不会自动替换为电气语义可能不同的 netport。
 历史实测详见仓库 `docs/dev-environment.md` 的 Native net-label compatibility。
+Web 4.1.60 的独立基础用例中，typed reopen 后在真实导线端点创建 `net_label`
+仍在约 0.019 秒返回空对象；同页双向 net port 成功。该失败不是等待预算不足，增加超时
+不能解决快速空回包。记录标签类型为未通过；net port 的成功不证明原生标签可用。
 
 ## 检查覆盖边界（原理图验收）
 

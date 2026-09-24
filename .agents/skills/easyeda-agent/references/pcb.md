@@ -132,6 +132,15 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 
 ## PCB mutation 后的读取与 `staleRisk`
 
+Web 4.1.60、connector dev.18 基础回归中，`pcb region create --name` 的创建回包回显
+请求名称，但 fresh `region list` 及保存重载后的 dump 都读到 `regionName:null`。必须按
+实际回读判名称验证失败；仅凭这个读取接口还不能确定原生存储是否丢失名称。几何和规则
+类型需分别检查，创建成功回包不能替代完整写后验收。
+
+同版本的 `pcb delete` 已对过期 ID 写前拒绝；`pcb modify` 仍会把不存在的 ID 交给
+宿主并报内部 `isAsync` 异常。修改前 fresh `pcb list` 获取 ID，失败后再对账；这个已知
+保护缺口尚未修复，不能以对象最终没变宣称负例通过。
+
 改完铜再读,读到的是**旧引擎状态**:每个 PCB 文档有自己的枚举缓存,
 rip-up / route / delete / via / track / pour 这类 mutation 之后,
 `pcb list` / `line.list` / `via.list` / `pour.list` / `nets.list` / `drc.check` / `report`

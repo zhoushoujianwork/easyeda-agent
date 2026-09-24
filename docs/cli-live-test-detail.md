@@ -22,8 +22,10 @@ DRC 与整板质量按[高级 CLI 用例](cli-advanced-test-detail.md)另测。
    可用 `python3 scripts/cli-live-record.py --out <新证据.json> -- easyeda ...` 记录；
    它拒绝覆盖旧证据。`--help` 与离线测试只算命令契约，不能替代现场回包。
    B01 可先运行 `python3 scripts/cli-basic-contract-check.py --out <新证据.json>`，
-   检查本表使用的命令帮助、关键参数、typed action 目录和错误命令退出码；
-   然后逐项核对 Skill 中实际调用的签名，报告未覆盖的命令。
+   检查本表使用的命令帮助、关键参数、typed action 目录和错误命令退出码；同时扫描公开
+   Skill Markdown 中本表基础命令的 flag 引用，并记录源文件/行号。脚本比较检查前后完整
+   JSONL 审计哈希；审计缺失或有并发调用时不能签零调度。签名检查不运行示例，不验证
+   参数值语义，目录外高级命令不计入覆盖；报告须明确这个范围。
 5. 所有写命令显式传 `--project <UUID> --doc <UUID>`；仅创建尚不存在的工程时用
    `--window`。每次稳定检查点显式保存，确认 `saved:true` 后再 reload 和 fresh 读取。
    本表的通过判据只判断动作是否准确执行，不判断电路设计是否合理。
