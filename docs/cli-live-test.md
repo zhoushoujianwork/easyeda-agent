@@ -46,3 +46,4 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 
 最新失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)，
 其中的针对性通过不替代全部 B00–B10 同版重跑。
+尚未关闭的 bug 及当前使用建议见 [已知问题](cli-known-bugs.md)；保留命令可用与验收放行分开判断。

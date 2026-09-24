@@ -132,6 +132,11 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 
 ## PCB mutation 后的读取与 `staleRisk`
 
+首次把系统规则转为自定义配置时，Web 4.1.60 曾出现未请求孔间距 `0.3 → 0.2999994 mm`
+变化，见 [bug #258](https://github.com/zhoushoujianwork/easyeda-agent/issues/258)。该差值很小，
+但仍保留完整差分和 `verified:false`，不能自动放宽容差；已冻结自定义配置的修改/恢复需独立核对。
+当前保留规则命令，首次初始化路径仍待定位。
+
 Web 4.1.60 的区域名称仅适用于 `follow-rule`。dev.18 曾给 `no-pours` 传名称并
 回显输入，误把它当作已保存；dev.19 起拒绝该组合，创建后回读真实名称、层、规则和
 几何。无名称禁布区与具名规则区均已保存重载验证，详见 [区域契约](pcb-routing.md#keep-out--rule-regions-禁止区域)。

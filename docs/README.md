@@ -11,6 +11,7 @@
 | 安装、连接和升级 | [quick-start.md](quick-start.md) | [dev-environment.md](dev-environment.md) |
 | Codex 内置浏览器本地版本测试 | [codex-web-eda-runbook.md](codex-web-eda-runbook.md) | [原理图验收实例](reviews/2026-09-23-v1.6.0-schematic-acceptance.md) |
 | 基础 CLI 动作与真实链路测试 | [cli-live-test.md](cli-live-test.md) | [B00–B10 前置条件与步骤](cli-live-test-detail.md) |
+| 已知 CLI bug 与当前使用建议 | [cli-known-bugs.md](cli-known-bugs.md) | 影响、跟踪单、提示与暂停条件 |
 | 基础门禁通过后的高级 CLI 业务验收 | [cli-advanced-test.md](cli-advanced-test.md) | [A00–A06 前置条件与步骤](cli-advanced-test-detail.md) |
 | 让 Agent 设计或修复电路 | [SKILL.md](../.agents/skills/easyeda-agent/SKILL.md) | 该入口的任务路由与参考 |
 | 找到可改参数的相近案例 | [样例索引](../.agents/skills/easyeda-agent/references/examples/index.md) | 具体样例的来源、参数及回读 |
