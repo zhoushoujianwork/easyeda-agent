@@ -22,7 +22,7 @@
 | 新增或修复工具能力 | [cli-design.md](cli-design.md)、[protocol.md](protocol.md) | [connector-contract.md](connector-contract.md)、[ecosystem-survey.md](ecosystem-survey.md) |
 | 社区贡献 PCB 布局布线算法 | [PCB 求解社区设计](pcb-solver-community-design.md) | [数学模型与 PR 验收](pcb-solver-community-design-detail.md)、[概念表](concepts.md) |
 | 维护 Skill 和知识 | [skill-design.md](skill-design.md)、[编写约定](../.agents/skills/README.md) | [Agent 协作设计](agent-collaboration.md) |
-| 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [仓库发布授权规则](../AGENTS.md) |
+| 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [v1.7.0 准备](releases/release-1.7.md)、[仓库发布授权规则](../AGENTS.md) |
 | 验证从需求到成品 | [e2e-automation-acceptance.md](e2e-automation-acceptance.md) | [原始回归需求](../esp32MiniRequire.md)第一节、[仓库规则](../AGENTS.md) |
 | 查历史检查结论 | [历史证据索引](reviews/README.md) 与对应报告 | 回到该记录的版本、输入、原始证据和未覆盖项 |
 

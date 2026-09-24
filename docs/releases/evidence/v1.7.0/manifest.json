@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 2,
+  "version": "v1.7.0",
+  "acceptanceScope": "basic-cli",
+  "deferredScope": "advanced-cli",
+  "deferredUntil": "next-release",
+  "result": "pass",
+  "independentReview": "pass",
+  "sha256": {
+    "test-report.md": "7f3e9e7f1b9e0bea78e09d5f1c4b1b938e8ea7dbba8f33f9d464a8d269272e03",
+    "baseline.md": "6a575e61917d5e0a471522a1e727110f12e91f0429817f4be735171f07730b57",
+    "test-cases.md": "728ab5d32932f52546346eed9714fe2d96f8c7fac248988aadf6c5c3170ffc30"
+  }
+}

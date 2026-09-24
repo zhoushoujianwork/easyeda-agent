@@ -29,6 +29,8 @@ ASSETS = (
 EVIDENCE_ASSET = "test-evidence.zip"
 EVIDENCE_FILES = ("manifest.json", "test-report.md", "baseline.md", "test-cases.md")
 REQUIRED_CASES = frozenset(("M1", "F1", "F2", "E1", "L1", "N1", "R1", "E2E"))
+BASIC_CASES = frozenset(f"B{i:02d}" for i in range(11))
+ADVANCED_CASES = frozenset(f"A{i:02d}" for i in range(7))
 # These helpers are directly executable in the public package. Other Python
 # helpers are intentionally invoked via python3 and need only read permission.
 EXECUTABLE_HELPERS = (
@@ -62,6 +64,18 @@ def evidence_case_rows(data):
     return rows
 
 
+def basic_scope(manifest):
+    if manifest.get("schemaVersion") == 1:
+        require(not any(key in manifest for key in ("acceptanceScope", "deferredScope", "deferredUntil")),
+                "legacy evidence cannot override its full acceptance scope")
+        return False
+    require(manifest.get("schemaVersion") == 2 and manifest.get("acceptanceScope") == "basic-cli"
+            and manifest.get("deferredScope") == "advanced-cli"
+            and manifest.get("deferredUntil") == "next-release",
+            "schema 2 requires explicit basic-cli scope and advanced-cli deferred to next-release")
+    return True
+
+
 def check_assets(directory, tag=None):
     match = re.fullmatch(r"v(\d+)\.([1-9]\d*)\.0", tag or "")
     minor = bool(match and (int(match.group(1)), int(match.group(2))) >= (1, 6))
@@ -82,9 +96,10 @@ def check_assets(directory, tag=None):
         with zipfile.ZipFile(directory / EVIDENCE_ASSET) as archive:
             require(archive.namelist() == list(EVIDENCE_FILES), "acceptance evidence archive files differ")
             manifest = json.loads(archive.read("manifest.json"))
-            require(isinstance(manifest, dict) and manifest.get("schemaVersion") == 1
+            require(isinstance(manifest, dict)
                     and manifest.get("version") == tag and manifest.get("result") == "pass"
                     and manifest.get("independentReview") == "pass", "acceptance evidence verdict missing")
+            basic = basic_scope(manifest)
             require(isinstance(manifest.get("sha256"), dict)
                     and set(manifest["sha256"]) == set(EVIDENCE_FILES[1:]),
                     "acceptance evidence document hashes missing")
@@ -94,12 +109,17 @@ def check_assets(directory, tag=None):
             cases = evidence_case_rows(archive.read("test-cases.md"))
             report_bytes = archive.read("test-report.md")
             report = evidence_case_rows(report_bytes)
-            require(REQUIRED_CASES.issubset(cases) and set(cases) == set(report),
+            required = BASIC_CASES | ADVANCED_CASES if basic else REQUIRED_CASES
+            require(required.issubset(cases) and set(cases) == set(report)
+                    and (not basic or set(cases) == required),
                     "acceptance report does not cover every required case")
             for case_id, cells in report.items():
                 status = cells[1].lower()
-                require(status == "pass" or case_id == "L2" and status == "not-applicable",
-                        f"acceptance case {case_id} is not pass")
+                if basic and case_id in ADVANCED_CASES:
+                    require(status == "not-run", f"deferred acceptance case {case_id} must remain not-run")
+                else:
+                    require(status == "pass" or not basic and case_id == "L2" and status == "not-applicable",
+                            f"acceptance case {case_id} is not pass")
                 require(len(cells[2]) >= 30, f"acceptance case {case_id} lacks readback/evidence")
             require("## 现场回读" in report_bytes.decode("utf-8")
                     and "## 独立复核" in report_bytes.decode("utf-8"),

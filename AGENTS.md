@@ -186,6 +186,10 @@ and report remaining validation gaps accurately.
 正式 GitHub Release 必须附上该包。未通过或仅离线通过的报告不能标为通过。格式与步骤见
 [`docs/release-workflow.md`](docs/release-workflow.md)。
 
+2026-09-25 用户确定本次发布只验收基础 CLI，高级 CLI 留到下一版本。该范围使用显式
+`basic-cli` 材料：B00–B10 全部现场通过并独立复核，A00–A06 保留 `not-run`；
+不得把本次范围决定应用为默认豁免，也不得补签高级验收。具体版本仍须用户批准。
+
 ## Layout
 
 | Path | What |

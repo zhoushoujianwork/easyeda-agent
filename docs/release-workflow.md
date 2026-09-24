@@ -34,6 +34,13 @@ BOM、UUID 或网表当输入。现场未过时写失败或进行中报告，不
 `checksums.txt` 并对照仓库文件核对。`make release` 把该包作为 GitHub Release
 资产上传，发布说明中注明。开发预览版 `-dev.N` 与普通 patch 版不触发该门禁。
 
+用户在 2026-09-25 明确将高级 CLI 验证留到下一版本，本次按基础 CLI 范围准备
+`v1.7.0`：使用 schema 2，显式声明 `acceptanceScope=basic-cli` 与高级验证延期；
+B00–B10 必须全部现场通过，A00–A06 必须明确 `not-run`，独立复核仍必需。
+发布说明、基准和报告同步披露个人空间及既有自定义规则夹具的边界。历史 schema 1
+仍按完整 E2E 校验；没有用户范围决定时不得选择基础范围规避失败。
+范围内 `pass` 不代表高级设计通过；具体版本批准仍是实际发布的前置条件。
+
 发布分为本地准备与外部发布。准备阶段先显式同步
 `extension/extension.json`、`extension/package.json`、`extension/package-lock.json`
 的版本（含 lock 的 `packages[""].version`），补齐 `extension/CHANGELOG.md` 对应条目，

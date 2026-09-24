@@ -20,6 +20,7 @@ def load_script(name):
 
 pack = load_script("pack-skill")
 release = load_script("release-check")
+smoke = load_script("release-smoke")
 
 
 class TrackedSkillPackageTests(unittest.TestCase):
@@ -242,6 +243,67 @@ class ReleaseVersionAndAssetTests(unittest.TestCase):
         stale.write_text("old release")
         release.package_evidence(self.repo, "v1.6.0-dev.1", stale)
         self.assertFalse(stale.exists())
+
+    def test_scoped_basic_evidence_is_strict_in_source_and_archive_checks(self):
+        self.set_version("1.6.0")
+        directory = self.make_evidence()
+        manifest = json.loads((directory / "manifest.json").read_text())
+        manifest.update(schemaVersion=2, acceptanceScope="basic-cli",
+                        deferredScope="advanced-cli", deferredUntil="next-release")
+        ids = sorted(release.BASIC_CASES | release.ADVANCED_CASES)
+        files = {
+            "baseline.md": b"Personal workspace; existing custom config; advanced validation next release.\n",
+            "test-cases.md": "".join(f"| {cid} | Input | Expected result |\n" for cid in ids).encode(),
+            "test-report.md": ("## 现场回读\n"
+                               + "".join(f"| {cid} | {'pass' if cid.startswith('B') else 'not-run'} | "
+                                         f"Frozen readback evidence or explicit next-release deferral: {cid}. |\n"
+                                         for cid in ids)
+                               + "## 独立复核\nReviewed basic cases only.\n").encode(),
+        }
+        dist = self.repo / "dist"
+        dist.mkdir()
+        for name in release.ASSETS:
+            (dist / name).write_bytes(name.encode())
+
+        def write(data, documents):
+            data = dict(data, sha256={name: hashlib.sha256(content).hexdigest()
+                                     for name, content in documents.items()})
+            for name, content in documents.items():
+                (directory / name).write_bytes(content)
+            (directory / "manifest.json").write_text(json.dumps(data))
+            # Deliberately construct the archive independently, so smoke must
+            # reject bad evidence even if it was not made by our packager.
+            with zipfile.ZipFile(dist / release.EVIDENCE_ASSET, "w") as archive:
+                archive.writestr("manifest.json", json.dumps(data))
+                for name in release.EVIDENCE_FILES:
+                    archive.writestr(name, documents[name])
+            release.write_checksums(dist, "v1.6.0")
+
+        write(manifest, files)
+        self.assertEqual(release.check_sources(self.repo, "v1.6.0"), "1.6.0")
+        self.assertIn(release.EVIDENCE_ASSET, smoke.check_assets(dist, "v1.6.0"))
+        mutations = [
+            (dict(manifest, acceptanceScope="anything"), files),
+            (dict(manifest, schemaVersion=1), files),
+            (dict(manifest, deferredUntil=""), files),
+            (dict(manifest, independentReview="in-progress"), files),
+        ]
+        for old, new in [(b"| B05 | pass |", b"| B05 | fail |"),
+                         (b"| B05 | pass |", b"| B05 | not-run |"),
+                         (b"| A00 | not-run |", b"| A00 | pass |")]:
+            mutations.append((manifest, dict(files, **{
+                "test-report.md": files["test-report.md"].replace(old, new)})))
+        for cid in ("B10", "A06"):
+            mutations.append((manifest, {name: b"\n".join(
+                line for line in content.splitlines() if not line.startswith(f"| {cid} |".encode()))
+                for name, content in files.items()}))
+        for number, (data, documents) in enumerate(mutations):
+            with self.subTest(mutation=number):
+                write(data, documents)
+                with self.assertRaises(ValueError):
+                    release.check_sources(self.repo, "v1.6.0")
+                with self.assertRaises(ValueError):
+                    smoke.check_assets(dist, "v1.6.0")
 
     def test_historical_minor_release_is_not_retroactively_gated(self):
         self.set_version("1.5.0")

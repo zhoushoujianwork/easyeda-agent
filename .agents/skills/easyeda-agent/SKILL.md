@@ -4,7 +4,7 @@ description: "通过本地 easyeda CLI、daemon 和连接器操作嘉立创EDA�
 license: MIT
 metadata:
   author: zhoushoujianwork
-  version: "1.6.0-dev.21"
+  version: "1.7.0"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
@@ -13,6 +13,10 @@ metadata:
 用 typed CLI 经 WebSocket 调用 EasyEDA Pro 官方 `eda.*` API。工作方式是：找到相近样例，
 理解其电气或机械理由，替换项目参数，执行，读取实际结果，再修正。样例提供起点，不是完成态
 黄金答案；连接、封装、尺寸和规则仍以当前需求、数据手册、原始工程及官方回读为准。
+
+1.7.0 的本轮现场验收覆盖基础 CLI（个人空间、已有自定义规则配置）。高级规划、求解、
+Compose/Apply 和整板设计验收留到下一版本；命令可用不代表这些设计流程已通过现场验证。
+原理图修改、NC 清除和首次规则初始化的已知 bug 仍须按对应 reference 的回读要求处理。
 
 ## 硬红线：不手工操作 EDA
 

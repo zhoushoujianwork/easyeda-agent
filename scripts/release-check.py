@@ -19,6 +19,8 @@ ASSETS = [
 EVIDENCE_ASSET = "test-evidence.zip"
 EVIDENCE_FILES = ("test-report.md", "baseline.md", "test-cases.md")
 REQUIRED_CASES = frozenset(("M1", "F1", "F2", "E1", "L1", "N1", "R1", "E2E"))
+BASIC_CASES = frozenset(f"B{i:02d}" for i in range(11))
+ADVANCED_CASES = frozenset(f"A{i:02d}" for i in range(7))
 # Installer scripts are published verbatim; the packaged copy must match the source.
 INSTALLERS = ["install.sh", "install.ps1"]
 
@@ -53,14 +55,31 @@ def case_rows(data: bytes) -> dict[str, list[str]]:
     return rows
 
 
-def check_case_results(contents: dict[str, bytes]) -> None:
+def basic_scope(manifest: dict) -> bool:
+    if manifest.get("schemaVersion") == 1:
+        if any(key in manifest for key in ("acceptanceScope", "deferredScope", "deferredUntil")):
+            raise ValueError("legacy evidence cannot override its full acceptance scope")
+        return False
+    if (manifest.get("schemaVersion") != 2 or manifest.get("acceptanceScope") != "basic-cli"
+            or manifest.get("deferredScope") != "advanced-cli"
+            or manifest.get("deferredUntil") != "next-release"):
+        raise ValueError("schema 2 requires explicit basic-cli scope and advanced-cli deferred to next-release")
+    return True
+
+
+def check_case_results(contents: dict[str, bytes], basic: bool = False) -> None:
     cases = case_rows(contents["test-cases.md"])
     report = case_rows(contents["test-report.md"])
-    if not REQUIRED_CASES.issubset(cases) or set(cases) != set(report):
-        raise ValueError("acceptance report must cover every test case, including the fixed end-to-end baseline")
+    required = BASIC_CASES | ADVANCED_CASES if basic else REQUIRED_CASES
+    if (not required.issubset(cases) or set(cases) != set(report)
+            or basic and set(cases) != required):
+        raise ValueError("acceptance report must cover every test case required by its declared scope")
     for case_id, cells in report.items():
         status = cells[1].lower()
-        if status != "pass" and not (case_id == "L2" and status == "not-applicable"):
+        if basic and case_id in ADVANCED_CASES:
+            if status != "not-run":
+                raise ValueError(f"deferred acceptance case {case_id} must remain not-run")
+        elif status != "pass" and not (not basic and case_id == "L2" and status == "not-applicable"):
             raise ValueError(f"acceptance case {case_id} is not pass: {cells[1]}")
         if len(cells[2]) < 30:
             raise ValueError(f"acceptance case {case_id} needs a concrete readback/evidence reference")
@@ -87,16 +106,17 @@ def evidence_files(repo: Path, tag: str) -> dict[str, bytes]:
         if not contents[name]:
             raise ValueError(f"minor release evidence is empty: {relative}")
     manifest = json.loads(contents["manifest.json"])
-    if (not isinstance(manifest, dict) or manifest.get("schemaVersion") != 1
+    if (not isinstance(manifest, dict)
             or manifest.get("version") != tag or manifest.get("result") != "pass"
             or manifest.get("independentReview") != "pass"):
         raise ValueError(f"{root}/manifest.json: exact version, pass result and independent review required")
+    basic = basic_scope(manifest)
     if not isinstance(manifest.get("sha256"), dict) or set(manifest["sha256"]) != set(EVIDENCE_FILES):
         raise ValueError(f"{root}/manifest.json: sha256 must cover report, baseline and test cases")
     for name in EVIDENCE_FILES:
         if hashlib.sha256(contents[name]).hexdigest() != manifest["sha256"][name]:
             raise ValueError(f"{root}/{name}: SHA256 differs from reviewed manifest")
-    check_case_results(contents)
+    check_case_results(contents, basic)
     return contents
 
 

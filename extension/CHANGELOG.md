@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.7.0] — 2026-09-25
+
+### 基础 CLI 与连接器
+
+- 新增 typed `web reload`：保存文档后刷新 Web EDA，等待新的连接器注册并核对原工程/页面；工程查找支持有界总超时。
+- 修复原生网络标签回包为空时的唯一对象回读、PCB 区域创建验证、器件位号/链接键回读；过期 PCB ID 在修改/删除前拒绝。
+- 为原理图修改、NC 清除和首次自定义规则初始化加入已知 bug 提示；保留原始 JSON，部分写入或显式验证失败仍非零退出。
+- 增补官方工程/符号导出、属性与位号几何读取、完整页面写前保护和求解离线回归。求解及 Compose/Apply 的高级现场验收仍待完成。
+
+### 升级与验收范围
+
+- 本版改变连接器行为，进入 1.7 兼容线。CLI/daemon、Skill 与连接器须一起升级；侧载连接器先卸载旧项，再导入本版 `.eext`，核对实际运行版本。
+- 基础 B00–B10 在 `1.6.0-dev.21` 同版真实链路全部通过并经独立复核；正式包沿用同一产品源码，另做版本、构建及资产校验。范围为个人空间及既有自定义规则夹具，团队与首次规则初始化未验收。
+- 用户决定高级 CLI A00–A06 留到下一版本验证，本轮全部记为 `not-run`。既有求解预算耗尽和严格 DRC 缺口不视为已解决；不宣称完整电路设计 E2E 通过。
+- 已知问题 #256、#257、#258 继续开放跟踪。发布附 `test-evidence.zip`，包含声明范围、基准、逐项报告及哈希；基础通过不代表历史间歇缺陷已修复。
+
 ## [1.6.0-dev.21]
 
 - Add targeted CLI advisories for tracked schematic modify, NC clearing and first custom-rule initialization bugs; keep raw JSON and failure exits, including unverified schematic writes. Connector handlers are unchanged.
