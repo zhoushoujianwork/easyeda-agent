@@ -135,7 +135,8 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 首次把系统规则转为自定义配置时，Web 4.1.60 曾出现未请求孔间距 `0.3 → 0.2999994 mm`
 变化，见 [bug #258](https://github.com/zhoushoujianwork/easyeda-agent/issues/258)。该差值很小，
 但仍保留完整差分和 `verified:false`，不能自动放宽容差；已冻结自定义配置的修改/恢复需独立核对。
-当前保留规则命令，首次初始化路径仍待定位。
+当前保留规则命令，首次初始化路径仍待定位。dev.21 起，`pcb config` 的规则写入在 stderr
+提示该已知问题和完整差分复核要求，读取和 `--dry-run` 不提示；原有失败退出码保持不变。
 
 Web 4.1.60 的区域名称仅适用于 `follow-rule`。dev.18 曾给 `no-pours` 传名称并
 回显输入，误把它当作已保存；dev.19 起拒绝该组合，创建后回读真实名称、层、规则和

@@ -94,6 +94,9 @@ Use pcb save, doc reload, config get to verify persistence.`,
 						payload["copyFrom"] = copyFrom
 					}
 				}
+				if !dryRun {
+					fmt.Fprintln(stderr, knownBugPCBConfig)
+				}
 				var response bytes.Buffer
 				err := dispatch(cfg, "pcb.config.set", *window, payload, &response, stderr)
 				if _, writeErr := stdout.Write(response.Bytes()); writeErr != nil {

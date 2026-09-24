@@ -44,6 +44,7 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 [dev.14 基础现场复测](reviews/2026-09-24-v1.6.0-dev14-basic-cli-live.md)按各自版本和覆盖范围阅读，
 不能把其中的求解或 DRC 结果合并进基础门禁。
 
-最新失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)，
-其中的针对性通过不替代全部 B00–B10 同版重跑。
+最新完整复测见 [dev.21 基础验收](reviews/2026-09-25-v1.6.0-dev21-basic-cli.md)：
+个人空间范围 B00–B10 同版通过；团队按用户要求留待后续，已知 bug 继续跟踪。
+历史失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)。
 尚未关闭的 bug 及当前使用建议见 [已知问题](cli-known-bugs.md)；保留命令可用与验收放行分开判断。

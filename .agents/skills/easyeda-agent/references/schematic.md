@@ -162,7 +162,9 @@ PCB 的 `--center` 仍不允许补丁包含 x/y/rotation。
 当前分别以 [bug #256](https://github.com/zhoushoujianwork/easyeda-agent/issues/256)（cmdKey）和
 [bug #257](https://github.com/zhoushoujianwork/easyeda-agent/issues/257)（NC 清除）跟踪，不假定同源。
 命令继续可用，但失败退出仍须停止依赖步骤；NC 清除后核对指定引脚 `noConnected:false`，
-关键结果保存重载再读。专用 bug 提示尚未加入 CLI，不能假定没有 warning 就没有风险。
+关键结果保存重载再读。dev.21 起，`sch modify` 与 `sch no-connect --clear` 在 stderr
+提示对应 bug 和回读要求，stdout 保留原始 JSON；`partial`、`verified:false` 和未生效字段
+仍非零退出。提示本身不说明本次失败，不触发自动重试，也不代表 bug 已修复。
 
 ### 原生 net_label 兼容性（#191）
 

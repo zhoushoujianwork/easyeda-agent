@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.0-dev.21]
+
+- Add targeted CLI advisories for tracked schematic modify, NC clearing and first custom-rule initialization bugs; keep raw JSON and failure exits, including unverified schematic writes. Connector handlers are unchanged.
+
 ## [1.6.0-dev.20]
 
 - Read PCB component identity after assigning its designator/link, instead of returning the stale create object; surface unverified binding as a partial write.

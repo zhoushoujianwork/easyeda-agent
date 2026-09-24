@@ -728,8 +728,8 @@ properties and are verified by fresh readback, with tiered semantics (#151):
     replaying propertiesBefore restores overwritten values only — keys newly
     added by this call (addedKeys) cannot be removed via modify
   - pure-property patch, nothing applied  → error (canvas unchanged)
-  - readback channel itself fails         → success with verified:false +
-    warning (erroring would skip autosave and lose the applied edit)
+  - readback channel itself fails         → wire-level ok with verified:false
+    (preserves autosave), but THIS COMMAND EXITS NON-ZERO
 
 MERGE also holds for top-level-only patches (#175): the platform's modify
 rewrites otherProperty WHOLESALE, so a patch like {"supplierId":...} used to
@@ -771,6 +771,7 @@ platform still dropped is reported in result.notApplied (non-zero exit).`,
 				if len(overridden) > 0 {
 					fmt.Fprintf(stderr, "note: flag value(s) override --patch key(s): %s\n", strings.Join(overridden, ", "))
 				}
+				fmt.Fprintln(stderr, knownBugSchModify)
 				res, err := dispatchCapture(cfg, "schematic.component.modify", window,
 					map[string]any{"primitiveId": id, "patch": patch}, stdout)
 				if err != nil {
@@ -785,6 +786,9 @@ platform still dropped is reported in result.notApplied (non-zero exit).`,
 						keys = append(keys, fmt.Sprint(k))
 					}
 					return fmt.Errorf("partial apply: properties not applied: %s (applied subset kept on canvas and autosaved; replaying result.propertiesBefore restores overwritten values only — keys newly added by this call (result.addedKeys) cannot be removed via modify)", strings.Join(keys, ", "))
+				}
+				if res.Result["partial"] == true || res.Result["verified"] == false {
+					return fmt.Errorf("schematic modify partially applied or unverified; inspect fresh readback before continuing")
 				}
 				return nil
 			},
@@ -1549,6 +1553,7 @@ pull fresh ids before any follow-up mutation on it.`,
 				}
 				if clear {
 					payload["noConnected"] = false
+					fmt.Fprintln(stderr, knownBugNCClear)
 				}
 				res, err := dispatchCapture(cfg, "schematic.pin.set_no_connect", window, payload, stdout)
 				if err != nil {
@@ -1562,7 +1567,10 @@ pull fresh ids before any follow-up mutation on it.`,
 					for _, p := range na {
 						pins = append(pins, fmt.Sprint(p))
 					}
-					return fmt.Errorf("partial apply: no-connect not persisted on pin(s): %s (persisted subset kept; re-run for the listed pins)", strings.Join(pins, ", "))
+					return fmt.Errorf("partial apply: no-connect not persisted on pin(s): %s (persisted subset kept; inspect fresh pin readback before retrying)", strings.Join(pins, ", "))
+				}
+				if res.Result["partial"] == true || res.Result["verified"] == false {
+					return fmt.Errorf("no-connect partially applied or unverified; inspect fresh pin readback before continuing")
 				}
 				return nil
 			},
