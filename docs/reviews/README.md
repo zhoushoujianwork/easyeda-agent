@@ -11,6 +11,7 @@
 | 2026-08 工具调用分布与 gate 现场验证 | [审计与验证记录](2026-08-sch-surface-audit.md) |
 | 2026-09-23 局部改版与 daemon 恢复 | [代码修复及验证边界](2026-09-23-local-edit-reliability.md) |
 | 2026-09-23 1.6.0 原理图专项 | [测试 prompt、场景和现场记录](2026-09-23-v1.6.0-schematic-acceptance.md) |
+| 2026-09-24 dev.14 基础 CLI 门禁 | [离线正反例与安装态阻塞](2026-09-24-v1.6.0-dev14-cli-gates.md) |
 | 2026-08 回归与端到端缺陷 | [08-16](regression-2026-08-16.md)、[08-19 第一轮](e2e-report-esp32mini-2026-08-19.md)、[08-19 第二轮](e2e-report-esp32mini-round2-2026-08-19.md)、[08-25](e2e-round-2026-08-25-findings.md)、[08-26](regression-findings-2026-08-26.md) |
 | 原理图与模块算法验证 | [算法验证](schematic-algorithm-validation.md)、[Lib 组合](schematic-composition-validation.md)、[LDO 布局](power-layout-validation.md) |
 | PR、issue 与现场复核 | [09-08 分流](2026-09-08-pr-issue-triage.md)、[09-09 电阻证据](2026-09-09-issue-202-resistance-evidence.md)、[09-12 分类](2026-09-12-open-issue-classification.md) |
