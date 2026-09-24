@@ -4,7 +4,7 @@ description: "通过本地 easyeda CLI、daemon 和连接器操作嘉立创EDA�
 license: MIT
 metadata:
   author: zhoushoujianwork
-  version: "1.6.0-dev.16"
+  version: "1.6.0-dev.17"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
@@ -50,6 +50,9 @@ metadata:
    用户明确要求刷新整个 Web 编辑器时，使用 `easyeda web reload --project <UUID> --doc <UUID>`：
    它保存当前文档、触发 typed 页面刷新、等待新连接器和同一工程/文档的 fresh 回读，并报告耗时。
    先保存其他已打开文档；不能把 `web reload` 当作对象不可读时的自动兜底。
+   用户明确要求轮换侧载连接器时，可在先逐页 typed 保存后用浏览器 UI 管理扩展；
+   同 UUID 先卸载旧项、导入新包，并在新项配置中重新启用“允许外部交互”。
+   `health` 必须确认运行中的新版本与目标工程/文档，UI 只用于插件管理，不用于工程编辑。
 7. 参数化 PCB Layout 后以 `pcb stage-snapshot --fit-mode board` 生成 typed 整板预览并连续自检两轮；
    记录 `captureKind` 和 `objectLevelExport`，不得把 board-fitted viewport PNG 称为编辑器菜单的
    对象级导出。第 1 轮查空间/模块关系/视觉异常；

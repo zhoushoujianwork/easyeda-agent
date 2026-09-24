@@ -132,8 +132,10 @@ Node 版本遵循 bundle 的要求（至少 20.17）。
 | [立创插件市场](https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector) | 在市场安装，平台支持原地自动更新；市场版本可落后 patch，只要 major.minor 相同就无需处理。 |
 
 开发连接器：`make connector` 按当前版本/UUID 构建，`make eext` 升 patch 后构建同 UUID
-安装包。更换连接器后保存文档，完全退出并重开 EasyEDA，让所有旧页面运行时停止。
-只重新导入包不保证已打开页面执行新代码。不要用 IndexedDB 覆写或清空站点数据作为
+安装包。用户要求轮换侧载包时，Codex 可在用户已打开的 Web EDA 中管理扩展：先对每个
+已打开文档 typed 保存，再核对 UUID/旧版本、卸载旧项、导入新包，并在新项配置中重新启用
+“允许外部交互”。只重新导入包不保证已打开页面执行新代码；Web 端可用 typed `web reload`
+刷新并等待新连接与同一工程/文档回读，桌面端完全退出后重开。不要用 IndexedDB 覆写或清空站点数据作为
 常规升级方式；它们绕过安装流程且可能破坏扩展或登录状态。
 
 用户明确授权的仓库开发验证可按仓库 `docs/dev-environment.md §5` 对**已安装的同一

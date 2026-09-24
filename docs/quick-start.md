@@ -117,8 +117,10 @@ easyeda daemon health
 2. **重导连接器 `.eext`** —— EasyEDA 按 **uuid 去重**,光 bump 版本号不够:
    先在「已安装」里**卸载旧连接器**,再导入新 `.eext`(uuid 不变,原地更新)。
    *(这步只针对**侧载**的 GitHub Release `.eext`;若连接器是从[立创插件市场](https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector)装的,平台会原地自动更新 —— 但市场版本可能滞后 CLI,严格同版仍以 Release `.eext` 为准。)*
-3. **完全退出并重启 EasyEDA** —— 重导**不会重载已开着的窗口**;旧窗口会继续跑旧代码、
-   和新连接器抢 daemon socket。必须**彻底退出 EasyEDA 再打开**。
+3. **重新加载运行中的编辑器** —— 扩展列表已更新不代表旧窗口已运行新代码。
+   Web EDA 在旧连接器具备 typed `web reload` 时，先保存其他已打开文档，再运行
+   `easyeda web reload --project <UUID> --doc <当前文档UUID>` 并等待新连接器/同页回读；
+   没有该能力时刷新或重开 Web 页面。桌面版完全退出后重开。
 4. **`easyeda daemon health` 复核** —— 检查连接、窗口、版本差异和当前动作是否可用。
 
 > 大多数改动其实不需要重导 `.eext`(daemon 侧的 typed action / CLI 更新无需碰连接器);
@@ -140,7 +142,9 @@ easyeda daemon health
 - **连接器落后自动提示**:连接器一注册,daemon 就比对版本;落后时打一条**可操作日志**
   (「stale connector: vX < daemon vY — 重导 .eext + 彻底重启 EasyEDA」)。
   **侧载**(GitHub Release)的连接器 `.eext` **无法**被 daemon 静默替换(sideload 无原地自动更新),
-  所以这里只**检测+提示**,重导那步仍需你手动做(见上)。若连接器是从
+  所以这里仅**检测+提示**，仍须在 EasyEDA 扩展管理器轮换；用户授权后 Codex 可按
+  [内置浏览器轮换步骤](codex-web-eda-runbook.md#同-uuid-侧载扩展由-codex-轮换)完成。
+  若连接器是从
   [**立创插件市场**](https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector)装的,
   平台**可原地自动更新** —— 但市场版本可能滞后 CLI；需要新 handler 时以 GitHub Release 的 `.eext` 为准。
 

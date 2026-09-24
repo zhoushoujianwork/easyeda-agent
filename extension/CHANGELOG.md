@@ -1,8 +1,12 @@
 # Changelog
 
+## [1.6.0-dev.17] — 2026-09-24 (Web page reload in host global realm)
+
+- Schedule `system.page_reload` from the browser global realm via a fixed `AsyncFunction`, matching the established EasyEDA host escape used for import confirmation. The `dev.16` typed handler could not construct `Function` in its shadowed scope; the live call failed before refresh.
+
 ## [1.6.0-dev.16] — 2026-09-24 (Web page reload host lookup)
 
-- Resolve the browser's top window from the EasyEDA global realm for `system.page_reload`. The extension's bundled handler has a shadowed `window` binding; direct `window.top` failed immediately despite the browser global being present. A fixed, payload-free lookup now reaches the verified page object.
+- Attempt a fixed, payload-free top-window lookup after the `dev.15` handler found `window` shadowed. The `dev.16` live typed call still failed because the handler also shadows `Function`; see `dev.17` for the verified fix.
 
 ## [1.6.0-dev.15] — 2026-09-24 (typed Web page reload)
 

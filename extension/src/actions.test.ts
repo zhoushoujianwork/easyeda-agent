@@ -761,7 +761,7 @@ test('document.open does not report ready when activation cannot be read back', 
 
 test('system.page_reload schedules a top-level refresh only for the exact active document', async (t) => {
 	const globals = globalThis as any;
-	const previous = { eda: globals.eda, window: globals.window, setTimeout: globals.setTimeout };
+	const previous = { eda: globals.eda, window: globals.window, Function: globals.Function, setTimeout: globals.setTimeout };
 	t.after(() => {
 		for (const [key, value] of Object.entries(previous)) {
 			if (value === undefined) delete globals[key];
@@ -771,6 +771,7 @@ test('system.page_reload schedules a top-level refresh only for the exact active
 	let reloads = 0;
 	let scheduled: (() => void) | undefined;
 	globals.window = { top: { location: { reload: () => { reloads++; } } } };
+	globals.Function = undefined;
 	globals.setTimeout = (callback: () => void, delay: number) => {
 		assert.equal(delay, 500);
 		scheduled = callback;

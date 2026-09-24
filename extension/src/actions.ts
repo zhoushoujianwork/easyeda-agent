@@ -581,23 +581,27 @@ const systemPageReload: Handler = async (payload) => {
 		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
 			'Web page reload refused: current project/document differs from the exact requested UUIDs.');
 	}
-	let page: Window;
+	const delayMs = 500;
 	try {
-		// EasyEDA evaluates the bundled extension with a shadowed `window` binding
-		// (undefined in a typed handler), while its browser global is available to
-		// a new Function. This fixed expression takes no user input. The same
-		// lookup was verified in the Web host before adding this action.
-		page = new Function('return window.top')() as Window;
-		if (!page || typeof page.location.reload !== 'function') {
-			throw new Error('top-level page reload is unavailable');
-		}
+		// EasyEDA shadows both `window` and `Function` in typed handler scope.
+		// AsyncFunction's scope resolves the browser global, as in clickImportConfirm.
+		// This fixed, payload-free script was verified in the Web host.
+		const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as {
+			new (body: string): () => Promise<void>;
+		};
+		const schedule = new AsyncFunction(`
+			const page = window.top;
+			if (!page || typeof page.location.reload !== 'function') {
+				throw new Error('top-level page reload is unavailable');
+			}
+			setTimeout(() => page.location.reload(), ${delayMs});
+		`);
+		await schedule();
 	}
 	catch (err) {
 		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
 			'Web page reload is unavailable in this connector context.', describeThrown(err));
 	}
-	const delayMs = 500;
-	setTimeout(() => page.location.reload(), delayMs);
 	return { result: { scheduled: true, delayMs, projectUuid, documentUuid }, context };
 };
 
