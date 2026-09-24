@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.0-dev.18] — 2026-09-24 (PCB stale-ID deletion guard)
+
+- Check every requested PCB component ID against the live component inventory before deletion. Reject a stale or empty ID with `PRECONDITION_REFUSED` and dispatch no deletion; the previous official call surfaced an opaque host exception.
+
 ## [1.6.0-dev.17] — 2026-09-24 (Web page reload in host global realm)
 
 - Schedule `system.page_reload` from the browser global realm via a fixed `AsyncFunction`, matching the established EasyEDA host escape used for import confirmation. The `dev.16` typed handler could not construct `Function` in its shadowed scope; the live call failed before refresh.

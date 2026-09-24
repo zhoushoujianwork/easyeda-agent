@@ -11293,6 +11293,26 @@ const pcbComponentDelete: Handler = async (payload) => {
 			'Missing required field "primitiveIds" (string or string[]).',
 		);
 	}
+	const requested = typeof primitiveIds === 'string' ? [primitiveIds] : primitiveIds;
+	if (requested.length === 0 || requested.some(id => !id)) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'PCB component deletion requires non-empty primitive IDs.');
+	}
+	let components;
+	try {
+		components = await eda.pcb_PrimitiveComponent.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to verify PCB component IDs before deletion.');
+	}
+	if (!Array.isArray(components)) {
+		throw new ActionError(ErrorCodes.INVALID_STATE, 'PCB component inventory unavailable; deletion was not dispatched.');
+	}
+	const liveIds = new Set(components.map(component => component.getState_PrimitiveId()));
+	const missing = [...new Set(requested)].filter(id => !liveIds.has(id));
+	if (missing.length > 0) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			`PCB component primitive ID(s) not found: ${missing.join(', ')}. Pull fresh IDs from pcb list; no deletion was dispatched.`);
+	}
 	let deleted;
 	try {
 		deleted = await eda.pcb_PrimitiveComponent.delete(primitiveIds);

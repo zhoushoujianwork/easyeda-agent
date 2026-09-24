@@ -19,6 +19,9 @@ DRC 与整板质量按[高级 CLI 用例](cli-advanced-test-detail.md)另测。
    `context`。写入前后分别保存完整对象快照；超时或部分成功先 fresh 回读，状态不明就停写。
    可用 `python3 scripts/cli-live-record.py --out <新证据.json> -- easyeda ...` 记录；
    它拒绝覆盖旧证据。`--help` 与离线测试只算命令契约，不能替代现场回包。
+   B01 可先运行 `python3 scripts/cli-basic-contract-check.py --out <新证据.json>`，
+   检查本表使用的命令帮助、关键参数、typed action 目录和错误命令退出码；
+   然后逐项核对 Skill 中实际调用的签名，报告未覆盖的命令。
 5. 所有写命令显式传 `--project <UUID> --doc <UUID>`；仅创建尚不存在的工程时用
    `--window`。每次稳定检查点显式保存，确认 `saved:true` 后再 reload 和 fresh 读取。
    本表的通过判据只判断动作是否准确执行，不判断电路设计是否合理。

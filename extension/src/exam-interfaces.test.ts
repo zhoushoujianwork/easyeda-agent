@@ -154,6 +154,25 @@ test('project.find reports enumeration failure as unknown without retrying or cr
 	});
 });
 
+test('pcb.component.delete rejects a stale ID before the official delete call', async () => {
+	let deleteCalls = 0;
+	await withEda({
+		pcb_PrimitiveComponent: {
+			getAll: async () => [{ getState_PrimitiveId: () => 'live-1' }],
+			delete: async () => { deleteCalls++; return true; },
+		},
+	}, async () => {
+		await assert.rejects(
+			() => runAction('pcb.component.delete', { primitiveIds: ['live-1', 'stale-1'] }),
+			(err: any) => err.code === 'PRECONDITION_REFUSED' && /stale-1.*no deletion was dispatched/.test(err.message),
+		);
+		assert.equal(deleteCalls, 0);
+		const res: any = await runAction('pcb.component.delete', { primitiveIds: 'live-1' });
+		assert.equal(res.result.deleted, true);
+		assert.equal(deleteCalls, 1);
+	});
+});
+
 test('pcb.net_class.create validates live nets, creates once, and verifies membership', async () => {
 	let classes: any[] = [];
 	let createCalls = 0;
