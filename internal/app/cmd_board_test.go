@@ -24,12 +24,14 @@ func newCapturingDaemon(t *testing.T) (*appConfig, *capturedRequest, func()) {
 			_, _ = w.Write([]byte(`{"service":"easyeda-agent","windows":[{"windowId":"w1"}]}`))
 		case "/action":
 			var body struct {
-				Action  string         `json:"action"`
-				Payload map[string]any `json:"payload"`
+				Action    string         `json:"action"`
+				TimeoutMs int            `json:"timeoutMs"`
+				Payload   map[string]any `json:"payload"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&body)
 			cap.mu.Lock()
 			cap.action = body.Action
+			cap.timeoutMs = body.TimeoutMs
 			cap.payload = body.Payload
 			cap.mu.Unlock()
 			_, _ = w.Write([]byte(`{"ok":true,"result":{}}`))
@@ -49,9 +51,10 @@ func newCapturingDaemon(t *testing.T) (*appConfig, *capturedRequest, func()) {
 }
 
 type capturedRequest struct {
-	mu      sync.Mutex
-	action  string
-	payload map[string]any
+	mu        sync.Mutex
+	action    string
+	timeoutMs int
+	payload   map[string]any
 }
 
 // board rebind requires --schematic; without it the command errors before any

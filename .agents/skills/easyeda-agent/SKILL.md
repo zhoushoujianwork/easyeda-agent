@@ -68,6 +68,8 @@ metadata:
 创建后检查 `created` / `opened` / `partial` 并读回工程身份，再处理文档创建。部分成功时
 先用 `easyeda project find --window <id> --name <完整友好名称> --team <teamUuid>`
 按友好名称和团队精确查找，不盲目重复创建。它只调用官方项目 UUID 枚举与逐项详情读取；
+查找默认等待 90 秒，可显式加 `--timeout 120s`（范围 5 秒到 10 分钟）。超时仍是未知，
+不能据此创建同名工程；先保存其他打开文档，用户要求时 typed `web reload` 后再有界重试。
 `found` 可用于核对已有工程，`unknown`（例如 UUID 清单为空、详情缺失或枚举报错）不能当作
 不存在；只有 `enumeration.complete:true` 且 `presence:"absent"` 才能说明指定团队**根文件夹**内
 没有匹配（SDK 不保证递归子文件夹）。本例未传 `folderUuid`，故先查目标团队根文件夹。

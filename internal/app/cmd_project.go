@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -21,6 +22,7 @@ func newProjectCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	proj.AddCommand(
 		func() *cobra.Command {
 			var friendlyName, teamUUID string
+			var timeout time.Duration
 			c := &cobra.Command{
 				Use:     "find",
 				Short:   "Find projects by exact friendly name without opening them",
@@ -31,15 +33,21 @@ func newProjectCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 					if friendlyName == "" {
 						return fmt.Errorf("--name is required")
 					}
+					if timeout < 5*time.Second || timeout > 10*time.Minute {
+						return fmt.Errorf("--timeout must be between 5s and 10m")
+					}
 					payload := map[string]any{"friendlyName": friendlyName}
 					if teamUUID != "" {
 						payload["teamUuid"] = teamUUID
 					}
-					return dispatch(cfg, "project.find", window, payload, stdout, stderr)
+					return dispatchTimed(cfg, "project.find", window, payload, timeout, stdout, stderr)
 				},
 			}
 			c.Flags().StringVar(&friendlyName, "name", "", "exact project friendly name (required)")
 			c.Flags().StringVar(&teamUUID, "team", "", "exact owning team UUID; scopes inventory to its root folder")
+			// The official inventory needs one detail read per UUID. A real 52-project
+			// team takes ~19s, exceeding the common 20s budget minus daemon grace.
+			c.Flags().DurationVar(&timeout, "timeout", 90*time.Second, "total lookup wait budget (5s to 10m); incomplete inventory never proves absence")
 			return c
 		}(),
 		func() *cobra.Command {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,37 @@ func TestProjectFindWiresExactIdentity(t *testing.T) {
 			defer captured.mu.Unlock()
 			if captured.action != "project.find" || !reflect.DeepEqual(captured.payload, tc.want) {
 				t.Fatalf("action=%q payload=%#v, want %#v", captured.action, captured.payload, tc.want)
+			}
+			if captured.timeoutMs != 90000 {
+				t.Fatalf("default lookup budget=%d, want 90000", captured.timeoutMs)
+			}
+		})
+	}
+}
+
+func TestProjectFindTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  int
+	}{{"20s", 20000}, {"90s", 90000}, {"10m", 600000}} {
+		t.Run(tc.value, func(t *testing.T) {
+			captured := executeExamCommand(t, []string{"find", "--name", "Exact", "--timeout", tc.value}, func(cfg *appConfig, stdout, stderr *bytes.Buffer) commandExecutor {
+				return newProjectCmd(cfg, stdout, stderr)
+			})
+			captured.mu.Lock()
+			defer captured.mu.Unlock()
+			if captured.timeoutMs != tc.want {
+				t.Fatalf("wire timeout=%d, want %d", captured.timeoutMs, tc.want)
+			}
+		})
+	}
+	for _, value := range []string{"0s", "-1s", "4s", "601s"} {
+		t.Run("reject-"+value, func(t *testing.T) {
+			var out bytes.Buffer
+			cmd := newProjectCmd(nil, &out, &out)
+			cmd.SetArgs([]string{"find", "--name", "Exact", "--timeout", value})
+			if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--timeout must be") {
+				t.Fatalf("error=%v", err)
 			}
 		})
 	}
