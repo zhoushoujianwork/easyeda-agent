@@ -46,6 +46,16 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"shown", "message", "type"},
 		},
 		{
+			Name:        "system.page_reload",
+			Domain:      DomainSystem,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Schedule a full Web editor page reload after the response is sent. The CLI saves the active document first and verifies a new connector registration and the same project/document afterward.",
+			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)"},
+			Outputs:     []string{"scheduled", "delayMs", "projectUuid", "documentUuid"},
+			VerifyWith:  []string{"system.health", "document.current"},
+		},
+		{
 			Name:        "project.current",
 			Domain:      DomainProject,
 			Phase:       1,

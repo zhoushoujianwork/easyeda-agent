@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.0-dev.15] — 2026-09-24 (typed Web page reload)
+
+- Add `system.page_reload` and `easyeda web reload` for an explicitly targeted full Web editor refresh. The CLI saves the active document, then requires a new connector registration with the same project/page and reports measured save, reconnect and total time. This differs from `doc reload`, which only closes and reopens a document tab.
+
 ## [Unreleased]
 
 ## [1.6.0-dev.14] — 2026-09-24 (offline schematic solver candidate)

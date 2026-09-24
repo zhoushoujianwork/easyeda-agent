@@ -18,6 +18,7 @@ easyeda <domain> <action> [flags]
 | `easyeda bom` | BOM 导出与补全 |
 | `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型 |
 | `easyeda daemon` | 守护进程管理（start / stop / restart / health；restart 与 start 同为前台阻塞） |
+| `easyeda web` | Web 编辑器页面生命周期；`reload` 与 `doc reload` 区分，保存后等待新连接和同一文档可读 |
 | `easyeda audit` | 操作日志查看 |
 | `easyeda update` | 自更新（别名 `upgrade`）：CLI 二进制 + skill 目录 → latest；连接器只报不改 |
 | `easyeda skill` | skill 目录单独管理（status / sync；`update` 已含其能力） |

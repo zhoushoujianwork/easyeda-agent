@@ -572,6 +572,31 @@ const documentCurrent: Handler = async () => {
 	};
 };
 
+/** Reload the whole Web editor after its response has left the connector queue. */
+const systemPageReload: Handler = async (payload) => {
+	const projectUuid = requireString(payload, 'projectUuid');
+	const documentUuid = requireString(payload, 'documentUuid');
+	const context = await readResponseContext();
+	if (context.projectUuid !== projectUuid || context.documentUuid !== documentUuid) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'Web page reload refused: current project/document differs from the exact requested UUIDs.');
+	}
+	let page: Window;
+	try {
+		if (!window.top || typeof window.top.location.reload !== 'function') {
+			throw new Error('top-level page reload is unavailable');
+		}
+		page = window.top;
+	}
+	catch (err) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'Web page reload is unavailable in this connector context.', describeThrown(err));
+	}
+	const delayMs = 500;
+	setTimeout(() => page.location.reload(), delayMs);
+	return { result: { scheduled: true, delayMs, projectUuid, documentUuid }, context };
+};
+
 // ─── Schematic pages ─────────────────────────────────────────────────
 
 const schematicPagesList: Handler = async () => {
@@ -14138,6 +14163,7 @@ const debugExecJs: Handler = async (payload) => {
 // ─── Registry & dispatch ─────────────────────────────────────────────
 
 const HANDLERS: Record<string, Handler> = {
+	'system.page_reload': systemPageReload,
 	'project.current': projectCurrent,
 	'project.export_source': projectExportSource,
 	'project.find': projectFind,

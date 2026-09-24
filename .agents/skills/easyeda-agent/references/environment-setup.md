@@ -220,11 +220,22 @@ easyeda doc reload "<doc-name-or-uuid>" --project "<project>"
 它先保存，再关闭并重开文档。PCB 若刷新了铜形或规则，之后运行 `pcb pour-rebuild`
 再验证；`doc switch` 只切前台，不等于 reload。文档重载也不等于停止旧连接器运行时。
 
+用户明确要求刷新**整个 Web 页面**时，先保存同一页面里其他打开的文档，再执行：
+
+```bash
+easyeda web reload --project <project-uuid> --doc <active-doc-uuid> --timeout 30s
+```
+
+该命令保存当前文档，调用 typed `system.page_reload`，等新的 connector windowId 和同一
+工程/文档对象可读后才成功，并输出实际毫秒耗时。旧连接器没有该 action 时须先更新扩展；
+`doc reload` 与整个 Web 页面刷新不能混为一谈。
+
 Web 编辑器若在重开后持续显示加载动画，停止自动重试和现场写入：第一次 `openDocument` 可能
 仍在宿主内部执行，重复重开会叠加空白标签。保留错误、当前标签状态和 typed read 结果；只有
 UUID 变成目标值、但对象仍不可读时，仍视为加载未完成。当前 `doc reload` 保存目标分屏、等待
 旧文档退出活动态，并只做一次有界重开；失败时报告数据不可用，修复 typed reload/open 后复测。
-禁止通过刷新浏览器、工程树、属性面板或 CUA 恢复。
+不得通过 GUI 刷新浏览器、工程树、属性面板或 CUA 兜底；上面的 typed `web reload`
+只用于用户明确要求的整页刷新，不替代读取故障的诊断。
 
 ## 单连接恢复
 
