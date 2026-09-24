@@ -3625,7 +3625,8 @@ no-pours(7), no-inner-electrical(8), follow-rule(9). Default is a hard keep-out
 				Short: "Create a keep-out / rule region (area via --points | --rect | --ref)",
 				Args:  cobra.NoArgs,
 				Example: `  easyeda pcb region create --points '[[100,100],[400,100],[400,300],[100,300]]'   # default keep-out
-  easyeda pcb region create --rect 2250,-2420,2700,-2180 --rule no-pours --name antenna
+  easyeda pcb region create --rect 2250,-2420,2700,-2180 --rule no-pours
+  easyeda pcb region create --rect 2250,-2420,2700,-2180 --rule follow-rule --name antenna-rule
   easyeda pcb region create --ref U1 --margin 40 --rule no-pours --rule no-components   # keep-out under U1's antenna`,
 				RunE: func(cmd *cobra.Command, args []string) error {
 					points, err := areaPointsFrom(cfg, window, pointsJSON, rectSpec, ref, margin)
@@ -3657,7 +3658,7 @@ no-pours(7), no-inner-electrical(8), follow-rule(9). Default is a hard keep-out
 			c.Flags().Float64Var(&margin, "margin", 0, "expand the --rect/--ref box outward by this many mil (antenna clearance)")
 			c.Flags().StringArrayVar(&ruleTypes, "rule", nil, "rule type (repeatable): no-components|no-wires|no-fills|no-pours|no-inner-electrical|follow-rule (default keep-out)")
 			c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2; inner via 'easyeda pcb layers')")
-			c.Flags().StringVar(&name, "name", "", "region name")
+			c.Flags().StringVar(&name, "name", "", "DRC region name (requires --rule follow-rule)")
 			c.Flags().Float64Var(&width, "width", 0, "region border width (mil)")
 			c.Flags().BoolVar(&locked, "locked", false, "create the region locked")
 			region.AddCommand(c)

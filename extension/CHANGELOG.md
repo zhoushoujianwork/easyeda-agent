@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.6.0-dev.20]
+
+- Read PCB component identity after assigning its designator/link, instead of returning the stale create object; surface unverified binding as a partial write.
+
+## [1.6.0-dev.19]
+
+- Recover native net-label writes from unique fresh attribute and wire readback when the host returns no object; preserve uncertain writes without automatic retry.
+- Verify created PCB region geometry and metadata; reject names outside follow-rule regions.
+- Refuse stale PCB component IDs before modify dispatch.
+
 ## [1.6.0-dev.18] — 2026-09-24 (PCB stale-ID deletion guard)
 
 - Check every requested PCB component ID against the live component inventory before deletion. Reject a stale or empty ID with `PRECONDITION_REFUSED` and dispatch no deletion; the previous official call surfaced an opaque host exception.

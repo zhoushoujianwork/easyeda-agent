@@ -24,7 +24,10 @@ kind-default bonuses), picks the lowest-cost one, and delegates the mutation to
 `sch connect --kind net_label` 使用原生 `createNetLabel(x, y, net)`；方向和偏移只决定
 桩线端点，该接口不接收旋转参数，因此不会创建 `__ROTPROBE__` 旋转校准旗。
 电源、地和 netport 仍按原流程校准旋转。跳过无用探针不代表宿主已支持原生标签；
-接口标注 EDA v4 起提供，超时后须先回读属性图元和实际网络，不能盲重试。
+接口标注 EDA v4 起提供。Web 4.1.60 可能已创建标签却返回空值；连接器比较调用前后
+新增的 Name 属性，并核对坐标、可见性、父导线及真实网名。仅唯一匹配才返回 `verified:true`。
+读回不完整或匹配不唯一时返回 `partial:true, verified:false`，保留对象 ID，CLI 非零退出；
+先保存并回读，不能盲重试或仅因返回空而删除桩线。
 兼容性与验证说明见 [schematic.md](schematic.md#原生-net_label-超时191)。
 
 **批次内互斥 (issue #138):** 同一批(--spec / 多 --pin)里**已规划的短桩会当作

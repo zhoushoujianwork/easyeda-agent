@@ -376,6 +376,11 @@ It is **NOT net-bound copper** (that's a pour) — `create` takes no net. EasyED
 DRC + copper pour respect it (a pour avoids a `no-pours` region). Same raw-points
 convention as pour (connector builds the polygon).
 
+`pcb region create --name` 用于 `--rule follow-rule` 的 DRC 规则区域；
+`no-pours` 等禁布区不保存名称，禁止给它们传名称后把输入回显当成保存成功。
+创建后核对 `verified`、真实层/规则/几何/名称；`partial:true` 时先回读已创建 ID。
+Web 4.1.60 实测拒绝 `no-pours` 与 `follow-rule` 混合组合，不把两者合并用于具名禁布区。
+
 - `pcb region create` (`pcb.region.create`) — specify the area **three ways** (pick one):
   `--points '[[x,y],…]'` (explicit polygon), `--rect x0,y0,x1,y1` (rectangular
   shorthand), or **`--ref <designator>`** (the placed component's bbox — e.g. the
@@ -390,12 +395,9 @@ convention as pour (connector builds the polygon).
   removes components, NOT regions — use `region delete`). `--ids` takes CSV or a
   JSON array.
 
-> **Read-back limit (verified #18):** `--name` on a region is fire-and-forget —
-> `getState_RegionName` never reads it back, so `region list` shows `null` and the
-> injected DSN keepout is named `region_keepout_N`. Likewise `pcb fill`'s `fillMode`
-> always reads back `solid`. Geometry / layer / net / **ruleType** persist fine —
-> just don't gate logic on reading a region's name or a fill's mode. Platform SDK
-> quirk (same family as the netflag rotation echo trap), not fixable from here.
+> **历史结论更正（2026-09-25）：** #18 的“区域名称永远不可回读”仅来自禁布区，不能推广到
+> `follow-rule`；后者名称可真实回读且持久化。DSN 中无名称禁布区仍使用 `region_keepout_N`。
+> 独立的 `pcb fill` 模式限制未在本轮复测：旧现场只读到 `solid`，不能用区域修复补签 fill 模式。
 
 > **ESP32-S3-WROOM-1 ships with NO antenna keep-out** — you must create it (test-case
 > P1). **`getDsnFile` drops regions**, but `pcb export-dsn` now **re-injects** them as

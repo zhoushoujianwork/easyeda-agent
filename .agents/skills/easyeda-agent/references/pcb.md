@@ -132,14 +132,12 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 
 ## PCB mutation 后的读取与 `staleRisk`
 
-Web 4.1.60、connector dev.18 基础回归中，`pcb region create --name` 的创建回包回显
-请求名称，但 fresh `region list` 及保存重载后的 dump 都读到 `regionName:null`。必须按
-实际回读判名称验证失败；仅凭这个读取接口还不能确定原生存储是否丢失名称。几何和规则
-类型需分别检查，创建成功回包不能替代完整写后验收。
+Web 4.1.60 的区域名称仅适用于 `follow-rule`。dev.18 曾给 `no-pours` 传名称并
+回显输入，误把它当作已保存；dev.19 起拒绝该组合，创建后回读真实名称、层、规则和
+几何。无名称禁布区与具名规则区均已保存重载验证，详见 [区域契约](pcb-routing.md#keep-out--rule-regions-禁止区域)。
 
-同版本的 `pcb delete` 已对过期 ID 写前拒绝；`pcb modify` 仍会把不存在的 ID 交给
-宿主并报内部 `isAsync` 异常。修改前 fresh `pcb list` 获取 ID，失败后再对账；这个已知
-保护缺口尚未修复，不能以对象最终没变宣称负例通过。
+dev.18 对过期 PCB 器件 ID 的修改曾触发宿主 `isAsync` 异常；dev.19 起先读当前板
+器件清单并在 ID 缺失时写前拒绝。下方“过期器件 ID”说明当前处理方式。
 
 改完铜再读,读到的是**旧引擎状态**:每个 PCB 文档有自己的枚举缓存,
 rip-up / route / delete / via / track / pour 这类 mutation 之后,
@@ -178,3 +176,14 @@ PowerShell 可用 `'{"rotation":90}' | Set-Content -Encoding UTF8 patch.json` �
 不要使用默认输出 UTF-16 的 `Out-File`。
 原理图的显式 `--x/--y/--rotation/--designator` 仍覆盖文件中的同名键；
 PCB 的 `--center` 仍不允许补丁包含 x/y/rotation。
+
+### 过期器件 ID
+
+`pcb modify` 在写入前读取当前板器件清单，ID 不存在时返回 `PRECONDITION_REFUSED`，
+清单不可读则停止；不要把上次回包的 ID 当作永久有效。拒绝后重新 `pcb list`，
+确认工程、页面与位号，再根据当前 ID 决定是否仍需要修改。
+
+`pcb add-component` 在绑定位号/uniqueId 后重新读取器件清单，返回实际位号与链接键；
+`bindingVerified:false` 或 `partial:true` 表示绑定未验证，CLI 非零退出并保留已创建 ID。
+`bindingVerified` 只核对明确请求的身份字段，不代表焊盘网络已验收；未请求的字段只报告回读值。
+不要因回包失败重复放置，先核对该 ID。

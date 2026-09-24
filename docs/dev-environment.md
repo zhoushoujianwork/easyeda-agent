@@ -289,9 +289,18 @@ When diagnosing this class of issue, follow this order:
    changing arguments.
 3. Run a one-pin live probe, then immediately `sch read`/`sch check`; never
    assume a timeout means nothing landed.
-4. If the native promise does not settle, restore the previous connection,
-   save, and report a runtime-version compatibility gap. Upgrade EasyEDA to a
-   runtime that supports EDA v4 before retrying automation.
+4. If the native promise does not settle, retain the input, created IDs and
+   fresh inventory as an unknown/partial write. Do not retry or delete a stub
+   while the original call can still complete. V3 is rejected before dispatch;
+   use a supported V4 runtime for a new isolated probe.
+
+2026-09-25 correction for **Web 4.1.60**: the native promise can settle with an
+empty return after actually creating a visible wire `Name` attribute. dev.19+
+verifies a unique new attribute, its coordinates/visibility and parent wire
+network, rather than assuming an empty return means no write. Both direct
+labels and `connect_pin` passed save/reload checks. See the
+[B06 evidence](reviews/2026-09-24-v1.6.0-dev19-B06-repair.md); this does not
+change the historical V3 compatibility boundary or authorize GUI engineering.
 
 ## Advisory loop: what the implement operator can and cannot do
 

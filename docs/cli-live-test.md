@@ -43,3 +43,6 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 及 [dev.14 测试重分类](reviews/2026-09-24-v1.6.0-dev14-cli-gates.md)、
 [dev.14 基础现场复测](reviews/2026-09-24-v1.6.0-dev14-basic-cli-live.md)按各自版本和覆盖范围阅读，
 不能把其中的求解或 DRC 结果合并进基础门禁。
+
+最新失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)，
+其中的针对性通过不替代全部 B00–B10 同版重跑。

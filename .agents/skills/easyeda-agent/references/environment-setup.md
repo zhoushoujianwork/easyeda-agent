@@ -228,8 +228,14 @@ easyeda doc reload "<doc-name-or-uuid>" --project "<project>"
 easyeda web reload --project <project-uuid> --doc <active-doc-uuid> --timeout 30s
 ```
 
-该命令保存当前文档，调用 typed `system.page_reload`，等新的 connector windowId 和同一
-工程/文档对象可读后才成功，并输出实际毫秒耗时。旧连接器没有该 action 时须先更新扩展；
+该命令保存当前文档并记录组件 ID 基线，调用 typed `system.page_reload`，在 `--timeout` 内
+等待同工程的新 connector windowId。若宿主恢复了同工程的另一文档，CLI 最多调用一次 typed
+`document.open` 找回原文档；此调用可能晚于回包完成，失败时不自动重试。成功要求连续的同页
+fresh 组件清单与基线 ID 相同、对象状态稳定、末次 `document.current` 仍为目标页。空组件基线
+须经过更长的连续空读；结果中的 `readbackScope=stable-empty-page-routing` 只证明空页路由可读，
+不能充当宿主的完整加载信号。超时或再次漂移报告失败和未知状态，停止写入并检查实际活动页；
+输出保存、重连和总毫秒耗时。
+旧连接器没有该 action 时须先更新扩展；
 `doc reload` 与整个 Web 页面刷新不能混为一谈。
 
 Web 编辑器若在重开后持续显示加载动画，停止自动重试和现场写入：第一次 `openDocument` 可能

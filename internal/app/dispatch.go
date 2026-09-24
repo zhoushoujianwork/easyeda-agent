@@ -95,7 +95,11 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 	printArtifactPaths(respBody, stderr)
 
 	var parsed struct {
-		OK    bool `json:"ok"`
+		OK     bool `json:"ok"`
+		Result struct {
+			Verified *bool `json:"verified"`
+			Partial  bool  `json:"partial"`
+		} `json:"result"`
 		Error *struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
@@ -111,6 +115,12 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		}
 		return errors.Join(errActionFailed, &actionError{Action: action, Code: parsed.Error.Code,
 			Message: parsed.Error.Message, Detail: parsed.Error.Detail})
+	}
+	switch action {
+	case "schematic.netflag.create", "schematic.power.connect_pin", "pcb.region.create", "pcb.add_component":
+		if parsed.Result.Partial || (parsed.Result.Verified != nil && !*parsed.Result.Verified) {
+			return fmt.Errorf("%s: write not fully verified; inspect returned IDs and fresh state before retrying", action)
+		}
 	}
 	return nil
 }

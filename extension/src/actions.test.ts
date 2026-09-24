@@ -1220,12 +1220,20 @@ test('connect_pin endpoint contract is y-UP and matches Go autoconnect', () => {
 test('connect_pin net_label creates only its stub and native attribute without rotation calibration', async (t) => {
 	const globals = globalThis as any;
 	const previousEda = globals.eda;
+	const previousTypes = globals.EDMT_EditorDocumentType;
+	globals.EDMT_EditorDocumentType = { HOME:-1, BLANK:0, SCHEMATIC_PAGE:1, PCB:3 };
 	t.after(() => {
+		if (previousTypes === undefined) delete globals.EDMT_EditorDocumentType;
+		else globals.EDMT_EditorDocumentType = previousTypes;
 		if (previousEda === undefined) delete globals.eda;
 		else globals.eda = previousEda;
 	});
 	const calls: Array<unknown[]> = [];
+	let labelCreated = false;
+	const label = new Proxy({}, { get: (_target, key) => String(key).startsWith('getState_') ? () => ({ PrimitiveId: 'label-1', ParentPrimitiveId: 'stub-1', Key: 'Name', Value: 'ISSUE191_SIGNAL', X: 545, Y: 310, ValueVisible: true, KeyVisible: false } as Record<string, unknown>)[String(key).replace('getState_', '')] ?? null : undefined });
 	globals.eda = {
+		dmt_Project: { getCurrentProjectInfo: async () => ({uuid: "project"}) },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({uuid: "page", tabId: "tab", documentType: 1}) },
 		sch_PrimitiveComponent: {
 			createNetFlag: async (...args: unknown[]) => {
 				calls.push(['unexpected rotation probe', ...args]);
@@ -1235,15 +1243,18 @@ test('connect_pin net_label creates only its stub and native attribute without r
 			delete: async () => { calls.push(['unexpected calibration cleanup']); return true; },
 		},
 		sch_PrimitiveWire: {
+			get: async () => ({ getState_PrimitiveId: () => 'stub-1', getState_Net: () => 'ISSUE191_SIGNAL' }),
 			create: async (...args: unknown[]) => {
 				calls.push(['wire', ...args]);
 				return { getState_PrimitiveId: () => 'stub-1' };
 			},
 		},
 		sch_PrimitiveAttribute: {
+			getAll: async () => labelCreated ? [label] : [],
 			createNetLabel: async (...args: unknown[]) => {
 				calls.push(['label', ...args]);
-				return { getState_PrimitiveId: () => 'label-1' };
+				labelCreated = true;
+				return label;
 			},
 		},
 	};
@@ -3059,6 +3070,7 @@ function installPcbLockStub(opts: {
 	};
 	(globalThis as any).eda = {
 		pcb_PrimitiveComponent: {
+			getAll: async () => [...store.values()].map(mock),
 			get: async (ids: string | Array<string>) => {
 				if (typeof ids === 'string') {
 					const rec = store.get(ids);

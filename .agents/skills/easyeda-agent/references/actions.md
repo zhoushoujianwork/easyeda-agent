@@ -77,7 +77,7 @@ Playbook 使用 `version:1`、`meta` 和有序 `steps`。每步只选一种执�
 | CLI / action | 必要边界 |
 |---|---|
 | `doc ls/switch/open/reload`，`document.current/open/close` | 使用工程和页面目标；同名页用 UUID。工程仍在线但没有活动标签时，`doc ls --project` 继续读取工程级原理图页/PCB 清单，`doc open <uuid> --project` 用 typed `document.open` 恢复并以 fresh `document.current` 确认；其他 current/清单错误仍失败关闭。`doc reload` 保存后把 fresh current 的 UUID + tabId 一起交给 typed `document.close`，由官方 API 在关闭前回读身份和 splitScreenId，再用 `document.open` 恢复；禁止以 `debug.exec_js` 关闭标签。CLI 同时核对活动 UUID 与对象枚举 settle；只出现目标标签、但对象仍不可读时失败并要求停止写入、修复 typed reload/open 后复测 |
-| `web reload`，`system.page_reload` | 仅在用户明确要求刷新整个 Web 编辑器时使用。传精确 `--project <UUID> --doc <UUID>`；CLI 先保存当前文档，连接器在回执后刷新顶层页面，CLI 要求新的 connector windowId、同一工程/文档与对象可读，输出保存/重连/总耗时。其他打开的文档须事先保存；失败或超时不能称重载完成，也不能用它自动兜底对象读取故障 |
+| `web reload`，`system.page_reload` | 仅在用户明确要求刷新整个 Web 编辑器时使用。传精确 `--project <UUID> --doc <UUID>`；CLI 先保存并记录目标页组件 ID 基线，连接器在回执后刷新顶层页面。新 windowId 必须属于同工程；若宿主恢复另一文档，CLI 最多一次 typed `document.open` 恢复原文档。成功要求连续同 context 的 fresh 组件清单与基线 ID 一致、对象状态稳定、末次 `document.current` 核对；空基线需额外稳定采样，仅证明空页路由可读。超时、再次漂移或读失败均不能称重载完成。其他打开的文档须事先保存；不能用它自动兜底对象读取故障 |
 | `sch list`，`schematic.components.list` | `includeDeviceIdentity` 为重放解析真正库 UUID；`includePins/BBox/Wires` 取得几何基线。V4 `pins[].otherProperty` 保留引脚文本属性；字段缺失不能当空对象。非激活页可能是浅数据 |
 | `sch attribute-inspect --id <primitiveId>`，`schematic.attribute.inspect` | 只读诊断当前页指定属性的 `KeyVisible`/`ValueVisible`：分别记录全量枚举、按 ID 读取、按 ID 读取后 `toAsync().reset()` 的原值与类型，并核对前后文档身份及图元 ID。`undefined` 为不可读；诊断结果不补默认值，不放宽整页快照或清页守卫。仅调用官方读取接口，不调用 `done`/`modify`。|
 | `sch place`，`schematic.component.place` | 使用库 UUID；自动回填可确定的 C 号与空属性是 best-effort，须检查警告。没有 place 自定义属性输入契约；V4 复数 symbol/device/footprint association 在 canonical selector 完成前写前拒绝，不能取第一项 |
