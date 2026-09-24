@@ -583,10 +583,14 @@ const systemPageReload: Handler = async (payload) => {
 	}
 	let page: Window;
 	try {
-		if (!window.top || typeof window.top.location.reload !== 'function') {
+		// EasyEDA evaluates the bundled extension with a shadowed `window` binding
+		// (undefined in a typed handler), while its browser global is available to
+		// a new Function. This fixed expression takes no user input. The same
+		// lookup was verified in the Web host before adding this action.
+		page = new Function('return window.top')() as Window;
+		if (!page || typeof page.location.reload !== 'function') {
 			throw new Error('top-level page reload is unavailable');
 		}
-		page = window.top;
 	}
 	catch (err) {
 		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,

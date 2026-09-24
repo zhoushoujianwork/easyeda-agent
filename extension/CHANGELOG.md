@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.6.0-dev.16] — 2026-09-24 (Web page reload host lookup)
+
+- Resolve the browser's top window from the EasyEDA global realm for `system.page_reload`. The extension's bundled handler has a shadowed `window` binding; direct `window.top` failed immediately despite the browser global being present. A fixed, payload-free lookup now reaches the verified page object.
+
 ## [1.6.0-dev.15] — 2026-09-24 (typed Web page reload)
 
 - Add `system.page_reload` and `easyeda web reload` for an explicitly targeted full Web editor refresh. The CLI saves the active document, then requires a new connector registration with the same project/page and reports measured save, reconnect and total time. This differs from `doc reload`, which only closes and reopens a document tab.

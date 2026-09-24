@@ -759,6 +759,40 @@ test('document.open does not report ready when activation cannot be read back', 
 
 // ─── document.close: typed, identity-pinned reload primitive ─────────
 
+test('system.page_reload schedules a top-level refresh only for the exact active document', async (t) => {
+	const globals = globalThis as any;
+	const previous = { eda: globals.eda, window: globals.window, setTimeout: globals.setTimeout };
+	t.after(() => {
+		for (const [key, value] of Object.entries(previous)) {
+			if (value === undefined) delete globals[key];
+			else globals[key] = value;
+		}
+	});
+	let reloads = 0;
+	let scheduled: (() => void) | undefined;
+	globals.window = { top: { location: { reload: () => { reloads++; } } } };
+	globals.setTimeout = (callback: () => void, delay: number) => {
+		assert.equal(delay, 500);
+		scheduled = callback;
+		return 1;
+	};
+	globals.eda = {
+		dmt_Project: { getCurrentProjectInfo: async () => ({ uuid: 'project-1' }) },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'doc-1' }) },
+	};
+	await assert.rejects(
+		runAction('system.page_reload', { projectUuid: 'project-1', documentUuid: 'other-doc' }),
+		(err: any) => err.code === 'PRECONDITION_REFUSED',
+	);
+	assert.equal(scheduled, undefined);
+	const response: any = await runAction('system.page_reload', { projectUuid: 'project-1', documentUuid: 'doc-1' });
+	assert.equal(response.result.scheduled, true);
+	assert.equal(reloads, 0);
+	assert.equal(typeof scheduled, 'function');
+	(scheduled as unknown as () => void)();
+	assert.equal(reloads, 1);
+});
+
 function installDocumentCloseStub(t: { after: (fn: () => void) => void }, options: {
 	uuid?: string;
 	tabId?: string;
