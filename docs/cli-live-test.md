@@ -32,5 +32,6 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 停止高级 CLI 的现场检查。离线 Go/连接器测试和 `--help` 检查不能代替真实调用链。
 
 历史 [Codex subagent 原理图验收记录](reviews/2026-09-23-v1.6.0-schematic-acceptance.md)
-及 [dev.14 测试记录](reviews/2026-09-24-v1.6.0-dev14-cli-gates.md)按各自版本和覆盖范围阅读，
+及 [dev.14 测试重分类](reviews/2026-09-24-v1.6.0-dev14-cli-gates.md)、
+[dev.14 基础现场复测](reviews/2026-09-24-v1.6.0-dev14-basic-cli-live.md)按各自版本和覆盖范围阅读，
 不能把其中的求解或 DRC 结果合并进基础门禁。
