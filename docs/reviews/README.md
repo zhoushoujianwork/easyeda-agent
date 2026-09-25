@@ -6,6 +6,7 @@
 
 | 证据范围 | 记录 |
 |---|---|
+| 2026-09-26 高级 CLI 续测 | [基础证据复核、离线检测、预检修复与待定设计输入](2026-09-26-advanced-cli.md) |
 | 2026-09-25 dev.21 基础 CLI 门禁通过 | [个人空间 B00–B10、定向警告、独立复核与清理](2026-09-25-v1.6.0-dev21-basic-cli.md) |
 | 2026-06/07 官方 API 与市场覆盖快照 | [PCB API 探测](2026-06-pcb-api-discovery.md)、[市场覆盖](2026-07-marketplace-coverage.md) |
 | 2026-07 真实需求探针与交互纠偏 | [ESP32 Mini 复测](2026-07-esp32mini-findings.md)、[里程碑走查](2026-07-milestone-walkthrough.md) |

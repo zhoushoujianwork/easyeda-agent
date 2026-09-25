@@ -179,6 +179,9 @@ easyeda doc switch "<doc-name-or-uuid>" --project "<project>"
 - 已连接：核对目标工程/文档、连接器版本及 `versionGate`。`health` 提供当前 CLI 与
   连接器的兼容证据；GitHub latest 只用于显式安装对账，不决定本次操作能否继续。按 findings
   评估当前步骤是否依赖缺失能力，并记录实际运行版本。
+- 多窗口时，`versionGate` / `hostCompatibility` 总结包含其他工程的连接器；按目标
+  project/doc 唯一匹配的窗口核对其版本及 `windowId` 对应宿主 finding，不能把其他工程的
+  旧连接器误判为目标版本变化。目标窗口缺失、重复或自身版本不符仍须查明；保留完整 health 回包。
 - 写操作使用 `--project` 和 `--doc`，由 CLI 在派发前实时确认目标文档。没有独立的
   `easyeda context` 命令；`health` 显示连接状态，`doc ls/switch` 读取/切换实时文档。
 

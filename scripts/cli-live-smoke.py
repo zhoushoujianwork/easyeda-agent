@@ -76,10 +76,10 @@ def check_health(raw, expected, project, doc, doc_type):
     found = health.get("found") or {}
     daemon = found.get("raw") or {}
     gate = health.get("versionGate") or {}
-    if health.get("status") != "found" or gate.get("verdict") != "ok":
-        raise CheckError("blocked", "daemon/connector health is unavailable or incompatible")
-    if (health.get("hostCompatibility") or {}).get("verdict") != "ok":
-        raise CheckError("blocked", "EasyEDA host is outside the supported V4 baseline")
+    if health.get("status") != "found":
+        raise CheckError("blocked", "daemon health is unavailable")
+    if not same_version(gate.get("cli", ""), expected):
+        raise CheckError("blocked", f"health CLI version {gate.get('cli')} differs from {expected}")
     if not same_version(daemon.get("version", ""), expected):
         raise CheckError("blocked", f"daemon version {daemon.get('version')} differs from {expected}")
     matches = []
@@ -91,7 +91,14 @@ def check_health(raw, expected, project, doc, doc_type):
         raise CheckError("blocked", f"expected one {doc_type} window for {project}/{doc}, found {len(matches)}")
     if not same_version(matches[0].get("connectorVersion", ""), expected):
         raise CheckError("blocked", f"connector version {matches[0].get('connectorVersion')} differs from {expected}")
-    return matches[0]["windowId"]
+    window_id = matches[0].get("windowId")
+    # Aggregate verdicts include unrelated projects. Keep exact target checks
+    # without treating another window's old connector/host as this one's version.
+    host_findings = [finding for finding in (health.get("hostCompatibility") or {}).get("findings", [])
+                     if window_id and finding.get("windowId") == window_id]
+    if len(host_findings) != 1 or host_findings[0].get("severity") != "ok":
+        raise CheckError("blocked", "target EasyEDA host compatibility is missing, ambiguous or outside the supported V4 baseline")
+    return window_id
 
 
 def check_response(raw, project, doc, doc_type, name):
