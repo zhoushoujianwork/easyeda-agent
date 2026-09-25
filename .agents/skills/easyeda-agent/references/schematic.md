@@ -99,6 +99,11 @@ rebind 使用候选优先事务：先回读 Device association，候选创建且
 清后用 `sch clear --dry-run --expect-empty` 核对所有非保留图元，读取失败不是空页。
 新 frame 和旧 zone-draw 分别拥有自己的图元，清旧标注用其对应命令，不按类型删除用户图形。
 
+`sch prim-delete` 的有界 settle 后仍报 `partial`/`survived` 时，停止依赖步骤，保存命令、
+原始回包与目标页 fresh list，核对指定 ID 的真实残留。残留本身不能证明 action 队列卡死；
+不要按旧版 stderr 的重启或 UI 删除建议操作。只在原始失败与残留已冻结后，以明确的 typed
+恢复方案重新核对基础调用链；恢复后的成功不能补签原始调用通过，也不能触发无限重试。
+
 放置或修改超时不代表未落地。先按新鲜快照核实；`ACTION_ABANDONED` 或无法确认的回读
 不得触发盲重试。`QUEUE_OVERFLOW` 表示该请求未执行。队列序号只证明 handler 顺序，不能
 证明文档已保存。恢复后仍有 `partial`/`stillBroken` 就报告残余状态，再从实际数据规划。

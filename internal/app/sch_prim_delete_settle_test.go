@@ -49,8 +49,7 @@ func TestPrimDeleteSettleRecheckClearsAStaleSurvivorReport(t *testing.T) {
 	}
 }
 
-// 负对照:真删不掉(连接器队列 wedge)时复核照样报 partial,命令必须失败,
-// 并给出能执行的下一步。
+// A real survivor must fail without inventing a root cause or a GUI fallback.
 func TestPrimDeleteSettleRecheckKeepsFailingOnRealSurvivors(t *testing.T) {
 	cfg, _, cleanup := newBlockApplyTestDaemon(t, func(call blockApplyTestCall) string {
 		return `{"ok":true,"result":{"partial":true,"survivedTotal":1,"survived":{"components":["pid-1"]}}}`
@@ -66,8 +65,8 @@ func TestPrimDeleteSettleRecheckKeepsFailingOnRealSurvivors(t *testing.T) {
 		t.Fatal("a real survivor must still fail the command")
 	}
 	msg := stderr.String()
-	if !strings.Contains(msg, "pid-1") || !strings.Contains(msg, "wedge") ||
-		!strings.Contains(msg, "easyeda sch save") {
+	if !strings.Contains(msg, "pid-1") || !strings.Contains(msg, "停止依赖步骤") ||
+		!strings.Contains(msg, "easyeda sch list") || strings.Contains(msg, "几乎总是") {
 		t.Fatalf("guidance must name the id and give a runnable next step:\n%s", msg)
 	}
 }

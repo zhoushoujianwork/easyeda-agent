@@ -140,3 +140,56 @@ P1 清理后的完整对象结果也另行离线复算，见 `run02/review/p1-cl
 `run02/review/A00-candidate-review.md` 独立列出七项选型证据检查点，包括型号/物理脚、
 电源域、防倒灌后最低输入、降压外围、USB-C、启动下载和四层天线避让。它是候选复核，
 尚不能签 A00 通过；执行员继续用真实库身份及手册关闭这些检查点。
+
+## 续测：删除残留与有界恢复
+
+20 个器件实例采集到真实几何，其中前 19 个测量后精确清理成功；第 20 个 U4 ESP32 模组
+`3826725d627082d4` 在 `sch prim-delete` 后仍存活，CLI 的 400 ms settle 内重试仍返回
+`partial:true`、exit 1。执行员停写，独立 fresh list 确认同页只有 sheet 与 U4；不能称作
+瞬时回读误报。原始证据为 `run02/A00/measurements/U4/04-delete.command.json` 和
+`05-failure-fresh-list.command.json`。
+
+主 Agent 接管窗口，先保存已知故障状态，再按已知 typed 恢复路径 `doc open <同页UUID>`，
+fresh list 核对同一工程/页/对象，精确删除该残留成功。之后保存重载恢复空白基线，再原样
+复跑 U4 放置→完整身份/引脚/bbox 读取→位号几何→删除，两次不中断序列均通过。
+最后再次 save→reload→fresh 完整 list，与最初基线仅图签自动日期/时间不同。
+`run02/delete-investigation/report.json` 保留恢复顺序和判定，原失败仍为 fail，根因未关闭。
+
+首次复跑脚本把 `designator-geometry --out` 的文本 stdout 当作 JSON，导出命令已成功但
+脚本解析中止；该中断及后续精确清理独立记录为 trial1，不计作连续时序复测。trial2/3 才是
+两个完整复跑。本轮没有刷新浏览器、重启宿主/daemon、替换运行包或用 GUI 改工程。
+
+修复仅涉及 CLI 残留提示：不凭幸存对象断言队列卡死；不再建议重启/GUI 删除；复核成功也
+不推断首轮一定读到了旧快照。删除、400 ms 等待及已有一次重试的行为均未改变。提示修改
+不是现场删除根因修复。窗口交回执行员后从空白基线继续剩余实例采集；再次失败须继续停写留证。
+
+恢复后的 C7 完整链路成功；C8 使用与此前 C3/C6 相同的 100 nF 器件，却再次返回
+`partial:true`、exit 1，400 ms 复核后仍存活。fresh list 确认 P1 只有 sheet 与 C8
+`8fc4eb081c5417aa`。证据在 `run02/resumed/A00/measurements/C8/`；累计实测 22/35，
+其余 13 件未测，A00 最终为 blocked，A01–A06 为 not-run，不再逐件 reopen 继续刷测。
+第一轮 33 实例经电容偏压资料复核补为 35；旧参数保留，新方案只作为待完成的源数据。
+
+`u4-audit.json`/`c8-audit.json` 按窗口冻结失败时段的原始审计。C8 失败前无自动保存插入，
+前置 list 结束至 delete 的时间也与成功件相近；不据现有样本归因于 autosave、固定等待不足
+或某个器件型号。两次原序列复跑中的 trial3 首轮 stdout 为 partial，CLI 既有有界复核后
+exit 0、fresh list 干净，因此是整条命令通过，不是首删即成功。
+
+最终仅清理残留：`run02/delete-investigation/final-cleanup/` 保存 typed 同页打开、精确删除
+C8、save→reload→fresh 全量结果。只剩原 sheet，0 设计元件、0 导线，与最初基线仅自动
+日期/时间不同；未操作 PCB 或原 AT32F415 工程。清理通过不能消除两次删除故障。
+CLI 提示修复经 3 项定向测试、全量 Go 测试（3816 项）、Skill 检查和独立复核验证。
+独立最终复核 `run02/review/delete-final-blocker-review.md` 确认两个原始失败、夹具清理及
+未执行范围；SHA-256 为 `a6a82033020377a71f1a8fce9b1892e7b6d97b00ece58a97ede7649b89ac7672`。
+执行员的 `run02/final/README.md` 汇总 17 条需求映射及 22/35 实测清单；371 件执行资料
+通过独立离线校验，`manifest.json` SHA-256 为
+`9f81448fea1327e11ae81f51b3c4cea22d1391229cb872ddd78705ff02bd1768`。
+该清单不包含主 Agent 另外维护的审查、审计归因和成本文件，不能把它称为所有证据的总哈希。
+
+## 续测成本
+
+`run02/cost/` 仅筛目标窗口 18:55:31–19:28:28 UTC 的审计，过滤来源和 SHA-256 在
+`scope.json`。已追加成本台账：845 次调用，daemon 累计 156.63 秒；首末动作跨度约
+32.91 分钟，不包含前一轮准备、之后的文档整理，也不称完整 E2E 墙钟。token 未记录。
+`audit cost` 的原始失败计数只看响应 `ok:false`，没有统计 `ok:true/partial:true` 的效果失败；
+`effect-failure-note.json` 另列删除 partial 回包及两个最终失败的 CLI 命令，不能将成本表中的
+删除 failures=0 写成删除全部成功。

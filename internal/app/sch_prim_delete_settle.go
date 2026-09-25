@@ -13,7 +13,7 @@ package app
 //   - 那些 id 其实早删掉了 → 第二次它们进 notFound,不再 partial → 判定成功;
 //   - 真没删掉(平台大批量静默 no-op / 刚建的图元短暂拒删)→ 第二次顺手补删并
 //     再回读一次;
-//   - 连接器队列 wedge(写整体被吞)→ 仍然 partial,如实失败,并给出重启处方。
+//   - 删除仍未生效 → 保留 partial、如实失败；仅凭残留不推断根因。
 //
 // 与 deleteVerifiedOneByOne 是同一把尺:删一轮 → settle 回读 → 幸存者重删一次 →
 // 再回读定案。重发 delete 是安全的:对已经不在页上的 id,连接器把它归 notFound
@@ -65,15 +65,14 @@ func primDeleteSettleRecheck(cfg *appConfig, window string, res *actionResult, s
 		return res
 	}
 	if partial, _ := second.Result["partial"].(bool); !partial {
-		fmt.Fprintln(stderr, "✓ 复核:这些图元已不在页上(首轮回读是尚未落定的快照)")
+		fmt.Fprintln(stderr, "✓ 复核后这些图元已不在页上")
 		return second
 	}
 	return second
 }
 
-// primDeleteResidueGuidance 打印仍然删不掉时的处方。**必须能执行** —— 老文案
-// 只说「在 EasyEDA UI 里删」,而真机上这类幸存几乎总是连接器 action 队列 wedge:
-// 此期间 place/delete/document.open 会整体被吞,轻读照常,所以看起来像"删不掉"。
+// primDeleteResidueGuidance reports residual facts and preserves diagnostic
+// evidence. A survivor alone does not prove a queue failure or justify GUI edits.
 func primDeleteResidueGuidance(w io.Writer, res *actionResult) {
 	ids := survivedIDSet(nil)
 	if res != nil {
@@ -87,7 +86,7 @@ func primDeleteResidueGuidance(w io.Writer, res *actionResult) {
 		sort.Strings(list)
 		fmt.Fprintf(w, "  still on the page: %s\n", strings.Join(list, ", "))
 	}
-	fmt.Fprintln(w, "  这几乎总是连接器 action 队列 wedge(某个重调用的 promise 永不 resolve,此后写操作")
-	fmt.Fprintln(w, "  整体被吞而轻读照常):先 `easyeda sch save`,完全退出并重启 EasyEDA,再重跑本命令。")
-	fmt.Fprintln(w, "  若重启后仍在,才是 issue #164 那类平台留件 —— 在 EasyEDA UI 里删。")
+	fmt.Fprintln(w, "  删除尚未完整生效，停止依赖步骤；仅凭残留不能判断是宿主状态、删除接口还是队列问题。")
+	fmt.Fprintln(w, "  保存原始命令/回包；绑定同一 --project/--doc 做 fresh `easyeda sch list` 并核对上述 ID。")
+	fmt.Fprintln(w, "  按回读事实诊断 typed 接口；不要盲重试、刷新浏览器、重启宿主或用 GUI 删除兜底。")
 }
