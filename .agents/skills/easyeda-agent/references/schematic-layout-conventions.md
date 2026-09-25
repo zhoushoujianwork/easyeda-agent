@@ -353,10 +353,18 @@ LED 也可用 `LED1` 这种语义化命名（兼容 `D1`），EasyEDA 不强制 
 
 放置 / 布线规划器（`sch autoconnect`、`sch autolayout`）**绝不能**把 net flag / net port /
 器件压在图纸的 **图框/明细表（title block）** 上。但 EasyEDA Pro 既没有 set-paper-size API，
-也不单独暴露标题栏的 bbox，所以 keep-out 几何只能**推导**——不要在各工具里散落硬编码 A4 坐标，
+也不单独暴露标题栏的 bbox。需要精确内框时读取官方 SVG 的矢量几何；不要在各工具里散落硬编码 A4 坐标，
 统一走 **`easyeda sch sheet-geometry`**（实现见 `internal/app/cmd_sch_sheet.go`，运行时权威）。
 
-推导链（issue #26，Option D 混合）：
+精确离线路径：先用 `sch export-image --format svg --scope page --out sheet.svg --project <project> --doc <page>`
+导出全页，再运行 `sch sheet-geometry --from-svg sheet.svg --json`。保存原文件、导出命令和页面身份；
+输出 `sourceSha256` 绑定输入字节，`sheet.innerBBox` 是内框中心线边界，`titleBlock.bbox` 是表格单元格
+外包络，统一为原理图 raw、y-UP 坐标。布局参数另留线宽及安全边距。当前仅支持官方导出的单个
+`c_partid="sheet"`、两个未变换矩形框和一个矩形单元格标题表；缺失、歧义、变换或隐藏几何时
+报 unsupported，不能退回比例估计后称精确通过。它不访问 EDA，也不证明文件属于当前页面，须与
+同批 fresh 对象/原生归档交叉核对。不从 PNG 或 SVG 的 viewBox 猜纸张大小。
+
+不传 `--from-svg` 时保留原有估算查询（issue #26，Option D 混合），不提供精确内框：
 
 1. **sheet bbox**（实测）：`schematic.components.list --include-bbox` 里 `componentType == "sheet"` 的图元。
 2. **模板识别**：用 sheet bbox 的**长宽比**匹配已知模板（A 系列横/纵向 ≈ √2）。公共 API 不暴露

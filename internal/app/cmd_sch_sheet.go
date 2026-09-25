@@ -99,8 +99,9 @@ const (
 
 // sheetInfo describes the drawing sheet itself.
 type sheetInfo struct {
-	Template string      `json:"template,omitempty"`
-	BBox     *layoutBBox `json:"bbox"`
+	Template  string      `json:"template,omitempty"`
+	BBox      *layoutBBox `json:"bbox"`
+	InnerBBox *layoutBBox `json:"innerBBox,omitempty"`
 }
 
 // titleBlockInfo describes the derived title-block rectangle and its provenance.
@@ -119,10 +120,12 @@ type keepout struct {
 
 // sheetGeometry is the full normalized result, shaped to the issue #26 contract.
 type sheetGeometry struct {
-	Sheet      sheetInfo      `json:"sheet"`
-	TitleBlock titleBlockInfo `json:"titleBlock"`
-	Keepouts   []keepout      `json:"keepouts"`
-	Warnings   []string       `json:"warnings"`
+	SourceSha256     string         `json:"sourceSha256,omitempty"`
+	CoordinateSystem string         `json:"coordinateSystem,omitempty"`
+	Sheet            sheetInfo      `json:"sheet"`
+	TitleBlock       titleBlockInfo `json:"titleBlock"`
+	Keepouts         []keepout      `json:"keepouts"`
+	Warnings         []string       `json:"warnings"`
 }
 
 // isA4LandscapeSize reports whether a landscape sheet is A4-sized — the size the
@@ -303,6 +306,9 @@ func renderSheetGeometry(g sheetGeometry, w io.Writer) {
 		b := g.Sheet.BBox
 		fmt.Fprintf(w, "sheet-geometry: template %q, bbox [%.2f,%.2f → %.2f,%.2f]\n",
 			g.Sheet.Template, b.MinX, b.MinY, b.MaxX, b.MaxY)
+	}
+	if b := g.Sheet.InnerBBox; b != nil {
+		fmt.Fprintf(w, "  inner border: [%.2f,%.2f → %.2f,%.2f] (raw y-UP, vector centerlines)\n", b.MinX, b.MinY, b.MaxX, b.MaxY)
 	}
 	vis := "unknown"
 	if g.TitleBlock.Visible != nil {

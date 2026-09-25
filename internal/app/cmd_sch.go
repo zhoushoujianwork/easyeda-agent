@@ -623,7 +623,7 @@ undefined is unreadable and does not become a default. Current document identity
 is checked before and after. This diagnostic never modifies the design and does
 not relax guarded page replacement or clear.`,
 			Example: `  easyeda sch attribute-inspect --id <primitiveId> --project <project> --doc <page-uuid>`,
-			Args: cobra.NoArgs,
+			Args:    cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if strings.TrimSpace(primitiveID) == "" {
 					return fmt.Errorf("--id is required")
@@ -1894,6 +1894,7 @@ combine it with neither --all-pages (inactive-page data is shallow) nor
 	// warnings (never false precision). Pure core in cmd_sch_sheet.go.
 	{
 		var asJSON bool
+		var fromSVG string
 		c := &cobra.Command{
 			Use:   "sheet-geometry",
 			Short: "Report sheet bounds + title-block keep-out geometry (provenance-tagged)",
@@ -1910,15 +1911,30 @@ the title block, so the geometry is DERIVED:
 
 The result tags provenance (known-template-ratio / fallback-ratio / none) and
 emits warnings instead of false precision when geometry can't be determined.
-The keepouts[] format is what sch autoconnect / autolayout consume.`,
+The keepouts[] format is what sch autoconnect / autolayout consume.
+
+Use --from-svg with an official whole-page sch export-image SVG for exact vector
+bounds, innerBBox and table keep-out, in raw y-UP coordinates. This mode is
+offline and binds sourceSha256 to the file bytes; preserve the export command
+and page identity separately. Supports one untransformed rectangular sheet and
+one rectangular title table; missing or ambiguous geometry fails closed.
+Bounds follow vector centerlines; add stroke clearance in layout parameters.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda sch sheet-geometry
-  easyeda sch sheet-geometry --json`,
+  easyeda sch sheet-geometry --json
+  easyeda sch sheet-geometry --from-svg sheet.svg --json`,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if cmd.Flags().Changed("from-svg") {
+					if strings.TrimSpace(fromSVG) == "" {
+						return fmt.Errorf("--from-svg requires a non-empty file path")
+					}
+					return runSheetGeometrySVG(fromSVG, asJSON, stdout)
+				}
 				return runSheetGeometry(cfg, window, asJSON, stdout, stderr)
 			},
 		}
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the geometry in the {id,type,version,ok,result} envelope (geometry under result)")
+		c.Flags().StringVar(&fromSVG, "from-svg", "", "read exact vectors from an official whole-page SVG; offline, no EDA calls")
 		sch.AddCommand(c)
 	}
 

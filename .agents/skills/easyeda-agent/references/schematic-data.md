@@ -622,7 +622,7 @@ easyeda sch compose --from composition.json --out plan.json
 |---|---|
 | `sheet` | `{minX,minY,maxX,maxY}`，目标纸张实际 bbox。坐标单位 raw = 0.01 inch，y 向上。 |
 | `sheetBorder` | 可选同格式 bbox，实际图纸内边框；模块虚线笔画在其内最少留 10 raw，考虑半线宽后向内取 5 raw 网格。缺少时输出 `sheet-bbox-fallback`，不能据此声称已验证红框净距。 |
-| `keepouts` | bbox 数组，例如图签；从 `sch sheet-geometry --json` 取得，保留其来源与警告。空数组表示已确认没有禁放区。 |
+| `keepouts` | bbox 数组，例如图签；从 `sch sheet-geometry --json` 取得，保留其来源与警告。需要精确内框/图签时先导出本页官方 SVG，再用 `sch sheet-geometry --from-svg <全页.svg> --json`（[来源与限制](schematic-layout-conventions.md#11-图纸边界与标题栏-keep-out-sheet--title-block-keep-out)）。空数组表示已确认没有禁放区。 |
 | `titleBlock` | 可选的**本页**图签文本映射，例如 `{"Name":"电源与接口","Drawed":"设计者","Description":"输入和稳压"}`。字段名先从目标页 `sch titleblock-get` 回读，非空值保存在本页 composition 源中；`compose` 原样带入计划，在受保护队列的 strict gate 前调用 `sch titleblock --data`，由该命令逐项回读并核对图框仍在。不要写 `@` 派生项或图纸结构项；页标题和图签文本是两种不同数据。没有此字段的旧源不修改图签。 |
 | `modules[]` | `id/title/placements/wires/flags`，可附 `terminals/titleMetrics`；与 connectivity 的 Lib 成员逐项对应，每件只归属一个模块。 |
 | `placements[]` | `designator/value/x/y/rotation/mirror/bbox/pins`；bbox 与引脚位置来自官方实测，器件和引脚坐标落在 5 raw 网格。 |

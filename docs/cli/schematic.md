@@ -74,7 +74,7 @@ typed CLI 操作嘉立创EDA专业版的原理图——每个动作可观测、�
 | 分区认领 | `sch zones set/status/clear` | 模块→分区格的持久化认领,layout-lint 消费出 zone-violation |
 | 数据驱动分区规划 | `sch zone-plan` | **一个虚拟组 / zone 认领 = 一个分区**(与 `zone-arrange` 的区一一对应,同一把尺;网格带合并那条路已删),框按成员真实 bbox 撑出来;校验六项(越界/重叠/**压图签**/模块出区/标签碰撞/**贴纸边**)全 0 才许画;抬升与校验共用同一安全余量常量(治「按 A 抬按 B 校」假绿) |
 | 画分区框 | `sch zone-draw` | 虚线框+区名(`--mode partition` 整纸版式,框贴合模块内容不拉满页,给图签留缺口) |
-| 图纸/图签 | `sch sheet-geometry` / `titleblock` / `titleblock-get` | 图纸边界+图签 keep-out(A4 校准比例,provenance 标注)/ 明细表读写 |
+| 图纸/图签 | `sch sheet-geometry` / `titleblock` / `titleblock-get` | 默认查询比例估算；`sheet-geometry --from-svg <全页.svg>` 离线解析精确内框/图签、绑定源 SHA-256 / 明细表读写 |
 
 ### 5. 校验与门禁
 

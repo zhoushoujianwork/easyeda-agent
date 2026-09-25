@@ -34,7 +34,8 @@
 - `preflight/fixture-pcb.json` 与历史 `B10/pcb-clean.json` 仅 `capturedAt` 不同，语义哈希为
   `41b23a1b3e7c54f623efa678dea430033717968444fefee90e1ccbfebce0d527`。
   空 PCB 的 `partial` 明确报告无器件/无板框，不能当作高级几何输入完整。
-- 本轮没有新建/删除页或电路对象，没有安装连接器、重建运行二进制或重启 daemon。
+- 第一轮预检没有新建/删除页或电路对象。续测中的专用页补测见下文；现场安装二进制、连接器
+  与 daemon 保持原状态，新加的 SVG 解析仅用源码 CLI 离线执行。
 
 ## 预检误拦的复现与修复
 
@@ -95,5 +96,47 @@
 提取的需求 SHA-256 为 `a7b3a16850d393e8d122b13b2c54b7ceebc3ed99ae4a1c594d0b83fb6678cd90`。
 `A00/proposal.md` 与 `proposal-detail.md` 保存用户方案及来源，器件仍为候选，未声称已完成库核验。
 
-工程选择和叠层含义已询问用户，尚无答复不能视为接受默认方案；原始需求、B00–B10 的范围
-及 PCB Layout 用户确认要求均保持。后续每个 Axx 只按本轮实际证据给结论。
+第一轮准备曾停在工程选择和叠层含义；用户随后明确回复“复用＋A”，决定已冻结在
+`run02/user-decision.json`，其中绑定原方案文件哈希。原始需求、B00–B10 的范围和
+PCB Layout 用户确认要求均保持，不把 S0 确认当成尚未生成的 PCB Layout 确认。
+
+续测前的 `run02/preflight/` 共 21 件证据已冻结：原理图与 PCB 的目标预检均 pass；
+P1 完整 `result` 与第一轮快照精确一致，PCB 完整 dump 仍仅 `capturedAt` 不同。
+规则配置回读仍是既有的“自定义配置11”。执行 Agent 独占目标窗口，主 Agent 与复核员
+同时只做离线工作。后续每个 Axx 只按本轮实际证据给结论。
+
+## 续测：专用页补测与精确纸张边界
+
+`run02/A00/p1-supplement/report.json` 记录 P1 的定向基础补测，14 条命令保留输入及完整回包：
+从真实库放置测试电阻，读取身份/引脚/bbox，分别以真实 30 raw 导线连接命名网络与 GND；
+save → reload 后逐脚网表一致。随后仅删除这次产生的两组件与两导线，再保存重载，
+恢复 0 设计元件、0 网络；相对原始完整 result 仅图签自动更新时间变化。
+
+默认 `sch sheet-geometry` 只提供图框 bbox 和比例估计标题栏，缺少精确内框。执行员通过
+已有 typed `project export-source` 和全页 `sch export-image --format svg --scope page`
+补齐原始数据。单独选择 sheet primitive 的 SVG 导出被宿主拒绝为 `Nothing is selected`，
+失败回包保留；成功的全页 SVG 同时含补测电阻，不据电阻或 viewBox 推断纸张大小。
+
+新增离线 Cobra 入口 `sch sheet-geometry --from-svg <全页.svg> --json`，读取官方导出的
+sheet 组矩形及标题表单元格，转换为 raw、y-UP，绑定原文件 SHA-256；内框或表格缺失、
+歧义及不支持的变换/可见性时拒绝。线宽不进入中心线边界，布局参数另留安全边距。
+不调用 EDA、不更新现有 daemon；该新增能力的源码验证与 dev.21 已安装现场基础证据分开记录。
+
+本页外框为 `(0,0)–(1170,825)`，内框为 `(10,10)–(1160,815)`，标题表为
+`(460,10)–(1160,190)`，表格范围与原生归档 TABLE 一致。来源 SVG SHA-256 为
+`dbacac9468b75c11e8aef347c9cdc3f9cd38ff062e47f3dfbedc483656176729`；原生 `.epro2` 为
+`349ccf5cf26ac2054bcc3f7e25355779a59358d0b4ae0a07df2139bffcc42afb`。
+最终命令及源代码哈希位于 `run02/sheet-geometry/parse-final.command.json`，几何结果为同目录
+`geometry-final.json`。早期解析记录与复核发现的反例均保留，不覆盖失败证据。
+
+独立复核发现 CSS 几何属性覆盖、嵌套 viewport/未显示 defs、重复标题表容器及空输入路径
+回落现场查询的问题，均已补明确拒绝和负例。最终 26 项专项测试、10 个独立 CLI 正负例通过，
+真实 SVG 的 26 个表格单元格与原生 TABLE 对齐；全量 Go 回归通过（3815 项，空路径新增
+用例另在专项测试覆盖），`make skill-check` 及 diff 检查通过。
+复验报告 `run02/review/sheet-svg-code-review-retest.md` 的 SHA-256 为
+`4206e3ff54e8c4bf53800e834a71bef847cc648cdffc2c6861aabccbf60943aa`。
+P1 清理后的完整对象结果也另行离线复算，见 `run02/review/p1-cleanup-independent.json`。
+
+`run02/review/A00-candidate-review.md` 独立列出七项选型证据检查点，包括型号/物理脚、
+电源域、防倒灌后最低输入、降压外围、USB-C、启动下载和四层天线避让。它是候选复核，
+尚不能签 A00 通过；执行员继续用真实库身份及手册关闭这些检查点。
