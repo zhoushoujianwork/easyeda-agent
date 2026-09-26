@@ -61,3 +61,10 @@ stderr warning，包含 bug 编号、影响及回读方法；stdout 的原始 JS
   dev.9 已修复同文档连接互踢并绑定当前可见 Web EDA，B04 单次改名仍失败，fresh 名称仍 P2；
   新页已精确清理，原工程保存重载后基线恢复。具体拒绝原因尚未证明，不能以更换窗口或
   失败传播正确代替改名通过。见 [dev.9 B04](reviews/2026-09-26-v1.7.1-dev9-B04.md)。
+
+- dev.9 B08 区域/铺铜边界：no-pours、具名 follow-rule 区域以及铺铜边界均请求
+  1 mil，fresh 实际均为 0.2 mil。区域已返回 verified:false/partial:true 并 exit 1；
+  铺铜创建缺少 fresh 边界校验，仍 exit 0，属于已确认的失败漏报。官方 API 签名与
+  连接器入参相符，宽度变化的宿主原因未证明；不把参数改成 0.2 来补签。
+  三个失败对象已精确清理，当前包尚未修复。`poured:false` 和实际铜列表为空单列为事实，
+  不据此推断算法或 DRC 故障。见 [dev.9 B08](reviews/2026-09-26-v1.7.1-dev9-B08.md)。
