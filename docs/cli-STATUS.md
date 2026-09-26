@@ -65,6 +65,8 @@ P1 保存重载后的有限对象/网络恢复独立复核通过；不签完整�
 和 [#266](https://github.com/zhoushoujianwork/easyeda-agent/issues/266) 的三页现场复验已独立通过，按各自 CLI 修复范围关闭；未知显隐现场负例仍 not-run，不宣称 raw typed HTTP 同等覆盖。
 另登记 [#267](https://github.com/zhoushoujianwork/easyeda-agent/issues/267)：保留器件清页未保护引脚子级属性，
 隔离 dry-run 复现错误删除计划，现场未调用该路径、未发生损坏；本批采用有完整保护证明的单一导线精确删除。
+[#268](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) 记录切页后的后台 PCB 保存返回 false；
+两批显式保存与重载核对均成功，未观察到设计丢失，后台失败原因和目标归属仍待定位。
 复现、影响、使用建议和关闭条件统一维护在 [已知问题](cli-known-bugs.md)及对应 issue，
 本页只更新状态和链接。暂缺可靠修法不代表永久无法修复。
 

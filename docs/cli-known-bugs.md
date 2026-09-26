@@ -15,8 +15,9 @@
 | [#260：区域/铺铜边界线宽 1→0.2 mil](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) | 暂定 P2：显式参数未兑现，B08 失败；未证明电气损坏程度或三个对象类型同源。 | dev.11 已能 fresh 检出并停止依赖；宽度本身未修复。保留 ID，精确清理并保存重载核对。 |
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
 | [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
+| [#268：切页后后台 PCB 保存返回 false](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) | 两批后台 `pcb.save` 外层 ok:true、saved:false；精确原因尚未确定，未观察到设计丢失。 | 外层 ok 不代表保存成功；稳定检查点核对显式 saved:true，再真实重载与 fresh 回读。 |
 
-本轮跟进的七项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
+本轮跟进的八项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
 
 2026-09-26 按用户要求，将本轮尚无可靠修法的三项登记为待后续修复：复用并重新打开 #55，
@@ -53,6 +54,12 @@ instancesPreserved:true；global 为空对照仅显示保护覆盖不足。两�
 本批精确单线回退另有完整保护证明；不能把它外推为广义清页安全。
 有限独立报告 SHA-256 `66d2aa66588a6e333d2fde1e7d20aaa9d729a93264962c86ea8fe4fd4b864cc5`，
 输入 SHA-256 `c76e4c9415310d5ec7f1085066d79e338e52c5f5ce5b28a02e39027d9883c58d`。
+
+[#268](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) 保留实际失败与后台保存归属的排查要求。
+autosave 按窗口计时，未携带 mutation 的文档身份，显式保存成功也未取消已有 timer；
+这些实现事实不证明它就是 false 的根因或保存了错误文档。两批均已通过显式保存、真实重载和
+完整数据/原生差分核对清理结果；不能将后台失败改成成功，也不能推定发生了数据丢失。
+后续补切页时序、timer 竞态和目标身份的正负例及现场持久化复验。
 
 ## 本轮仍缺的验证
 
