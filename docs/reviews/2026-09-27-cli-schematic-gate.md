@@ -9,8 +9,8 @@
 
 | 问题 | 原始事实 | 跟进 |
 |---|---|---|
-| [#264 图签文本更新强制显示](https://github.com/zhoushoujianwork/easyeda-agent/issues/264) | Name/Description 文字显示到外框下方；Drawed 额外字段名重复显示。CLI 把所有更新的 showTitle/showValue 强制 true，覆盖模板状态 | 正修复文本更新的显隐保留、显式布尔及完整 payload 幂等回读；尚未现场复测，不签图面通过 |
-| [#265 clusters 无接点交叉误报](https://github.com/zhoushoujianwork/easyeda-agent/issues/265) | P2 SW2 GND 与 R5 3V3 在 (260,430) 内部正交交叉；同一 fresh pin/net 与原始线段已证明无接点，check 为 info，clusters 却按加粗 bbox 报 1×1 overlap | 正补同源物理线岛/接触证据，端点/T/共线、未知数据和真实器件/marker重叠不豁免；不按 check 文案放行 |
+| [#264 图签文本更新强制显示](https://github.com/zhoushoujianwork/easyeda-agent/issues/264) | Name/Description 文字显示到外框下方；Drawed 额外字段名重复显示。CLI 把所有更新的 showTitle/showValue 强制 true，覆盖模板状态 | 文本显隐、完整 payload 回读与 Compose 元数据已修复并离线复核；尚未现场复测，不签图面通过 |
+| [#265 clusters 无接点交叉误报](https://github.com/zhoushoujianwork/easyeda-agent/issues/265) | P2 SW2 GND 与 R5 3V3 在 (260,430) 内部正交交叉；同一 fresh pin/net 与原始线段已证明无接点，check 为 info，clusters 却按加粗 bbox 报 1×1 overlap | 完整同源库存、物理线岛和调用方修复已离线复核；端点/T/共线、未知数据和真实器件/marker重叠不豁免，等待现场复测 |
 | P2 SDK strict DRC 两条警告 | `nativePassed:false`、0 fatal / 0 error / 2 warn、`detailsAvailable:false`，仅聚合数量 | 根因未确定，尚不声明为产品 bug；不猜两条内容、不归因于上述误报或图签，不移除 strict 或补签 |
 
 P2 前 161/163 步成功，16 件/56 脚（50 连接/6 NC）和 101 实际线段/30 标记与计划一致。
@@ -40,8 +40,16 @@ strict-gate-raw、原始线段/逐脚/组 bbox、原图签回包及官方 SVG/PN
 `07a0527ecf60ae1ea2771a86a91a93cba8157a0eb1bdfdd55ea17e6131c58053`。
 
 独立复核随后发现该初版采集遗漏 `includeConnectivitySummary:true`；官方连接器只有显式请求
-才回库存摘要，测试夹具无条件返回摘要掩盖了缺项。该候选因此不能签实际调用路径通过，正在
-同步修正 caller、快照参数覆盖与按实际请求裁剪的 HTTP 回归；上面的初版材料保留，不覆写。
+才回库存摘要，测试夹具无条件返回摘要掩盖了缺项。该候选因此不能签实际调用路径通过。
+初版材料保留，不覆写。revision2 提交 `5ab4b40` 修正三处 caller、快照参数超集复用和 faithful HTTP 回归；
+另补原始线段完整对账：即使 wire PID 数量正确，漏任一 rawLine 的 segmentIndex 也非零拒绝。
+独立复验 7 次真实 Cobra 本地 HTTP、98 项定向测试通过，34 件证据/11 份源码匹配；
+mock 缺 ownership 的 gate 仍因 13 个 tight 非零退出，不把交叉误报消失写成整 gate 通过。
+报告 SHA-256 `678952fedbb2acc9aa7c09ac31c19dcc548c9e8ab72cf827d178b07deaa47c37`，
+输入 SHA-256 `3544ac0ad437fa3c169f7ce2a12f0314e07309cf3cfd2ed1d64529f9e9a7c8ee`。
+
+revision2 与 Compose 元数据修复合并后全量 Go 测试 **4027 通过、0 失败、1 跳过**，15 个包通过；
+公开 Skill 和 diff 检查通过。仍只签离线修复，现场 DRC、保存重载和完整案例需重新执行。
 
 两项合并候选全量 Go 测试 3982 通过、0 失败、1 个 Windows 专用测试在 macOS 跳过；
 相关测试、公开 Skill 与 diff 格式检查通过。这些是离线结果，尚不签 V4 图面/保存重载、P2
