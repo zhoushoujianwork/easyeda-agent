@@ -2,18 +2,9 @@ package app
 
 // cmd_sch_titleblock_merge.go — 图签写入的**读改写**外壳。
 //
-// 平台的 `modifySchematicPageTitleBlock` 与它自己的类型定义不符,实测三条(2026-08-15,
-// ceshi,逐条 debug.exec_js 探出来的):
-//
-//  1. **传子集就崩**:`{Name:{value:"X"}}` → `TypeError: Cannot set properties of
-//     undefined (setting 'value')`。平台是拿**它认识的全部明细项**去遍历你传的对象,
-//     缺哪一项就在哪一项上崩 —— 而官方 @remarks 写的是「未传入的项将保持默认状态」。
-//     所以必须**先读回全量、改其中几项、再整体传回去**。
-//  2. **`showTitle`/`showValue` 读回来是 `null`,原样带回去字段不生效**(返回 true,
-//     值纹丝不动)。被改的那几项必须给**真布尔**。
-//  3. **不传 `showTitleBlock` 也不生效**(同样静默返回 true)。
-//
-// 三条凑齐才写得进去。这层就干这件事,连接器一行不用改(它只是把 titleBlockData 透传)。
+// 当前只传点名的文本项，不回写图框结构。早期 V3 整包/显隐经验不能覆盖
+// V4 的当前模板：强制 showTitle/showValue=true 会显示额外属性文字并探出外框。
+// 文本更新保留已知显隐，未知/null 留给宿主；显式布尔才改变字段显隐。
 
 import (
 	"fmt"
@@ -66,13 +57,16 @@ func tbBoolOr(v any, fallback bool) bool {
 // schTitleBlockMerge 读回当前页的全量明细项,把用户的 patch 合并进去。
 //
 // patch 接受两种写法:`{"Name":{"value":"X"}}`(与读回来的形状一致)与
-// `{"Name":"X"}`(顺手写)。被改的项一律带上 showTitle/showValue=true。
+// `{"Name":"X"}`(顺手写)。文本更新保留已知显隐，未知显隐不猜值；显式布尔可改显隐。
 func schTitleBlockMerge(cfg *appConfig, window string, patch map[string]any) (map[string]any, bool, error) {
+	if len(patch) == 0 {
+		return nil, false, fmt.Errorf("图签 --data 必须包含至少一个字段更新")
+	}
 	res, err := requestAction(cfg, "schematic.titleblock.get", window, map[string]any{})
 	if err != nil {
 		return nil, false, fmt.Errorf("图签写入前要先读回全量明细项(平台传子集会崩): %w", err)
 	}
-	shown, _ := res.Result["showTitleBlock"].(bool)
+	shown, showKnown := res.Result["showTitleBlock"].(bool)
 	full, _ := res.Result["titleBlockData"].(map[string]any)
 	if full == nil {
 		return nil, false, fmt.Errorf("读不到当前页的明细项 —— 无法安全写入(平台传子集会崩)")
@@ -85,19 +79,49 @@ func schTitleBlockMerge(cfg *appConfig, window string, patch map[string]any) (ma
 	// 的 value 是符号**名字**,被平台灌进了 sheet 的 UUID 引用位,保存后重启拒载。
 	// 连接器现在会在下发前过滤结构键(见 actions.ts 的 TITLE_BLOCK_STRUCTURAL_FIELDS),
 	// 所以这里整包回传既无必要、又会撞上那道拒绝 —— 直接做减法:传子集。
+	out, needShow, err := buildTitleBlockTextPatch(full, patch, shown)
+	return out, showKnown && needShow, err
+}
+
+func buildTitleBlockTextPatch(full, patch map[string]any, shown bool) (map[string]any, bool, error) {
+	if len(patch) == 0 {
+		return nil, false, fmt.Errorf("图签 --data 必须包含至少一个字段更新")
+	}
 	out := make(map[string]any, len(patch))
 	var unknown []string
 	for k, v := range patch {
 		if _, ok := full[k]; !ok {
 			unknown = append(unknown, k)
 		}
-		value := v
-		if m, isMap := v.(map[string]any); isMap {
-			if inner, has := m["value"]; has {
-				value = inner
+		item := map[string]any{}
+		current, _ := full[k].(map[string]any)
+		for _, flag := range []string{"showTitle", "showValue"} {
+			if b, ok := current[flag].(bool); ok {
+				item[flag] = b
 			}
 		}
-		out[k] = map[string]any{"showTitle": true, "showValue": true, "value": value}
+		if m, isMap := v.(map[string]any); isMap {
+			if len(m) == 0 {
+				return nil, false, fmt.Errorf("图签字段 %s 的更新为空", k)
+			}
+			for field, value := range m {
+				switch field {
+				case "value":
+					item[field] = value
+				case "showTitle", "showValue":
+					b, ok := value.(bool)
+					if !ok {
+						return nil, false, fmt.Errorf("图签字段 %s.%s 必须为布尔值", k, field)
+					}
+					item[field] = b
+				default:
+					return nil, false, fmt.Errorf("未知图签更新字段 %s.%s", k, field)
+				}
+			}
+		} else {
+			item["value"] = v
+		}
+		out[k] = item
 	}
 	if len(unknown) > 0 {
 		return nil, false, fmt.Errorf("这些明细项当前页没有:%s —— 先跑 `easyeda sch titleblock-get` 看可用 key(平台对不认识的项会崩或静默忽略)",
@@ -141,9 +165,8 @@ func warnIfSheetLost(cfg *appConfig, window string, stderr io.Writer) error {
 		return fmt.Errorf("写图签后无法回读本页图纸几何(%w)—— **未证实**图框是否还在,不要据此执行整包回传;"+
 			"先用 `easyeda sch sheet-geometry` 单独确认", rerr)
 	}
-	return fmt.Errorf("写图签后本页找不到图纸边框(sheet 图元的 bbox)—— 图框/明细表很可能被整包回传关掉了。" +
-		"修复:`easyeda sch titleblock --data '{\"Title Block\":{\"value\":1},\"Border\":{\"value\":1}}'`," +
-		"再用 `easyeda sch sheet-geometry` 确认 bbox 回来了")
+	return fmt.Errorf("写图签后本页找不到图纸边框(sheet 图元的 bbox)—— 停止依赖写入并冻结回读;" +
+		"用 `easyeda sch sheet-geometry` 核对当前状态，不通过 titleblock 回写结构字段恢复图框")
 }
 
 // tbRequestedKeys 从用户的 patch 里取出**他真正要写的**明细项名。
@@ -172,7 +195,10 @@ func tbRequestedKeys(patch map[string]any) []string {
 //
 // 判据换成**画布的最终状态**:用户要的内容在不在图签上。这与「落地即判定」
 // 是同一条原则 —— 平台的 applied 计数是过程量,画布才是结果。
-func tbPatchLanded(cfg *appConfig, window string, patch map[string]any) (bool, []string) {
+func tbPatchLanded(cfg *appConfig, window string, patch map[string]any, expectedShow ...bool) (bool, []string) {
+	if len(patch) == 0 {
+		return false, []string{"empty patch"}
+	}
 	// 走 settleRead:写图签会让平台重建图签对象,首读常常还是旧值 —— 真机实测,
 	// 首次写入(值真的变了)复核不过,而幂等重写(平台不重建)一路通过,症状正好反着。
 	missing, ok, _ := settleRead(func() ([]string, bool, error) {
@@ -185,17 +211,53 @@ func tbPatchLanded(cfg *appConfig, window string, patch map[string]any) (bool, [
 			return nil, false, nil
 		}
 		var miss []string
-		for _, k := range tbRequestedKeys(patch) {
-			want := patch[k]
-			if m, ok := want.(map[string]any); ok {
-				want = m["value"] // 接受 {"Name":{"value":"X"}} 与 {"Name":"X"} 两种写法
+		if len(expectedShow) > 0 {
+			shown, known := res.Result["showTitleBlock"].(bool)
+			if !known || shown != expectedShow[0] {
+				miss = append(miss, "showTitleBlock")
 			}
+		}
+		for _, k := range tbRequestedKeys(patch) {
 			cur, _ := full[k].(map[string]any)
-			if cur == nil || fmt.Sprint(cur["value"]) != fmt.Sprint(want) {
+			if !tbItemMatches(cur, patch[k]) {
 				miss = append(miss, k)
 			}
 		}
 		return miss, len(miss) == 0, nil
 	})
 	return ok, missing
+}
+
+func tbItemMatches(current map[string]any, want any) bool {
+	if current == nil {
+		return false
+	}
+	if fields, ok := want.(map[string]any); ok {
+		if len(fields) == 0 {
+			return false
+		}
+		for k, v := range fields {
+			actual, present := current[k]
+			if !present {
+				return false
+			}
+			switch k {
+			case "value":
+				if fmt.Sprint(actual) != fmt.Sprint(v) {
+					return false
+				}
+			case "showTitle", "showValue":
+				b, valid := v.(bool)
+				got, known := actual.(bool)
+				if !valid || !known || b != got {
+					return false
+				}
+			default:
+				return false
+			}
+		}
+		return true
+	}
+	actual, present := current["value"]
+	return present && fmt.Sprint(actual) == fmt.Sprint(want)
 }

@@ -217,6 +217,11 @@ compares item by item. Items that did not land come back in result.notApplied an
 exit non-zero; items that are not title-block fields at all are named separately
 in result.unknownKeys — for those, fix the key, do not retry.
 
+Text-only updates preserve known per-field showTitle/showValue flags; unknown
+flags are omitted. To change field visibility, supply explicit booleans inside
+that field, for example {"Name":{"value":"Power","showTitle":false,"showValue":false}}.
+Field attribute visibility is separate from the title block's overall --show/--hide.
+
 The title block CANNOT set paper size. EasyEDA Pro exposes no set-paper-size API,
 and Size / Width / Height / "Page Size" are not title-block items. Run
 ` + "`easyeda sch titleblock-get`" + ` first to see the keys this page actually has.`,
@@ -241,11 +246,11 @@ and Size / Width / Height / "Page Size" are not title-block items. Run
 					if err := json.Unmarshal([]byte(dataJSON), &data); err != nil {
 						return fmt.Errorf("invalid --data json: %w", err)
 					}
-					userPatch = data
 					full, needShow, ferr := schTitleBlockMerge(cfg, window, data)
 					if ferr != nil {
 						return ferr
 					}
+					userPatch = full // 幂等复核同样核对显式/保留的显隐，不能只匹配文字。
 					payload["titleBlockData"] = full
 					if needShow && !hide {
 						payload["showTitleBlock"] = true // 图签还没显示,顺手打开
@@ -262,7 +267,11 @@ and Size / Width / Height / "Page Size" are not title-block items. Run
 				// 假失败比假成功更难缠:调用方会去重试、回滚,或认定这条路不通。
 				// 判据换成画布的最终状态:用户要的内容在不在图签上。
 				if err != nil && userPatch != nil {
-					if landed, _ := tbPatchLanded(cfg, window, userPatch); landed {
+					var expectedShow []bool
+					if visible, requested := payload["showTitleBlock"].(bool); requested {
+						expectedShow = []bool{visible}
+					}
+					if landed, _ := tbPatchLanded(cfg, window, userPatch, expectedShow...); landed {
 						fmt.Fprintf(stderr, "note: 平台报写入失败,但回读确认请求的 %d 项内容都已是目标值"+
 							"(幂等重写,或我们按住的结构开关本就正确)—— 以画布为准,按成功处理\n", len(userPatch))
 						// **必须在这里返回**:dispatchCapture 失败时 res 是 nil,

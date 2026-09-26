@@ -131,6 +131,12 @@ CLI 完整读取单次 action 的 HTTP 响应，最多 32 MiB；health 清单另
 `sch titleblock-get` 先取得实际字段名；`sch titleblock --data` 只传要改的明细项，按
 `--doc` 钉住聚焦页。不要把 get 返回的整包字段写回，尤其 Device/Symbol、几何与 `@` 投影项。
 连接器按字段回读：unknownKeys 应修正键名，partial/notApplied 应检查实际状态，不能盲重试。
+只更新文本时保留字段已知的 `showTitle`/`showValue`；未知或 null 不猜成 true。
+需要改变属性显隐时在对应字段显式给布尔值，例如
+`{"Name":{"value":"电源页","showTitle":false,"showValue":false}}`；字段属性显隐与图签整体显示是两回事。
+显示字段名可能生成图签表格以外的属性文字；写后必须用官方整页导出核对，不能仅凭值已写入验收图面。
+失败后的幂等回读要同时核对请求的文本、字段显隐及同次整体 `--show/--hide`，不能以相同文本掩盖未生效的可见性。
+空的 `--data` 拒绝执行；整体显示未知时不自动打开，只有明确 false 才沿用文本更新时打开图签的行为。
 明细表接口不能设置纸张尺寸；换图框是独立的器件替换工作，不能用 Width/Height 伪装。
 
 `page-new/rename/delete` 管单页，`sch rename` 管原理图文档。compose 不隐式删除源页；
