@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "version": "v1.8.0",
+  "result": "blocked",
+  "independentReview": "not-run",
+  "sha256": {
+    "test-report.md": "237d181b3d3821e94cebdc83d0673c4ee08b489f7109a1ccc331ba32bbe662df",
+    "baseline.md": "6bf6a436366b6ab94e6437fc3ff77e8351dfa7ed3e7daaea2a7063196d5f1dd0",
+    "test-cases.md": "0251a03cda7fd411ba02b08cc5bb10dad276a000d710198439b9f4300f4992fb"
+  }
+}
