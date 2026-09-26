@@ -98,3 +98,31 @@ Web `4.1.60`，唯一窗口 `fd5c2e25-edde-46d2-a67f-3cbfe1505253`。
 - 本轮参数源明确要求的 Name/Description=false,false、Drawed=false,true 写入成功；
   typed save→真实 reload→fresh getter 后三项正文和布尔精确匹配，整体图签可见状态仍 true。
   这只签显式字段持久化，官方完整图面与三页电路仍在续测。
+
+## P3 导线发布失败与新修订
+
+P3 重新 Compose 的 88 步队列在前 20 步成功后，第 21 步 `(185,685)→(205,685)` 导线写后校验失败。
+SDK 已返回实际 PID `bdee3961676b43e4` 与反向等几何线段；即时 `wires=[]`，稍后完整 fresh 才包含同 PID。
+这不是反向线段判定问题，也无法从稍后的读取推定最早发布时间。已停止队列、保存、完整回读和导出；
+实际六件/51 引脚/27 NC/一条线，PCB 184 条记录不变，未继续 P1/P2 或重放旧队列。
+44 件材料清单 SHA-256 `818e955feec36f15bc27c50d1e39ac51501b082da4ac2033b80a0b243507766d`；
+原生包 SHA-256 `3e27f0106b1bbdfd8536202b3b5613dadb2b1eebd3f21c525920c01ad657b2b5`，ZIP 有效但未验证恢复。
+新增 [#266](https://github.com/zhoushoujianwork/easyeda-agent/issues/266)，不补签该 partial 失败。
+
+`8877942` 只在合法完整库存的线段覆盖不足时追加只读：含首读最多五次、250ms 间隔、共用 2s 追加预算，
+服从更短调用方期限；mutation 仅一次。每次检查工程/页身份、递增 FIFO、abandoned、库存及新几何，
+完整覆盖后仍比较物理树拓扑；缺测、非法几何或迟到响应立即失败。原始审计与可迁移几何 fixture 保留。
+独立发现的取消/成功响应同时到达漏洞也已按原反例修复。独立 58 项通过，报告 SHA-256
+`e93d4240bf2a6883dbe7130e206a14a26e106db0233caed1ebb2ed16438f790a`，输入 SHA-256
+`60ea6d033de24bb9827b07b5dde384c570f4cfc5f4c91e3cb7a07b61f378f6f9`；
+十份最终源清单 SHA-256 `a54e15ac20b2185ffa21660ec571d7cb983d1187a250cfb9f64ef7fa0ce69e6e`。
+证据在本地 `artifacts/release-v1.8.0-wire-settle-fix-20260927/`，未签实际宿主的等待效果或 E2E。
+
+图签 `37449f2` 新修订让文字更新的未知显隐在第一次写入前拒绝，用户源必须明确给出所缺布尔值；
+已知布尔精确保留。独立 83 项通过，报告 SHA-256
+`518f17bd9c772cd5cb3b1708d6f54fce5c37dff9998296762f67908883ab1276`。
+该前置检查位于 CLI/Compose，不能外推原始 typed HTTP。P3 官方 PNG 中 Drawed=false,true 仍有
+重复蓝色作者属性值；下一轮在新源副本明确 false,false，重新 Compose，并验证表格正文保留。
+
+两项最新修订合并后的全量 Go **4075 通过、0 失败、1 跳过**，15 个包通过；Skill 与 diff 检查通过。
+运行时已暂停，待干净提交版本恢复 P3→P1→P2；图面、电气、保存重载、SDK strict 和完整用例仍未通过。

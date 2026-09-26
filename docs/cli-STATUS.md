@@ -1,7 +1,8 @@
 # CLI Status
 
 更新于 **2026-09-27**。本页维护 CLI 的当前可用范围、检查进度和后续跟进入口。
-当前续测运行构建 CLI/daemon：`v1.7.0-33-gd3409a0`，connector：`1.7.1-dev.11`；最近完整基础批次：
+最近现场构建 CLI/daemon：`v1.7.0-41-g2d041b5`，connector：`1.7.1-dev.11`；运行时已暂停，
+下一轮使用 `37449f2` / `8877942` 修复后的提交版本。最近完整基础批次：
 `1.7.1-dev.9`。开发戳绑定代码提交，不代表 v1.8.0 已发布；这是实测记录，不是实时健康检测。
 
 **此前基础 CLI 集中检查已收尾，已覆盖的常用操作基本满足日常使用；已知问题转入 bug 跟踪。**
@@ -16,7 +17,7 @@
 | v1.8.0 发布验收 | **完整用例续测中，尚未发布** | #55/#260/#261 的整体阻断已移除；[#262](https://github.com/zhoushoujianwork/easyeda-agent/issues/262) 修复已通过十区离线复测，现场完整设计仍待验证。 |
 | 日常基础操作 | **可用，有已知限制** | 下表列出已验证范围；失败时保留结果，停止依赖步骤，不盲目重试。 |
 | 严格基础验收 | **未全部通过** | 最近完整同包 dev.9 为 9 pass / 2 fail；dev.11 仅完成定向复测，未重跑全集。 |
-| 高级 CLI 验收 | **A01 恢复后仍 failed；A02–A06 未运行** | P1 保存重载/电气通过但图签越框；P2 第 162 步 strict gate 因 clusters 误报及 SDK 2 warn 停止。#264/#265 代码与离线复核通过，等待现场复测；P3/PCB 未执行。详见[恢复记录](reviews/2026-09-27-cli-schematic-gate.md)。 |
+| 高级 CLI 验收 | **A01 恢复后仍 failed；A02–A06 未运行** | P2 strict clusters 定向复测通过，SDK 2 warn 仍待完成全工程后复核。P3 第 21 步因 #266 写后导线暂不可读停止；已保存实际六件/一条线，PCB 未改。#264/#266 最新修复、独立离线复核及 4075 项 Go 测试通过，等待现场恢复。详见[恢复记录](reviews/2026-09-27-cli-schematic-gate.md)。 |
 
 “检查已收尾”是本轮工作状态，“可日常使用”是覆盖范围内的使用判断；两者不改写原始失败记录。
 
@@ -58,8 +59,10 @@
 高级流程新发现 [#262](https://github.com/zhoushoujianwork/easyeda-agent/issues/262)：部分功能区初测无法生成合法布局候选，
 通用修复已通过十区离线复测，仍保持 open 等完整现场验证；
 影响从需求到成品的自动设计；这不改变上表基础单动作的实测结果，也不在此前三项接受范围内。
-另发现 [#263](https://github.com/zhoushoujianwork/easyeda-agent/issues/263) 大响应截断：通用修复和完整现场只读采集通过，
-仍保持 open 等整页对账及保存重载；修复候选版本与范围见[记录](reviews/2026-09-27-cli-response-truncation.md)。
+[#263](https://github.com/zhoushoujianwork/easyeda-agent/issues/263) 大响应截断已修复并关闭，
+P1 保存重载后的有限对象/网络恢复独立复核通过；不签完整图面或 E2E，见[记录](reviews/2026-09-27-cli-response-truncation.md)。
+[#264](https://github.com/zhoushoujianwork/easyeda-agent/issues/264)、[#265](https://github.com/zhoushoujianwork/easyeda-agent/issues/265)
+和新发现的 [#266](https://github.com/zhoushoujianwork/easyeda-agent/issues/266) 保持 open，分别跟进图签、完整严格检查和导线延迟回读。
 复现、影响、使用建议和关闭条件统一维护在 [已知问题](cli-known-bugs.md)及对应 issue，
 本页只更新状态和链接。暂缺可靠修法不代表永久无法修复。
 
