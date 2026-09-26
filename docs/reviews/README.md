@@ -1,15 +1,18 @@
 # 历史验证与调研证据
 
 这里保存特定日期、版本和工程上的结果。旧命令、状态与通过记录均不作为当前操作指南；
-现行入口见 [文档导航](../README.md)、[架构](../architecture.md) 和
+现行入口见 [文档导航](../README.md)、[CLI Status](../cli-STATUS.md)、[架构](../architecture.md) 和
 [功能清单](../FEATURES.md)。原始截图和回读附件保持与各报告相邻或通过相对链接访问。
 
 | 证据范围 | 记录 |
 |---|---|
+| 2026-09-26 dev.11 铺铜定向复测 | [错值检测、清理恢复与成功分支缺口](2026-09-26-v1.7.1-dev11-pour-live.md)、[边界回读及 Apply 修复](2026-09-26-pour-readback-fix.md) |
 | 2026-09-26 dev.9 基础 CLI 同包复跑 | [逐项执行与独立复核状态](2026-09-26-v1.7.1-dev9-basic-cli.md) |
 | 2026-09-26 同文档连接互踢 | [dev.8 B00 停止](2026-09-26-v1.7.1-dev8-B00.md)、[dev.9 连接身份修复](2026-09-26-window-identity-fix.md) |
-| 2026-09-26 原理图删除修复候选 | [网表导出隔离、删除三态与待现场复测](2026-09-26-sch-delete-fix.md) |
-| 2026-09-26 高级 CLI 续测 | [基础证据复核、离线检测、预检修复与待定设计输入](2026-09-26-advanced-cli.md) |
+| 2026-09-26 页面改名失败传播 | [dev.8 定向验证通过，实际改名仍失败](2026-09-26-page-rename-fix.md) |
+| 2026-09-26 后台重连与基础复跑 | [dev.4 阻断](2026-09-26-v1.7.1-dev4-basic-cli.md)、[重连修复](2026-09-26-cli-reconnect-fix.md)、[dev.7 基础复跑](2026-09-26-v1.7.1-dev7-basic-cli.md) |
+| 2026-09-26 原理图删除定向修复 | [网表导出隔离、删除三态与 dev.4 现场回归通过](2026-09-26-sch-delete-fix.md)；不泛化为所有复合清理已验证 |
+| 2026-09-26 高级 CLI 续测 | [复用工程与叠层 A、预检修复、A00 测量中断及恢复](2026-09-26-advanced-cli.md) |
 | 2026-09-25 dev.21 基础 CLI 门禁通过 | [个人空间 B00–B10、定向警告、独立复核与清理](2026-09-25-v1.6.0-dev21-basic-cli.md) |
 | 2026-06/07 官方 API 与市场覆盖快照 | [PCB API 探测](2026-06-pcb-api-discovery.md)、[市场覆盖](2026-07-marketplace-coverage.md) |
 | 2026-07 真实需求探针与交互纠偏 | [ESP32 Mini 复测](2026-07-esp32mini-findings.md)、[里程碑走查](2026-07-milestone-walkthrough.md) |
@@ -37,5 +40,6 @@
 | 原理图与模块算法验证 | [算法验证](schematic-algorithm-validation.md)、[Lib 组合](schematic-composition-validation.md)、[LDO 布局](power-layout-validation.md) |
 | PR、issue 与现场复核 | [09-08 分流](2026-09-08-pr-issue-triage.md)、[09-09 电阻证据](2026-09-09-issue-202-resistance-evidence.md)、[09-12 分类](2026-09-12-open-issue-classification.md) |
 
-版本说明另存于 [1.4](../releases/release-1.4.md)、[1.5](../releases/release-1.5.md)；
+版本说明另存于 [1.4](../releases/release-1.4.md)、[1.5](../releases/release-1.5.md)、
+[1.7](../releases/release-1.7.md)；
 实际发布版本以 Git tag 与 GitHub Release 为准，草案不是发布证据。

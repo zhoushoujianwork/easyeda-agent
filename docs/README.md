@@ -23,7 +23,8 @@
 | 新增或修复工具能力 | [cli-design.md](cli-design.md)、[protocol.md](protocol.md) | [connector-contract.md](connector-contract.md)、[ecosystem-survey.md](ecosystem-survey.md) |
 | 社区贡献 PCB 布局布线算法 | [PCB 求解社区设计](pcb-solver-community-design.md) | [数学模型与 PR 验收](pcb-solver-community-design-detail.md)、[概念表](concepts.md) |
 | 维护 Skill 和知识 | [skill-design.md](skill-design.md)、[编写约定](../.agents/skills/README.md) | [Agent 协作设计](agent-collaboration.md) |
-| 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [v1.7.0 准备](releases/release-1.7.md)、[仓库发布授权规则](../AGENTS.md) |
+| 判断是否需要发布新版本 | [下一版本发布评估](releases/next-release.md) | 修复范围、版本建议和待补验收 |
+| 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [v1.7.0 发布记录](releases/release-1.7.md)、[仓库发布授权规则](../AGENTS.md) |
 | 验证从需求到成品 | [e2e-automation-acceptance.md](e2e-automation-acceptance.md) | [原始回归需求](../esp32MiniRequire.md)第一节、[仓库规则](../AGENTS.md) |
 | 查历史检查结论 | [历史证据索引](reviews/README.md) 与对应报告 | 回到该记录的版本、输入、原始证据和未覆盖项 |
 
@@ -34,6 +35,7 @@
 | 仓库协作、分支和发布约束 | 根目录 [AGENTS.md](../AGENTS.md) | `CLAUDE.md` 软链接，不复制正文 |
 | 仓库查询和维护流程 | `.agents/skills/easyeda-repo-*/` | `.claude` 和用户级安装链接共享源目录 |
 | CLI 当前可用范围、检查进度与跟进总览 | [cli-STATUS.md](cli-STATUS.md) | 首页、CLI 索引和测试文档引用；问题细节留在已知问题与 issue，原始证据留在 reviews |
+| 下一版本的修复范围、版本建议与发布准备 | [releases/next-release.md](releases/next-release.md) | Status 与导航引用；正式发布后将该轮结论纳入对应版本说明 |
 | 设计工作流、命令、操作知识 | `.agents/skills/easyeda-agent/` | README / 文档索引仅链接；发布包内引用自包含 |
 | 新概念、架构理由与能力边界 | 本目录对应主题页 | 在 Skill 的相关决策点引用已纳入包内的操作知识 |
 | 可重用设计输入、参数和步骤 | 公开 Skill 的 `references/examples/` | 通过样例索引发现，保留状态与证据 |

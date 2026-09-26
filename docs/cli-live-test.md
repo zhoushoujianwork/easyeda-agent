@@ -1,9 +1,7 @@
 # 基础 CLI 真实链路测试
 
-2026-09-26 按用户决定，**本轮基础 CLI 集中检查已收尾**，已覆盖的常用操作可用于日常工作，
-已知失败按 bug 跟踪并在修复后定向复测。当前可用范围与后续进度统一维护在 [CLI Status](cli-STATUS.md)。
-[最近完整基础检测](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)为 dev.9 的 9 pass / 2 fail；
-dev.11 的定向错值检测和清理恢复通过，完整基础未运行。收尾不把失败记录改成通过。
+本页维护基础 CLI 的测试范围、执行方法与通过条件。当前可用范围、检查是否收尾及
+后续进度统一见 [CLI Status](cli-STATUS.md)，具体问题见[已知问题](cli-known-bugs.md)。
 
 ## 测什么
 
@@ -49,20 +47,10 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 判据尚未满足，`not-run` 表示该版本未执行，`partial` 表示只完成部分步骤；四者都不放行，
 但不能合并计作“四个产品故障”。离线 Go/连接器测试和 `--help` 检查不能代替真实调用链。
 
-历史 [Codex subagent 原理图验收记录](reviews/2026-09-23-v1.6.0-schematic-acceptance.md)
-及 [dev.14 测试重分类](reviews/2026-09-24-v1.6.0-dev14-cli-gates.md)、
-[dev.14 基础现场复测](reviews/2026-09-24-v1.6.0-dev14-basic-cli-live.md)按各自版本和覆盖范围阅读，
-不能把其中的求解或 DRC 结果合并进基础门禁。
+## 证据入口
 
-历史完整通过批次见 [dev.21 基础验收](reviews/2026-09-25-v1.6.0-dev21-basic-cli.md)：
-个人空间范围 B00–B10 同版通过；团队按用户要求留待后续，已知 bug 继续跟踪。
-历史失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)。
-尚未关闭的 bug 及当前使用建议见 [已知问题](cli-known-bugs.md)；保留命令可用与验收放行分开判断。
+- [dev.9 完整基础批次](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)：按 B00–B10 查执行与独立复核。
+- [dev.11 铺铜定向复测](reviews/2026-09-26-v1.7.1-dev11-pour-live.md)：查错值检测、清理恢复及未覆盖分支。
+- [历史证据索引](reviews/README.md)：查此前通过、失败和修复过程。
 
-2026-09-26 [dev.4 同包复跑](reviews/2026-09-26-v1.7.1-dev4-basic-cli.md)：B00/B01 通过，
-B02 目标连接器重连受阻，B03–B10 未运行。当前门禁未放行，不影响历史 dev.21 的限定结论。
-
-[dev.7 复跑](reviews/2026-09-26-v1.7.1-dev7-basic-cli.md)已解决 B02 重连，B00–B03 独立通过；
-B04 改名实际失败，B05 只读部分执行、B06–B10 未运行，基础门禁继续未放行。
-后续 [dev.8 定向验证](reviews/2026-09-26-page-rename-fix.md)已修复失败误报并完成清理；
-宿主改名仍失败，不能以该定向结果补签同版 B00–B10。
+各报告只证明对应版本与覆盖范围；定向复测不补签完整基础批次，历史结果也不沿用为新版通过。
