@@ -1,0 +1,1646 @@
+{
+  "source": "P3 wire-000; req_143 before/after audit; later full fresh. Original audit SHA256 5436f92c74447aa965234ad781591a3a2b9b6fa9d6ac82738be0c12d090249cb. Components project only measured geometry; no fixed layout answer.",
+  "proposed": {
+    "points": [
+      [
+        185,
+        685
+      ],
+      [
+        205,
+        685
+      ]
+    ]
+  },
+  "before": {
+    "components": [
+      {
+        "bbox": {
+          "maxX": 1170,
+          "maxY": 825,
+          "minX": 0,
+          "minY": 0
+        },
+        "componentType": "sheet",
+        "mirror": false,
+        "pins": [],
+        "pinsAvailable": true,
+        "primitiveId": "a412e7a85e5d38d8",
+        "rotation": 0,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "bbox": {
+          "maxX": 255.5,
+          "maxY": 660.5,
+          "minX": 154.5,
+          "minY": 459.5
+        },
+        "componentType": "part",
+        "designator": "U1",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "a13daf5a9e1d659f-e5",
+            "rotation": 180,
+            "x": 145,
+            "y": 650
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "a13daf5a9e1d659f-e9",
+            "rotation": 180,
+            "x": 145,
+            "y": 640
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "3",
+            "primitiveId": "a13daf5a9e1d659f-e13",
+            "rotation": 180,
+            "x": 145,
+            "y": 630
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "4",
+            "primitiveId": "a13daf5a9e1d659f-e17",
+            "rotation": 180,
+            "x": 145,
+            "y": 620
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "5",
+            "primitiveId": "a13daf5a9e1d659f-e21",
+            "rotation": 180,
+            "x": 145,
+            "y": 610
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "6",
+            "primitiveId": "a13daf5a9e1d659f-e25",
+            "rotation": 180,
+            "x": 145,
+            "y": 600
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "7",
+            "primitiveId": "a13daf5a9e1d659f-e29",
+            "rotation": 180,
+            "x": 145,
+            "y": 590
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "8",
+            "primitiveId": "a13daf5a9e1d659f-e33",
+            "rotation": 180,
+            "x": 145,
+            "y": 580
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "9",
+            "primitiveId": "a13daf5a9e1d659f-e37",
+            "rotation": 180,
+            "x": 145,
+            "y": 570
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "10",
+            "primitiveId": "a13daf5a9e1d659f-e41",
+            "rotation": 180,
+            "x": 145,
+            "y": 560
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "11",
+            "primitiveId": "a13daf5a9e1d659f-e45",
+            "rotation": 180,
+            "x": 145,
+            "y": 550
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "12",
+            "primitiveId": "a13daf5a9e1d659f-e49",
+            "rotation": 180,
+            "x": 145,
+            "y": 540
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "13",
+            "primitiveId": "a13daf5a9e1d659f-e53",
+            "rotation": 180,
+            "x": 145,
+            "y": 530
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "14",
+            "primitiveId": "a13daf5a9e1d659f-e57",
+            "rotation": 180,
+            "x": 145,
+            "y": 520
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "15",
+            "primitiveId": "a13daf5a9e1d659f-e61",
+            "rotation": 180,
+            "x": 145,
+            "y": 510
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "16",
+            "primitiveId": "a13daf5a9e1d659f-e65",
+            "rotation": 180,
+            "x": 145,
+            "y": 500
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "17",
+            "primitiveId": "a13daf5a9e1d659f-e69",
+            "rotation": 180,
+            "x": 145,
+            "y": 490
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "18",
+            "primitiveId": "a13daf5a9e1d659f-e73",
+            "rotation": 180,
+            "x": 145,
+            "y": 480
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "19",
+            "primitiveId": "a13daf5a9e1d659f-e77",
+            "rotation": 180,
+            "x": 145,
+            "y": 470
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "20",
+            "primitiveId": "a13daf5a9e1d659f-e81",
+            "rotation": 0,
+            "x": 265,
+            "y": 470
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "21",
+            "primitiveId": "a13daf5a9e1d659f-e85",
+            "rotation": 0,
+            "x": 265,
+            "y": 480
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "22",
+            "primitiveId": "a13daf5a9e1d659f-e89",
+            "rotation": 0,
+            "x": 265,
+            "y": 490
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "23",
+            "primitiveId": "a13daf5a9e1d659f-e93",
+            "rotation": 0,
+            "x": 265,
+            "y": 500
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "24",
+            "primitiveId": "a13daf5a9e1d659f-e97",
+            "rotation": 0,
+            "x": 265,
+            "y": 510
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "25",
+            "primitiveId": "a13daf5a9e1d659f-e101",
+            "rotation": 0,
+            "x": 265,
+            "y": 520
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "26",
+            "primitiveId": "a13daf5a9e1d659f-e105",
+            "rotation": 0,
+            "x": 265,
+            "y": 530
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "27",
+            "primitiveId": "a13daf5a9e1d659f-e109",
+            "rotation": 0,
+            "x": 265,
+            "y": 540
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "28",
+            "primitiveId": "a13daf5a9e1d659f-e113",
+            "rotation": 0,
+            "x": 265,
+            "y": 550
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "29",
+            "primitiveId": "a13daf5a9e1d659f-e117",
+            "rotation": 0,
+            "x": 265,
+            "y": 560
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "30",
+            "primitiveId": "a13daf5a9e1d659f-e121",
+            "rotation": 0,
+            "x": 265,
+            "y": 570
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "31",
+            "primitiveId": "a13daf5a9e1d659f-e125",
+            "rotation": 0,
+            "x": 265,
+            "y": 580
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "32",
+            "primitiveId": "a13daf5a9e1d659f-e129",
+            "rotation": 0,
+            "x": 265,
+            "y": 590
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "33",
+            "primitiveId": "a13daf5a9e1d659f-e133",
+            "rotation": 0,
+            "x": 265,
+            "y": 600
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "34",
+            "primitiveId": "a13daf5a9e1d659f-e137",
+            "rotation": 0,
+            "x": 265,
+            "y": 610
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "35",
+            "primitiveId": "a13daf5a9e1d659f-e141",
+            "rotation": 0,
+            "x": 265,
+            "y": 620
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "36",
+            "primitiveId": "a13daf5a9e1d659f-e145",
+            "rotation": 0,
+            "x": 265,
+            "y": 630
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "37",
+            "primitiveId": "a13daf5a9e1d659f-e149",
+            "rotation": 0,
+            "x": 265,
+            "y": 640
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "38",
+            "primitiveId": "a13daf5a9e1d659f-e153",
+            "rotation": 0,
+            "x": 265,
+            "y": 650
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "39",
+            "primitiveId": "a13daf5a9e1d659f-e157",
+            "rotation": 90,
+            "x": 205,
+            "y": 680
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "a13daf5a9e1d659f",
+        "rotation": 0,
+        "x": 205,
+        "y": 560
+      },
+      {
+        "bbox": {
+          "maxX": 170.5,
+          "maxY": 683.5,
+          "minX": 149.5,
+          "minY": 666.5
+        },
+        "componentType": "part",
+        "designator": "C1",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "f7305d5a124eaf6c-e4",
+            "rotation": 0,
+            "x": 180,
+            "y": 675
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "f7305d5a124eaf6c-e10",
+            "rotation": 180,
+            "x": 140,
+            "y": 675
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "f7305d5a124eaf6c",
+        "rotation": 0,
+        "x": 160,
+        "y": 675
+      },
+      {
+        "bbox": {
+          "maxX": 120.5,
+          "maxY": 643.5,
+          "minX": 99.5,
+          "minY": 626.5
+        },
+        "componentType": "part",
+        "designator": "C2",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "d61484befd2bfdd8-e4",
+            "rotation": 180,
+            "x": 90,
+            "y": 635
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "d61484befd2bfdd8-e10",
+            "rotation": 0,
+            "x": 130,
+            "y": 635
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "d61484befd2bfdd8",
+        "rotation": 0,
+        "x": 110,
+        "y": 635
+      },
+      {
+        "bbox": {
+          "maxX": 330.5,
+          "maxY": 630.5,
+          "minX": 309.5,
+          "minY": 579.5
+        },
+        "componentType": "part",
+        "designator": "J3",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "29b70f6d21032085-e5",
+            "rotation": 180,
+            "x": 300,
+            "y": 620
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "29b70f6d21032085-e9",
+            "rotation": 180,
+            "x": 300,
+            "y": 610
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "3",
+            "primitiveId": "29b70f6d21032085-e13",
+            "rotation": 180,
+            "x": 300,
+            "y": 600
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "4",
+            "primitiveId": "29b70f6d21032085-e17",
+            "rotation": 180,
+            "x": 300,
+            "y": 590
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "29b70f6d21032085",
+        "rotation": 0,
+        "x": 320,
+        "y": 605
+      },
+      {
+        "bbox": {
+          "maxX": 595.5,
+          "maxY": 717.5,
+          "minX": 574.5,
+          "minY": 691.5
+        },
+        "componentType": "part",
+        "designator": "D4",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "932cd4cf1dc78704-e5",
+            "rotation": 180,
+            "x": 570,
+            "y": 700
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "932cd4cf1dc78704-e11",
+            "rotation": 0,
+            "x": 610,
+            "y": 700
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "932cd4cf1dc78704",
+        "rotation": 0,
+        "x": 590,
+        "y": 700
+      },
+      {
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 674.5,
+          "minX": 584.5,
+          "minY": 665.5
+        },
+        "componentType": "part",
+        "designator": "R7",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "68f60835e44022c2-e3",
+            "rotation": 0,
+            "x": 615,
+            "y": 670
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "68f60835e44022c2-e7",
+            "rotation": 180,
+            "x": 575,
+            "y": 670
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "68f60835e44022c2",
+        "rotation": 0,
+        "x": 595,
+        "y": 670
+      }
+    ],
+    "wiresAvailable": true,
+    "wires": []
+  },
+  "immediateAfter": {
+    "components": [
+      {
+        "bbox": {
+          "maxX": 1170,
+          "maxY": 825,
+          "minX": 0,
+          "minY": 0
+        },
+        "componentType": "sheet",
+        "mirror": false,
+        "pins": [],
+        "pinsAvailable": true,
+        "primitiveId": "a412e7a85e5d38d8",
+        "rotation": 0,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "bbox": {
+          "maxX": 255.5,
+          "maxY": 660.5,
+          "minX": 154.5,
+          "minY": 459.5
+        },
+        "componentType": "part",
+        "designator": "U1",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "a13daf5a9e1d659f-e5",
+            "rotation": 180,
+            "x": 145,
+            "y": 650
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "a13daf5a9e1d659f-e9",
+            "rotation": 180,
+            "x": 145,
+            "y": 640
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "3",
+            "primitiveId": "a13daf5a9e1d659f-e13",
+            "rotation": 180,
+            "x": 145,
+            "y": 630
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "4",
+            "primitiveId": "a13daf5a9e1d659f-e17",
+            "rotation": 180,
+            "x": 145,
+            "y": 620
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "5",
+            "primitiveId": "a13daf5a9e1d659f-e21",
+            "rotation": 180,
+            "x": 145,
+            "y": 610
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "6",
+            "primitiveId": "a13daf5a9e1d659f-e25",
+            "rotation": 180,
+            "x": 145,
+            "y": 600
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "7",
+            "primitiveId": "a13daf5a9e1d659f-e29",
+            "rotation": 180,
+            "x": 145,
+            "y": 590
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "8",
+            "primitiveId": "a13daf5a9e1d659f-e33",
+            "rotation": 180,
+            "x": 145,
+            "y": 580
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "9",
+            "primitiveId": "a13daf5a9e1d659f-e37",
+            "rotation": 180,
+            "x": 145,
+            "y": 570
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "10",
+            "primitiveId": "a13daf5a9e1d659f-e41",
+            "rotation": 180,
+            "x": 145,
+            "y": 560
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "11",
+            "primitiveId": "a13daf5a9e1d659f-e45",
+            "rotation": 180,
+            "x": 145,
+            "y": 550
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "12",
+            "primitiveId": "a13daf5a9e1d659f-e49",
+            "rotation": 180,
+            "x": 145,
+            "y": 540
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "13",
+            "primitiveId": "a13daf5a9e1d659f-e53",
+            "rotation": 180,
+            "x": 145,
+            "y": 530
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "14",
+            "primitiveId": "a13daf5a9e1d659f-e57",
+            "rotation": 180,
+            "x": 145,
+            "y": 520
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "15",
+            "primitiveId": "a13daf5a9e1d659f-e61",
+            "rotation": 180,
+            "x": 145,
+            "y": 510
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "16",
+            "primitiveId": "a13daf5a9e1d659f-e65",
+            "rotation": 180,
+            "x": 145,
+            "y": 500
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "17",
+            "primitiveId": "a13daf5a9e1d659f-e69",
+            "rotation": 180,
+            "x": 145,
+            "y": 490
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "18",
+            "primitiveId": "a13daf5a9e1d659f-e73",
+            "rotation": 180,
+            "x": 145,
+            "y": 480
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "19",
+            "primitiveId": "a13daf5a9e1d659f-e77",
+            "rotation": 180,
+            "x": 145,
+            "y": 470
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "20",
+            "primitiveId": "a13daf5a9e1d659f-e81",
+            "rotation": 0,
+            "x": 265,
+            "y": 470
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "21",
+            "primitiveId": "a13daf5a9e1d659f-e85",
+            "rotation": 0,
+            "x": 265,
+            "y": 480
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "22",
+            "primitiveId": "a13daf5a9e1d659f-e89",
+            "rotation": 0,
+            "x": 265,
+            "y": 490
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "23",
+            "primitiveId": "a13daf5a9e1d659f-e93",
+            "rotation": 0,
+            "x": 265,
+            "y": 500
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "24",
+            "primitiveId": "a13daf5a9e1d659f-e97",
+            "rotation": 0,
+            "x": 265,
+            "y": 510
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "25",
+            "primitiveId": "a13daf5a9e1d659f-e101",
+            "rotation": 0,
+            "x": 265,
+            "y": 520
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "26",
+            "primitiveId": "a13daf5a9e1d659f-e105",
+            "rotation": 0,
+            "x": 265,
+            "y": 530
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "27",
+            "primitiveId": "a13daf5a9e1d659f-e109",
+            "rotation": 0,
+            "x": 265,
+            "y": 540
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "28",
+            "primitiveId": "a13daf5a9e1d659f-e113",
+            "rotation": 0,
+            "x": 265,
+            "y": 550
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "29",
+            "primitiveId": "a13daf5a9e1d659f-e117",
+            "rotation": 0,
+            "x": 265,
+            "y": 560
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "30",
+            "primitiveId": "a13daf5a9e1d659f-e121",
+            "rotation": 0,
+            "x": 265,
+            "y": 570
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "31",
+            "primitiveId": "a13daf5a9e1d659f-e125",
+            "rotation": 0,
+            "x": 265,
+            "y": 580
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "32",
+            "primitiveId": "a13daf5a9e1d659f-e129",
+            "rotation": 0,
+            "x": 265,
+            "y": 590
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "33",
+            "primitiveId": "a13daf5a9e1d659f-e133",
+            "rotation": 0,
+            "x": 265,
+            "y": 600
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "34",
+            "primitiveId": "a13daf5a9e1d659f-e137",
+            "rotation": 0,
+            "x": 265,
+            "y": 610
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "35",
+            "primitiveId": "a13daf5a9e1d659f-e141",
+            "rotation": 0,
+            "x": 265,
+            "y": 620
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "36",
+            "primitiveId": "a13daf5a9e1d659f-e145",
+            "rotation": 0,
+            "x": 265,
+            "y": 630
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "37",
+            "primitiveId": "a13daf5a9e1d659f-e149",
+            "rotation": 0,
+            "x": 265,
+            "y": 640
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "38",
+            "primitiveId": "a13daf5a9e1d659f-e153",
+            "rotation": 0,
+            "x": 265,
+            "y": 650
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "39",
+            "primitiveId": "a13daf5a9e1d659f-e157",
+            "rotation": 90,
+            "x": 205,
+            "y": 680
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "a13daf5a9e1d659f",
+        "rotation": 0,
+        "x": 205,
+        "y": 560
+      },
+      {
+        "bbox": {
+          "maxX": 170.5,
+          "maxY": 683.5,
+          "minX": 149.5,
+          "minY": 666.5
+        },
+        "componentType": "part",
+        "designator": "C1",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "f7305d5a124eaf6c-e4",
+            "rotation": 0,
+            "x": 180,
+            "y": 675
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "f7305d5a124eaf6c-e10",
+            "rotation": 180,
+            "x": 140,
+            "y": 675
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "f7305d5a124eaf6c",
+        "rotation": 0,
+        "x": 160,
+        "y": 675
+      },
+      {
+        "bbox": {
+          "maxX": 120.5,
+          "maxY": 643.5,
+          "minX": 99.5,
+          "minY": 626.5
+        },
+        "componentType": "part",
+        "designator": "C2",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "d61484befd2bfdd8-e4",
+            "rotation": 180,
+            "x": 90,
+            "y": 635
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "d61484befd2bfdd8-e10",
+            "rotation": 0,
+            "x": 130,
+            "y": 635
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "d61484befd2bfdd8",
+        "rotation": 0,
+        "x": 110,
+        "y": 635
+      },
+      {
+        "bbox": {
+          "maxX": 330.5,
+          "maxY": 630.5,
+          "minX": 309.5,
+          "minY": 579.5
+        },
+        "componentType": "part",
+        "designator": "J3",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "29b70f6d21032085-e5",
+            "rotation": 180,
+            "x": 300,
+            "y": 620
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "29b70f6d21032085-e9",
+            "rotation": 180,
+            "x": 300,
+            "y": 610
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "3",
+            "primitiveId": "29b70f6d21032085-e13",
+            "rotation": 180,
+            "x": 300,
+            "y": 600
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "4",
+            "primitiveId": "29b70f6d21032085-e17",
+            "rotation": 180,
+            "x": 300,
+            "y": 590
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "29b70f6d21032085",
+        "rotation": 0,
+        "x": 320,
+        "y": 605
+      },
+      {
+        "bbox": {
+          "maxX": 595.5,
+          "maxY": 717.5,
+          "minX": 574.5,
+          "minY": 691.5
+        },
+        "componentType": "part",
+        "designator": "D4",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "932cd4cf1dc78704-e5",
+            "rotation": 180,
+            "x": 570,
+            "y": 700
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "932cd4cf1dc78704-e11",
+            "rotation": 0,
+            "x": 610,
+            "y": 700
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "932cd4cf1dc78704",
+        "rotation": 0,
+        "x": 590,
+        "y": 700
+      },
+      {
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 674.5,
+          "minX": 584.5,
+          "minY": 665.5
+        },
+        "componentType": "part",
+        "designator": "R7",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "68f60835e44022c2-e3",
+            "rotation": 0,
+            "x": 615,
+            "y": 670
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "68f60835e44022c2-e7",
+            "rotation": 180,
+            "x": 575,
+            "y": 670
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "68f60835e44022c2",
+        "rotation": 0,
+        "x": 595,
+        "y": 670
+      }
+    ],
+    "wiresAvailable": true,
+    "wires": []
+  },
+  "publishedAfter": {
+    "components": [
+      {
+        "bbox": {
+          "maxX": 1170,
+          "maxY": 825,
+          "minX": 0,
+          "minY": 0
+        },
+        "componentType": "sheet",
+        "mirror": false,
+        "pins": [],
+        "pinsAvailable": true,
+        "primitiveId": "a412e7a85e5d38d8",
+        "rotation": 0,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "bbox": {
+          "maxX": 255.5,
+          "maxY": 660.5,
+          "minX": 154.5,
+          "minY": 459.5
+        },
+        "componentType": "part",
+        "designator": "U1",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "a13daf5a9e1d659f-e5",
+            "rotation": 180,
+            "x": 145,
+            "y": 650
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "a13daf5a9e1d659f-e9",
+            "rotation": 180,
+            "x": 145,
+            "y": 640
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "3",
+            "primitiveId": "a13daf5a9e1d659f-e13",
+            "rotation": 180,
+            "x": 145,
+            "y": 630
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "4",
+            "primitiveId": "a13daf5a9e1d659f-e17",
+            "rotation": 180,
+            "x": 145,
+            "y": 620
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "5",
+            "primitiveId": "a13daf5a9e1d659f-e21",
+            "rotation": 180,
+            "x": 145,
+            "y": 610
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "6",
+            "primitiveId": "a13daf5a9e1d659f-e25",
+            "rotation": 180,
+            "x": 145,
+            "y": 600
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "7",
+            "primitiveId": "a13daf5a9e1d659f-e29",
+            "rotation": 180,
+            "x": 145,
+            "y": 590
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "8",
+            "primitiveId": "a13daf5a9e1d659f-e33",
+            "rotation": 180,
+            "x": 145,
+            "y": 580
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "9",
+            "primitiveId": "a13daf5a9e1d659f-e37",
+            "rotation": 180,
+            "x": 145,
+            "y": 570
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "10",
+            "primitiveId": "a13daf5a9e1d659f-e41",
+            "rotation": 180,
+            "x": 145,
+            "y": 560
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "11",
+            "primitiveId": "a13daf5a9e1d659f-e45",
+            "rotation": 180,
+            "x": 145,
+            "y": 550
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "12",
+            "primitiveId": "a13daf5a9e1d659f-e49",
+            "rotation": 180,
+            "x": 145,
+            "y": 540
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "13",
+            "primitiveId": "a13daf5a9e1d659f-e53",
+            "rotation": 180,
+            "x": 145,
+            "y": 530
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "14",
+            "primitiveId": "a13daf5a9e1d659f-e57",
+            "rotation": 180,
+            "x": 145,
+            "y": 520
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "15",
+            "primitiveId": "a13daf5a9e1d659f-e61",
+            "rotation": 180,
+            "x": 145,
+            "y": 510
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "16",
+            "primitiveId": "a13daf5a9e1d659f-e65",
+            "rotation": 180,
+            "x": 145,
+            "y": 500
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "17",
+            "primitiveId": "a13daf5a9e1d659f-e69",
+            "rotation": 180,
+            "x": 145,
+            "y": 490
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "18",
+            "primitiveId": "a13daf5a9e1d659f-e73",
+            "rotation": 180,
+            "x": 145,
+            "y": 480
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "19",
+            "primitiveId": "a13daf5a9e1d659f-e77",
+            "rotation": 180,
+            "x": 145,
+            "y": 470
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "20",
+            "primitiveId": "a13daf5a9e1d659f-e81",
+            "rotation": 0,
+            "x": 265,
+            "y": 470
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "21",
+            "primitiveId": "a13daf5a9e1d659f-e85",
+            "rotation": 0,
+            "x": 265,
+            "y": 480
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "22",
+            "primitiveId": "a13daf5a9e1d659f-e89",
+            "rotation": 0,
+            "x": 265,
+            "y": 490
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "23",
+            "primitiveId": "a13daf5a9e1d659f-e93",
+            "rotation": 0,
+            "x": 265,
+            "y": 500
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "24",
+            "primitiveId": "a13daf5a9e1d659f-e97",
+            "rotation": 0,
+            "x": 265,
+            "y": 510
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "25",
+            "primitiveId": "a13daf5a9e1d659f-e101",
+            "rotation": 0,
+            "x": 265,
+            "y": 520
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "26",
+            "primitiveId": "a13daf5a9e1d659f-e105",
+            "rotation": 0,
+            "x": 265,
+            "y": 530
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "27",
+            "primitiveId": "a13daf5a9e1d659f-e109",
+            "rotation": 0,
+            "x": 265,
+            "y": 540
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "28",
+            "primitiveId": "a13daf5a9e1d659f-e113",
+            "rotation": 0,
+            "x": 265,
+            "y": 550
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "29",
+            "primitiveId": "a13daf5a9e1d659f-e117",
+            "rotation": 0,
+            "x": 265,
+            "y": 560
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "30",
+            "primitiveId": "a13daf5a9e1d659f-e121",
+            "rotation": 0,
+            "x": 265,
+            "y": 570
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "31",
+            "primitiveId": "a13daf5a9e1d659f-e125",
+            "rotation": 0,
+            "x": 265,
+            "y": 580
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "32",
+            "primitiveId": "a13daf5a9e1d659f-e129",
+            "rotation": 0,
+            "x": 265,
+            "y": 590
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "33",
+            "primitiveId": "a13daf5a9e1d659f-e133",
+            "rotation": 0,
+            "x": 265,
+            "y": 600
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "34",
+            "primitiveId": "a13daf5a9e1d659f-e137",
+            "rotation": 0,
+            "x": 265,
+            "y": 610
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "35",
+            "primitiveId": "a13daf5a9e1d659f-e141",
+            "rotation": 0,
+            "x": 265,
+            "y": 620
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "36",
+            "primitiveId": "a13daf5a9e1d659f-e145",
+            "rotation": 0,
+            "x": 265,
+            "y": 630
+          },
+          {
+            "noConnected": true,
+            "pinNumber": "37",
+            "primitiveId": "a13daf5a9e1d659f-e149",
+            "rotation": 0,
+            "x": 265,
+            "y": 640
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "38",
+            "primitiveId": "a13daf5a9e1d659f-e153",
+            "rotation": 0,
+            "x": 265,
+            "y": 650
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "39",
+            "primitiveId": "a13daf5a9e1d659f-e157",
+            "rotation": 90,
+            "x": 205,
+            "y": 680
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "a13daf5a9e1d659f",
+        "rotation": 0,
+        "x": 205,
+        "y": 560
+      },
+      {
+        "bbox": {
+          "maxX": 170.5,
+          "maxY": 683.5,
+          "minX": 149.5,
+          "minY": 666.5
+        },
+        "componentType": "part",
+        "designator": "C1",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "f7305d5a124eaf6c-e4",
+            "rotation": 0,
+            "x": 180,
+            "y": 675
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "f7305d5a124eaf6c-e10",
+            "rotation": 180,
+            "x": 140,
+            "y": 675
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "f7305d5a124eaf6c",
+        "rotation": 0,
+        "x": 160,
+        "y": 675
+      },
+      {
+        "bbox": {
+          "maxX": 120.5,
+          "maxY": 643.5,
+          "minX": 99.5,
+          "minY": 626.5
+        },
+        "componentType": "part",
+        "designator": "C2",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "d61484befd2bfdd8-e4",
+            "rotation": 180,
+            "x": 90,
+            "y": 635
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "d61484befd2bfdd8-e10",
+            "rotation": 0,
+            "x": 130,
+            "y": 635
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "d61484befd2bfdd8",
+        "rotation": 0,
+        "x": 110,
+        "y": 635
+      },
+      {
+        "bbox": {
+          "maxX": 330.5,
+          "maxY": 630.5,
+          "minX": 309.5,
+          "minY": 579.5
+        },
+        "componentType": "part",
+        "designator": "J3",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "29b70f6d21032085-e5",
+            "rotation": 180,
+            "x": 300,
+            "y": 620
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "29b70f6d21032085-e9",
+            "rotation": 180,
+            "x": 300,
+            "y": 610
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "3",
+            "primitiveId": "29b70f6d21032085-e13",
+            "rotation": 180,
+            "x": 300,
+            "y": 600
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "4",
+            "primitiveId": "29b70f6d21032085-e17",
+            "rotation": 180,
+            "x": 300,
+            "y": 590
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "29b70f6d21032085",
+        "rotation": 0,
+        "x": 320,
+        "y": 605
+      },
+      {
+        "bbox": {
+          "maxX": 595.5,
+          "maxY": 717.5,
+          "minX": 574.5,
+          "minY": 691.5
+        },
+        "componentType": "part",
+        "designator": "D4",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "932cd4cf1dc78704-e5",
+            "rotation": 180,
+            "x": 570,
+            "y": 700
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "932cd4cf1dc78704-e11",
+            "rotation": 0,
+            "x": 610,
+            "y": 700
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "932cd4cf1dc78704",
+        "rotation": 0,
+        "x": 590,
+        "y": 700
+      },
+      {
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 674.5,
+          "minX": 584.5,
+          "minY": 665.5
+        },
+        "componentType": "part",
+        "designator": "R7",
+        "mirror": false,
+        "pins": [
+          {
+            "noConnected": false,
+            "pinNumber": "2",
+            "primitiveId": "68f60835e44022c2-e3",
+            "rotation": 0,
+            "x": 615,
+            "y": 670
+          },
+          {
+            "noConnected": false,
+            "pinNumber": "1",
+            "primitiveId": "68f60835e44022c2-e7",
+            "rotation": 180,
+            "x": 575,
+            "y": 670
+          }
+        ],
+        "pinsAvailable": true,
+        "primitiveId": "68f60835e44022c2",
+        "rotation": 0,
+        "x": 595,
+        "y": 670
+      }
+    ],
+    "wiresAvailable": true,
+    "wires": [
+      {
+        "net": "",
+        "primitiveId": "bdee3961676b43e4",
+        "rawEncoding": "flat-segments",
+        "rawLine": [
+          205,
+          685,
+          185,
+          685
+        ],
+        "segmentIndex": 0,
+        "x0": 205,
+        "x1": 185,
+        "y0": 685,
+        "y1": 685
+      }
+    ]
+  }
+}

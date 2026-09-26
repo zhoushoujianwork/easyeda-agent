@@ -907,9 +907,7 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	// Schematic mutation guards take fresh geometry before AND after the write.
 	// Keep the previous action budget plus bounded read budgets; do not steal the
 	// write's last seconds and misreport a landed mutation as a timeout.
-	if protocol.SchematicGeometryGuarded(action) {
-		timeout += 2 * protocol.SchematicGeometryReadTimeout(actionTimeout)
-	}
+	timeout += protocol.SchematicGeometryOverhead(action, actionTimeout)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 

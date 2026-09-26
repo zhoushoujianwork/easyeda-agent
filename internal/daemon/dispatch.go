@@ -275,9 +275,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	executionBudget := requestTimeout(&req)
-	if schematicGeometryGuarded(req.Action) {
-		executionBudget += 2 * protocol.SchematicGeometryReadTimeout(time.Duration(req.TimeoutMs)*time.Millisecond)
-	}
+	executionBudget += protocol.SchematicGeometryOverhead(req.Action, time.Duration(req.TimeoutMs)*time.Millisecond)
 	ctx, cancel := context.WithTimeout(r.Context(), executionBudget)
 	defer cancel()
 

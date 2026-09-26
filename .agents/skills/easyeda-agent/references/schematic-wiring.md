@@ -11,6 +11,14 @@
 以下候选评分负责寻找合法形态，不能替代这些正确性检查。已有连通不证明布局合法；详见
 schematic.md 的 typed 写入校验。
 
+宿主可能在 create 返回后才把导线发布给 getAll。只有首轮完整回读的几何合法、但拟线段尚未
+覆盖时，daemon 才在同一窗口串行锁内最多再读 4 次（间隔 250ms，总追加预算 2s，且服从
+调用方期限）。每轮重新核对文档、递增 FIFO、无 abandoned 变化、库存和几何；线段完整覆盖
+后还必须通过拓扑比较。缺测、新非法几何或到期响应立即失败。它不重发 mutation，
+不凭 create 返回的 PID/line 放行。到期仍不可见就返回 partial/非零，保留
+readbackAttempts/observations 及可用的原始审计；
+调用方保存当前已知状态、fresh 回读后从参数源重新生成受保护计划，不能盲重放失败队列。
+
 `connect_pin` (`sch connect`) keeps the connection **safe** (pin → short wire →
 flag/netport, never a netflag on a bare pin), but it still makes YOU pick
 `--direction` and `--offset`, so layout quality depends on judgment. **`sch

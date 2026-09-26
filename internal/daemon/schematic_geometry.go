@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -9,6 +10,13 @@ import (
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/protocol"
 	"github.com/zhoushoujianwork/easyeda-agent/internal/schguard"
+)
+
+const (
+	// A successful SDK create can precede publication by getAll. Only reads
+	// may repeat, under the same serialized window slot and caller deadline.
+	wirePublicationMaxReads = 5
+	wirePublicationDelay    = 250 * time.Millisecond
 )
 
 // No request flag or forceReason bypasses this guard. Run at the HTTP dispatch
@@ -82,6 +90,9 @@ func geometryFailure(req protocol.Request, phase string, applied bool, findings 
 }
 
 func (s *Server) readSchematicGeometry(ctx context.Context, req protocol.Request, dispatch dispatchFn, suffix string) (*protocol.Response, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	read := req
 	read.ID = req.ID + "-geometry-" + suffix
 	read.Action = "schematic.components.list"
@@ -99,6 +110,11 @@ func (s *Server) readSchematicGeometry(ctx context.Context, req protocol.Request
 		return nil, fmt.Errorf("geometry read failed: %+v", res)
 	}
 	s.audit.Append(fromResponse(started, &read, res))
+	// A late response may contain valid geometry, but cannot turn an expired
+	// observation into a successful verification. Keep its raw audit evidence.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("geometry response arrived after read deadline: %w", err)
+	}
 	if res.Context == nil || res.Context.DocumentUUID == "" || res.Context.ProjectUUID == "" || res.Context.DocumentType != "schematic" {
 		return nil, fmt.Errorf("geometry read lacks an identified active schematic")
 	}
@@ -150,45 +166,91 @@ func (s *Server) forwardSchematicGeometry(ctx context.Context, req protocol.Requ
 		failed.Result["actionResult"] = res.Result
 		return failed, nil
 	}
-	after, err := s.readSchematicGeometry(ctx, req, dispatch, "after")
-	if err != nil {
-		failed := geometryFailure(req, "readback", true, nil, err.Error())
+	observations := []map[string]any{}
+	failReadback := func(findings any, detail string) (*protocol.Response, error) {
+		failed := geometryFailure(req, "readback", true, findings, detail)
 		failed.Result["actionResult"] = res.Result
+		guard := failed.Result["geometryGuard"].(map[string]any)
+		guard["readbackAttempts"], guard["observations"] = len(observations), observations
 		return failed, nil
 	}
-	if after.Context.ProjectUUID != before.Context.ProjectUUID || after.Context.DocumentUUID != before.Context.DocumentUUID ||
-		before.Seq == nil || after.Seq == nil || res.Seq == nil || *res.Seq <= *before.Seq || *after.Seq <= *res.Seq ||
-		before.SeqAbandoned == nil || after.SeqAbandoned == nil || *before.SeqAbandoned != *after.SeqAbandoned {
-		failed := geometryFailure(req, "readback", true, nil, "Document or FIFO freshness changed; geometry verification is incomplete.")
-		failed.Result["actionResult"] = res.Result
-		return failed, nil
-	}
-	findings := schguard.AnalyzeWireGeometry(after.Result)
-	if addingWire {
-		findings = schguard.NewGeometryFindings(baseline, findings)
-	}
-	if len(findings) != 0 {
-		failed := geometryFailure(req, "readback", true, findings, "New invalid geometry observed after write. Repair the measured state; API success is not validation success.")
-		failed.Result["actionResult"] = res.Result
-		return failed, nil
-	}
-	if req.Action == "schematic.wire.create" || req.Action == "schematic.power.connect_pin" {
-		proposed, _ := proposedSchematicWire(req)
-		if err := schguard.VerifyWirePresent(after.Result, proposed); err != nil {
-			failed := geometryFailure(req, "readback", true, nil, err.Error())
-			failed.Result["actionResult"] = res.Result
-			return failed, nil
+	readCtx := ctx
+	var cancelPublication context.CancelFunc
+	defer func() {
+		if cancelPublication != nil {
+			cancelPublication()
 		}
-		if err := schguard.VerifyWireTopology(before.Result, after.Result, proposed); err != nil {
-			failed := geometryFailure(req, "readback", true, nil, err.Error())
-			failed.Result["actionResult"] = res.Result
-			return failed, nil
+	}()
+	previousSeq := res.Seq
+	for attempt := 0; ; attempt++ {
+		suffix := "after"
+		if attempt > 0 {
+			suffix = fmt.Sprintf("after-%d", attempt+1)
 		}
+		after, err := s.readSchematicGeometry(readCtx, req, dispatch, suffix)
+		observation := map[string]any{"readId": req.ID + "-geometry-" + suffix}
+		observations = append(observations, observation)
+		if err != nil {
+			observation["error"] = err.Error()
+			return failReadback(nil, err.Error())
+		}
+		observation["seq"], observation["seqAbandoned"] = after.Seq, after.SeqAbandoned
+		if wires, ok := after.Result["wires"].([]any); ok {
+			observation["wireSegments"] = len(wires)
+		}
+		if res.Context == nil || res.Context.ProjectUUID != before.Context.ProjectUUID || res.Context.DocumentUUID != before.Context.DocumentUUID || res.Context.DocumentType != "schematic" ||
+			after.Context.ProjectUUID != before.Context.ProjectUUID || after.Context.DocumentUUID != before.Context.DocumentUUID ||
+			before.Seq == nil || after.Seq == nil || res.Seq == nil || previousSeq == nil ||
+			*res.Seq <= *before.Seq || *after.Seq <= *previousSeq ||
+			before.SeqAbandoned == nil || after.SeqAbandoned == nil || res.SeqAbandoned == nil ||
+			*before.SeqAbandoned != *res.SeqAbandoned || *before.SeqAbandoned != *after.SeqAbandoned {
+			return failReadback(nil, "Document or FIFO freshness changed; geometry verification is incomplete.")
+		}
+		previousSeq = after.Seq
+		findings := schguard.AnalyzeWireGeometry(after.Result)
+		if addingWire {
+			findings = schguard.NewGeometryFindings(baseline, findings)
+		}
+		if len(findings) != 0 {
+			return failReadback(findings, "New invalid geometry observed after write. Repair the measured state; API success is not validation success.")
+		}
+		if addingWire {
+			proposed, _ := proposedSchematicWire(req)
+			if err := schguard.VerifyWirePresent(after.Result, proposed); err != nil {
+				observation["coverageError"] = err.Error()
+				var incomplete *schguard.WireCoverageError
+				if !errors.As(err, &incomplete) || attempt+1 >= wirePublicationMaxReads {
+					return failReadback(nil, err.Error())
+				}
+				if cancelPublication == nil {
+					readCtx, cancelPublication = context.WithTimeout(ctx, protocol.SchematicWirePublicationBudget)
+				}
+				timer := time.NewTimer(wirePublicationDelay)
+				select {
+				case <-readCtx.Done():
+					timer.Stop()
+					return failReadback(nil, fmt.Sprintf("%s; wire publication read deadline: %v", err, readCtx.Err()))
+				case <-timer.C:
+				}
+				continue // Never dispatch the mutation again.
+			}
+			if err := schguard.VerifyWireTopology(before.Result, after.Result, proposed); err != nil {
+				return failReadback(nil, err.Error())
+			}
+		}
+		if err := readCtx.Err(); err != nil {
+			return failReadback(nil, fmt.Sprintf("geometry verification deadline: %v", err))
+		}
+		break
 	}
 	if res.Result == nil {
 		res.Result = map[string]any{}
 	}
 	res.Result["geometryGuard"] = map[string]any{"passed": true, "phase": "readback", "preexistingFindings": len(baseline), "scope": "pin-exit-direction/wire-through-body"}
+	res.Result["geometryGuard"].(map[string]any)["readbackAttempts"] = len(observations)
+	if len(observations) > 1 {
+		res.Result["geometryGuard"].(map[string]any)["observations"] = observations
+	}
 	if req.Action == "schematic.wire.create" || req.Action == "schematic.power.connect_pin" {
 		res.Result["geometryGuard"].(map[string]any)["scope"] = "pin-exit-direction/wire-through-body/wire-coverage/wire-contact-topology"
 		res.Result["geometryGuard"].(map[string]any)["baselineFindings"] = baseline

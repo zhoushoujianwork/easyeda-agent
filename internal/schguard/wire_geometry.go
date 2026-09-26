@@ -39,6 +39,13 @@ type segment struct {
 	index int
 }
 
+// WireCoverageError means the observed inventory was parseable but did not yet
+// cover a proposed segment. It does not classify missing/malformed evidence as
+// publication delay, and does not authorize another mutation.
+type WireCoverageError struct{ Message string }
+
+func (e *WireCoverageError) Error() string { return e.Message }
+
 // VerifyWirePresent proves every proposed nonzero orthogonal segment is covered
 // by actual wire geometry. EDA may reverse, split, merge or re-ID primitives;
 // interval coverage, not primitive identity or equal endpoints, is authoritative.
@@ -107,7 +114,7 @@ func VerifyWirePresent(result map[string]any, proposed map[string]any) error {
 			}
 		}
 		if covered < hi-epsilon {
-			return fmt.Errorf("proposed wire segment %d (%g,%g)→(%g,%g) is not fully present in readback (uncovered coordinate %g..%g)", i-1, a.X, a.Y, b.X, b.Y, covered, hi)
+			return &WireCoverageError{Message: fmt.Sprintf("proposed wire segment %d (%g,%g)→(%g,%g) is not fully present in readback (uncovered coordinate %g..%g)", i-1, a.X, a.Y, b.X, b.Y, covered, hi)}
 		}
 	}
 	return nil

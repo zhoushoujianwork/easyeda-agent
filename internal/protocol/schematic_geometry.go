@@ -3,6 +3,21 @@ package protocol
 import "time"
 
 const SchematicGeometryReadBudget = 20 * time.Second
+const SchematicWirePublicationBudget = 2 * time.Second
+
+// SchematicGeometryOverhead keeps CLI and daemon end-to-end budgets aligned.
+// Short diagnostic deadlines do not acquire a publication-wait allowance.
+func SchematicGeometryOverhead(action string, actionBudget time.Duration) time.Duration {
+	if !SchematicGeometryGuarded(action) {
+		return 0
+	}
+	readBudget := SchematicGeometryReadTimeout(actionBudget)
+	overhead := 2 * readBudget
+	if readBudget > 0 && (action == "schematic.wire.create" || action == "schematic.power.connect_pin") {
+		overhead += SchematicWirePublicationBudget
+	}
+	return overhead
+}
 
 // Honor deliberately short caller budgets (including diagnostic deadlines).
 func SchematicGeometryReadTimeout(actionBudget time.Duration) time.Duration {
