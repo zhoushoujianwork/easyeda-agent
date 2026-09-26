@@ -101,6 +101,16 @@ func reloadWebPage(cfg *appConfig, window string, timeout time.Duration) (map[st
 	if err != nil {
 		return nil, fmt.Errorf("Web reload refused: saved component baseline is unavailable: %w", err)
 	}
+	// A second, already-connected tab in this project is not evidence that the
+	// requested page reloaded. Freeze every registration, not just oldWindow.
+	beforeWindows, err := webReloadWindows(&pinned, time.Now().Add(timeout))
+	if err != nil {
+		return nil, fmt.Errorf("read connector registrations before Web reload: %w", err)
+	}
+	existingWindows := map[string]bool{oldWindow: true}
+	for _, candidate := range beforeWindows {
+		existingWindows[candidate.WindowID] = true
+	}
 	trigger, err := requestAction(&pinned, "system.page_reload", oldWindow, map[string]any{
 		"projectUuid": cfg.project, "documentUuid": cfg.doc,
 	})
@@ -127,18 +137,24 @@ func reloadWebPage(cfg *appConfig, window string, timeout time.Duration) (map[st
 			continue
 		}
 		found := false
-		var fallback string
+		var fallback, targetWindow string
 		for _, candidate := range windows {
-			if candidate.WindowID == oldWindow || candidate.Context.ProjectUUID != cfg.project {
+			if existingWindows[candidate.WindowID] || candidate.Context.ProjectUUID != cfg.project {
 				continue
+			}
+			if candidate.Context.DocumentUUID == cfg.doc && targetWindow == "" {
+				targetWindow = candidate.WindowID
 			}
 			if fallback == "" {
 				fallback = candidate.WindowID
 			}
 			if candidate.WindowID == candidateWindow {
 				found = true
-				break
 			}
+		}
+		if targetWindow != "" && targetWindow != candidateWindow {
+			candidateWindow, stableSamples = targetWindow, 0
+			found = true
 		}
 		if !found && fallback != "" {
 			// A later registration may replace the first one; never carry its

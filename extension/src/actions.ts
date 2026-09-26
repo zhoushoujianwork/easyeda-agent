@@ -13,6 +13,7 @@ import { barePcbRuleConfiguration, pcbRulesEqual, planPcbConfig } from './pcb-co
 import { pcbNetColorSet } from './pcb-net-color';
 import { documentTypeLabel, readResponseContext } from './eda-context';
 import { getSchematicNetlistFile, NetlistContextError } from './schematic-netlist-file';
+import { assertSchematicReadinessContext, captureSchematicReadiness, SchematicReadinessError, SchematicReadinessToken, waitForSchematicReady } from './schematic-readiness';
 import { readProjectFootprintSourceArchive, readProjectNativeSourceArchive } from './native-footprint-source';
 import {
 	assertLegacySimpleWireOperation,
@@ -2119,7 +2120,7 @@ const schematicComponentDelete: Handler = async (payload) => {
 	// value can be trusted — only a re-read can say what actually went away.
 	try {
 		for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
-			await assertSchDeletionContext(deleteContext);
+			await waitForSchematicReady(deleteContext, 5000, deleteContext.readiness);
 			await eda.sch_PrimitiveComponent.delete(ids.slice(i, i + SCH_DELETE_BATCH));
 		}
 	}
@@ -2490,15 +2491,17 @@ function warnText(label: string, err: unknown): string {
 // re-read to confirm rather than trust the return.
 const SCH_DELETE_BATCH = 50;
 
-type SchDeletionContext = { uuid: string; tabId: string };
+type SchDeletionContext = { uuid: string; tabId: string; readiness: SchematicReadinessToken };
 async function captureSchDeletionContext(): Promise<SchDeletionContext> {
 	const doc = await eda.dmt_SelectControl.getCurrentDocumentInfo();
 	if (!doc?.uuid || !doc.tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'Cannot identify the schematic tab for deletion.');
-	return { uuid: doc.uuid, tabId: doc.tabId };
+	const context = { uuid: doc.uuid, tabId: doc.tabId };
+	return { ...context, readiness: captureSchematicReadiness(context) };
 }
 async function assertSchDeletionContext(expected: SchDeletionContext): Promise<void> {
-	const actual = await captureSchDeletionContext();
-	if (actual.uuid !== expected.uuid || actual.tabId !== expected.tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'Schematic tab changed during deletion; outcome unknown.');
+	const actual = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (actual?.uuid !== expected.uuid || actual.tabId !== expected.tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'Schematic tab changed during deletion; outcome unknown.');
+	assertSchematicReadinessContext(expected, expected.readiness);
 }
 
 function checkedSchPrimitiveIds(live: unknown): Array<string> {
@@ -2551,7 +2554,7 @@ export async function verifySchPrimitiveDeletion(
 async function deleteSchGroup(key: string, ids: Array<string>, context?: SchDeletionContext): Promise<void> {
 	const kind = SCH_PAGE_PRIMITIVE_KINDS.find(k => k.key === key);
 	for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
-		if (context) await assertSchDeletionContext(context);
+		if (context) await waitForSchematicReady(context, 5000, context.readiness);
 		const batch = ids.slice(i, i + SCH_DELETE_BATCH);
 		if (!kind) {
 			await eda.sch_PrimitiveComponent.delete(batch);
@@ -2921,6 +2924,7 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 			await deleteSchGroup(key, ids, deleteContext);
 		}
 		catch (err) {
+			if (err instanceof SchematicReadinessError) throw err;
 			warnings.push(warnText(`delete ${key}`, err));
 		}
 	}

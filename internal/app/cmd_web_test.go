@@ -11,22 +11,24 @@ import (
 )
 
 type webReloadFixture struct {
-	mu             sync.Mutex
-	scheduled      bool
-	activeDoc      string
-	reloadDoc      string
-	healthProject  string
-	openCalls      int
-	readCalls      int
-	postReads      int
-	postCurrents   int
-	currentDocs    []string
-	failedReads    int
-	baselineEmpty  bool
-	emptyAfter     bool
-	driftAfterRead int
-	slowRead       bool
-	actions        []string
+	mu                sync.Mutex
+	scheduled         bool
+	activeDoc         string
+	reloadDoc         string
+	healthProject     string
+	openCalls         int
+	readCalls         int
+	postReads         int
+	postCurrents      int
+	currentDocs       []string
+	failedReads       int
+	baselineEmpty     bool
+	emptyAfter        bool
+	driftAfterRead    int
+	slowRead          bool
+	actions           []string
+	preexistingWindow bool
+	preexistingCalls  int
 }
 
 func newWebReloadFixture(t *testing.T, fx *webReloadFixture) (*appConfig, func()) {
@@ -49,20 +51,28 @@ func newWebReloadFixture(t *testing.T, fx *webReloadFixture) (*appConfig, func()
 		}
 		ctx := map[string]any{"projectUuid": project, "documentUuid": fx.activeDoc, "documentType": docType, "tabId": fx.activeDoc + "-tab"}
 		if r.URL.Path == "/health" {
-			_ = json.NewEncoder(w).Encode(map[string]any{"service": "easyeda-agent", "windows": []any{
-				map[string]any{"windowId": window, "context": ctx},
-			}})
+			windows := []any{map[string]any{"windowId": window, "context": ctx}}
+			if fx.preexistingWindow {
+				windows = append([]any{map[string]any{"windowId": "existing-empty-window", "context": map[string]any{"projectUuid": project}}}, windows...)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"service": "easyeda-agent", "windows": windows})
 			return
 		}
 		var req struct {
-			Action  string         `json:"action"`
-			Payload map[string]any `json:"payload"`
+			Action   string         `json:"action"`
+			Payload  map[string]any `json:"payload"`
+			WindowID string         `json:"windowId"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Error(err)
 			return
 		}
 		fx.actions = append(fx.actions, req.Action)
+		if req.WindowID == "existing-empty-window" {
+			fx.preexistingCalls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": map[string]any{"code": "EDA_CALL_FAILED", "message": "No active document"}})
+			return
+		}
 		result := map[string]any{}
 		switch req.Action {
 		case "project.current":
@@ -320,5 +330,23 @@ func TestWebReloadRefusesWrongDocumentBeforeSave(t *testing.T) {
 	cfg := &appConfig{host: host, ports: port + "-" + port, project: "project-1", doc: "doc-1"}
 	if _, err := reloadWebPage(cfg, "", time.Second); err == nil || !strings.Contains(err.Error(), "exact active UUID") {
 		t.Fatalf("expected pre-save document refusal, got %v", err)
+	}
+}
+
+func TestWebReloadNeverUsesPreexistingSameProjectWindow(t *testing.T) {
+	fx := &webReloadFixture{preexistingWindow: true}
+	cfg, closeServer := newWebReloadFixture(t, fx)
+	defer closeServer()
+	report, err := reloadWebPage(cfg, "old-window", 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report["newWindowId"] != "new-window" || report["ready"] != true {
+		t.Fatalf("unexpected report: %v", report)
+	}
+	fx.mu.Lock()
+	defer fx.mu.Unlock()
+	if fx.preexistingCalls != 0 {
+		t.Fatalf("sent %d requests to a preexisting unrelated window", fx.preexistingCalls)
 	}
 }

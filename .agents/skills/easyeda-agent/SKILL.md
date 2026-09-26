@@ -4,7 +4,7 @@ description: "通过本地 easyeda CLI、daemon 和连接器操作嘉立创EDA�
 license: MIT
 metadata:
   author: zhoushoujianwork
-  version: "1.7.1-dev.1"
+  version: "1.7.1-dev.4"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
@@ -52,7 +52,8 @@ Compose/Apply 和整板设计验收留到下一版本；命令可用不代表这
    `incomplete`；先修复 typed reload/open 能力再复测。报告事实级检查结果和未覆盖项，不用
    阶段签字或综合评分代替判断。
    用户明确要求刷新整个 Web 编辑器时，使用 `easyeda web reload --project <UUID> --doc <UUID>`：
-   它保存当前文档、触发 typed 页面刷新、等待新连接器和同一工程/文档的 fresh 回读，并报告耗时。
+   它保存当前文档、冻结已连接窗口、触发 typed 页面刷新，只接受新注册及同一工程/文档的
+   fresh 回读，并报告耗时；同工程其他旧窗口不能作为刷新成功证据。
    先保存其他已打开文档；不能把 `web reload` 当作对象不可读时的自动兜底。
    用户明确要求轮换侧载连接器时，可在先逐页 typed 保存后用浏览器 UI 管理扩展；
    同 UUID 先卸载旧项、导入新包，并在新项配置中重新启用“允许外部交互”。

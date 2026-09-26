@@ -17,6 +17,7 @@
 
 ```bash
 python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
+  --window <目标窗口ID> \
   --project <测试工程UUID> --doc <原理图页UUID> --type schematic \
   --out <本地证据目录>
 ```
@@ -24,7 +25,9 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 预检通过后，Codex 执行员按[基础动作的前置条件与步骤](cli-live-test-detail.md)串行测试；
 独立复核员只读核对原始命令回包、对象差分和保存重载后的新鲜回读。
 `pass` 只授予实际完成的用例；空白页的成功列表回包仅证明路由可用，不证明对象写读。
-多窗口时，预检核对 CLI、daemon 和唯一目标 project/doc 窗口的精确版本及宿主 finding；
+多窗口时，用 `--window` 指定目标；预检核对该窗口的 project/doc、精确版本及宿主 finding，
+并把窗口 ID 传给每条文档读取命令，结束时仍核对同一窗口。不传时要求 project/doc 唯一匹配，
+随后同样固定到该窗口读取。预检还核对 CLI 与 daemon 的精确版本；
 其他工程的旧连接器仍保留在完整 health 证据中，不代替目标窗口判定。目标不明确或自身不兼容仍阻断。
 
 **一次只推进一个 Bxx 单项**。每项开始前核对其前置条件，结束时立即产出一份独立报告，

@@ -9,7 +9,14 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
+
+beforeEach(t => {
+	const globals = globalThis as any, previous = globals.window;
+	const document = { uuid: 'page', tabId: 'page@project', profileSetting: { readonlyMode: false } };
+	globals.window = { SCH: { docMemoryManager: { getActiveDoc: () => document }, app: { actionRunner: { running: false, currentAction: null } } } };
+	(t as import('node:test').TestContext).after(() => { globals.window = previous; });
+});
 import JSZip from 'jszip';
 import { sweepDeadlines } from './deadlines';
 
@@ -4046,4 +4053,50 @@ test('import confirm probe never clicks a non-apply button and ignores unrelated
 	assert.deepEqual(noButton, { outcome: 'no-button', clicked: [] });
 	const unrelated = await runImportConfirmStep('Design Rule Check', ['Apply Changes']);
 	assert.deepEqual(unrelated, { outcome: 'none', clicked: [] });
+});
+
+test('prim-delete waits for observed sync before the first official delete', async t => {
+	const g = globalThis as any, fx = edaWithUndeletableText([], ['w1']);
+	g.eda = fx; t.after(() => { delete g.eda; });
+	const runner = g.window.SCH.app.actionRunner;
+	Object.assign(runner, { running: true, currentAction: { name: 'RealTimeSync', status: 'running' } });
+	let calls = 0;
+	const original = fx.sch_PrimitiveWire.delete;
+	fx.sch_PrimitiveWire.delete = async ids => { assert.equal(runner.running, false); calls++; return original(ids); };
+	const work = runAction('schematic.primitives.delete', { primitiveIds: ['w1'] });
+	await new Promise(resolve => setImmediate(resolve)); assert.equal(calls, 0);
+	Object.assign(runner, { running: false, currentAction: null });
+	sweepDeadlines(Date.now() + 100);
+	const result = await work; assert.equal(result.result?.total, 1); assert.equal(calls, 1);
+});
+
+test('prim-delete sync timeout issues zero deletes and has no late continuation', async t => {
+	const g = globalThis as any, fx = edaWithUndeletableText([], ['w1']);
+	g.eda = fx; t.after(() => { delete g.eda; });
+	const runner = g.window.SCH.app.actionRunner;
+	Object.assign(runner, { running: true, currentAction: { name: 'RealTimeSync', status: 'running' } });
+	let calls = 0; fx.sch_PrimitiveWire.delete = async () => { calls++; return true; };
+	const work = runAction('schematic.primitives.delete', { primitiveIds: ['w1'] });
+	const check = assert.rejects(work, /Timed out/);
+	await new Promise(resolve => setImmediate(resolve)); sweepDeadlines(Date.now() + 6000); await check;
+	Object.assign(runner, { running: false, currentAction: null });
+	sweepDeadlines(Date.now() + 10000); await new Promise(resolve => setImmediate(resolve)); assert.equal(calls, 0);
+});
+
+test('prim-delete rechecks readiness before batch two and refuses another transaction', async t => {
+	const g = globalThis as any, fx = edaWithUndeletableText([], []);
+	const ids = Array.from({ length: 51 }, (_, i) => `p${i}`), alive = new Set(ids);
+	const runner = g.window.SCH.app.actionRunner;
+	let calls = 0;
+	fx.sch_PrimitiveComponent = {
+		getAll: async () => [...alive].map(id => ({ getState_PrimitiveId: () => id })) as any,
+		delete: async (batch?: string[]) => {
+			calls++; batch?.forEach(id => alive.delete(id));
+			Object.assign(runner, { running: true, currentAction: { name: 'move', status: 'running' } });
+			return true;
+		},
+	};
+	g.eda = fx; t.after(() => { delete g.eda; });
+	await assert.rejects(() => runAction('schematic.primitives.delete', { primitiveIds: ids }), /non-sync/);
+	assert.equal(calls, 1); assert.deepEqual([...alive], ['p50']);
 });

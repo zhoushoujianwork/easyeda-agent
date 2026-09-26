@@ -1,6 +1,13 @@
 /// <reference types="@jlceda/pro-api-types" />
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test, beforeEach } from 'node:test';
+
+beforeEach(t => {
+	const globals = globalThis as any, previous = globals.window;
+	const document = { uuid: 'page', tabId: 'page@project', profileSetting: { readonlyMode: false } };
+	globals.window = { SCH: { docMemoryManager: { getActiveDoc: () => document }, app: { actionRunner: { running: false, currentAction: null } } } };
+	(t as import('node:test').TestContext).after(() => { globals.window = previous; });
+});
 import { collectWireSegments, connectivityWireSegments, planSchDeleteCascadeTrees, runAction, schematicComponentsList, schematicPinDisconnect } from './actions';
 import { classifyWireContact, classifyWireSegment, isDegenerateWireSegment, parseObservedWireLine, physicalWireIslands, type WireSegment } from './schematic-wire-topology';
 

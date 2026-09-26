@@ -71,7 +71,7 @@ def same_version(actual, expected):
     return str(actual).removeprefix("v") == expected.removeprefix("v")
 
 
-def check_health(raw, expected, project, doc, doc_type):
+def check_health(raw, expected, project, doc, doc_type, window_id=None):
     health = parse_json_output(raw)
     found = health.get("found") or {}
     daemon = found.get("raw") or {}
@@ -84,11 +84,14 @@ def check_health(raw, expected, project, doc, doc_type):
         raise CheckError("blocked", f"daemon version {daemon.get('version')} differs from {expected}")
     matches = []
     for window in daemon.get("windows") or []:
+        if window_id is not None and window.get("windowId") != window_id:
+            continue
         context = window.get("context") or {}
         if context.get("projectUuid") == project and context.get("documentUuid") == doc and context.get("documentType") == doc_type:
             matches.append(window)
     if len(matches) != 1:
-        raise CheckError("blocked", f"expected one {doc_type} window for {project}/{doc}, found {len(matches)}")
+        target = f" window {window_id}" if window_id is not None else ""
+        raise CheckError("blocked", f"expected one {doc_type}{target} for {project}/{doc}, found {len(matches)}")
     if not same_version(matches[0].get("connectorVersion", ""), expected):
         raise CheckError("blocked", f"connector version {matches[0].get('connectorVersion')} differs from {expected}")
     window_id = matches[0].get("windowId")
@@ -117,6 +120,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cli", default="easyeda", help="installed easyeda CLI path")
     parser.add_argument("--expected-version", required=True, help="exact installed dev version")
+    parser.add_argument("--window", help="exact target window ID; required when project/document is open in multiple windows")
     parser.add_argument("--project", required=True, help="test project UUID")
     parser.add_argument("--doc", required=True, help="active test document UUID")
     parser.add_argument("--type", choices=("schematic", "pcb"), required=True)
@@ -135,7 +139,7 @@ def main():
         if not same_version(version.split()[-1], args.expected_version):
             raise CheckError("blocked", f"CLI version {version} differs from {args.expected_version}")
         first_health = run_command(args.cli, "01-health-before", ["health"], args.out, args.timeout)
-        summary["windowId"] = check_health(first_health, args.expected_version, args.project, args.doc, args.type)
+        summary["windowId"] = check_health(first_health, args.expected_version, args.project, args.doc, args.type, args.window)
         summary["checks"].append("health-before")
         actions = parse_json_output(run_command(args.cli, "02-actions", ["actions"], args.out, args.timeout))
         if not actions:
@@ -144,11 +148,12 @@ def main():
         for index, command in enumerate((["project", "info"], ["project", "doc"],
                                          ["sch", "list"] if args.type == "schematic" else ["pcb", "list"])):
             name = f"0{index + 3}-" + "-".join(command)
-            raw = run_command(args.cli, name, [*command, "--project", args.project, "--doc", args.doc], args.out, args.timeout)
+            raw = run_command(args.cli, name, [*command, "--window", summary["windowId"],
+                                              "--project", args.project, "--doc", args.doc], args.out, args.timeout)
             check_response(raw, args.project, args.doc, args.type, name)
             summary["checks"].append(name)
         last_health = run_command(args.cli, "06-health-after", ["health"], args.out, args.timeout)
-        check_health(last_health, args.expected_version, args.project, args.doc, args.type)
+        check_health(last_health, args.expected_version, args.project, args.doc, args.type, summary["windowId"])
         summary["checks"].append("health-after")
         summary["status"] = "pass"
     except CheckError as exc:
