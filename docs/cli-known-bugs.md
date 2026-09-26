@@ -1,6 +1,6 @@
 # CLI 已知问题与使用建议
 
-更新于 2026-09-27。已编号问题按此前决定保留、后续定向追踪；当前保留相关功能。
+更新于 2026-09-27。本轮问题按各自证据修复或继续跟进；使用方式与受影响分支见下表。
 此前基础 CLI 集中检查已收尾；日常可用范围和新发布验收进度见 [CLI Status](cli-STATUS.md)，本页维护问题细节。
 各轮现场依据见[历史证据索引](reviews/README.md)及对应 issue。
 
@@ -14,8 +14,9 @@
 | [#55：页面改名被拒绝](https://github.com/zhoushoujianwork/easyeda-agent/issues/55) | 暂定 P2：dev.9 B04 官方返回 false，fresh 名称仍 P2，基础验收失败。 | 重新打开原 issue；失败传播已修复，实际改名仍待定位。保留非零退出，不用无关写入或重复改名恢复。 |
 | [#260：区域/铺铜边界线宽 1→0.2 mil](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) | 暂定 P2：显式参数未兑现，B08 失败；未证明电气损坏程度或三个对象类型同源。 | dev.11 已能 fresh 检出并停止依赖；宽度本身未修复。保留 ID，精确清理并保存重载核对。 |
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
+| [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
 
-六项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
+本轮跟进的七项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
 
 2026-09-26 按用户要求，将本轮尚无可靠修法的三项登记为待后续修复：复用并重新打开 #55，
@@ -27,66 +28,31 @@
 移除它们对高级用例与发布的整体阻断，见[版本范围决定](releases/release-1.8.md#已接受的已知限制)。
 不等待三项修复或因此重复基础全集；issue、实际失败和错误退出仍保留，其他功能按回读继续。
 
-## 高级流程新增问题
+## 高级流程修复与边界
 
-[#262：完整用例五个功能区无法生成布局候选](https://github.com/zhoushoujianwork/easyeda-agent/issues/262)。
-2026-09-27 从原始需求生成的 51 件电路，在 USB、数据隔离、串口、BOOT/RESET 与 MCU 区失败；
-另外五区只通过离线规划。原始几何、网络和归属已冻结，十区输入重放复现相同结果，
-详见[失败报告与可复现输入](reviews/2026-09-27-cli-layout-regression.md)。
+三页 F1/F2/E1 和真实图签 L2 子例已完成有限独立复核；以下修复已采用并关闭，
+原失败与各阶段诊断保留在[续测记录](reviews/2026-09-27-cli-schematic-gate.md)及
+[详细执行记录](releases/evidence/v1.8.0/test-report-detail.md)。不签 PCB 或完整 E2E。
 
-同日通用修复已使十个冻结区域离线 `planned`，原失败记录保留；详情见上方回归记录。
-完整现场链路尚未复测，保持 open；有界搜索失败不证明布局无解。
-受影响的是高级自动设计候选生成，基础单动作仍按各自实测范围使用。
-A01 失败，A02–A06 未运行；不移除几何/直连检查、不用手工坐标或 GUI 绕过，也不签完整发布通过。
-这项新失败不在用户已接受的 #55/#260/#261 范围内。
+| Bug | 当前结论 | 验证边界 |
+|---|---|---|
+| [#262：部分功能区无法生成布局候选](https://github.com/zhoushoujianwork/easyeda-agent/issues/262) | `8c4d3e4` 通用修复，十区离线及三页现场复验独立通过，closed | 只签本轮参数源与原理图；有界搜索失败仍不证明数学上无解。 |
+| [#263：超过 1 MiB 响应静默截断](https://github.com/zhoushoujianwork/easyeda-agent/issues/263) | `d3409a0` 完整读取、超限报错及 P1 保存重载恢复独立通过，closed | 动作响应 32 MiB、health 1 MiB；超限明确失败，不能删减必要字段或盲重放。 |
+| [#264：图签文本强制显示](https://github.com/zhoushoujianwork/easyeda-agent/issues/264) | `61d0173` 源显隐合同与 `37449f2` 写前检查，三页图面/持久化独立通过，closed | CLI/Compose 保持已知布尔、拒绝未知显隐；未知显隐现场负例仍 not-run，raw typed HTTP 不外推。 |
+| [#265：无接点交叉误报](https://github.com/zhoushoujianwork/easyeda-agent/issues/265) | `5ab4b40` 完整库存与线段对账，P2 完整 strict/SDK 独立通过，closed | 只允许有完整证据的内部 X；端点/T/共线/本体/缺测仍拒绝，合法交叉保留为 info。 |
+| [#266：导线写后即时库存暂空](https://github.com/zhoushoujianwork/easyeda-agent/issues/266) | `8877942` 有界只读回查，两次真实第二读及三页保存重载独立通过，closed | 每动作只写一次；过期、取消、漂移、非法几何仍失败，不承诺所有宿主延迟小于 2s。 |
 
-[#263：超过 1 MiB 的动作响应被 CLI 静默截断](https://github.com/zhoushoujianwork/easyeda-agent/issues/263)。
-P1 前 272 步写入后最终完整页回读失败，已保存并导出部分候选；后续页与 PCB 没有继续写入。
-公共读取已改为动作 32 MiB、health 1 MiB，并在超限时明确报错；离线正负例和全量检查通过，
-现场完整 JSON 已可读取；其后的 P1 定向恢复与关闭范围见下，不等于完整用例通过。
-详见[截断修复记录](reviews/2026-09-27-cli-response-truncation.md)。
-回读失败不证明对象缺失，不得盲重放或删减必要字段；先完整回读并从当前状态重新编译受保护计划。
-该问题也不在三项已接受限制内，影响依赖完整快照的批次验证。
+本轮三页 195 脚/33 网/41 条外围/15 个 direct 树对账通过，SDK strict 各 0 fatal/error/warn。
+隐藏 pin 属性的 getter 差分、runtime ID 重铸和浮点尾差已按父属、显隐、官方图面与原生数据逐项核对；
+不称属性原回包全等。#266 原始审计缺逐次完整 context/seq，seq 证据来自结果 observations，不补造缺项。
 
-响应截断 #263 已修复并关闭：`d3409a0` 的完整读取及 P1 save→reload→fresh 对象/逐脚/线树恢复
-经过独立子集复核，658 项通过；宿主隐藏属性的 ID/坐标归一化变化另行保留，不宣称完整 result 全等。
-该子集不签整页图面或完整 E2E。
-
-恢复后又发现 [#264 图签文本更新强制显示](https://github.com/zhoushoujianwork/easyeda-agent/issues/264)
-与 [#265 clusters 无接点交叉误报](https://github.com/zhoushoujianwork/easyeda-agent/issues/265)，已保存原始输入/回读。
-两项修复通过离线回归，现场尚未签署；#265 初版的库存摘要请求遗漏与漏原始线段边界已于 `5ab4b40` 修复，同一反例独立复验通过。
-#264 的 Compose 源显隐合同已于 `61d0173` 补齐并通过定向离线回归，等待现场，不手改生成队列兜底。
-P2 另有 SDK strict DRC 聚合 2 warn、无明细，根因未知，不声明已定位或豁免。
-P1 的保存重载和电气通过不等于图面通过；三页完整验收仍未完成。
-#265 在提交版本的 P2 真实 strict clusters 定向复测已 exit 0，保存重载后完整 gate 仍待完成。
-#264 另发现新页字段显隐为 null 时，仅改文字触发宿主 TypeError，回读确认该次无变化；
-本轮源明确声明的布尔显隐已写入并保存重载通过。未知显隐不能猜值，默认状态边界继续保持 open。
-`37449f2` 已让 CLI 在写文字前拒绝未知显隐并列出缺项；显式布尔仍可执行。
-独立离线 83 项通过，现场写前拒绝与三页完整图面仍待复测。此预检查覆盖 CLI/Compose 路径，
-不声称原始 typed HTTP 已具有同一图签预检查。官方 P3 图中仍有额外作者属性值，下一轮修源显隐并重新生成计划。
-详见[原理图恢复与严格检查记录](reviews/2026-09-27-cli-schematic-gate.md)。
-
-[#266：导线创建返回后立即回读暂为空](https://github.com/zhoushoujianwork/easyeda-agent/issues/266)。
-P3 第 21 步已返回实际线段 ID，但即时完整读取的 wires 为空，稍后 fresh 才出现同一条线；
-失败保存后六件/一条线，未重放队列。`8877942` 只对合法库存的覆盖不足追加有界读取，
-不重复写入、不放宽身份、几何或拓扑判定；取消/期限到达仍失败。独立 58 项和最终全量 Go
-4075 项通过，仍待真实宿主、保存重载及完整原理图验证，保持 open。该新问题不在三项已接受限制内。
-
-本轮最新构建完成三页受保护 Apply 及 save→reload→fresh，195 脚/41 对外围/15 个 direct 树对账通过；
-全工程 33 网、UART 两网端点完整，三页同参数 SDK strict 均 0 fatal / 0 error / 0 warn。
-#266 的 wire-000/015 实际均首读为空、第二读覆盖齐全后通过，每动作只写一次；
-#264 三页图签黑色表格正文保留且额外蓝字消失，#265 P2 完整严格检查通过。
-这些最新现场结果已完成有限独立复核，#262/#264/#265/#266 按各自范围关闭；
-不补签旧失败，不代完整 E2E、L1/N1/R1 或 PCB。复核保留隐藏属性读值差分及原始审计的 context/seq 缺项，
-没有用全文全等或源码推定掩盖它们，详见[续测记录](reviews/2026-09-27-cli-schematic-gate.md)。
-
-[#267：保留器件清页遗漏引脚子级属性](https://github.com/zhoushoujianwork/easyeda-agent/issues/267)。
-隔离真实 handler 的完整 global 投影 dry-run，把 153 条真实 pin-owned 属性列入 orphan 删除计划，
-而返回 instancesPreserved:true；global 为空对照仅显示保护覆盖不足。两种复现均零删除，未发生现场损坏。
-原始合成库存不证明宿主某次 unscoped getAll 必然全量。后续须补官方引脚父属闭包、完整属性核对及正负例，
-当前不使用该广义清理路径。本批更窄的单导线 typed 删除及六件/51 脚/NC/属性语义保存重载已单独核对。
+[#267：保留器件清页遗漏引脚子级属性](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) 保持 open。
+隔离真实 handler 的完整 global 投影 dry-run 将 153 条 pin-owned 属性列入 orphan 删除计划，却返回
+instancesPreserved:true；global 为空对照仅显示保护覆盖不足。两种复现均零删除，未发生现场损坏，
+也不证明宿主 unscoped getAll 必然完整。后续需补官方引脚父属闭包、属性核对、正负例及现场保存重载。
+本批精确单线回退另有完整保护证明；不能把它外推为广义清页安全。
 有限独立报告 SHA-256 `66d2aa66588a6e333d2fde1e7d20aaa9d729a93264962c86ea8fe4fd4b864cc5`，
-输入 SHA-256 `c76e4c9415310d5ec7f1085066d79e338e52c5f5ce5b28a02e39027d9883c58d`。保持 open，后续修复和现场复测。
+输入 SHA-256 `c76e4c9415310d5ec7f1085066d79e338e52c5f5ce5b28a02e39027d9883c58d`。
 
 ## 本轮仍缺的验证
 
@@ -97,7 +63,7 @@ P3 第 21 步已返回实际线段 ID，但即时完整读取的 wires 为空，
    不因此强制重跑全集。各版本状态见 [CLI Status](cli-STATUS.md)，不混用旧通过记录。
 3. 历史 A00 blocked（原选型测量 22/35）记录保留。本轮另从原始需求开始，已完成最终 51 位号测量，
    原 A01 布局失败保留，最新三页原理图已现场通过并完成有限独立复核；PCB 同步/布局、用户布局确认、
-   布线/DRC、最终落盘复核及 L1/N1/R1 仍待运行。
+   布线/DRC、最终落盘复核及 L1、受控 R1 尚缺；自然过期 sourceScene N1 子例已独立通过。
    范围和顺序见[高级验收](cli-advanced-test.md)，已确认的复用工程与叠层 A 保留。
 
 上述是覆盖缺口，不另建成“已确认产品 bug”，也不拿离线检查或错误检测通过代签设计完成。
