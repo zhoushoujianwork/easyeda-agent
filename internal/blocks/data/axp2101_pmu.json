@@ -3,9 +3,9 @@
   "desc": "AXP2101 单节锂电 PMU(集成电源心脏):充电+power-path + 多路 DCDC/LDO + 库仑计 + PWRON 电源键『长按硬关机』(硬件行为,需固件使能 0x22[1]);穿戴/M5/ESP32 电池板一颗芯片全包电源树",
   "category": "power",
   "author": "@zhoushoujianwork",
-  "contributors": [],
+  "contributors": ["Codex"],
   "added": "v0.12.0",
-  "updated": "v0.12.0",
+  "updated": "v1.7.1-dev.11",
   "source": "datasheet:AXP2101 (X-Powers V1.0, BAT 1µF/VSYS 2×22µF/SDA-SCK 上拉/IRQ 上拉 明文) + official-ref: M5Stack CoreS3 sheet1(主源,rail→load legend 印图上) + M5Stack Core2 v1.1 + LilyGo T-Beam v1.2(PWRON 电源键+ESD+18650) + XPowersLib(lewisxhe) 寄存器源(0x22 PWROFF_EN / 0x27 OFF_ON_LEVEL_CTRL)。多源交叉验证 harvest 2026-07-11",
   "validated": null,
   "_draft_status": "DRAFT(部分验证)。ceshi 2026-07-11 实测已过:(1)✅ deviceUuid=14da156487e4417ea255a1ca8aae1558(lib by-lcsc C3036461)、封装 QFN-40 确认;(2)✅ sch place 落图无 hang,sch read 读出 41 真实脚名与本块 U.<脚名> 逐一核对全命中,并揪出真缺陷=独立 GND 脚(pin3)须与 EP(pin41)一并接地(已补 U.GND)。仍欠(故 validated=null):(3) 完整 place(22件)→wire→sch check→DRC=0 未跑——ceshi 唯一 schematic 文档被 esp32-mini 回归板占用(同文档跨页并网,DRC 不干净),无隔离 venue;留待 phase-2 `sch block apply` 或独立工程;(4) 多处元件值仍 UNCONFIRMED(电感/去耦/串阻,见各 note);(5) LED 阳阴极极性待放置核实;(6) 长按硬关机行为须带固件实板 bring-up 才算证实——DRC/sch check 只能验接线拓扑,验不了关机行为本身。",
@@ -34,7 +34,7 @@
     "R_TS1": { "part": "res.10k_0402", "qty": 1, "note": "无电芯 NTC 时 TS 固定分压上臂(接 VREF)。有 NTC 时删此件、TS 接电芯 10k@25℃ NTC。" },
     "R_TS2": { "part": "res.10k_0402", "qty": 1, "note": "TS 分压下臂(到 GND)。TS 绝不能悬空——否则误报过温挂起充电;固件配合 disableTSPinMeasure()。" },
     "J_BAT": { "part": "conn.ph2_3p_ra", "qty": 1, "note": "单节锂电座:1=VBAT+,2=GND,3=NTC(用电芯 NTC 时接 TS)。裸 18650 座前串 P-MOS 反接保护是可选加固(见 pcb_layout),本 draft 未含。" },
-    "LED_CHG": { "part": "led.red_0805", "qty": 1, "note": "CHGLED 充电指示(可选)。阳极接 VSYS,阴极经 R_LED 接 U.CHGLED(开漏下拉点亮)。极性脚名待 sch read 核实。" },
+    "LED_CHG": { "part": "led.yellow_0805", "qty": 1, "note": "CHGLED 充电指示(可选)。阳极接 VSYS,阴极经 R_LED 接 U.CHGLED(开漏下拉点亮)。极性脚名待 sch read 核实。" },
     "R_LED": { "part": "res.1k_0402", "qty": 1, "note": "CHGLED 限流 1k。" }
   },
   "internal_nets": [

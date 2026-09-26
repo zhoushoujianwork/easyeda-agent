@@ -93,7 +93,8 @@
       "value": "KF301-5.0-2P",
       "mpn": "KF301-5.0-2P",
       "lcsc": "C474881",
-      "manufacturer": "Cheng Du Kai Hong",
+      "manufacturer": "KEFA(科发)",
+      "datasheetUrl": "https://item.szlcsc.com/datasheet/KF301-5.0-2P/481499.html",
       "deviceUuid": "41ddecaaf01b4c1aa92ec4bfe22149b7",
       "footprint": "CONN-TH_P5.00_KF301-5.0-2P",
       "basic": false,
@@ -211,15 +212,29 @@
       "basic": false,
       "desc": "22µF 25V X5R 0805 (LDO output)"
     },
-    "led.red_0805": {
-      "value": "RED",
+    "led.yellow_0805": {
+      "value": "YELLOW",
       "mpn": "KT-0805Y",
       "lcsc": "C2296",
-      "manufacturer": "Hubei KENTO",
+      "manufacturer": "KENTO",
       "deviceUuid": "06303f8c50b646d88d0dd08d2ec9692c",
       "footprint": "LED0805-R-RD",
-      "basic": false,
-      "desc": "0805 indicator LED"
+      "basic": true,
+      "desc": "0805 黄色指示灯，2026-09-27 当前官方库 C2296 / KT-0805Y：Illumination Color=黄色；原厂A.0手册p3在25°C、IF=10mA列Vf=1.8–2.4V，不能外推为所有电流下保证；封装或3D模型名含RD不能作为发光颜色依据。",
+      "datasheetUrl": "https://item.szlcsc.com/datasheet/KT-0805Y/2669.html",
+      "datasheetPdfUrl": "https://atta.szlcsc.com/upload/public/pdf/source/20250710/33E72A33E86C5F5E01E5F72CC2C01C88.pdf"
+    },
+    "led.red_0805": {
+      "value": "YELLOW",
+      "mpn": "KT-0805Y",
+      "lcsc": "C2296",
+      "manufacturer": "KENTO",
+      "deviceUuid": "06303f8c50b646d88d0dd08d2ec9692c",
+      "footprint": "LED0805-R-RD",
+      "basic": true,
+      "desc": "兼容旧键，实际器件与 led.yellow_0805 相同：KENTO KT-0805Y / C2296 为黄色，不是红色。新设计使用 led.yellow_0805；有红色要求时另选具名红灯并核对参数。",
+      "datasheetUrl": "https://item.szlcsc.com/datasheet/KT-0805Y/2669.html",
+      "datasheetPdfUrl": "https://atta.szlcsc.com/upload/public/pdf/source/20250710/33E72A33E86C5F5E01E5F72CC2C01C88.pdf"
     },
     "ind.15uh_12x12mm": {
       "value": "15µH",

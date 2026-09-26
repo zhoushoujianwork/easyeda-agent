@@ -53,6 +53,11 @@ PDF 或封装与当前库器件不一致，停止自动绘图并重新核对器�
 25°C、0Vdc、1MHz 下 I/O-GND 电容 typ 0.8/max 1pF、I/O-I/O typ 0.35/max 0.4pF，
 不能把典型值或“<1pF”当所有条件下的上限。确切身份与手册链接保存在标准库条目中。
 
+**颜色和厂家按当前身份核对**：C2296 的 KENTO `KT-0805Y` 是黄色 LED，原厂 A.0 手册 p3 在 25°C、IF=10mA 列 Vf 为 1.8–2.4V；
+封装/3D 名称中的 RD 不能证明红色。新设计使用 `led.yellow_0805`，旧 `led.red_0805` 仅为同器件兼容键，
+不满足指定红色的要求。C474881 的 `KF301-5.0-2P` 当前官方库制造商为 KEFA（科发），
+不沿用旧厂家文字；原 C 号、device UUID 与引脚拓扑未换。型号页链接保存在标准库条目中。
+
 ## Data sources (live, no API key, browser User-Agent)
 
 | Source | Endpoint | Gives |
