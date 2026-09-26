@@ -37,7 +37,7 @@
 
 | 项目 | 状态 |
 |---|---|
-| 发布前只读预检 | 初次 pass：`1.7.1-dev.11` 三方同版；续测 CLI/daemon 已固定 `v1.7.0-31-g8c4d3e4`，connector 未改，Web 4.1.60 与目标路由核对通过 |
+| 发布前只读预检 | 初次 pass：`1.7.1-dev.11` 三方同版；截断修复后续测 CLI/daemon 已固定 `v1.7.0-33-gd3409a0`，connector 未改，Web 4.1.60 与目标路由核对通过 |
 | 三项基础失败 | 已接受为本次已知限制，保持 open；不再整体阻断，失败漏报修复不等于实际操作通过 |
 | 严格基础 B00–B10 | dev.9 为 9 pass / 2 fail，dev.11 全集 not-run；不为移除阻断而改写，准入依据见上文 |
 | 完整高级用例 | 51 位号测量和清理通过独立复核；A01 初测五区布局失败，修复后十区离线 planned，[#262](https://github.com/zhoushoujianwork/easyeda-agent/issues/262) 保持 open 等完整现场复测，A02–A06 未运行 |
