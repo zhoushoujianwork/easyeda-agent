@@ -4,7 +4,7 @@ package app
 //
 // 当前只传点名的文本项，不回写图框结构。早期 V3 整包/显隐经验不能覆盖
 // V4 的当前模板：强制 showTitle/showValue=true 会显示额外属性文字并探出外框。
-// 文本更新保留已知显隐，未知/null 留给宿主；显式布尔才改变字段显隐。
+// 文本更新保留已知显隐，未知/null 必须显式给布尔值；不猜宿主默认状态。
 
 import (
 	"fmt"
@@ -57,7 +57,7 @@ func tbBoolOr(v any, fallback bool) bool {
 // schTitleBlockMerge 读回当前页的全量明细项,把用户的 patch 合并进去。
 //
 // patch 接受两种写法:`{"Name":{"value":"X"}}`(与读回来的形状一致)与
-// `{"Name":"X"}`(顺手写)。文本更新保留已知显隐，未知显隐不猜值；显式布尔可改显隐。
+// `{"Name":"X"}`(顺手写)。文本更新保留已知显隐，缺失显隐须显式补齐再写。
 func schTitleBlockMerge(cfg *appConfig, window string, patch map[string]any) (map[string]any, bool, error) {
 	if len(patch) == 0 {
 		return nil, false, fmt.Errorf("图签 --data 必须包含至少一个字段更新")
@@ -126,6 +126,25 @@ func buildTitleBlockTextPatch(full, patch map[string]any, shown bool) (map[strin
 	if len(unknown) > 0 {
 		return nil, false, fmt.Errorf("这些明细项当前页没有:%s —— 先跑 `easyeda sch titleblock-get` 看可用 key(平台对不认识的项会崩或静默忽略)",
 			strings.Join(unknown, ", "))
+	}
+	// A text write must not silently choose host defaults for either unknown
+	// visibility flag. For visibility-only updates, showTitle still initializes
+	// the field in the official setter; an unrequested showValue may be omitted.
+	var missing []string
+	for _, key := range tbRequestedKeys(out) {
+		item := out[key].(map[string]any)
+		flags := []string{"showTitle"}
+		if _, updatesValue := item["value"]; updatesValue {
+			flags = append(flags, "showValue")
+		}
+		for _, flag := range flags {
+			if _, known := item[flag].(bool); !known {
+				missing = append(missing, key+"."+flag)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		return nil, false, fmt.Errorf("图签显隐未知，已在写入前停止；缺少 %s —— 请在对应 --data 字段显式提供 true 或 false，不能从 null、缺失或非布尔值推断宿主默认状态", strings.Join(missing, ", "))
 	}
 	// 只在**当前没显示**时才带 showTitleBlock:图签已经显示还传一次,连接器的
 	// 前后对比会把「本来就是 true」判成「没应用」,于是写成功了却报失败(实测)。

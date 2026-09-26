@@ -176,8 +176,9 @@ sheet, keepouts, optional per-page titleBlock text and ordered modules
 sch titleblock-get on the target page. Only nonempty editable text fields are
 accepted; title-block structure, paper geometry and @derived fields are refused.
 Each field accepts a legacy string or {value, showTitle?, showValue?}. Visibility
-options must be explicit booleans; omission preserves host state. Null, unknown
-options and empty updates are refused. Attribute visibility does not hide the
+options must be booleans. Omitted flags preserve known state from the runtime
+getter; a text write requires explicit values for any flags still unknown.
+Null, unknown options and empty updates are refused. Attribute visibility does not hide the
 title-block table itself; verify its text with an official whole-page export.
 Optional sheetBorder is the explicit inner drawing-border bbox, separate from
 the full sheet bbox retained for Apply verification. Frames leave at least

@@ -63,14 +63,14 @@ func TestSchTitleBlockMerge_OnlySendsRequestedKeys(t *testing.T) {
 		return autolayoutOK("page-1", `{"showTitleBlock":true,"titleBlockData":{"Name":{"value":"old","showTitle":null,"showValue":null},"Drawed":{"value":"","showTitle":false,"showValue":true},"Device":{"value":"Drawing-Symbol_A4"},"Border":{"value":"1"}}}`)
 	})
 	defer closeFn()
-	out, show, err := schTitleBlockMerge(cfg, "w1", map[string]any{"Name": "new", "Drawed": "Design team"})
+	out, show, err := schTitleBlockMerge(cfg, "w1", map[string]any{"Name": map[string]any{"value": "new", "showTitle": false, "showValue": false}, "Drawed": "Design team"})
 	if err != nil || show {
 		t.Fatalf("merge: %v, show=%v", err, show)
 	}
 	if len(out) != 2 {
 		t.Fatalf("only requested text keys: %v", out)
 	}
-	if !reflect.DeepEqual(out["Name"], map[string]any{"value": "new"}) || !reflect.DeepEqual(out["Drawed"], map[string]any{"value": "Design team", "showTitle": false, "showValue": true}) {
+	if !reflect.DeepEqual(out["Name"], map[string]any{"value": "new", "showTitle": false, "showValue": false}) || !reflect.DeepEqual(out["Drawed"], map[string]any{"value": "Design team", "showTitle": false, "showValue": true}) {
 		t.Fatalf("text update changed visibility: %#v", out)
 	}
 	for _, forbidden := range []string{"Title Block", "Border", "Device"} {
@@ -121,7 +121,7 @@ func TestTitleBlockLandedRequiresOverallVisibility(t *testing.T) {
 
 func TestTitleBlockUnknownOverallVisibilityDoesNotAutoShow(t *testing.T) {
 	cfg, _, closeFn := newAutolayoutTestDaemon(t, func(_ int, _ autolayoutTestCall) string {
-		return autolayoutOK("page-1", `{"showTitleBlock":null,"titleBlockData":{"Name":{"value":"old"}}}`)
+		return autolayoutOK("page-1", `{"showTitleBlock":null,"titleBlockData":{"Name":{"value":"old","showTitle":false,"showValue":true}}}`)
 	})
 	defer closeFn()
 	if _, needShow, err := schTitleBlockMerge(cfg, "w1", map[string]any{"Name": "new"}); err != nil || needShow {

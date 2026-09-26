@@ -131,7 +131,10 @@ CLI 完整读取单次 action 的 HTTP 响应，最多 32 MiB；health 清单另
 `sch titleblock-get` 先取得实际字段名；`sch titleblock --data` 只传要改的明细项，按
 `--doc` 钉住聚焦页。不要把 get 返回的整包字段写回，尤其 Device/Symbol、几何与 `@` 投影项。
 连接器按字段回读：unknownKeys 应修正键名，partial/notApplied 应检查实际状态，不能盲重试。
-只更新文本时保留字段已知的 `showTitle`/`showValue`；未知或 null 不猜成 true。
+只更新文本时保留字段已知的 `showTitle`/`showValue`；任一显隐未知、缺失或 null 时，
+必须在该字段显式给出对应布尔值，否则 CLI 在首次写入前拒绝并列出缺失项，不猜宿主默认值。
+只改显隐而不改 `value` 时，仍需已知或显式的 `showTitle` 才能安全初始化字段；
+未请求且未知的 `showValue` 可以省略。Compose 通过同一 CLI 执行，遇拒绝先修源参数再重算。
 需要改变属性显隐时在对应字段显式给布尔值，例如
 `{"Name":{"value":"电源页","showTitle":false,"showValue":false}}`；字段属性显隐与图签整体显示是两回事。
 显示字段名可能生成图签表格以外的属性文字；写后必须用官方整页导出核对，不能仅凭值已写入验收图面。

@@ -217,8 +217,11 @@ compares item by item. Items that did not land come back in result.notApplied an
 exit non-zero; items that are not title-block fields at all are named separately
 in result.unknownKeys — for those, fix the key, do not retry.
 
-Text-only updates preserve known per-field showTitle/showValue flags; unknown
-flags are omitted. To change field visibility, supply explicit booleans inside
+Text-only updates preserve known per-field showTitle/showValue flags. If either
+flag is unknown, supply an explicit boolean for that flag; the CLI refuses the
+entire patch before writing rather than choosing a host default. Visibility-only
+updates still require known or explicit showTitle; unrequested unknown showValue
+may be omitted. To change field visibility, supply explicit booleans inside
 that field, for example {"Name":{"value":"Power","showTitle":false,"showValue":false}}.
 Field attribute visibility is separate from the title block's overall --show/--hide.
 
