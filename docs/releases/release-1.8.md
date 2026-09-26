@@ -51,7 +51,8 @@ save→reload→fresh 对账和官方整页图检查，有限独立复核已通�
 PCB 导入发现 [#269](https://github.com/zhoushoujianwork/easyeda-agent/issues/269)，未继续依赖写入；
 单次确认、重复身份检测和失败传播 `698980e` 已在 dev.12 保存重载与独立复核通过，有限关闭；
 另发现 [#270](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) 多边形焊盘投影缺陷，
-`faac8be` dev.13 修复、提交后包及运行态升级独立通过，实际投影/四层布局现场续测中。
+`faac8be` dev.13 修复、提交后包/升级及实际四个J1多边形平移保存重载独立通过，#270有限关闭。
+51件、四M3孔及RF禁布区已保存重载；位号对齐的新相交差异暂停依赖并正在定位，L1独立复核待完成。
 首次提前设置 PLANE 的编排错误及 partial 拒绝保留；4 层 SIGNAL 中间态已保存重载。
 布局确认后按既定顺序验证最终 GND PLANE，不将类型拒绝纳入三项例外。
 R1 的恢复完成态重载缺口及清理原生差分见[当前记录](../reviews/2026-09-27-pcb-import-confirm-fix.md)。

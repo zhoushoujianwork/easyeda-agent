@@ -122,3 +122,38 @@ PCB thumbnail 改变，其余6个其他 ZIP 项相同，三页原生 section 不
 续批执行员已报告保存重载保持4层；其完整布局/L1/投影现场材料仍待冻结与独立复核。
 根任务一次误读 review manifest 文件名产生 FileNotFoundError，正确读取 manifest.json 后
 32+244 文件核对通过，无 EDA 调用或写入，核验说明另存 progress-root 材料。
+
+叠层 partial 批独立 470 项证据断言通过，仅签当时停止写入与限定保全，原请求仍 partial/failed。
+21 件复核文件 manifest `de88e744076fbbd409950aa5600c2d386f63fb9b368f887c7b663719902b79a2`，
+报告 `579341f584ac9a87785b163e1a53aca7d85aad40d7d24733ed0b80d2a83dfd1d`，根任务全部核对通过。
+独立首轮漏算 CLI 新增 bbox center 的两项失败保留；v2逐件计算后457项及13组raw audit配对通过。
+本结论不把 staleRisk 或缺 reload 改为通过，续批真实重载证据另验。
+
+## USB 已保存里程碑与有限关闭
+
+续批 `a02-dev13-layout-resume-20260927/usb-milestone-manifest.json` 冻结424文件，
+SHA `a9e76a80b5ce4251509ced7df5d8116337cbf59f483597303edc95568636d409`，根任务逐大小/哈希匹配。
+四层 SIGNAL 中间态真实 reload 后重新取源；板框80×65mm、2mm直倒角已创建，USB6件队列
+完整dry-run/8步Apply、显式save→真实reload→完整件/pad/dump/native执行完成。
+J1实际四个POLYGON仅L单外轮廓，没有孔/ARC现场前提；完整路径与候选严格相同，
+中心最大差0.08mil、bbox最大2.2737e-13mil，原始读值和差分保留，不宣称raw中心全等或SDK唯一原因。
+45范围外component完整typed记录相同；原生59差分为21payload与38header-only，
+三页原生payload不变。独立USB复核已冻结47件，18731项有效断言通过、460输入绑定、158原始audit闭合。
+报告 `7689ea36aa70edb9c5cc7f6f168ec24865a313a4bea503dc48c4df47a46c1980`，manifest
+`15939503e44e462e795e9af9390d325d2ae563e9c37d2758c66a86f35b74eed2`，root全文件核验通过。
+据此[#270有限关闭](https://github.com/zhoushoujianwork/easyeda-agent/issues/270#issuecomment-5851051573)。
+独立核验的三次脚本假设错误（POLYGON无width、PAD_NET header更新、只读pages.list漏白名单）
+原exit1保留，不算产品缺陷。该USB批L1仍not-run，后续专项另验。
+首轮编译因候选save动作及空payload格式两次拒绝，随后无queue的dry-run本地拒绝；
+编排改为每步非零立即停止，未手改候选或重复设计mutation，原错误保存。
+
+后续45件已另队列完成摆位并保存重载；机器浮点尾差与270°/约−90°回读差按mod360几何等价
+记录，不用pad中心容差放松anchor/bbox/path。4个M3孔随后完成保存重载；首次整板typed诊断图
+只用于查漏，不计连续两轮，root只读观察到数个位号文字需要数据检查。RF、丝印、合法完成态
+整体移动L1与两轮完整布局仍待完成，不据诊断截图签任何几何/电气事实。
+
+后续L1专项54文件清单 `a97d37007d5bb9d7d06938aae735d06a7327ad7311cf14d765e67f494bf1f890`
+root逐文件核对通过，点灯D4+R7合法完成态整体移动/从fresh恢复已执行，独立复核仍待补依赖材料。
+RF禁布区及位号对齐保存重载后，执行员发现silk-align报告aligned51/unresolved0/details clean，
+但真实Designator bbox仍有J1-C14、R3-Q1、U3-L1三对相交，J2文字与完整footprint包络也有重叠。
+依赖写入暂停、失败材料正在冻结；源spacing还是位置变换/采集缺口尚未确定，不以手改坐标兜底。

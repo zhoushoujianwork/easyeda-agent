@@ -10,7 +10,7 @@
 
 目标工程 `0f46d4361c4741a9ab7a9ed62164ca9b`（ceshi-cli-basic-20260924），P1 `e453c0063919726b`、P2 `5c21ec9b670a7bb5`、P3 `b137c508566450c2`，PCB `3037fc1dfa4965d2`。全程使用内置浏览器 Web EasyEDA Pro 4.1.60 和 typed CLI。
 
-本批 CLI/daemon `v1.7.0-45-g2c6cd35`，connector `1.7.1-dev.11`；窗口 `8f2f5dfa-b722-46f6-8f58-c993546c2671`，最后现场调用结束于 2026-09-26 UTC 20:46:08。bin/PATH SHA-256 均为 `8f49eac5e699482a6102895ec891f88f998ff163a844b8ebdbed8a5936f0a0a0`；开发戳不代表正式 v1.8.0。
+原理图批 CLI/daemon `v1.7.0-45-g2c6cd35`，connector `1.7.1-dev.11`；窗口 `8f2f5dfa-b722-46f6-8f58-c993546c2671`，该批最后现场调用结束于 2026-09-26 UTC 20:46:08。bin/PATH SHA-256 均为 `8f49eac5e699482a6102895ec891f88f998ff163a844b8ebdbed8a5936f0a0a0`。当前续测已为dev.13，详见下文；开发戳不代表正式v1.8.0。
 
 最新 146 件冻结材料清单 SHA-256 `1410c197c426231d34f8638146d516aa1d0ccbed9ca77dc3d37a0fee78567ed8`，根任务重算全部文件大小与哈希一致。三页 195 脚（158 connected / 37 NC）、33 网、41 条外围归属和 15 个 direct 物理树与自主源及官方原生网表一致。每页 save→真实 reload→fresh 后布局、连接和 SDK strict 均通过，SDK 各为 0 fatal / 0 error / 0 warn；原 PCB 184 条原生记录未变。原生备份 ZIP 有效，重新导入恢复仍未验证。
 
@@ -49,7 +49,7 @@
 
 N1 另批 45 文件清单 SHA-256 `e4d5f09dccb8e9bb13c0d2d18b4860995b2b8ff3d6f43bba411fdc17702b684e`。独立报告 SHA-256 `920b26c7e01774e099a8fdaa9ced1f0dc76ad82a654de4a823e30c7c34b81c51`，输入 SHA-256 `c0e85ce2174fd9376264e715f38def26fb19ddb334de1f8afb6fcc3fccdfe1bc`；302 项证据断言通过，原 146 文件不变。实际拒绝为新增 marker 导致 source-drift，不冒称触发 wires=0 断言；57 条原始审计均无设计 mutation。
 
-最新 dev.12 修订全量 Go 4108 通过、0 失败、1 跳过，15 个包通过；连接器 638 通过、typecheck、Skill 与 diff 检查通过。剩余必测项和最终发布独立复核未完成，manifest 保持 `result=in-progress`、`independentReview=not-run`。
+导入修复 dev.12 批全量 Go 4108 通过、0 失败、1 跳过，15 个包通过；连接器 638 通过、typecheck、Skill 与 diff 检查通过。当前dev.13结果另见下文。剩余必测项和最终发布独立复核未完成，manifest 保持 `result=in-progress`、`independentReview=not-run`。
 
 R1 新批 126 文件 manifest `f3dc0396d1a045ef37a5bd8d1ca587aee4f33d6b2fc97fa5c9520f6fb2a3c290`；
 独立 236 原证据断言及 15 重算检查通过，整项仍 partial，报告 SHA-256
@@ -123,3 +123,17 @@ PCB 51 件/203 pad result 前后完全一致，board 除采集时间一致，仍
 原生97 raw差异及精确范围保留，批内未reload。
 续批已真实reload确认4层，按SIGNAL中间态布局；最终GND PLANE仍待正确顺序验证。
 类型拒绝唯一SDK原因未确定，不据编排错误补签或豁免要求。完整依据见[投影详细记录](../../../reviews/2026-09-27-pcb-polygon-projection-fix-detail.md)。
+
+叠层partial批470项独立证据断言通过，报告
+`579341f584ac9a87785b163e1a53aca7d85aad40d7d24733ed0b80d2a83dfd1d`，21件清单
+`de88e744076fbbd409950aa5600c2d386f63fb9b368f887c7b663719902b79a2`，根任务全匹配。
+仅签失败后保全，原叠层请求仍partial/failed，不签该批持久化。
+USB里程碑424文件清单 `a9e76a80b5ce4251509ced7df5d8116337cbf59f483597303edc95568636d409`
+根任务全匹配；四层真实reload及6件Apply/save/reload/fresh/native已完成，独立18731项断言通过。
+实际4个L单环全部路径匹配，中心最大0.08mil差保留；无孔/ARC现场前提、L1仍not-run。
+后续45件与四M3孔已保存重载，RF/丝印及连续两轮布局尚未完成，首张诊断图不算正式自检。
+47件USB独立manifest `15939503e44e462e795e9af9390d325d2ae563e9c37d2758c66a86f35b74eed2`
+根任务全核对，报告 `7689ea36aa70edb9c5cc7f6f168ec24865a313a4bea503dc48c4df47a46c1980`。
+#270按实际四个L单环平移有限关闭，不签孔/ARC/非零旋转现场、POLYGON net-path或整板E2E。
+后续L1点灯两件无铜整体移动/恢复54原件哈希全匹配，独立依赖复核待完成；不签带铜移动。
+RF已保存重载；silk-align报告成功而真实文字bbox有三对相交，已停依赖、冻结诊断，布局仍未通过。

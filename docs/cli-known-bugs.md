@@ -16,9 +16,8 @@
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
 | [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
 | [#268：切页后后台 PCB 保存返回 false](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) | 两批后台 `pcb.save` 外层 ok:true、saved:false；精确原因尚未确定，未观察到设计丢失。 | 外层 ok 不代表保存成功；稳定检查点核对显式 saved:true，再真实重载与 fresh 回读。 |
-| [#270：多边形焊盘投影轮廓未移动](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) | dev.12 离线候选移动 4 个 USB 焊盘中心，却保留原绝对路径；独立复现，无布局写入。 | 全批候选拒绝；`faac8be` dev.13 修复/包已独立通过并完成升级基线核对，实际投影现场续测中。 |
 
-本轮跟进的九项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
+本轮跟进的八项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
 
 2026-09-26 按用户要求，将本轮尚无可靠修法的三项登记为待后续修复：复用并重新打开 #55，
@@ -44,6 +43,7 @@
 | [#265：无接点交叉误报](https://github.com/zhoushoujianwork/easyeda-agent/issues/265) | `5ab4b40` 完整库存与线段对账，P2 完整 strict/SDK 独立通过，closed | 只允许有完整证据的内部 X；端点/T/共线/本体/缺测仍拒绝，合法交叉保留为 info。 |
 | [#266：导线写后即时库存暂空](https://github.com/zhoushoujianwork/easyeda-agent/issues/266) | `8877942` 有界只读回查，两次真实第二读及三页保存重载独立通过，closed | 每动作只写一次；过期、取消、漂移、非法几何仍失败，不承诺所有宿主延迟小于 2s。 |
 | [#269：PCB 导入重复点击/实例](https://github.com/zhoushoujianwork/easyeda-agent/issues/269) | `698980e` 单次确认/身份检测及失败传播，dev.12 单次 0→51 保存重载和独立复核通过，closed | 5934 项有限证据断言；195 源脚/203 焊盘/33 网闭合。保留旧 101 实例与 238 几何差分，不证明旧副本的唯一根因，不签完整 E2E。 |
+| [#270：多边形焊盘绝对路径未投影](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) | `faac8be` dev.13 修复及实际4个J1单环L焊盘平移/save/reload独立通过，有限closed | 18731项证据断言；完整路径逐值相同，中心最大0.08mil差保留。孔/ARC/非零旋转只离线覆盖，net-path POLYGON仍unsupported，不签整板。 |
 
 本轮三页 195 脚/33 网/41 条外围/15 个 direct 树对账通过，SDK strict 各 0 fatal/error/warn。
 隐藏 pin 属性的 getter 差分、runtime ID 重铸和浮点尾差已按父属、显隐、官方图面与原生数据逐项核对；
