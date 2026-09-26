@@ -10,6 +10,12 @@
 离线验证，定向现场正确拒绝线宽和优先级错值，测试对象已清理并恢复基线。
 成功创建路径未现场通过，dev.11 完整基础门禁未运行，不能据此进入高级验收。
 
+用户随后要求无法立即修复的项目登记 bug 待后续跟进。已重新打开改名 [#55](https://github.com/zhoushoujianwork/easyeda-agent/issues/55)，
+新建线宽 [#260](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) 和优先级
+[#261](https://github.com/zhoushoujianwork/easyeda-agent/issues/261)，均为 open/bug；
+当前没有已验证的根治方案，不等同于永久不可修。待测成功路径、同包基础全集和高级各项见
+[统一跟踪记录](../cli-known-bugs.md#本轮仍缺的验证)，未因登记问题而放行验收。
+
 本轮已完成同版基础证据复核、目标工程只读预检和离线回归，修复了多窗口导致的预检误拦。
 **高级现场 A00–A06 未通过**。按用户“复用＋A”续测后，删除器件重复出现真实残留，
 已停止依赖该基础能力的高级现场用例，测试夹具已清理并保存重载回空白基线。

@@ -4,9 +4,13 @@
 及从需求到成品的闭环。它回答“设计结果是否正确”，与
 [基础 CLI 真实链路测试](cli-live-test.md)回答的“单个命令动作是否可靠”分开判定。
 
-当前续测补充：dev.8 新开页面在 B00 发现 daemon 将同文档连接互踢。
-[dev.9 连接身份修复](reviews/2026-09-26-window-identity-fix.md)已完成独立复核、安装对账和
-定向现场恢复；[完整基础门禁](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)仍按新包逐项重跑，不沿用历史通过项。
+当前续测结论：dev.9 的[完整基础检测](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)为
+9 pass / 2 fail；当前运行包 dev.11 已验证铺铜错值检测及清理恢复，但正向成功分支未通过，
+该包完整基础门禁未运行。页面改名、边界线宽、铺铜优先级已分别登记为
+[#55](https://github.com/zhoushoujianwork/easyeda-agent/issues/55)、
+[#260](https://github.com/zhoushoujianwork/easyeda-agent/issues/260)、
+[#261](https://github.com/zhoushoujianwork/easyeda-agent/issues/261)，等待后续定位修复。
+剩余验证和使用边界统一见[已知问题](cli-known-bugs.md#本轮仍缺的验证)；登记 bug 不补签通过项。
 
 ## 进入条件
 
@@ -24,11 +28,9 @@
 本轮离线回归与目标预检已运行，用户已确认复用基础测试工程及叠层 A。现场器件测量期间
 删除残留两次复现，A00 为 `blocked`、A01–A06 为 `not-run`；夹具已精确清理并保存重载。
 不更改上轮发布材料中的 `not-run`，也不以 typed 恢复后的成功补签原失败。
-删除故障已完成[定向修复回归](reviews/2026-09-26-sch-delete-fix.md)，现先重跑最终
-`1.7.1-dev.4` 安装包的 B00–B10；[本批](reviews/2026-09-26-v1.7.1-dev4-basic-cli.md)
-B00/B01 通过、B02 重连受阻。重连修复后，[dev.7 同包复跑](reviews/2026-09-26-v1.7.1-dev7-basic-cli.md)
-B00–B03 通过、B04 改名失败。后续 [dev.8](reviews/2026-09-26-page-rename-fix.md) 已验证
-失败传播修复并恢复测试基线，但宿主改名仍失败；基础门禁未放行，高级现场用例仍受阻。
+删除故障已完成[定向修复回归](reviews/2026-09-26-sch-delete-fix.md)，重连、同文档连接互踢，
+以及页面改名和铺铜两条路径的失败漏报也已分别修复；历史证据保留在[本轮记录](reviews/2026-09-26-advanced-cli.md)。
+实际参数未兑现的三项仍保持 open；后续从修复的定向正负例和最终同包基础全集恢复验收。
 
 通过基础门禁后，按[高级用例与前置条件](cli-advanced-test-detail.md)检查：
 原理图数据驱动选型与布局、保护 Apply、严格质量门；PCB 同步、规则、布局、用户确认、

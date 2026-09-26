@@ -289,6 +289,9 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
   也不从 create 返回对象的参数回显推断已写入。新包只修正检测与传播，不宣称宿主宽度已修复。
   另一次预声明测试未传线宽，但优先级 2 读回为 1；原因未确定，同样失败退出。
   这两项只现场验证了错值检测，不能称成功创建路径或高级 CLI 已验收。
+  线宽跟踪 [#260](https://github.com/zhoushoujianwork/easyeda-agent/issues/260)，优先级契约跟踪
+  [#261](https://github.com/zhoushoujianwork/easyeda-agent/issues/261)；暂缺经验证的根治方案，
+  不因登记为待修复 bug 而放宽请求/回读比较或基础验收。
 - `pcb.pour.list` / `pcb.pour.delete` — inspect / remove pours.
 - `easyeda pcb poured-list [--net GND]`（typed action `pcb.poured.list`）读取**重建后的实际
   铺铜图元**，按 pour primitiveId 返回每个 fill 的 complex polygon source、线宽、填充标志和

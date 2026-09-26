@@ -6,7 +6,9 @@
 本修复不解决宿主把请求 1 mil 读回为 0.2 mil 的原因，不补签
 [dev.9 B08](2026-09-26-v1.7.1-dev9-B08.md) 或高级验收。
 
-源码、Skill 与回归测试已本地提交为 `07c3060`，未推送或发布。
+源码、Skill 与回归测试提交为 `07c3060`；修复验收阶段未推送或发布。
+后续按用户要求登记线宽 [#260](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) 和
+优先级 [#261](https://github.com/zhoushoujianwork/easyeda-agent/issues/261)，开发提交与跟踪记录同步到 `dev`，不发布版本。
 
 ## 发现与边界
 
