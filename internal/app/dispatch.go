@@ -97,6 +97,7 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 	var parsed struct {
 		OK     bool `json:"ok"`
 		Result struct {
+			OK       *bool `json:"ok"`
 			Verified *bool `json:"verified"`
 			Partial  bool  `json:"partial"`
 		} `json:"result"`
@@ -117,6 +118,11 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 			Message: parsed.Error.Message, Detail: parsed.Error.Detail})
 	}
 	switch action {
+	case "schematic.page.rename":
+		if parsed.Result.Partial || parsed.Result.OK == nil || !*parsed.Result.OK ||
+			parsed.Result.Verified == nil || !*parsed.Result.Verified {
+			return fmt.Errorf("%s: page rename not verified; preserve this response and read the current page name before any retry", action)
+		}
 	case "schematic.netflag.create", "schematic.power.connect_pin", "pcb.region.create", "pcb.add_component",
 		"schematic.primitives.delete", "schematic.component.delete", "schematic.pin.disconnect":
 		if parsed.Result.Partial || (parsed.Result.Verified != nil && !*parsed.Result.Verified) {

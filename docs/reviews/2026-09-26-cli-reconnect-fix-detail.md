@@ -111,3 +111,24 @@ P1 升级前后完整 result/context 全等；PCB semanticSha256 同为
 13 个候选场景通过，另有旧源码词法遮蔽负对照。绑定清单 SHA-256：
 `504119af3004bfda613fe20243586b49853e5c0f71c20f1df7adf501756ecffd`。
 报告位于 `review/global-clock-independent-review-final.md`，只签离线范围。
+
+
+## dev.7 B02 正式复跑与独立结论
+
+代码提交 `011a631`，包内 CLI SHA 与冻结源码身份保持一致。正式新批次在
+`artifacts/cli-basic-dev177-20260926/B02/`；所有测试页先 saved:true，停止 PID1943
+后由同版 CLI 启动 PID12826。2026-09-26 10:46:58.373870 UTC 新目标
+`7db4d79b-75b5-4c36-9f89-591ba40f6e90` 注册，距旧进程停止 **10.277034 秒**。
+未刷新、GUI 或重开恢复；停机到 ready health 的审计区间为 0 调用。
+SCH result 完整相同，PCB 全部 JSON 仅 capturedAt 不同；最终回 P1。
+执行及独立 B02 均 pass，旧 dev.4 B02 仍 blocked。
+
+独立 B02 报告 SHA-256：
+`5cbd12e8427f249d6c31d407df956a74f53c9993d483b54c6be0c3bd6ebee902`。
+同包 B00/B01 亦独立 pass，但 B03–B10 当时尚未全部完成，不提前签基础总门禁或高级。
+新 daemon 继续服务后续用例，随后于 dev.8 升级时停止；执行器已补 B02/
+06-new-daemon-exit.json，UTC 11:06:47 完成、exit 0、完整 stdout/stderr 保留。
+
+安装独立复核 `review/dev7-setup-independent-review.md` SHA-256：
+`a136be80337e45b5e0cac48208f17bf5e2403088251a7fc069478f548a106018`。
+其结论不依赖持续变化的 setup daemon.log；该文件停止后是 RTK 摘要，不作为完整流证据。

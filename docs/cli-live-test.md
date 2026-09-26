@@ -56,3 +56,8 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 
 2026-09-26 [dev.4 同包复跑](reviews/2026-09-26-v1.7.1-dev4-basic-cli.md)：B00/B01 通过，
 B02 目标连接器重连受阻，B03–B10 未运行。当前门禁未放行，不影响历史 dev.21 的限定结论。
+
+[dev.7 复跑](reviews/2026-09-26-v1.7.1-dev7-basic-cli.md)已解决 B02 重连，B00–B03 独立通过；
+B04 改名实际失败，B05 只读部分执行、B06–B10 未运行，基础门禁继续未放行。
+后续 [dev.8 定向验证](reviews/2026-09-26-page-rename-fix.md)已修复失败误报并完成清理；
+宿主改名仍失败，不能以该定向结果补签同版 B00–B10。

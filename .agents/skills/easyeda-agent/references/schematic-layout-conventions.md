@@ -346,7 +346,7 @@ LED 也可用 `LED1` 这种语义化命名（兼容 `D1`），EasyEDA 不强制 
 - 多页之间通过 `net_port` (`createNetPort('IN/OUT/BI')`) 在页间建立电气连接，net 名称相同视为同网。
 - `getCurrentRenderedAreaImage` 在后台可能返回旧缓存。验收始终读取原始数据，
   展示用 `sch export-image`；不要为了检查截图刷新而修改电路，也不要以肉眼观察替代数据检查。
-- ⚠️ **`schematic.page.rename` 改完立即 `doc ls` 会读到旧页名（issue #55）**：`modifySchematicPageName` 返回 `ok:true` 后，新名字**不会立刻**写进 `getAllSchematicPagesInfo()`（`schematic.pages.list` / `doc ls` 的数据源）——平台的页面元数据缓存要等某个**后续写操作**触发才刷新（`sch clear` 等任意无关动作会"顺便"刷到，造成"看似延迟生效"）。同属 `createNetFlag` 立即回显那一类平台异步陷阱。**连接器已内建写后自校验**：`page.rename` 成功后会短间隔重试读回 `getAllSchematicPagesInfo()` 确认新名生效，命中返回 `verified:true`；重试耗尽仍未同步返回 `verified:false` + `warning`。**确认重命名真的生效的可靠做法 = 看返回值的 `verified` 字段**（而不是紧接着 `doc ls`）；若拿到 `verified:false`，稍后重试或触发任意写操作后再 `doc ls`。
+- **`schematic.page.rename` 必须看宿主返回值与 fresh 页名（issue #55）**：宿主 `false` 表示未确认成功，不能写成“已提交”或自动归因为缓存。仅官方返回 `true` 且新鲜页面列表确认目标 UUID 的名称，才能称已验证；读取失败、页面缺失或仍旧名均不通过。保留原始返回值、旧/新页名和文档身份，停止依赖改名结果的后续写入。不要用无关写操作刷新元数据，也不要在状态未知时自动重试改名。历史 dev.21 的成功不替代当前构建回读。
 - 目前两份 reference（§7 motobox、§8 ESP32S3R8N8）覆盖了「贴近 3×3 理想」与「RF MCU 占角 + 横向电源链」两种典型。若再采集到第三种（例如纯模拟前端、或多电源域工控板），应继续补充以避免 agent 过拟合到单一案例。
 
 ## 11. 图纸边界与标题栏 keep-out (sheet / title-block keep-out)
