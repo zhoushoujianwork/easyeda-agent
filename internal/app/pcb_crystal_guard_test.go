@@ -76,7 +76,7 @@ func TestCrystalOffsetSearchTranslatesWithMeasuredBoard(t *testing.T) {
 		t.Fatal(err)
 	}
 	for ref, c := range all {
-		all[ref] = translateBoardComp(c, 137, -71)
+		all[ref] = mustTranslateBoardComp(t, c, 137, -71)
 	}
 	for _, m := range mod.Members {
 		members[m.Ref] = all[m.Ref]

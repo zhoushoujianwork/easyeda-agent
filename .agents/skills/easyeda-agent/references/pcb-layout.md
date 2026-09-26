@@ -94,6 +94,11 @@ track/via/region；Router 在每个固定投影上共同检查所有 demand，�
 - `pin-satellites`：核心保持，外围按所属焊盘、方位和 bbox 间隙逐个放置。
 - `rigid`：模块整体平移/直角旋转，anchor、bbox、pads 和成员角度统一变换。
 
+焊盘 `POLYGON` 的路径使用板上绝对坐标，外轮廓、孔洞和 `ARC` 端点必须随同一
+anchor 平移/旋转，保留圆弧角度与路径结构；`RECT`/`OVAL`/`ELLIPSE`/`NGON`
+的尺寸参数保持不变。无法解释、非有限或损坏的路径必须拒绝候选，不能保留旧轮廓。
+该投影规则不代表 `pcb net-path` 已支持多边形焊盘的精确铜几何布线。
+
 命令只做本地计算，不访问 EDA，也不替 AI 选择。每个候选输出完整坐标、pad 距离、
 `polygon-centerline`/`outline-aabb` 板边测量、分开的 component/keepout gap，以及各最小间隙的
 `from`/`to` 对象，避免只看到一个数却不知道是谁限制了空间；同时生成 SVG 和 typed apply。

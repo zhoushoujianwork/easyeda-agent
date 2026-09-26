@@ -1,0 +1,350 @@
+{
+  "primitiveId": "usb-j1",
+  "designator": "J1",
+  "name": "={Manufacturer Part}",
+  "device": "TYPE-C-31-M-12",
+  "layer": 1,
+  "x": 1806.3315,
+  "y": -784.2089999999998,
+  "rotation": 0,
+  "bbox": {
+    "minX": 1612.3294999999998,
+    "minY": -989.7639999999999,
+    "maxX": 2000.3335000000002,
+    "maxY": -661.1099999999999
+  },
+  "pads": [
+    {
+      "primitiveId": "usb-j1-pad-1",
+      "padNumber": "B8",
+      "net": "",
+      "layer": 1,
+      "x": 1737.4,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-2",
+      "padNumber": "A5",
+      "net": "CC1",
+      "layer": 1,
+      "x": 1757.1,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-3",
+      "padNumber": "B7",
+      "net": "USB_D-",
+      "layer": 1,
+      "x": 1776.8,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-4",
+      "padNumber": "A6",
+      "net": "USB_D+",
+      "layer": 1,
+      "x": 1796.5,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-5",
+      "padNumber": "A7",
+      "net": "USB_D-",
+      "layer": 1,
+      "x": 1816.2,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-6",
+      "padNumber": "B6",
+      "net": "USB_D+",
+      "layer": 1,
+      "x": 1835.9,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-7",
+      "padNumber": "A8",
+      "net": "",
+      "layer": 1,
+      "x": 1855.5,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-8",
+      "padNumber": "B5",
+      "net": "CC2",
+      "layer": 1,
+      "x": 1875.2,
+      "y": -686.8,
+      "width": 11.8,
+      "height": 51.2,
+      "shape": [
+        "RECT",
+        11.8,
+        51.2,
+        0
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-9",
+      "padNumber": "A1B12",
+      "net": "GND",
+      "layer": 1,
+      "x": 1680.4,
+      "y": -686.8,
+      "shape": [
+        "POLYGON",
+        [
+          1692.1595,
+          -712.392,
+          "L",
+          1680.3495,
+          -712.392,
+          1680.3495,
+          -712.398,
+          1668.5385,
+          -712.398,
+          1668.5385,
+          -661.216,
+          1680.3485,
+          -661.216,
+          1680.3485,
+          -661.21,
+          1692.1595,
+          -661.21,
+          1692.1595,
+          -712.392
+        ]
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-10",
+      "padNumber": "B1A12",
+      "net": "GND",
+      "layer": 1,
+      "x": 1932.3,
+      "y": -686.8,
+      "shape": [
+        "POLYGON",
+        [
+          1920.5045,
+          -661.21,
+          "L",
+          1932.3155,
+          -661.21,
+          1932.3165,
+          -661.21,
+          1944.1275,
+          -661.21,
+          1944.1275,
+          -712.39,
+          1932.3165,
+          -712.39,
+          1932.3155,
+          -712.39,
+          1920.5045,
+          -712.39,
+          1920.5045,
+          -661.21
+        ]
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-11",
+      "padNumber": "B4A9",
+      "net": "USB_VBUS",
+      "layer": 1,
+      "x": 1900.8,
+      "y": -686.8,
+      "shape": [
+        "POLYGON",
+        [
+          1912.6375,
+          -712.39,
+          "L",
+          1900.8265,
+          -712.39,
+          1900.8255,
+          -712.39,
+          1889.0145,
+          -712.39,
+          1889.0145,
+          -661.21,
+          1900.8255,
+          -661.21,
+          1900.8265,
+          -661.21,
+          1912.6375,
+          -661.21,
+          1912.6375,
+          -712.39
+        ]
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-12",
+      "padNumber": "A4B9",
+      "net": "USB_VBUS",
+      "layer": 1,
+      "x": 1711.8,
+      "y": -686.8,
+      "shape": [
+        "POLYGON",
+        [
+          1723.6555,
+          -712.396,
+          "L",
+          1711.8465,
+          -712.396,
+          1711.8465,
+          -712.397,
+          1700.0345,
+          -712.397,
+          1700.0345,
+          -661.217,
+          1711.8435,
+          -661.217,
+          1711.8435,
+          -661.216,
+          1723.6555,
+          -661.216,
+          1723.6555,
+          -712.396
+        ]
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-13",
+      "padNumber": "2",
+      "net": "GND",
+      "layer": 12,
+      "x": 1976.6,
+      "y": -881.6,
+      "width": 47.2,
+      "height": 70.9,
+      "shape": [
+        "OVAL",
+        47.2,
+        70.9
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-14",
+      "padNumber": "1",
+      "net": "GND",
+      "layer": 12,
+      "x": 1976.6,
+      "y": -717.1,
+      "width": 47.2,
+      "height": 78.7,
+      "shape": [
+        "OVAL",
+        47.2,
+        78.7
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-15",
+      "padNumber": "4",
+      "net": "GND",
+      "layer": 12,
+      "x": 1636.1,
+      "y": -717.1,
+      "width": 47.2,
+      "height": 78.7,
+      "shape": [
+        "OVAL",
+        47.2,
+        78.7
+      ],
+      "specialPad": []
+    },
+    {
+      "primitiveId": "usb-j1-pad-16",
+      "padNumber": "3",
+      "net": "GND",
+      "layer": 12,
+      "x": 1636.1,
+      "y": -881.6,
+      "width": 47.2,
+      "height": 70.9,
+      "shape": [
+        "OVAL",
+        47.2,
+        70.9
+      ],
+      "specialPad": []
+    }
+  ]
+}

@@ -849,7 +849,11 @@ func generateRigidVariants(mod pcbLayoutModuleSpec, members map[string]boardComp
 			}
 			placed := map[string]boardComp{}
 			for ref, c := range members {
-				placed[ref] = transformBoardComp(c, anchor.X, anchor.Y, off.XMil, off.YMil, d)
+				projected, err := transformBoardComp(c, anchor.X, anchor.Y, off.XMil, off.YMil, d)
+				if err != nil {
+					return nil, err
+				}
+				placed[ref] = projected
 			}
 			out = append(out, pcbLayoutVariant{label: label, comps: placed})
 		}
@@ -900,7 +904,11 @@ func generateEdgeVariants(mod pcbLayoutModuleSpec, members, all map[string]board
 			rotated := map[string]boardComp{}
 			if len(mod.PinAssignments) == 0 {
 				for ref, c := range members {
-					rotated[ref] = transformBoardComp(c, anchor.X, anchor.Y, 0, 0, d)
+					projected, err := transformBoardComp(c, anchor.X, anchor.Y, 0, 0, d)
+					if err != nil {
+						return nil, err
+					}
+					rotated[ref] = projected
 				}
 			} else {
 				// Hybrid edge module: first pin the declared edge member, then place
@@ -908,7 +916,11 @@ func generateEdgeVariants(mod pcbLayoutModuleSpec, members, all map[string]board
 				// the board edge while its driver/passives reflow on the inboard side,
 				// instead of translating an unnecessarily wide historical cluster.
 				em0 := members[edgeMember]
-				rotated[edgeMember] = transformBoardComp(em0, em0.X, em0.Y, 0, 0, d)
+				projected, err := transformBoardComp(em0, em0.X, em0.Y, 0, 0, d)
+				if err != nil {
+					return nil, err
+				}
+				rotated[edgeMember] = projected
 			}
 			em := rotated[edgeMember]
 			if em.BBox == nil {
@@ -939,7 +951,11 @@ func generateEdgeVariants(mod pcbLayoutModuleSpec, members, all map[string]board
 					}
 					seed := map[string]boardComp{}
 					for ref, c := range rotated {
-						seed[ref] = translateBoardComp(c, dx, dy)
+						projected, err := translateBoardComp(c, dx, dy)
+						if err != nil {
+							return nil, err
+						}
+						seed[ref] = projected
 					}
 					if len(mod.PinAssignments) == 0 {
 						label := fmt.Sprintf("edge(%s)-align(%s%+.2f)-rotate(%.2f)", edgeName, ar, along, d)
@@ -1064,8 +1080,14 @@ func placePinFollowers(mod pcbLayoutModuleSpec, members, seed map[string]boardCo
 			if a.Side != "" {
 				edge, _ = parseLayoutEdge(a.Side)
 			}
-			rot := choosePinSatelliteRotation(member, mp.Number, mp.ID, edge, memberSpecs[a.MemberRef].AllowedRotationsDeg)
-			rotated := transformBoardComp(member, member.X, member.Y, 0, 0, rotationDelta(member.Rotation, rot))
+			rot, err := choosePinSatelliteRotation(member, mp.Number, mp.ID, edge, memberSpecs[a.MemberRef].AllowedRotationsDeg)
+			if err != nil {
+				return nil, err
+			}
+			rotated, err := transformBoardComp(member, member.X, member.Y, 0, 0, rotationDelta(member.Rotation, rot))
+			if err != nil {
+				return nil, err
+			}
 			rmp, err := findBoardPadExact(rotated, a.MemberPad, a.MemberPadPrimitiveID)
 			if err != nil {
 				return nil, err
@@ -1088,7 +1110,11 @@ func placePinFollowers(mod pcbLayoutModuleSpec, members, seed map[string]boardCo
 			case edgeTop:
 				dy = owner.BBox.MaxY + gap - rotated.BBox.MinY
 			}
-			placed[a.MemberRef] = translateBoardComp(rotated, dx, dy)
+			projected, err := translateBoardComp(rotated, dx, dy)
+			if err != nil {
+				return nil, err
+			}
+			placed[a.MemberRef] = projected
 			progress = true
 		}
 		if !progress {
@@ -1099,7 +1125,12 @@ func placePinFollowers(mod pcbLayoutModuleSpec, members, seed map[string]boardCo
 	return placed, nil
 }
 
-func transformBoardComp(c boardComp, pivotX, pivotY, dx, dy, delta float64) boardComp {
+func transformBoardComp(c boardComp, pivotX, pivotY, dx, dy, delta float64) (boardComp, error) {
+	for _, n := range []float64{pivotX, pivotY, dx, dy, delta} {
+		if _, ok := netPathOptionalFinite(n); !ok {
+			return boardComp{}, fmt.Errorf("component %s transform must be finite", c.Designator)
+		}
+	}
 	out := c
 	transform := func(x, y float64) (float64, float64) {
 		rx, ry := rotateVec(x-pivotX, y-pivotY, delta)
@@ -1120,6 +1151,11 @@ func transformBoardComp(c boardComp, pivotX, pivotY, dx, dy, delta float64) boar
 	}
 	out.Pads = make([]boardPad, len(c.Pads))
 	for i, p := range c.Pads {
+		shape, err := projectBoardPadShape(p, transform)
+		if err != nil {
+			return boardComp{}, fmt.Errorf("component %s pad %s (%s): %w", c.Designator, p.Number, p.ID, err)
+		}
+		p.Shape = shape
 		p.X, p.Y = transform(p.X, p.Y)
 		p.Rotation = normalizeDeg(p.Rotation + delta)
 		if math.Abs(math.Mod(math.Abs(delta), 180)-90) < 1e-6 {
@@ -1127,10 +1163,10 @@ func transformBoardComp(c boardComp, pivotX, pivotY, dx, dy, delta float64) boar
 		}
 		out.Pads[i] = p
 	}
-	return out
+	return out, nil
 }
 
-func translateBoardComp(c boardComp, dx, dy float64) boardComp {
+func translateBoardComp(c boardComp, dx, dy float64) (boardComp, error) {
 	return transformBoardComp(c, 0, 0, dx, dy, 0)
 }
 
@@ -1697,14 +1733,17 @@ func resolveOwnerPads(c boardComp, a pcbLayoutPinAssignment) ([]boardPad, error)
 	return out, nil
 }
 
-func choosePinSatelliteRotation(c boardComp, pad, padID string, edge apEdge, allowed []float64) float64 {
+func choosePinSatelliteRotation(c boardComp, pad, padID string, edge apEdge, allowed []float64) (float64, error) {
 	if len(allowed) == 0 {
-		return c.Rotation
+		return c.Rotation, nil
 	}
 	ux, uy := edgeOutwardVector(edge)
 	best, bestDot := allowed[0], math.Inf(-1)
 	for _, rot := range allowed {
-		t := transformBoardComp(c, c.X, c.Y, 0, 0, rotationDelta(c.Rotation, rot))
+		t, err := transformBoardComp(c, c.X, c.Y, 0, 0, rotationDelta(c.Rotation, rot))
+		if err != nil {
+			return 0, err
+		}
 		p, err := findBoardPadExact(t, pad, padID)
 		if err != nil {
 			continue
@@ -1714,7 +1753,7 @@ func choosePinSatelliteRotation(c boardComp, pad, padID string, edge apEdge, all
 			bestDot, best = d, rot
 		}
 	}
-	return normalizeDeg(best)
+	return normalizeDeg(best), nil
 }
 
 func edgeOutwardVector(e apEdge) (float64, float64) {

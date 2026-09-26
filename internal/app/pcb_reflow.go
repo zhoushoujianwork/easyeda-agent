@@ -779,7 +779,10 @@ func (ctx *pcbReflowContext) movedState(s pcbReflowState, group pcbReflowGroupSp
 	}
 	changed := false
 	for _, ref := range group.Refs {
-		c := transformBoardComp(ctx.base[ref], move.PivotXMil, move.PivotYMil, move.DXMil, move.DYMil, move.RotationDeltaDeg)
+		c, err := transformBoardComp(ctx.base[ref], move.PivotXMil, move.PivotYMil, move.DXMil, move.DYMil, move.RotationDeltaDeg)
+		if err != nil {
+			return pcbReflowState{}, false
+		}
 		if !ctx.poseAllowed(ref, c) || !bboxInsideBoardOutline(ctx.snap.Outline, *c.BBox) {
 			return pcbReflowState{}, false
 		}

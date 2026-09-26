@@ -92,7 +92,11 @@ func verifyPCBReflowDeclaration(c pcbLayoutCandidate, in pcbLayoutPlanInput, bef
 					return fmt.Errorf("reflow member %s has multiple owners", ref)
 				}
 				allowed[ref] = pcbLayoutMemberSpec{Ref: ref, FixedAxes: g.FixedAxes, AllowedRotationsDeg: g.AllowedRotationsDeg}
-				expected[ref] = transformBoardComp(base[ref], m.PivotXMil, m.PivotYMil, m.DXMil, m.DYMil, m.RotationDeltaDeg)
+				projected, err := transformBoardComp(base[ref], m.PivotXMil, m.PivotYMil, m.DXMil, m.DYMil, m.RotationDeltaDeg)
+				if err != nil {
+					return err
+				}
+				expected[ref] = projected
 			}
 		}
 	}
@@ -168,7 +172,11 @@ func verifyPCBReflowDeclaration(c pcbLayoutCandidate, in pcbLayoutPlanInput, bef
 		for _, m := range module.Members {
 			for _, p := range c.Placements {
 				if m.Ref == p.Ref {
-					target.comps[p.Ref] = transformBoardComp(base[p.Ref], base[p.Ref].X, base[p.Ref].Y, p.XMil-base[p.Ref].X, p.YMil-base[p.Ref].Y, p.RotationDeg-base[p.Ref].Rotation)
+					projected, err := transformBoardComp(base[p.Ref], base[p.Ref].X, base[p.Ref].Y, p.XMil-base[p.Ref].X, p.YMil-base[p.Ref].Y, p.RotationDeg-base[p.Ref].Rotation)
+					if err != nil {
+						return err
+					}
+					target.comps[p.Ref] = projected
 				}
 			}
 		}

@@ -162,7 +162,10 @@ func generateCrystalGuardVariants(mod pcbLayoutModuleSpec, members, all map[stri
 	local := map[string]boardComp{g.CrystalRef: baseCrystal}
 	for _, port := range g.Ports {
 		cap0 := members[port.CapacitorRef]
-		cap := transformBoardComp(cap0, cap0.X, cap0.Y, 0, 0, port.CapacitorRotationDeg-cap0.Rotation)
+		cap, err := transformBoardComp(cap0, cap0.X, cap0.Y, 0, 0, port.CapacitorRotationDeg-cap0.Rotation)
+		if err != nil {
+			return nil, err
+		}
 		crystalPad, _ := findBoardPadExact(baseCrystal, port.CrystalPad, "")
 		capPad, _ := findBoardPadExact(cap, port.CapacitorSignalPad, "")
 		capDX, capDY := 0.0, crystalPad.Y-capPad.Y
@@ -171,14 +174,22 @@ func generateCrystalGuardVariants(mod pcbLayoutModuleSpec, members, all map[stri
 		} else {
 			capDX = baseCrystal.BBox.MaxX + g.ComponentGapMil - cap.BBox.MinX
 		}
-		local[port.CapacitorRef] = translateBoardComp(cap, capDX, capDY)
+		projected, err := translateBoardComp(cap, capDX, capDY)
+		if err != nil {
+			return nil, err
+		}
+		local[port.CapacitorRef] = projected
 	}
 	var out []pcbLayoutVariant
 	for _, gap := range gaps {
 		for _, delta := range rots {
 			placed := map[string]boardComp{}
 			for ref, comp := range local {
-				placed[ref] = transformBoardComp(comp, baseCrystal.X, baseCrystal.Y, 0, 0, delta)
+				projected, err := transformBoardComp(comp, baseCrystal.X, baseCrystal.Y, 0, 0, delta)
+				if err != nil {
+					return nil, err
+				}
+				placed[ref] = projected
 			}
 			crystal := placed[g.CrystalRef]
 			var ownerX, crystalX float64
@@ -200,7 +211,11 @@ func generateCrystalGuardVariants(mod pcbLayoutModuleSpec, members, all map[stri
 			}
 			dy := owner.BBox.MinY - gap - localBounds.MaxY
 			for ref, comp := range placed {
-				placed[ref] = translateBoardComp(comp, dx, dy)
+				projected, err := translateBoardComp(comp, dx, dy)
+				if err != nil {
+					return nil, err
+				}
+				placed[ref] = projected
 			}
 			offsets, err := crystalPlacementOffsets(mod, placed, all, snap)
 			if err != nil {
@@ -209,7 +224,11 @@ func generateCrystalGuardVariants(mod pcbLayoutModuleSpec, members, all map[stri
 			for _, offset := range offsets {
 				shifted := map[string]boardComp{}
 				for ref, comp := range placed {
-					shifted[ref] = translateBoardComp(comp, offset.XMil, offset.YMil)
+					projected, err := translateBoardComp(comp, offset.XMil, offset.YMil)
+					if err != nil {
+						return nil, err
+					}
+					shifted[ref] = projected
 				}
 				crystal = shifted[g.CrystalRef]
 				out = append(out, pcbLayoutVariant{

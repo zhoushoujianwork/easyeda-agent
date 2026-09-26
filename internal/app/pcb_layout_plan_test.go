@@ -21,7 +21,10 @@ func lpSnapshot(comps ...boardComp) *boardSnapshot {
 
 func TestTransformBoardCompUsesFootprintAnchorForAsymmetricGeometry(t *testing.T) {
 	c := lpComp("p1", "D1", 100, 100, 0, lpBBox(90, 80, 130, 120), boardPad{ID: "pad1", Number: "1", X: 120, Y: 100, W: 10, H: 20})
-	got := transformBoardComp(c, 100, 100, 50, 20, 90)
+	got, err := transformBoardComp(c, 100, 100, 50, 20, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got.X != 150 || got.Y != 120 || got.Rotation != 90 {
 		t.Fatalf("pose=%+v", got)
 	}
@@ -313,4 +316,13 @@ func stringContains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func mustTranslateBoardComp(t *testing.T, c boardComp, dx, dy float64) boardComp {
+	t.Helper()
+	got, err := translateBoardComp(c, dx, dy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

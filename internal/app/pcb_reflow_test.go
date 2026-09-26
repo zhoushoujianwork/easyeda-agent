@@ -29,7 +29,7 @@ func TestPCBReflowRecursivelyMovesWholeBlockingGroups(t *testing.T) {
 	x, a, cap, b := reflowPart("X", 100, 110), reflowPart("A", 100, 70), reflowPart("C", 130, 70), reflowPart("B", 100, 40)
 	snap, spec := reflowFixture(x, a, cap, b)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "group-a", AnchorRef: "A", Refs: []string{"A", "C"}}, {ID: "group-b", AnchorRef: "B", Refs: []string{"B"}}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -30)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -30)}}
 	before, _ := json.Marshal(snap)
 	variants, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(variants) != 1 {
@@ -54,7 +54,7 @@ func TestPCBReflowFixedBlockerBacktracksToAnotherPosition(t *testing.T) {
 	spec.MaxShiftXMil = 20
 	spec.FixedRefs = []string{"FIXED"}
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	variants, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(variants) != 1 {
 		t.Fatalf("fallback failed: %v %+v", err, report)
@@ -72,7 +72,7 @@ func TestPCBReflowBudgetAndCyclesDoNotClaimImpossible(t *testing.T) {
 	snap, spec := reflowFixture(x, a, b)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}, {ID: "b", AnchorRef: "B", Refs: []string{"B"}}}
 	spec.MaxStates = 1
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -30)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -30)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 0 || !report.Exhausted || report.Status != "incomplete" || report.States != 1 {
 		t.Fatalf("budget misreported: %v %+v", err, report)
@@ -91,7 +91,7 @@ func TestPCBReflowFixedAxisAndLockedMemberBlockEntireGroup(t *testing.T) {
 	spec.MaxShiftXMil = 20
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A", "C"}}}
 	spec.FixedAxes = map[string][]string{"A": {"y", "rotation"}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 1 || v[0].comps["A"].Y != 70 || v[0].comps["C"].Y != 70 {
 		t.Fatalf("axis constraint failed: %v %+v", err, report)
@@ -107,7 +107,7 @@ func TestPCBReflowUnknownOrUnownedCopperFreezesModule(t *testing.T) {
 	x, a := reflowPart("X", 100, 110), reflowPart("A", 100, 70)
 	snap, spec := reflowFixture(x, a)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	snap.Copper.Lines = []any{reflowLine("unowned", "net-A", 100, 70, 140, 70)}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 0 || !strings.Contains(report.FixedGroups["a"], "unowned attached") {
@@ -127,7 +127,7 @@ func TestPCBReflowTranslatesInternalCopperAndRecomputesFixedEndpoint(t *testing.
 	snap, spec := reflowFixture(x, a, cap, fixed)
 	snap.Copper.Lines = []any{reflowLine("inside", "net-A", 100, 70, 130, 70), reflowLine("outside", "net-A", 130, 70, 220, 70)}
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A", "C"}, InternalPrimitiveIDs: []string{"inside"}, ExternalConnections: []pcbReflowExternalConnection{{ID: "supply", From: "C.1", To: "FIXED.1", Net: "net-A", Layer: 1, WidthMil: 2, ReplacePrimitiveIDs: []string{"outside"}}}}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 1 {
 		t.Fatalf("copper reflow: %v %+v", err, report)
@@ -156,7 +156,7 @@ func TestPCBReflowNonSymmetricRotationTransformsPadsAndCopper(t *testing.T) {
 	snap.Copper.Lines = []any{reflowLine("inside", "net-A", 105, 72, 113, 72)}
 	spec.MaxShiftYMil, spec.StepMil = 30, 30
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}, AllowedRotationsDeg: []float64{90}, InternalPrimitiveIDs: []string{"inside"}}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 2)
 	if err != nil || len(v) != 1 {
 		t.Fatalf("rotation: %v %+v", err, report)
@@ -193,7 +193,7 @@ func TestPCBReflowMovedPadCannotLandOnOldOtherNetTrackEndpoint(t *testing.T) {
 	snap, spec := reflowFixture(x, a)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}}
 	snap.Copper.Lines = []any{reflowLine("obstacle", "OTHER", 100, 50, 140, 50)}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -30)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -30)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 0 || !strings.Contains(strings.Join(report.Rejected, ";"), "moved pad A.1 conflicts with track obstacle") {
 		t.Fatalf("old track endpoint short escaped exact check: %v %+v", err, report)
@@ -205,7 +205,7 @@ func TestPCBReflowCopperEmptyMoveStillChecksOtherNetStaticArea(t *testing.T) {
 	snap, spec := reflowFixture(x, a)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}}
 	snap.Copper.Fills = []any{map[string]any{"primitiveId": "fill", "net": "OTHER", "layer": float64(1), "geometryAvailable": true, "source": pointsPolygonSource([][2]float64{{96, 46}, {104, 46}, {104, 54}, {96, 54}})}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -30)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -30)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 0 {
 		t.Fatalf("static fill collision accepted: %v %+v", err, report)
@@ -221,7 +221,7 @@ func TestPCBReflowNoComponentsRegionForcesAlternatePlacement(t *testing.T) {
 	spec.MaxShiftXMil = 20
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}}
 	snap.Copper.Regions = []any{map[string]any{"primitiveId": "region", "layer": float64(1), "geometryAvailable": true, "ruleTypeNames": []any{"no-components"}, "source": pointsPolygonSource([][2]float64{{90, 40}, {110, 40}, {110, 55}, {90, 55}})}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 1 || v[0].comps["A"].X != 80 || v[0].comps["A"].Y != 70 {
 		t.Fatalf("no-components ignored: %v %+v", err, report)
@@ -233,7 +233,7 @@ func TestPCBReflowSameNetViaInPadRequiresOwnership(t *testing.T) {
 	snap, spec := reflowFixture(x, a)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}}
 	snap.Copper.Vias = []any{map[string]any{"primitiveId": "via", "net": "net-A", "x": 100.0, "y": 70.0, "holeDiameter": 5.0, "diameter": 10.0}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 0 || !strings.Contains(report.FixedGroups["a"], "unowned attached via") {
 		t.Fatalf("via-in-pad forgotten: %v %+v", err, report)
@@ -244,19 +244,19 @@ func TestPCBReflowTranslatedBoardProducesTranslatedSolution(t *testing.T) {
 	x, a, b := reflowPart("X", 100, 110), reflowPart("A", 100, 70), reflowPart("B", 100, 40)
 	snap, spec := reflowFixture(x, a, b)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A"}}, {ID: "b", AnchorRef: "B", Refs: []string{"B"}}}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -30)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -30)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 1 {
 		t.Fatalf("baseline: %v %+v", err, report)
 	}
 	for i, c := range snap.Components {
-		snap.Components[i] = translateBoardComp(c, 71, 31)
+		snap.Components[i] = mustTranslateBoardComp(t, c, 71, 31)
 	}
 	for i, p := range snap.Outline.Points {
 		snap.Outline.Points[i] = [2]float64{p[0] + 71, p[1] + 31}
 	}
 	snap.Outline.BBox = layoutBBox{MinX: 71, MinY: 31, MaxX: 371, MaxY: 331}
-	target.comps["X"] = translateBoardComp(target.comps["X"], 71, 31)
+	target.comps["X"] = mustTranslateBoardComp(t, target.comps["X"], 71, 31)
 	moved, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(moved) != 1 {
 		t.Fatalf("translated: %v %+v", err, report)
@@ -303,7 +303,7 @@ func TestPCBReflowIndependentRebuildRejectsIncompleteGroupAndIgnoresSubmittedCop
 	snap, spec := reflowFixture(x, a, cap)
 	spec.Groups = []pcbReflowGroupSpec{{ID: "a", AnchorRef: "A", Refs: []string{"A", "C"}, InternalPrimitiveIDs: []string{"inside"}}}
 	snap.Copper.Lines = []any{reflowLine("inside", "net-A", 100, 70, 130, 70)}
-	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": translateBoardComp(x, 0, -40)}}
+	target := pcbLayoutVariant{label: "seed", comps: map[string]boardComp{"X": mustTranslateBoardComp(t, x, 0, -40)}}
 	v, report, err := resolvePCBReflow(spec, target, snap, 4)
 	if err != nil || len(v) != 1 {
 		t.Fatalf("seed: %v %+v", err, report)
