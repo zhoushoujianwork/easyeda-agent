@@ -99,6 +99,14 @@ rebind 使用候选优先事务：先回读 Device association，候选创建且
 清后用 `sch clear --dry-run --expect-empty` 核对所有非保留图元，读取失败不是空页。
 新 frame 和旧 zone-draw 分别拥有自己的图元，清旧标注用其对应命令，不按类型删除用户图形。
 
+保留器件的广义清页目前有 [#267 引脚子级属性保护缺口](https://github.com/zhoushoujianwork/easyeda-agent/issues/267)：
+当 global 属性库存含 pin-owned 属性时，`sch clear --preserve-parts` 会把它们列入 orphan
+删除计划；`instancesPreserved:true` 也不证明引脚属性已保全。global 返回空时同样缺少
+子级覆盖证明。修复并完成 pin/属性保存重载复测前，不执行该分支，也不执行包含该步骤的
+Compose 重建队列。先保留完整 part→pin→attribute 父属数据；只在范围可精确声明并保护其余
+对象时，从 fresh 数据生成更窄的 typed 删除/恢复计划。不能改 binding、伪造 before、手改队列
+或用 GUI 绕过；没有可靠局部路径就保持未执行。
+
 `sch prim-delete` 的有界 settle 后仍报 `partial`/`survived` 时，停止依赖步骤，保存命令、
 原始回包与目标页 fresh list，核对指定 ID 的真实残留。残留本身不能证明 action 队列卡死；
 不要按旧版 stderr 的重启或 UI 删除建议操作。只在原始失败与残留已冻结后，以明确的 typed
