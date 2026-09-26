@@ -15,6 +15,7 @@
 
 | 样例 | 何时读取 | 状态 |
 |---|---|---|
+| [原理图部分写入后的精确恢复](schematic-partial-recovery/README.md) | fresh 核对失败对象、保护引脚属性、真实 unwired 重算及图签修正 | `partial-live-verified`；三页保存重载现场通过，独立复核中；不签 PCB/E2E |
 | [已有相对布局的完整组移动](pcb-group-move/README.md) | 五成员整体平移/旋转、非对称 anchor、完整成员与固定件对账；开发验证场景起点 | `offline-verified`；五成员合成几何与 CLI 已验证，现场待验证 |
 | [260919 AT32F415 总索引](260919-at32f415/index.md) | 69 个器件、15 个功能区、90×50 mm 两层板的完整 Demo | `partial-live-verified`；代表性步骤已验证，完整布线明确未完成 |
 | [260919 机器可读样例目录](260919-at32f415/example-catalog.json) | SCH/PCB/LAY/RTE/FIN 共 36 个技术点的来源、参数、步骤、观测、错误修法和待验证项 | 15 项 `live-verified`，其余保持 `offline-verified` / `source-only` |
