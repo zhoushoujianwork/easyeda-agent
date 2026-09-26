@@ -192,6 +192,10 @@ easyeda doc switch "<doc-name-or-uuid>" --project "<project>"
 - 多窗口时，`versionGate` / `hostCompatibility` 总结包含其他工程的连接器；按目标
   project/doc 唯一匹配的窗口核对其版本及 `windowId` 对应宿主 finding，不能把其他工程的
   旧连接器误判为目标版本变化。目标窗口缺失、重复或自身版本不符仍须查明；保留完整 health 回包。
+- 用户新打开同一工程时，后台旧窗口可能仍在连接；相同 project/doc 不证明连接属于当前可见页。
+  若只读观察的页面 URL/标题与连接器顶层窗口不一致，先停止新增测试写入，明确两者身份，
+  请用户在当前页启动连接器并允许外部交互，再按新注册和 fresh context 绑定窗口。
+  旧窗口的失败或成功只属于旧窗口，不能计作新页面验证；界面观察不替代 typed 对象回读。
 - 写操作使用 `--project` 和 `--doc`，由 CLI 在派发前实时确认目标文档。没有独立的
   `easyeda context` 命令；`health` 显示连接状态，`doc ls/switch` 读取/切换实时文档。
 
