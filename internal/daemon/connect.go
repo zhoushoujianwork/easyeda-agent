@@ -110,7 +110,8 @@ func (s *Server) handleFrame(ctx context.Context, c *conn, data []byte) {
 			s.logf("connector ignored context windowId=%q registeredWindowId=%q", msg.WindowID, c.id())
 			return
 		}
-		s.hub.dedupeContext(c)
+		// Context identifies the document, not a duplicate transport. Distinct
+		// live registrations must remain available for explicit window routing.
 
 	case protocol.TypePing:
 		c.touch(now)

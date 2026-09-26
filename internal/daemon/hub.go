@@ -233,17 +233,8 @@ func (c *conn) deliver(resp *protocol.Response) {
 	}
 }
 
-// retiredWindow remembers the stable identity a windowId used to carry.
-//
-// The connector mints a FRESH windowId on every handshake (`crypto.randomUUID()`
-// in transport.ts), so a plain page refresh silently invalidates whatever
-// windowId the caller was holding. The old behaviour answered such a request
-// with NO_CONNECTOR / "no EasyEDA connector is available" — which is false and
-// actively misleading: the connector is up, only its id moved. Agents read that
-// as "the link is down" and go restart the daemon or reopen the page.
-//
-// Keeping the retired identity lets the daemon re-route the request to the
-// window that replaced it, and say so, instead of failing the caller.
+// retiredWindow retains diagnostic context for a disconnected transport. Shared
+// document/project identity does not establish a successor connection.
 type retiredWindow struct {
 	ProjectUUID  string
 	ProjectName  string
@@ -252,7 +243,7 @@ type retiredWindow struct {
 	RetiredAt    time.Time
 }
 
-// How long / how many retired windowIds stay resolvable. Long enough to cover a
+// How long / how many retired windowIds keep diagnostic context. Enough to cover a
 // refresh mid-workflow, bounded so a long-lived daemon cannot grow unbounded.
 const (
 	retiredWindowTTL = 30 * time.Minute
@@ -267,8 +258,8 @@ const (
 type hub struct {
 	mu      sync.RWMutex
 	windows map[string]*conn
-	// retired maps a disconnected windowId → the identity it carried, so
-	// resolveRetired can forward a stale-id request to its live successor.
+	// retired maps a disconnected windowId to its last diagnostic context.
+	// It must never be used to select a replacement transport.
 	retired map[string]retiredWindow
 }
 
@@ -284,53 +275,6 @@ func (h *hub) add(c *conn) {
 	h.mu.Lock()
 	h.windows[id] = c
 	h.mu.Unlock()
-}
-
-// dedupeContext retires duplicate transport registrations for the exact same
-// project/document/tab. A browser reload can leave old extension sockets alive;
-// allowing them to share one EasyEDA document makes writes race in the editor.
-func (h *hub) dedupeContext(current *conn) {
-	want := current.snapshot()
-	if want.Context.ProjectUUID == "" || want.Context.DocumentUUID == "" || want.Context.TabID == "" {
-		return
-	}
-	h.mu.Lock()
-	var closeList []*conn
-	for id, other := range h.windows {
-		if other == current {
-			continue
-		}
-		got := other.snapshot()
-		if got.Context.ProjectUUID != want.Context.ProjectUUID || got.Context.DocumentUUID != want.Context.DocumentUUID || got.Context.TabID != want.Context.TabID {
-			continue
-		}
-		// A page with an older connector runtime may reconnect after its replacement.
-		keepCurrent := preferConnectorWindow(want, got)
-		if keepCurrent {
-			delete(h.windows, id)
-			closeList = append(closeList, other)
-		} else {
-			delete(h.windows, want.WindowID)
-			closeList = append(closeList, current)
-			h.pruneRetiredLocked()
-			h.mu.Unlock()
-			for _, old := range closeList {
-				old.disconnect()
-				if old.ws != nil {
-					_ = old.ws.Close(websocket.StatusGoingAway, "duplicate connector session")
-				}
-			}
-			return
-		}
-	}
-	h.pruneRetiredLocked()
-	h.mu.Unlock()
-	for _, old := range closeList {
-		old.disconnect()
-		if old.ws != nil {
-			_ = old.ws.Close(websocket.StatusGoingAway, "duplicate connector session")
-		}
-	}
 }
 
 // pruneStale removes registrations whose transport stopped sending frames.
@@ -408,46 +352,15 @@ func (h *hub) pruneRetiredLocked() {
 	}
 }
 
-// resolveRetired maps a windowId that is no longer connected to the live window
-// that replaced it, using the identity the dead id used to carry.
-//
-// The document uuid is the strongest signal — unlike windowId it survives a
-// refresh (it identifies the schematic page / PCB itself), so a window showing
-// the SAME document is unambiguously the successor. Project identity is the
-// fallback when the successor happens to sit on a different page.
-//
-// Returns ok=false when the id is unknown/expired, or when the identity it
-// carried no longer matches any connected window — the caller must then report
-// a real error rather than silently retarget someone else's window.
-func (h *hub) resolveRetired(windowID string) (newID string, prev retiredWindow, ok bool) {
-	if windowID == "" {
-		return "", retiredWindow{}, false
-	}
+// retiredInfo supplies error context only; callers must bind a live window again.
+func (h *hub) retiredInfo(windowID string) (retiredWindow, bool) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	prev, known := h.retired[windowID]
 	if !known || time.Since(prev.RetiredAt) > retiredWindowTTL {
-		return "", retiredWindow{}, false
+		return retiredWindow{}, false
 	}
-	var byProject []Window
-	for _, c := range h.windows {
-		w := c.snapshot()
-		if prev.DocumentUUID != "" && w.Context.DocumentUUID == prev.DocumentUUID {
-			return w.WindowID, prev, true // same document — certain successor
-		}
-		sameProject := (prev.ProjectUUID != "" && w.Context.ProjectUUID == prev.ProjectUUID) ||
-			(prev.ProjectName != "" && w.Context.ProjectName == prev.ProjectName)
-		if sameProject {
-			byProject = append(byProject, w)
-		}
-	}
-	// Only redirect on an unambiguous project match: with two windows of the
-	// same project open (schematic + PCB), guessing could land a mutation on the
-	// wrong document — worse than an honest error.
-	if len(byProject) == 1 {
-		return byProject[0].WindowID, prev, true
-	}
-	return "", prev, false
+	return prev, true
 }
 
 // liveWindowSummary describes the currently connected windows for error text,
@@ -499,9 +412,6 @@ func (h *hub) target(windowID string) (*conn, bool) {
 	if len(matches) == 1 {
 		return h.windows[matches[0].WindowID], true
 	}
-	if newest, ok := newestExactDocumentDuplicate(matches); ok {
-		return h.windows[newest.WindowID], true
-	}
 	return nil, false
 }
 
@@ -549,40 +459,9 @@ func (h *hub) windowForProject(project, preferDoc string) (id string, found bool
 		}
 	}
 
-	// A connector reconnect briefly leaves the old and new registrations alive
-	// together. EasyEDA 3.2.175 can also activate one extension twice. If every
-	// candidate points at the exact same document tab, they are transport
-	// duplicates rather than distinct user windows; route to the preferred one.
-	if newest, ok := newestExactDocumentDuplicate(matches); ok {
-		return newest.WindowID, true, false
-	}
+	// Shared document identity does not prove shared transport ownership. Keep
+	// multiple live connections ambiguous, regardless of version or arrival.
 	return "", false, true
-}
-
-func newestExactDocumentDuplicate(matches []Window) (Window, bool) {
-	if len(matches) < 2 {
-		return Window{}, false
-	}
-	first := matches[0]
-	if first.Context.ProjectUUID == "" ||
-		first.Context.DocumentUUID == "" ||
-		first.Context.DocumentType == "" ||
-		first.Context.TabID == "" {
-		return Window{}, false
-	}
-	newest := first
-	for _, w := range matches[1:] {
-		if w.Context.ProjectUUID != first.Context.ProjectUUID ||
-			w.Context.DocumentUUID != first.Context.DocumentUUID ||
-			w.Context.DocumentType != first.Context.DocumentType ||
-			w.Context.TabID != first.Context.TabID {
-			return Window{}, false
-		}
-		if preferConnectorWindow(w, newest) {
-			newest = w
-		}
-	}
-	return newest, true
 }
 
 // listAnnotated returns the window list with each window's ConnectorVersionOK
@@ -714,135 +593,6 @@ func semverCore(v string) string {
 		}
 	}
 	return v
-}
-
-// preferConnectorWindow compares full SemVer precedence for duplicate transports.
-// A version we cannot parse has no reliable ordering, so arrival time remains
-// the fallback. Build metadata has no SemVer precedence; equal versions also
-// fall back to arrival time.
-func preferConnectorWindow(candidate, incumbent Window) bool {
-	if order, comparable := compareConnectorSemver(candidate.ConnectorVersion, incumbent.ConnectorVersion); comparable && order != 0 {
-		return order > 0
-	}
-	return candidate.ConnectedAt.After(incumbent.ConnectedAt)
-}
-
-type connectorSemver struct {
-	core [3]string
-	pre  []string
-}
-
-// compareConnectorSemver returns -1/0/1 only when both versions are valid
-// SemVer, accepting an optional leading v used by release tags.
-func compareConnectorSemver(a, b string) (int, bool) {
-	left, ok := parseConnectorSemver(a)
-	if !ok {
-		return 0, false
-	}
-	right, ok := parseConnectorSemver(b)
-	if !ok {
-		return 0, false
-	}
-	for i := range left.core {
-		if order := compareDecimal(left.core[i], right.core[i]); order != 0 {
-			return order, true
-		}
-	}
-	if len(left.pre) == 0 && len(right.pre) != 0 {
-		return 1, true
-	}
-	if len(right.pre) == 0 && len(left.pre) != 0 {
-		return -1, true
-	}
-	for i := 0; i < len(left.pre) && i < len(right.pre); i++ {
-		x, y := left.pre[i], right.pre[i]
-		xNumeric, yNumeric := decimalIdentifier(x), decimalIdentifier(y)
-		switch {
-		case xNumeric && yNumeric:
-			if order := compareDecimal(x, y); order != 0 {
-				return order, true
-			}
-		case xNumeric:
-			return -1, true
-		case yNumeric:
-			return 1, true
-		default:
-			if order := strings.Compare(x, y); order != 0 {
-				return order, true
-			}
-		}
-	}
-	switch {
-	case len(left.pre) < len(right.pre):
-		return -1, true
-	case len(left.pre) > len(right.pre):
-		return 1, true
-	default:
-		return 0, true
-	}
-}
-
-func parseConnectorSemver(v string) (connectorSemver, bool) {
-	v = strings.TrimPrefix(v, "v")
-	version, build, hasBuild := strings.Cut(v, "+")
-	if hasBuild && !validSemverIdentifiers(build, false) {
-		return connectorSemver{}, false
-	}
-	core, pre, hasPre := strings.Cut(version, "-")
-	parts := strings.Split(core, ".")
-	if len(parts) != 3 {
-		return connectorSemver{}, false
-	}
-	var parsed connectorSemver
-	for i, part := range parts {
-		if !decimalIdentifier(part) || (len(part) > 1 && part[0] == '0') {
-			return connectorSemver{}, false
-		}
-		parsed.core[i] = part
-	}
-	if hasPre {
-		if !validSemverIdentifiers(pre, true) {
-			return connectorSemver{}, false
-		}
-		parsed.pre = strings.Split(pre, ".")
-	}
-	return parsed, true
-}
-
-func validSemverIdentifiers(s string, prerelease bool) bool {
-	for _, id := range strings.Split(s, ".") {
-		if id == "" || (prerelease && len(id) > 1 && id[0] == '0' && decimalIdentifier(id)) {
-			return false
-		}
-		for _, c := range id {
-			if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-') {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func decimalIdentifier(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func compareDecimal(a, b string) int {
-	if len(a) != len(b) {
-		if len(a) < len(b) {
-			return -1
-		}
-		return 1
-	}
-	return strings.Compare(a, b)
 }
 
 func (h *hub) list() []Window {

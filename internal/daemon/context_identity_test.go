@@ -11,7 +11,7 @@ import (
 )
 
 // Exercise the actual receive handler, including registration and context
-// deduplication, rather than applying a context directly to a connection.
+// ownership, rather than applying a context directly to a connection.
 func sendContextIdentityFrame(t *testing.T, s *Server, c *conn, frame any) {
 	t.Helper()
 	data, err := json.Marshal(frame)
@@ -32,8 +32,8 @@ func TestHandleFrameRejectsContextOutsideRegisteredSession(t *testing.T) {
 		{"empty ID after register", true, "", false},
 		{"context before register", false, "w1", false},
 		{"empty ID before register", false, "", false},
-		{"old session must not dedupe cached state", true, "w1", true},
-		{"empty ID must not dedupe cached state", true, "", true},
+		{"old session must not change cached state", true, "w1", true},
+		{"empty ID must not change cached state", true, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := New(Options{Version: "1.7.1"})
@@ -59,9 +59,8 @@ func TestHandleFrameRejectsContextOutsideRegisteredSession(t *testing.T) {
 				})
 			}
 			if tc.sharedCachedState {
-				// Response contexts can refresh the cache without deduplication.
-				// Rejection must skip dedupe even if the prior cached state now
-				// matches another connection, not just decline the new context.
+				// Response contexts can refresh the cache. A rejected context
+				// must preserve it even when it matches another connection.
 				cached := shared.Context()
 				sendContextIdentityFrame(t, s, incoming, protocol.Response{
 					Envelope: protocol.Envelope{Type: protocol.TypeResponse, ID: "completed-read"},
@@ -70,8 +69,7 @@ func TestHandleFrameRejectsContextOutsideRegisteredSession(t *testing.T) {
 			}
 			beforeIncoming, beforeOther := incoming.snapshot(), other.snapshot()
 			beforeCount := len(s.hub.windows)
-			// This otherwise duplicates w1's complete project/document/tab. If
-			// accepted, the newer connection would retire the legitimate w1.
+			// The rejected frame reports w1's complete project/document/tab.
 			shared.WindowID = tc.messageID
 			sendContextIdentityFrame(t, s, incoming, shared)
 
@@ -95,7 +93,7 @@ func TestHandleFrameRejectsContextOutsideRegisteredSession(t *testing.T) {
 			for _, c := range []*conn{incoming, other} {
 				select {
 				case <-c.done:
-					t.Error("invalid context entered dedupe and disconnected a window")
+					t.Error("invalid context disconnected a window")
 				default:
 				}
 			}
@@ -124,5 +122,51 @@ func TestHandleFrameRegisteredContextCanSwitchDocument(t *testing.T) {
 		if after.LastSeen.Before(before.LastSeen) || len(s.hub.windows) != 1 || s.hub.windows["w2"] != c {
 			t.Fatal("same-session document change corrupted registration/liveness")
 		}
+	}
+}
+
+func TestHandleFrameSameDocumentConnectionsStayIndependent(t *testing.T) {
+	for _, versions := range [][2]string{
+		{"1.7.1-dev.8", "1.7.1-dev.8"},
+		{"1.7.1-dev.8", "1.7.1-dev.9"},
+		{"1.7.1-dev.9", "1.7.1-dev.8"},
+		{"1.7.1", "1.7.1-dev.9"},
+		{"unknown", "1.7.1"},
+	} {
+		t.Run(versions[0]+"_"+versions[1], func(t *testing.T) {
+			s := New(Options{})
+			conns := []*conn{newConn(nil, time.Now().Add(-time.Second)), newConn(nil, time.Now())}
+			for i, c := range conns {
+				id := []string{"first", "second"}[i]
+				sendContextIdentityFrame(t, s, c, protocol.Register{Type: protocol.TypeRegister, WindowID: id, ConnectorVersion: versions[i]})
+			}
+			for round := 0; round < 10; round++ {
+				for _, c := range conns {
+					sendContextIdentityFrame(t, s, c, protocol.ContextMessage{
+						Type: protocol.TypeContext, WindowID: c.id(), ProjectUUID: "p", ProjectName: "same",
+						DocumentUUID: "d", DocumentType: "schematic", TabID: "tab",
+					})
+				}
+			}
+			if len(s.hub.list()) != 2 {
+				t.Fatal("shared document retired a live connection")
+			}
+			if _, ok := s.hub.target(""); ok {
+				t.Fatal("shared document implicitly selected a connection")
+			}
+			if _, found, ambiguous := s.hub.windowForProject("p", "schematic"); found || !ambiguous {
+				t.Fatal("shared project must remain ambiguous")
+			}
+			for _, c := range conns {
+				if target, ok := s.hub.target(c.id()); !ok || target != c {
+					t.Fatal("explicit target changed")
+				}
+				select {
+				case <-c.done:
+					t.Fatal("shared document disconnected a transport")
+				default:
+				}
+			}
+		})
 	}
 }

@@ -56,8 +56,9 @@ import { describeThrown } from './util';
 // EasyEDA 3.2.175 can activate the same extension more than once in one app
 // window. eda.sys_WebSocket is shared across those activations, so a fixed id
 // makes each activation close/re-register the other's socket forever. Give each
-// activation its own host-managed socket; the daemon coalesces registrations
-// that report the same project/document/tab when routing an action.
+// activation its own host-managed socket. The shared runtime below disposes a
+// superseded controller; distinct live registrations remain independently
+// addressable in the daemon, even when they report the same document.
 const WS_ID_BASE = createWebSocketId();
 // 叠加在 PR #154 的 activation-scoped id 之上:即便每个激活已有独立 id,真机 soak
 // 实测(2026-08-04,停 daemon 45s/60s 各一轮)仍会卡死 —— 第二轮 210s 没能自愈,

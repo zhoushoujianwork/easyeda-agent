@@ -36,56 +36,7 @@ func TestHubPruneStale(t *testing.T) {
 		t.Fatal("fresh registration removed")
 	}
 	if _, ok := h.retired["stale"]; !ok {
-		t.Fatal("stale identity was not retained for reconnect routing")
-	}
-}
-
-func TestDedupeContextPrefersConnectorVersion(t *testing.T) {
-	now := time.Now().UTC()
-	cases := []struct {
-		name, existingVersion, incomingVersion, wantID string
-		existingAt, incomingAt                         time.Time
-	}{
-		{"old dev runtime reconnects late", "1.6.0-dev.5", "1.6.0-dev.4", "existing", now.Add(-time.Minute), now},
-		{"new dev runtime reconnects late", "1.6.0-dev.4", "1.6.0-dev.5", "incoming", now.Add(-time.Minute), now},
-		{"higher dev runtime wins even if connected earlier", "1.6.0-dev.4", "1.6.0-dev.5", "incoming", now, now.Add(-time.Minute)},
-		{"numeric dev identifiers", "1.6.0-dev.9", "1.6.0-dev.10", "incoming", now, now.Add(-time.Minute)},
-		{"release outranks prerelease", "1.6.0", "1.6.0-dev.10", "existing", now.Add(-time.Minute), now},
-		{"core components compare numerically", "1.9.0", "1.10.0", "incoming", now, now.Add(-time.Minute)},
-		{"same version keeps later connection", "1.6.0-dev.5", "v1.6.0-dev.5", "incoming", now.Add(-time.Minute), now},
-		{"same version keeps existing later connection", "1.6.0-dev.5", "1.6.0-dev.5", "existing", now, now.Add(-time.Minute)},
-		{"build metadata does not affect precedence", "1.6.0+abc", "1.6.0+xyz", "incoming", now.Add(-time.Minute), now},
-		{"unparseable version falls back to arrival", "1.6.0-dev.5", "unknown", "incoming", now.Add(-time.Minute), now},
-		{"invalid semver falls back to arrival", "1.6.0-dev.5", "1.6.0-dev.04", "incoming", now.Add(-time.Minute), now},
-	}
-	newDuplicate := func(id, version string, at time.Time) *conn {
-		c := newConn(nil, at)
-		c.windowID = id
-		c.connVersion = version
-		c.ctx = protocol.Context{ProjectUUID: "project", DocumentUUID: "document", TabID: "tab"}
-		return c
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			existing := newDuplicate("existing", tc.existingVersion, tc.existingAt)
-			incoming := newDuplicate("incoming", tc.incomingVersion, tc.incomingAt)
-			h := newHub()
-			h.add(existing)
-			h.add(incoming)
-			h.dedupeContext(incoming)
-			if len(h.windows) != 1 || h.windows[tc.wantID] == nil {
-				t.Fatalf("remaining windows = %+v, want only %s", h.windows, tc.wantID)
-			}
-			loser := existing
-			if tc.wantID == "existing" {
-				loser = incoming
-			}
-			select {
-			case <-loser.done:
-			default:
-				t.Fatal("retired connector was not disconnected")
-			}
-		})
+		t.Fatal("stale identity was not retained for diagnostics")
 	}
 }
 
@@ -151,7 +102,7 @@ func TestWindowForProject(t *testing.T) {
 	}
 }
 
-func TestWindowForProjectReconnectDuplicateUsesNewest(t *testing.T) {
+func TestWindowForProjectSameDocumentRemainsAmbiguous(t *testing.T) {
 	old := connWith("old", "motobox", "pcb")
 	old.connectedAt = time.Unix(10, 0)
 	old.ctx.ProjectUUID = "project-1"
@@ -166,8 +117,8 @@ func TestWindowForProjectReconnectDuplicateUsesNewest(t *testing.T) {
 
 	h := &hub{windows: map[string]*conn{"old": old, "new": newer}}
 	id, found, ambiguous := h.windowForProject("motobox", "pcb")
-	if id != "new" || !found || ambiguous {
-		t.Fatalf("windowForProject duplicate reconnect = (%q,%v,%v), want (new,true,false)", id, found, ambiguous)
+	if id != "" || found || !ambiguous {
+		t.Fatalf("windowForProject same document = (%q,%v,%v), want (empty,false,true)", id, found, ambiguous)
 	}
 }
 
@@ -220,7 +171,7 @@ func TestWindowForProjectDistinctDocumentsRemainAmbiguous(t *testing.T) {
 	}
 }
 
-func TestTargetReconnectDuplicateUsesNewest(t *testing.T) {
+func TestTargetSameDocumentRemainsAmbiguous(t *testing.T) {
 	old := connWith("old", "motobox", "pcb")
 	old.connectedAt = time.Unix(10, 0)
 	old.ctx.ProjectUUID = "project-1"
@@ -234,12 +185,12 @@ func TestTargetReconnectDuplicateUsesNewest(t *testing.T) {
 
 	h := &hub{windows: map[string]*conn{"old": old, "new": newer}}
 	got, ok := h.target("")
-	if !ok || got != newer {
-		t.Fatalf("target duplicate reconnect = (%p,%v), want (%p,true)", got, ok, newer)
+	if ok || got != nil {
+		t.Fatalf("target same document = (%p,%v), want (nil,false)", got, ok)
 	}
 }
 
-func TestTargetReconnectDuplicatePrefersHigherVersion(t *testing.T) {
+func TestTargetSameDocumentHigherVersionRemainsAmbiguous(t *testing.T) {
 	olderRuntime := connWith("late-old-runtime", "motobox", "pcb")
 	olderRuntime.connectedAt = time.Unix(20, 0)
 	olderRuntime.connVersion = "1.6.0-dev.4"
@@ -256,8 +207,8 @@ func TestTargetReconnectDuplicatePrefersHigherVersion(t *testing.T) {
 
 	h := &hub{windows: map[string]*conn{olderRuntime.windowID: olderRuntime, newerRuntime.windowID: newerRuntime}}
 	got, ok := h.target("")
-	if !ok || got != newerRuntime {
-		t.Fatalf("target duplicate reconnect = (%p,%v), want (%p,true)", got, ok, newerRuntime)
+	if ok || got != nil {
+		t.Fatalf("target same document with higher version = (%p,%v), want (nil,false)", got, ok)
 	}
 }
 
@@ -381,78 +332,24 @@ func TestRemoveRetiresTheWindowIdentity(t *testing.T) {
 	}
 }
 
-func TestResolveRetiredPrefersTheSameDocument(t *testing.T) {
-	// documentUuid survives a refresh (it identifies the page itself), so a
-	// window showing the same document is unambiguously the successor — even
-	// with another window of the same project also connected.
+func TestRetiredInfoIsDiagnosticAndExpires(t *testing.T) {
 	h := newHub()
 	h.add(connWithDoc("old", "p-uuid", "ceshi", "doc-1", "schematic"))
 	h.remove("old")
 	h.add(connWithDoc("new", "p-uuid", "ceshi", "doc-1", "schematic"))
-	h.add(connWithDoc("other", "p-uuid", "ceshi", "doc-2", "pcb"))
-
-	id, prev, ok := h.resolveRetired("old")
-	if !ok || id != "new" {
-		t.Fatalf("resolveRetired = (%q,%v), want (\"new\",true)", id, ok)
+	prev, ok := h.retiredInfo("old")
+	if !ok || prev.ProjectUUID != "p-uuid" || prev.DocumentUUID != "doc-1" {
+		t.Fatalf("retired diagnostic lost: %+v %v", prev, ok)
 	}
-	if prev.ProjectName != "ceshi" {
-		t.Fatalf("previous identity not returned: %+v", prev)
+	if c, ok := h.target("old"); ok || c != nil {
+		t.Fatal("retired identity must never select a successor")
 	}
-}
-
-func TestResolveRetiredFallsBackToAnUnambiguousProjectMatch(t *testing.T) {
-	// The successor may sit on a different page than the one that died.
-	h := newHub()
-	h.add(connWithDoc("old", "p-uuid", "ceshi", "doc-1", "schematic"))
-	h.remove("old")
-	h.add(connWithDoc("new", "p-uuid", "ceshi", "doc-9", "pcb"))
-
-	id, _, ok := h.resolveRetired("old")
-	if !ok || id != "new" {
-		t.Fatalf("resolveRetired = (%q,%v), want (\"new\",true)", id, ok)
-	}
-}
-
-func TestResolveRetiredRefusesToGuessBetweenTwoWindowsOfTheSameProject(t *testing.T) {
-	// A project legitimately open in a schematic AND a PCB window: guessing
-	// could land a mutation on the wrong document, which is worse than an
-	// honest error.
-	h := newHub()
-	h.add(connWithDoc("old", "p-uuid", "ceshi", "doc-1", "schematic"))
-	h.remove("old")
-	h.add(connWithDoc("a", "p-uuid", "ceshi", "doc-7", "schematic"))
-	h.add(connWithDoc("b", "p-uuid", "ceshi", "doc-8", "pcb"))
-
-	if id, _, ok := h.resolveRetired("old"); ok {
-		t.Fatalf("must not guess a successor, got %q", id)
-	}
-}
-
-func TestResolveRetiredDoesNotCrossProjects(t *testing.T) {
-	h := newHub()
-	h.add(connWithDoc("old", "p-uuid", "ceshi", "doc-1", "schematic"))
-	h.remove("old")
-	h.add(connWithDoc("new", "other-uuid", "motobox", "doc-2", "schematic"))
-
-	if id, _, ok := h.resolveRetired("old"); ok {
-		t.Fatalf("a different project must never absorb a retired id, got %q", id)
-	}
-}
-
-func TestResolveRetiredExpiresAndIsUnknownForFreshIds(t *testing.T) {
-	h := newHub()
-	h.add(connWithDoc("old", "p-uuid", "ceshi", "doc-1", "schematic"))
-	h.remove("old")
-	h.add(connWithDoc("new", "p-uuid", "ceshi", "doc-1", "schematic"))
-
-	stale := h.retired["old"]
-	stale.RetiredAt = time.Now().UTC().Add(-2 * retiredWindowTTL)
-	h.retired["old"] = stale
-	if _, _, ok := h.resolveRetired("old"); ok {
-		t.Fatal("an expired retirement must not resolve")
-	}
-	if _, _, ok := h.resolveRetired("never-seen"); ok {
-		t.Fatal("an unknown id must not resolve")
+	prev.RetiredAt = time.Now().UTC().Add(-2 * retiredWindowTTL)
+	h.retired["old"] = prev
+	for _, id := range []string{"old", "never-seen", ""} {
+		if _, ok := h.retiredInfo(id); ok {
+			t.Fatalf("expired or unknown identity %q must not resolve", id)
+		}
 	}
 }
 

@@ -18,6 +18,20 @@ The protocol is the contract between the Go daemon and the EasyEDA connector ext
 }
 ```
 
+## Window routing
+
+Each registered `windowId` identifies one live transport. Two connections may
+report the same project, document and tab without being interchangeable. The
+daemon keeps both; unqualified requests return `AMBIGUOUS_WINDOW`, and a project
+hint that still matches multiple windows returns `AMBIGUOUS_PROJECT`. Pass an
+explicit, verified `windowId` to choose one. Connector version and connection
+arrival time do not select a target.
+
+A disconnected explicit ID is never redirected by matching document/project.
+The daemon returns `STALE_WINDOW` with current candidates when other windows are
+online, or `NO_CONNECTOR` when none are online. An in-flight request that loses
+its connection fails; it is not transferred or replayed on another connection.
+
 ## Response
 
 ```json

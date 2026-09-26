@@ -178,3 +178,34 @@ func TestAmbiguousWindowWithoutAHintNamesTheCandidates(t *testing.T) {
 		}
 	}
 }
+
+func TestRetiredWindowNeverTransfersToAnotherConnection(t *testing.T) {
+	for _, tc := range []struct {
+		name, projectUUID, projectName, documentUUID string
+		count                                        int
+	}{
+		{"one same document", "p", "ceshi", "d", 1},
+		{"two same document", "p", "ceshi", "d", 2},
+		{"same project different document", "p", "ceshi", "other", 1},
+		{"same name different project", "other", "ceshi", "other", 1},
+		{"same document different project", "other", "other", "d", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := New(Options{})
+			s.hub.add(connWithDoc("old", "p", "ceshi", "d", "schematic"))
+			s.hub.remove("old")
+			for i := 0; i < tc.count; i++ {
+				id := []string{"live-1", "live-2"}[i]
+				// nil transport deliberately fails if ingress incorrectly dispatches.
+				s.hub.add(connWithDoc(id, tc.projectUUID, tc.projectName, tc.documentUUID, "schematic"))
+			}
+			_, resp := postActionTo(t, s, `{"action":"schematic.save","windowId":"old","project":"ceshi"}`)
+			if resp.OK || resp.Error == nil || resp.Error.Code != "STALE_WINDOW" {
+				t.Fatalf("retired window transferred: %+v", resp)
+			}
+			if !strings.Contains(resp.Error.Detail, "Retired context:") || !strings.Contains(resp.Error.Detail, "--window") {
+				t.Fatalf("missing diagnostic/rebind guidance: %+v", resp.Error)
+			}
+		})
+	}
+}

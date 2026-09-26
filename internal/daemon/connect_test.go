@@ -201,7 +201,19 @@ func TestActionFailsPromptlyWhenConnectorDisconnectsMidRequest(t *testing.T) {
 
 	c := dialConnector(t, base, "win-disconnect")
 	defer c.CloseNow()
-	waitForWindow(t, base, "win-disconnect")
+	peer := dialConnector(t, base, "win-peer")
+	defer peer.CloseNow()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	for id, socket := range map[string]*websocket.Conn{"win-disconnect": c, "win-peer": peer} {
+		if err := wsjson.Write(ctx, socket, protocol.ContextMessage{
+			Type: protocol.TypeContext, WindowID: id, ProjectUUID: "p", ProjectName: "same",
+			DocumentUUID: "d", DocumentType: "schematic", TabID: "tab",
+		}); err != nil {
+			t.Fatal(err)
+		}
+		windowIdentityBarrier(t, ctx, socket, id+"-ready")
+	}
 
 	type actionResult struct {
 		status int
@@ -211,7 +223,7 @@ func TestActionFailsPromptlyWhenConnectorDisconnectsMidRequest(t *testing.T) {
 	resultCh := make(chan actionResult, 1)
 	go func() {
 		httpResp, err := http.Post("http://"+base+"/action", "application/json",
-			strings.NewReader(`{"action":"schematic.components.list","windowId":"win-disconnect","timeoutMs":150000}`))
+			strings.NewReader(`{"action":"schematic.save","windowId":"win-disconnect","timeoutMs":150000}`))
 		if err != nil {
 			resultCh <- actionResult{err: err}
 			return
@@ -222,8 +234,6 @@ func TestActionFailsPromptlyWhenConnectorDisconnectsMidRequest(t *testing.T) {
 		resultCh <- actionResult{status: httpResp.StatusCode, resp: resp, err: err}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
 	for {
 		var typed protocol.Typed
 		if err := wsjson.Read(ctx, c, &typed); err != nil {
@@ -249,6 +259,7 @@ func TestActionFailsPromptlyWhenConnectorDisconnectsMidRequest(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("action still waiting after connector disconnected")
 	}
+	windowIdentityBarrier(t, ctx, peer, "peer-no-replayed-write")
 }
 
 func TestSystemHealthActionNeedsNoConnector(t *testing.T) {
