@@ -1050,11 +1050,14 @@
       "value": "USBLC6-2SC6",
       "mpn": "USBLC6-2SC6",
       "lcsc": "C2687116",
+      "manufacturer": "UMW(友台半导体)",
+      "datasheetUrl": "https://item.szlcsc.com/2790619.html",
+      "datasheetPdfUrl": "https://datasheet.lcsc.com/datasheet/pdf/cb339b3dae40ca0f3986b4e9f6690755.pdf?productCode=C2687116",
       "deviceUuid": "1e5e214711544da8ba71fb2137ae703f",
       "package": "SOT-23-6",
       "class": "esd",
       "basic": false,
-      "desc": "USB2 低容 ESD 阵列(<1pF);脚 1/6=通道1,3/4=通道2,2=GND,5=VBUS。auto-added from 车机V2-fable realization 2026-07-10 (blocks batch-2)"
+      "desc": "UMW USB2 双路 ESD 阵列，非 ST 同名器件。UMW Nov.2024 p3：25°C、0Vdc、1MHz，I/O-GND 电容 typ 0.8/max 1pF，I/O-I/O typ 0.35/max 0.4pF。脚 1/6=通道1,3/4=通道2,2=GND,5=VBUS。auto-added 2026-07-10；2026-09-27 按 C2687116 补厂商与手册，纠正无条件 <1pF 描述"
     },
     "buckboost.tps63802_vson10": {
       "value": "TPS63802",

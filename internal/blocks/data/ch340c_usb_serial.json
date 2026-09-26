@@ -1,14 +1,14 @@
 {
   "schema_version": 2,
-  "revision": 3,
+  "revision": 4,
   "id": "block.ch340c_usb_serial",
   "desc": "CH340C 单路 USB 转串口(内置振荡器,无需晶振)+ USB-C + ESD",
   "category": "usb-serial",
   "author": "@zhoushoujianwork",
-  "contributors": [],
+  "contributors": ["Codex"],
   "added": "v0.6.0",
-  "updated": "v1.5.3",
-  "source": "datasheet:CH340C (南京沁恒) + datasheet:USBLC6-2SC6 (ST, low-capacitance USB 2.0 ESD protection, flow-through pinout) + 立创常见参考电路",
+  "updated": "v1.7.1-dev.11",
+  "source": "datasheet:CH340C (南京沁恒) + datasheet:UMW USBLC6-2SC6 Nov.2024 (C2687116, 非 ST 同名型号, https://datasheet.lcsc.com/datasheet/pdf/cb339b3dae40ca0f3986b4e9f6690755.pdf?productCode=C2687116) + 立创常见参考电路",
   "validated": "历史证据(仅适用于 CH340C + USB-C 主体及旧 ESD 拓扑):ceshi 2026-07-09 手工连线与 2026-07-21 `sch block-apply` 复验曾通过 30/30 autoconnect、netlist、bridge-check 与 layout-lint。2026-09-22 将误用的 RS-485 SM712 改为 USBLC6-2SC6，并按真实 6 引脚语义重写网络；标准器件交叉引用、符号引脚快照与 blocks-pin-audit 已离线通过，但新拓扑尚未重新执行现场 block-apply，因此以 verification 字段的 pending 状态为准。",
   "verification": {
     "schematic": {
@@ -19,7 +19,7 @@
     },
     "component_selection": {
       "status": "passed",
-      "evidence": "D_ESD 已改用 standard-parts 的 esd.usblc6_2sc6(C2687116, SOT-23-6)：ST USBLC6-2SC6 为 USB 2.0 低容双通道 ESD，符号快照核对 1/6=I/O1、3/4=I/O2、2=GND、5=VBUS"
+      "evidence": "2026-09-27 按 C2687116 核实 D_ESD 为 UMW USBLC6-2SC6、SOT-23-6；修正旧来源误写 ST。UMW Nov.2024 p1/p3 支持 USB2 双路保护，25°C/0Vdc/1MHz 下 I/O-GND 电容 typ 0.8/max 1pF、I/O-I/O typ 0.35/max 0.4pF。历史符号快照核对 1/6=I/O1、3/4=I/O2、2=GND、5=VBUS；本次未改拓扑，当前宿主的库身份与放件仍需现场核验"
     },
     "pcb_drc": {
       "status": "not_tested"

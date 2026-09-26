@@ -48,6 +48,11 @@ PDF 或封装与当前库器件不一致，停止自动绘图并重新核对器�
 来源：[LCSC 型号页](https://item.szlcsc.com/53562.html)、
 [对应 PDF](https://datasheet.lcsc.com/datasheet/pdf/0a975aaa49b7c97f38a963127be4a823.pdf?productCode=C52548)。
 
+**同名型号不是同一厂商**：`esd.usblc6_2sc6` 的 C2687116 是 UMW USBLC6-2SC6，
+不能用 ST 同名器件的 DS4260 为它背书。对应 UMW 手册 Nov.2024 第 3 页给出
+25°C、0Vdc、1MHz 下 I/O-GND 电容 typ 0.8/max 1pF、I/O-I/O typ 0.35/max 0.4pF，
+不能把典型值或“<1pF”当所有条件下的上限。确切身份与手册链接保存在标准库条目中。
+
 ## Data sources (live, no API key, browser User-Agent)
 
 | Source | Endpoint | Gives |
