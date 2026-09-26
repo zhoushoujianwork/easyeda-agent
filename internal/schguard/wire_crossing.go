@@ -70,15 +70,15 @@ func (p *WireCrossingProof) Allows(aID string, a, b Point, bID string, c, d Poin
 	return p.pairs[[2]crossingSegmentKey{x, y}] || p.pairs[[2]crossingSegmentKey{y, x}]
 }
 
-// VerifiedWireCrossings does not consume check findings or expected net names.
-// It requires actual pin netlist provenance, all markers, and every original
-// flat-segment record. Missing/conflicting evidence never grants an exception.
-func VerifiedWireCrossings(result map[string]any) (*WireCrossingProof, error) {
-	reject := func(why string) (*WireCrossingProof, error) {
-		return nil, fmt.Errorf("wire crossing evidence unavailable: %s", why)
+// ValidateWireCrossingInventory checks that the same single-page response
+// accounts for every component, marker and wire primitive. It does not prove
+// electrical connectivity or grant any geometry exemption by itself.
+func ValidateWireCrossingInventory(result map[string]any) error {
+	reject := func(why string) error {
+		return fmt.Errorf("wire crossing inventory unavailable: %s", why)
 	}
-	if result["wiresAvailable"] != true || result["pinNetsAvailable"] != true || result["allPages"] == true {
-		return reject("complete single-page wires/pin netlist not proved")
+	if result["wiresAvailable"] != true || result["allPages"] == true {
+		return reject("complete single-page wire inventory not proved")
 	}
 	comps, ok := array(result["components"])
 	if !ok {
@@ -98,13 +98,6 @@ func VerifiedWireCrossings(result map[string]any) (*WireCrossingProof, error) {
 			return reject("unsupported or unknown " + k)
 		}
 	}
-	type witness struct {
-		at  Point
-		net string
-		pin bool
-	}
-	var witnesses []witness
-	var anchors []Point
 	kinds := map[string]int{}
 	ids := map[string]bool{}
 	for _, v := range comps {
@@ -118,7 +111,199 @@ func VerifiedWireCrossings(result map[string]any) (*WireCrossingProof, error) {
 		}
 		ids[id] = true
 		kind, _ := c["componentType"].(string)
-		kinds[kind]++
+		switch kind {
+		case "part", "sheet", "netflag", "netport", "netlabel":
+			kinds[kind]++
+		default:
+			return reject("unknown component type")
+		}
+	}
+	for kind, key := range map[string]string{"netflag": "netflags", "netport": "netports", "netlabel": "netlabels"} {
+		n, ok := numeric(summary[key])
+		if !ok || n != float64(kinds[kind]) {
+			return reject("marker inventory mismatch")
+		}
+	}
+	wires, ok := array(result["wires"])
+	if !ok {
+		return reject("wires missing")
+	}
+	wireIDs := map[string]bool{}
+	for _, v := range wires {
+		w, ok := v.(map[string]any)
+		if !ok {
+			return reject("invalid wire")
+		}
+		id, _ := w["primitiveId"].(string)
+		if id == "" || ids[id] {
+			return reject("missing/conflicting wire ID")
+		}
+		wireIDs[id] = true
+	}
+	n, ok := numeric(summary["wires"])
+	if !ok || n != float64(len(wireIDs)) {
+		return reject("wire inventory mismatch")
+	}
+	_, _, err := completeRawWireSegments(wires)
+	return err
+}
+
+// observedRawCoordinates mirrors the connector's parseObservedWireLine contract.
+// Only its three explicit encodings are supported; never infer an authored
+// polyline from the parity of an ambiguous flat coordinate array.
+func observedRawCoordinates(w map[string]any) ([]float64, error) {
+	bad := fmt.Errorf("invalid or unknown original wire encoding/line")
+	line, ok := array(w["rawLine"])
+	if !ok || len(line) == 0 {
+		return nil, bad
+	}
+	encoding, _ := w["rawEncoding"].(string)
+	if encoding == "flat-segments" {
+		if len(line)%4 != 0 {
+			return nil, bad
+		}
+		coords := make([]float64, len(line))
+		for i, v := range line {
+			n, ok := numeric(v)
+			if !ok {
+				return nil, bad
+			}
+			coords[i] = n
+		}
+		return coords, nil
+	}
+	width := 4
+	if encoding == "nested-polyline" {
+		width = 2
+		if len(line) < 2 {
+			return nil, bad
+		}
+	} else if encoding != "nested-segments" {
+		return nil, bad
+	}
+	rows := make([][]float64, len(line))
+	for i, value := range line {
+		row, ok := array(value)
+		if !ok || len(row) != width {
+			return nil, bad
+		}
+		rows[i] = make([]float64, width)
+		for j, value := range row {
+			n, ok := numeric(value)
+			if !ok {
+				return nil, bad
+			}
+			rows[i][j] = n
+		}
+	}
+	var coords []float64
+	for i, row := range rows {
+		if width == 4 {
+			coords = append(coords, row...)
+		} else if i+1 < len(rows) {
+			coords = append(coords, row...)
+			coords = append(coords, rows[i+1]...)
+		}
+	}
+	return coords, nil
+}
+
+// completeRawWireSegments accounts for every original segment record.
+// Known diagonal/zero-length geometry is complete inventory, but never proves
+// a bare orthogonal X. Missing/duplicate indices or mismatched raw data do not.
+func completeRawWireSegments(raw []any) ([]segment, []string, error) {
+	reject := func(why string) ([]segment, []string, error) {
+		return nil, nil, fmt.Errorf("wire crossing inventory unavailable: %s", why)
+	}
+	var segments []segment
+	var nets []string
+	rawByID := map[string][]float64{}
+	encodingByID := map[string]string{}
+	indices := map[string]map[int]bool{}
+	for _, v := range raw {
+		w, ok := v.(map[string]any)
+		if !ok {
+			return reject("invalid wire")
+		}
+		id, _ := w["primitiveId"].(string)
+		if id == "" {
+			return reject("original wire identity missing")
+		}
+		coords, err := observedRawCoordinates(w)
+		if err != nil {
+			return reject(err.Error())
+		}
+		encoding := w["rawEncoding"].(string)
+		if prior, ok := rawByID[id]; ok {
+			if encodingByID[id] != encoding || len(prior) != len(coords) {
+				return reject("inconsistent raw line")
+			}
+			for i := range coords {
+				if prior[i] != coords[i] {
+					return reject("inconsistent raw line")
+				}
+			}
+		} else {
+			rawByID[id] = coords
+			encodingByID[id] = encoding
+			indices[id] = map[int]bool{}
+		}
+		index, ok := numeric(w["segmentIndex"])
+		if !ok || index != math.Trunc(index) || index < 0 || index >= float64(len(coords)/4) {
+			return reject("invalid raw segment index")
+		}
+		i := int(index)
+		if indices[id][i] {
+			return reject("duplicate segment")
+		}
+		indices[id][i] = true
+		points, valid := wirePoints(w)
+		if !valid || len(points) != 2 {
+			return reject("invalid segment geometry")
+		}
+		a, b := points[0], points[1]
+		if a != (Point{coords[4*i], coords[4*i+1]}) || b != (Point{coords[4*i+2], coords[4*i+3]}) {
+			return reject("segment disagrees with raw line")
+		}
+		net, _ := w["net"].(string)
+		segments = append(segments, segment{a, b, id, i})
+		nets = append(nets, strings.TrimSpace(net))
+	}
+	for id, line := range rawByID {
+		if len(indices[id]) != len(line)/4 {
+			return reject("raw segments omitted")
+		}
+	}
+	return segments, nets, nil
+}
+
+// VerifiedWireCrossings does not consume check findings or expected net names.
+// It requires actual pin netlist provenance, all markers, and every original
+// flat-segment record. Missing/conflicting evidence never grants an exception.
+func VerifiedWireCrossings(result map[string]any) (*WireCrossingProof, error) {
+	reject := func(why string) (*WireCrossingProof, error) {
+		return nil, fmt.Errorf("wire crossing evidence unavailable: %s", why)
+	}
+	if err := ValidateWireCrossingInventory(result); err != nil {
+		return nil, err
+	}
+	if result["pinNetsAvailable"] != true {
+		return reject("complete pin netlist not proved")
+	}
+	comps, _ := array(result["components"])
+	type witness struct {
+		at  Point
+		net string
+		pin bool
+	}
+	var witnesses []witness
+	var anchors []Point
+	for _, v := range comps {
+		c, ok := v.(map[string]any)
+		if !ok {
+			return reject("invalid component")
+		}
+		kind, _ := c["componentType"].(string)
 		switch kind {
 		case "sheet":
 			continue
@@ -175,86 +360,23 @@ func VerifiedWireCrossings(result map[string]any) (*WireCrossingProof, error) {
 			return reject("unknown component type")
 		}
 	}
-	for kind, key := range map[string]string{"netflag": "netflags", "netport": "netports", "netlabel": "netlabels"} {
-		n, ok := numeric(summary[key])
-		if !ok || n != float64(kinds[kind]) {
-			return reject("marker inventory mismatch")
-		}
-	}
 	raw, ok := array(result["wires"])
 	if !ok {
 		return reject("wires missing")
 	}
-	var segments []segment
-	var nets []string
-	rawByID := map[string][]float64{}
-	indices := map[string]map[int]bool{}
 	for _, v := range raw {
-		w, ok := v.(map[string]any)
-		if !ok {
-			return reject("invalid wire")
+		if v.(map[string]any)["rawEncoding"] != "flat-segments" {
+			return reject("crossing proof requires original flat-segment encoding")
 		}
-		id, _ := w["primitiveId"].(string)
-		if id == "" || w["rawEncoding"] != "flat-segments" {
-			return reject("original wire encoding missing")
-		}
-		line, ok := array(w["rawLine"])
-		if !ok || len(line) < 4 || len(line)%4 != 0 {
-			return reject("original wire line missing")
-		}
-		coords := make([]float64, len(line))
-		for i, v := range line {
-			n, ok := numeric(v)
-			if !ok {
-				return reject("invalid raw coordinate")
-			}
-			coords[i] = n
-		}
-		if prior, ok := rawByID[id]; ok {
-			if len(prior) != len(coords) {
-				return reject("inconsistent raw line")
-			}
-			for i := range coords {
-				if prior[i] != coords[i] {
-					return reject("inconsistent raw line")
-				}
-			}
-		} else {
-			rawByID[id] = coords
-			indices[id] = map[int]bool{}
-		}
-		index, ok := numeric(w["segmentIndex"])
-		if !ok || index != math.Trunc(index) || index < 0 || index >= float64(len(coords)/4) {
-			return reject("invalid raw segment index")
-		}
-		i := int(index)
-		if indices[id][i] {
-			return reject("duplicate segment")
-		}
-		indices[id][i] = true
-		points, valid := wirePoints(w)
-		if !valid || len(points) != 2 {
-			return reject("invalid segment geometry")
-		}
-		a, b := points[0], points[1]
-		if a != (Point{coords[4*i], coords[4*i+1]}) || b != (Point{coords[4*i+2], coords[4*i+3]}) {
-			return reject("segment disagrees with raw line")
-		}
-		if same(a, b) || (math.Abs(a.X-b.X) > epsilon && math.Abs(a.Y-b.Y) > epsilon) {
+	}
+	segments, nets, err := completeRawWireSegments(raw)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range segments {
+		if same(s.a, s.b) || (math.Abs(s.a.X-s.b.X) > epsilon && math.Abs(s.a.Y-s.b.Y) > epsilon) {
 			return reject("zero/non-orthogonal segment")
 		}
-		net, _ := w["net"].(string)
-		segments = append(segments, segment{a, b, id, i})
-		nets = append(nets, strings.TrimSpace(net))
-	}
-	for id, line := range rawByID {
-		if len(indices[id]) != len(line)/4 {
-			return reject("raw segments omitted")
-		}
-	}
-	n, ok := numeric(summary["wires"])
-	if !ok || n != float64(len(rawByID)) {
-		return reject("wire inventory mismatch")
 	}
 	roots := physicalSegmentRoots(segments, anchors)
 	type evidence struct {

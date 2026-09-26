@@ -61,6 +61,23 @@ func TestSchGeomSnapshot_WiresNeedExplicitSuperset(t *testing.T) {
 	}
 }
 
+func TestSchGeomSnapshot_ConnectivitySummaryNeedsExplicitSuperset(t *testing.T) {
+	s := &schGeomSnapshot{comps: []layoutComp{{}}, withPins: true, withWires: true}
+	want := map[string]any{"includePins": true, "includeWires": true, "includeConnectivitySummary": true}
+	if s.covers(want) {
+		t.Fatal("wires do not imply connectivity inventory was requested")
+	}
+	s.withConnectivitySummary = true
+	if !s.covers(want) || !s.covers(map[string]any{"includeWires": true}) {
+		t.Fatal("an inventory request must cover itself and its subsets")
+	}
+	// covers only describes requested parameters, never returned availability.
+	// Strict stages separately validate the response before making a judgment.
+	if !s.covers(want) {
+		t.Fatal("request coverage must not infer unavailable result fields")
+	}
+}
+
 var errStub = stubErr("read failed")
 
 type stubErr string

@@ -142,6 +142,10 @@ Web 宿主导出网表后可能仍运行 `RealTimeSync`，此时官方删除 API
   `clusters` 对 owned wire 逐官方 flat segment 判成员相交，整条折线包络仅用于总体占地和
   页面边界，不能把 L 形空角算作碰撞。
   owned wire 的描边框相交只有在同一次 fresh 完整采集证明为无接点正交内部 X 时才可排除：
+  `components.list` 必须同时显式请求 `includeBBox`、`includePins`、`includeWires` 与
+  `includeConnectivitySummary`；缺库存摘要或库存无法对账时 strict clusters 标为 blocked。
+  库存对账须包含每条 `rawLine` 的全部 `segmentIndex`，仅导线 primitive 数量相同不足以证明未漏段。
+  共享快照仅按请求参数超集复用，不能将旧几何与另一次读取的摘要拼成完整证据。
   保留原始段端，交点不得有任何导线端点、pin 或 marker；两侧物理线岛均需实际逐 pin
   网表与 marker 证据完整且各自网络唯一。网络同名、check 的 INFO 文本或缺测快照不是豁免
   依据；端点/T/共线接触及 part/marker 本体重叠继续拒绝。

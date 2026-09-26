@@ -472,7 +472,7 @@ func runSchClusters(cfg *appConfig, window string, minGap float64, asJSON, stric
 	stdout, stderr io.Writer) error {
 
 	res, err := requestAction(cfg, "schematic.components.list", window,
-		map[string]any{"includeBBox": true, "includePins": true, "includeWires": true})
+		map[string]any{"includeBBox": true, "includePins": true, "includeWires": true, "includeConnectivitySummary": true})
 	if err != nil {
 		return fmt.Errorf("read components with real bbox/pin geometry: %w", err)
 	}
@@ -483,6 +483,11 @@ func runSchClusters(cfg *appConfig, window string, minGap float64, asJSON, stric
 	wires, werr := schClusterSnapshotWires(res.Result)
 	if werr != nil && strict {
 		return fmt.Errorf("strict clusters require wire geometry from the same complete snapshot: %w", werr)
+	}
+	if strict {
+		if err := schguard.ValidateWireCrossingInventory(res.Result); err != nil {
+			return fmt.Errorf("strict clusters require complete same-snapshot inventory: %w", err)
+		}
 	}
 	if werr != nil {
 		wires, werr = fetchSchWirePolylines(cfg, window, "")

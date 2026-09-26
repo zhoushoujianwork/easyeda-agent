@@ -326,7 +326,7 @@ func formatTypeTally(tally map[string]int) string {
 // 判据补上;补了还不进门,等于没补。
 func gateClustersStage(cfg *appConfig, window string, strict bool, geom *schGeomSnapshot) gateStage {
 	st := gateStage{Name: "clusters"}
-	res, perr := geom.resultOr(cfg, window, map[string]any{"includeBBox": true, "includePins": true, "includeWires": true})
+	res, perr := geom.resultOr(cfg, window, map[string]any{"includeBBox": true, "includePins": true, "includeWires": true, "includeConnectivitySummary": true})
 	var comps []layoutComp
 	if perr == nil {
 		comps, perr = parseLayoutComps(res.Result)
@@ -341,6 +341,13 @@ func gateClustersStage(cfg *appConfig, window string, strict bool, geom *schGeom
 		st.Status, st.Error = gateStatusError, werr.Error()
 		st.Summary = "strict clusters 缺少同一快照的完整导线几何"
 		return st
+	}
+	if strict {
+		if err := schguard.ValidateWireCrossingInventory(res.Result); err != nil {
+			st.Status, st.Error = gateStatusError, err.Error()
+			st.Summary = "strict clusters 缺少同一快照的完整库存"
+			return st
+		}
 	}
 	if werr != nil {
 		wires, _ = fetchSchWirePolylines(cfg, window, "")

@@ -20,7 +20,8 @@ package app
 //
 // 显式快照没有失效问题可谈:它的作用域就是一次只读流程,读完即用完,调用方一眼能看出
 // 数据从哪来。nil 快照 = 各自去读。clusters 的导线、pins 和 marker 必须来自同一
-// 含 includeWires 的快照,不能把两次读取拼成无接点交叉的证据。
+// 同时含 includeWires/includeConnectivitySummary 的快照,不能把两次读取拼成
+// 无接点交叉的证据。参数已请求不代表返回证据完整;具体 stage 仍须校验实际库存。
 
 import "fmt"
 
@@ -31,19 +32,20 @@ type schGeomSnapshot struct {
 	res   *actionResult
 	err   error
 	// flags 记录这份快照是用什么参数读的,便于 compsOr 判定它能不能服务某次请求。
-	withPins  bool
-	withWires bool
-	allPages  bool
+	withPins                bool
+	withWires               bool
+	withConnectivitySummary bool
+	allPages                bool
 }
 
-// gatePreloadGeometry 预读一次最宽的几何(bbox + pins + wires)。读失败**不报错**:
+// gatePreloadGeometry 预读一次最宽的几何(bbox + pins + wires + inventory)。读失败**不报错**:
 // 各 stage 会各自去读并给出它自己的错误信息 —— 预读只是优化,不是新的失败点。
 func gatePreloadGeometry(cfg *appConfig, window string, allPages bool) *schGeomSnapshot {
-	payload := map[string]any{"includeBBox": true, "includePins": true, "includeWires": true}
+	payload := map[string]any{"includeBBox": true, "includePins": true, "includeWires": true, "includeConnectivitySummary": true}
 	if allPages {
 		payload["allPages"] = true
 	}
-	snap := &schGeomSnapshot{withPins: true, withWires: true, allPages: allPages}
+	snap := &schGeomSnapshot{withPins: true, withWires: true, withConnectivitySummary: true, allPages: allPages}
 	res, err := requestAction(cfg, "schematic.components.list", window, payload)
 	if err != nil {
 		snap.err = err
@@ -67,6 +69,10 @@ func (s *schGeomSnapshot) covers(payload map[string]any) bool {
 	}
 	wantWires, _ := payload["includeWires"].(bool)
 	if wantWires && !s.withWires {
+		return false
+	}
+	wantSummary, _ := payload["includeConnectivitySummary"].(bool)
+	if wantSummary && !s.withConnectivitySummary {
 		return false
 	}
 	wantPins, _ := payload["includePins"].(bool)

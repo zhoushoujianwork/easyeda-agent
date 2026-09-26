@@ -28,6 +28,88 @@ func crossingTestAllows(r map[string]any) bool {
 	b, _ := wirePoints(w[1].(map[string]any))
 	return len(a) == 2 && len(b) == 2 && p.Allows("h", a[0], a[1], "v", b[0], b[1])
 }
+
+func TestWireCrossingInventoryDoesNotGrantGeometryException(t *testing.T) {
+	for _, segment := range [][4]float64{{-5, -5, 5, 5}, {0, 0, 0, 0}} {
+		r := crossingTestSnapshot()
+		r["wires"].([]any)[1] = crossingTestWire("v", segment)
+		if err := ValidateWireCrossingInventory(r); err != nil {
+			t.Fatalf("complete diagonal/zero geometry is not a missing inventory: %v", err)
+		}
+		if crossingTestAllows(r) {
+			t.Fatal("complete inventory alone must not exempt diagonal/zero geometry")
+		}
+		delete(r, "pinNetsAvailable")
+		if err := ValidateWireCrossingInventory(r); err != nil {
+			t.Fatalf("inventory validation must not pretend to validate netlist provenance: %v", err)
+		}
+		if crossingTestAllows(r) {
+			t.Fatal("unknown netlist cannot grant an exception")
+		}
+	}
+}
+
+func TestWireCrossingInventoryAccountsForEveryRawSegment(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func([]any) []any
+	}{
+		{"omitted record", func(w []any) []any { return w[:1] }},
+		{"duplicate record", func(w []any) []any { return append(w, w[0]) }},
+		{"wrong index", func(w []any) []any { w[1].(map[string]any)["segmentIndex"] = 2; return w }},
+		{"missing index", func(w []any) []any { delete(w[1].(map[string]any), "segmentIndex"); return w }},
+		{"changed raw", func(w []any) []any { w[1].(map[string]any)["rawLine"] = []any{0., 0., 1., 1.}; return w }},
+		{"changed geometry", func(w []any) []any { w[1].(map[string]any)["x1"] = 9.; return w }},
+		{"unknown encoding", func(w []any) []any { w[1].(map[string]any)["rawEncoding"] = "polyline"; return w }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := crossingTestSnapshot()
+			a := crossingTestWire("h", [4]float64{-10, 0, 0, 0})
+			b := crossingTestWire("h", [4]float64{0, 0, 10, 0})
+			a["rawLine"], b["rawLine"] = []any{-10., 0., 0., 0., 0., 0., 10., 0.}, []any{-10., 0., 0., 0., 0., 0., 10., 0.}
+			b["segmentIndex"] = 1
+			r["wires"] = []any{a, b}
+			r["connectivitySummary"].(map[string]any)["wires"] = 1
+			if err := ValidateWireCrossingInventory(r); err != nil {
+				t.Fatalf("complete multi-record primitive rejected: %v", err)
+			}
+			r["wires"] = tc.mutate(r["wires"].([]any))
+			if err := ValidateWireCrossingInventory(r); err == nil {
+				t.Fatal("same primitive count must not conceal incomplete raw segments")
+			}
+		})
+	}
+}
+
+func TestWireCrossingInventoryKnownNestedEncodings(t *testing.T) {
+	for encoding, line := range map[string][]any{
+		"nested-segments": {[]any{-10., 0., 0., 0.}, []any{0., 0., 10., 0.}},
+		"nested-polyline": {[]any{-10., 0.}, []any{0., 0.}, []any{10., 0.}},
+	} {
+		t.Run(encoding, func(t *testing.T) {
+			r := crossingTestSnapshot()
+			a := crossingTestWire("h", [4]float64{-10, 0, 0, 0})
+			b := crossingTestWire("h", [4]float64{0, 0, 10, 0})
+			for _, w := range []map[string]any{a, b} {
+				w["rawEncoding"], w["rawLine"] = encoding, line
+			}
+			b["segmentIndex"] = 1
+			r["wires"] = []any{a, b}
+			r["connectivitySummary"].(map[string]any)["wires"] = 1
+			if err := ValidateWireCrossingInventory(r); err != nil {
+				t.Fatalf("known complete connector encoding rejected: %v", err)
+			}
+			if proof, err := VerifiedWireCrossings(r); err == nil || proof != nil {
+				t.Fatal("inventory support must not expand the flat-only crossing exemption")
+			}
+			r["wires"] = []any{a}
+			if err := ValidateWireCrossingInventory(r); err == nil {
+				t.Fatal("nested raw segment omission must remain unknown inventory")
+			}
+		})
+	}
+}
+
 func TestVerifiedWireCrossingsEvidence(t *testing.T) {
 	part := func(r map[string]any) map[string]any { return r["components"].([]any)[0].(map[string]any) }
 	pin := func(r map[string]any) map[string]any { return part(r)["pins"].([]any)[0].(map[string]any) }
