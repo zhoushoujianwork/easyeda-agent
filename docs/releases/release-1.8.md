@@ -43,6 +43,11 @@
 | 完整高级用例 | 51 位号测量和清理通过独立复核；A01 初测五区布局失败，修复后十区离线 planned，[#262](https://github.com/zhoushoujianwork/easyeda-agent/issues/262) 保持 open 等完整现场复测，A02–A06 未运行 |
 | 正式发布 | 待完整用例、独立复核与资产验证；当前未创建 tag 或上传正式资产 |
 
+三页真实规划/Compose 已通过，P1 前 272 步写入后遇到完整响应被截为 1 MiB 的
+[#263](https://github.com/zhoushoujianwork/easyeda-agent/issues/263)。部分候选已保存/原生导出，后续页和 PCB 停止；
+公共读取已修复并取得完整现场 JSON，仍待整页核对及保存重载，再继续用例。
+详见[截断修复与恢复范围](../reviews/2026-09-27-cli-response-truncation.md)，未将该新 bug 纳入三项例外。
+
 新失败的原始输入、诊断及十区重放见[布局回归记录](../reviews/2026-09-27-cli-layout-regression.md)。
 已按“无法可靠修复则登记 bug 后续跟进”的既有要求记录，未将新问题纳入三项例外，未降低验收标准。
 

@@ -32,6 +32,25 @@ const (
 // hang here means the connector's underlying eda.* call never settled.
 const defaultActionTimeout = 20 * time.Second
 
+// Complete snapshots include native attributes, pins, geometry and wiring.
+// HTTP JSON has its own bounded budget (the daemon also indents its envelope);
+// do not silently truncate it at the smaller health-discovery budget.
+const (
+	actionResponseBodyLimit = 32 << 20
+	healthResponseBodyLimit = 1 << 20
+)
+
+func readBoundedResponse(body io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("response exceeds %d-byte limit; complete response unavailable", limit)
+	}
+	return data, nil
+}
+
 // errActionFailed is returned by dispatch when the daemon responds with
 // ok=false. The response body has already been written to stdout so the
 // caller must NOT print an additional error message.
@@ -948,7 +967,7 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 	if err != nil {
 		return nil, err
 	}
-	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, readErr := readBoundedResponse(resp.Body, actionResponseBodyLimit)
 	closeErr := resp.Body.Close()
 	if readErr != nil {
 		return nil, fmt.Errorf("read response: %w", readErr)
@@ -1057,7 +1076,7 @@ func scanHealth(ctx context.Context, opts hostPortOptions) healthResult {
 			continue
 		}
 
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		body, readErr := readBoundedResponse(resp.Body, healthResponseBodyLimit)
 		closeErr := resp.Body.Close()
 		if readErr != nil {
 			checked.Status = "read_error"

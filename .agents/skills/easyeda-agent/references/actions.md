@@ -64,6 +64,12 @@ Playbook 使用 `version:1`、`meta` 和有序 `steps`。每步只选一种执�
 `notApplied` 会使 typed 步骤失败。成功回执不等于保存；计划应包含读回与显式 save。
 可选 `verify` 是失败后的落地检查，不是事务回滚。已生效的前序步骤保留在画布和 journal。
 
+CLI 完整读取单次 action 的 HTTP 响应，最多 32 MiB；health 清单另限 1 MiB。
+超限必须报错且不输出截断内容。整页含属性、pins、bbox 与 wires 的快照可能超过 1 MiB；
+旧 CLI 会静默截断并导致 JSON 解析失败，不能据此判断宿主对象缺失。遇回读失败先停止依赖写入，
+保留 journal、输入和原始输出；已写入状态可 typed save/原生导出冻结，但不算验证通过。
+修复读取后重新采集完整快照、核对已生效步骤，并从当前状态重算受保护队列；不要盲重放或删减必要字段。
+
 **生成的保护计划**（如 compose、designators、connectivity plan）禁止改目标、
 `--resume` 和 `--from/--to`。失败后重新读取当前图，修正输入，再完整编译/执行。
 普通手写 playbook 支持这些选项，但恢复依赖原文件 SHA 和有效的捕获变量；修改文件后
