@@ -53,3 +53,44 @@ POLYGON 递归复制轮廓并按同一 anchor/delta/offset 变换所有 L 和 AR
 27 件修订输入 `candidate-inputs-v2.json` SHA
 `880f3caf8d588908b58cae3008799bcd32a185d92136507a6f1b2c8261b71185`；
 首候选输入 SHA 仅对应已冻结副本，不再据当前可变 dist/source 读取首候选。独立修订复核仍待完成。
+
+## 最终离线复核与运行态升级
+
+修订 v2 独立 224 项有界复验通过，报告
+`911b4ee7658c66a5a5b1a0b2d177b73cd35e1243c74082bd98a2aa71bfd6cf00`，
+38 文件清单 `ec13cfde8e33c3f8b499736342764d2382ecabf9e20b9f461c16f239ab6d91b2`。
+提交并推送 `faac8be` 后完整包重建，来源代码/fixture/Skill 不变；Go VCS 与 ZIP 时间变化
+另存新输入。旧两批 27 输入均原字节复制保留。最终 adopted 独立 487 项通过：
+报告 `5fb5838b485299d58d66751577e7ce5d7391141b41d405065eb239b68a47f579`，
+19 文件清单 `bb540539ab15cf50482b77261441a564fde958af986685e0badd9687cbb1a142`。
+上述三份独立清单均经根任务重新核对全部大小和哈希。
+
+最终 dev.13 eext `f23672534ac3dd01001cfda936864b857e3322cdbb5426d1d223c9f7a04f33ab`，
+bundle `fe5dff2cf78edbe1093a1eb514bb7d7caaed3c95965ee1bf805a62bc98810b65`，
+CLI/daemon/PATH 与完整包相同：
+`ac0c830deca61785612f97f591c22bcc7e944d9707360d74dc560821ff862c1b`。
+Go VCS 为 `faac8be`、modified=false。早先两个未安装包和不同哈希保留，不混用。
+
+升级材料 `artifacts/release-v1.8.0-dev13-upgrade-20260927/` 冻结 173 文件，
+清单 `a8fb7b8382018f13e68182dec6a91e763d56c1961387108ee475bdfdb16e0fab`。
+4 页逐页显式 saved:true，已有 connector UUID/权限/旧版本/bundle 与独立本地旧包相符。
+使用提交的 extension-only hot-reload 脚本；新的窗口
+`ec89ce47-091f-44f8-84ee-4ea323961c24` 上报精确 dev.13、Web 4.1.60 和目标 PCB。
+local check READY，51 件/203 pad 的完整 typed result 升级前后相同，board 除 capturedAt 相同，
+仍为 2 层、无板框/铜；板框不可用的 partial 原文保留，不误称完整设计已通过。
+
+三页全局属性库存 1797/1093/568（含 pin-owned），其中 runtime ID 重铸 623/388/258。
+三张 sheet 的 @Create Time、P1 的 @Create Date getter Value 共 4 项变化；
+同值在组件 otherProperty 与 pagePrimitives 组件中重复为 8 个字段差分，均保留。
+其余属性按 Parent+Key 全字段一致，其余非属性字段一致；不声称整份 raw 回包相等。
+原生 122 sections 的全部非 DOCHEAD 行逐字相同，7 个其他 ZIP 条目逐字相同；
+122 DOCHEAD 的会话元数据和 section 排序变化保留，不推断 getter 的 SDK 根因。
+升级前备份与导入批备份的 8 个 ZIP 条目也逐字相同。
+
+root 先缺 --window 导出被写前拒绝，fresh 精确窗口后成功；PCB 比较 helper 两次误读
+capture/stdout wrapper、随后漏算 51 个 CLI bbox center，均明确修核。
+第一次升级 proof 先错误要求所有属性、继而非属性全等，实际存在上述明确 sheet metadata
+差分；改为输出全部差分、定位父属和原生内容后建立事实，原 raw 与 supervision notes 保留。
+这些是 root 编排/核验错误，不包装成产品修复。升级独立复核另由只读 Agent 进行；
+现场窗口现由原始需求执行员独占，重做候选并验证实际 POLYGON、四层布局/L1。
+#270 仍 open，待现场保存重载验证；全局布线仍等待两轮布局与用户确认，v1.8.0 尚未发布。

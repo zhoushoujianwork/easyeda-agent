@@ -101,3 +101,14 @@ U1.39的9个同号GND散热pad逐一检查，多8个非遗漏；37NC对应37无�
 17 文件清单 `e7b6b0b5fa74dcd01e182c5df6f905c7d4f2c2c0641ebb1249872607e24c33a3`。
 dev.13 修复候选全 Go 4129 pass/0 fail/1 skip、15 包，connector 638、typecheck/build/Skill 通过；
 候选独立复核、升级及现场布局仍待完成。详见[投影修复](../../../reviews/2026-09-27-pcb-polygon-projection-fix.md)。
+
+投影修复已提交推送 `faac8be`，独立修订复核及提交后包 487 项核验通过；
+报告 `5fb5838b485299d58d66751577e7ce5d7391141b41d405065eb239b68a47f579`，
+19 文件清单 `bb540539ab15cf50482b77261441a564fde958af986685e0badd9687cbb1a142`。
+CLI/daemon/connector 已升级 dev.13，新窗口/fresh/本地 READY 与 bin/PATH/package byte 对账通过。
+173 文件升级清单 `a8fb7b8382018f13e68182dec6a91e763d56c1961387108ee475bdfdb16e0fab`；
+PCB 51 件/203 pad result 前后完全一致，board 除采集时间一致，仍 2 层无板框/铜。
+三页仅 runtime 属性 ID、三张 sheet Create Time 及 P1 Create Date getter 差分（4逻辑值/8重复字段）
+明确保留；原生 122 sections 非 DOCHEAD 行和 7 其他 ZIP 条目逐字相同，不称全部 raw 属性等。
+升级独立复核进行中；原执行员已接独占窗口续现场布局，#270实际投影、L1/四层/两轮布局/用户确认/
+布线铜DRC和最终验收尚未通过，manifest 总结论仍 in-progress/not-run。

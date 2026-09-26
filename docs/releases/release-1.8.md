@@ -51,7 +51,7 @@ save→reload→fresh 对账和官方整页图检查，有限独立复核已通�
 PCB 导入发现 [#269](https://github.com/zhoushoujianwork/easyeda-agent/issues/269)，未继续依赖写入；
 单次确认、重复身份检测和失败传播 `698980e` 已在 dev.12 保存重载与独立复核通过，有限关闭；
 另发现 [#270](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) 多边形焊盘投影缺陷，
-dev.13 候选离线检查通过，仍待独立候选复核、运行态升级及现场验证。
+`faac8be` dev.13 修复及提交后包独立通过，运行态升级和 fresh 基线核对完成，实际投影/四层布局现场续测中。
 R1 的恢复完成态重载缺口及清理原生差分见[当前记录](../reviews/2026-09-27-pcb-import-confirm-fix.md)。
 
 新失败的原始输入、诊断及十区重放见[布局回归记录](../reviews/2026-09-27-cli-layout-regression.md)。

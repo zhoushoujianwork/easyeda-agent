@@ -16,7 +16,7 @@
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
 | [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
 | [#268：切页后后台 PCB 保存返回 false](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) | 两批后台 `pcb.save` 外层 ok:true、saved:false；精确原因尚未确定，未观察到设计丢失。 | 外层 ok 不代表保存成功；稳定检查点核对显式 saved:true，再真实重载与 fresh 回读。 |
-| [#270：多边形焊盘投影轮廓未移动](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) | dev.12 离线候选移动 4 个 USB 焊盘中心，却保留原绝对路径；独立复现，无布局写入。 | 全批候选拒绝；dev.13 修复已通过全量离线检查，等待独立候选复核与现场验证。 |
+| [#270：多边形焊盘投影轮廓未移动](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) | dev.12 离线候选移动 4 个 USB 焊盘中心，却保留原绝对路径；独立复现，无布局写入。 | 全批候选拒绝；`faac8be` dev.13 修复/包已独立通过并完成升级基线核对，实际投影现场续测中。 |
 
 本轮跟进的九项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
