@@ -91,6 +91,34 @@ root 先缺 --window 导出被写前拒绝，fresh 精确窗口后成功；PCB �
 capture/stdout wrapper、随后漏算 51 个 CLI bbox center，均明确修核。
 第一次升级 proof 先错误要求所有属性、继而非属性全等，实际存在上述明确 sheet metadata
 差分；改为输出全部差分、定位父属和原生内容后建立事实，原 raw 与 supervision notes 保留。
-这些是 root 编排/核验错误，不包装成产品修复。升级独立复核另由只读 Agent 进行；
+这些是 root 编排/核验错误，不包装成产品修复。升级独立复核已由只读 Agent 完成；
 现场窗口现由原始需求执行员独占，重做候选并验证实际 POLYGON、四层布局/L1。
 #270 仍 open，待现场保存重载验证；全局布线仍等待两轮布局与用户确认，v1.8.0 尚未发布。
+
+## 升级独立结论与首次叠层 partial
+
+独立升级复核 4689 项有效断言、657 件输入末次哈希重验通过，无阻塞 finding。
+报告 `f97f2b2d46981011e5a20dee8881751087dab563559bde161fd7c70c97241e0c`，
+32 文件 manifest `6bc66eb27e383ac2fa72c19f03a3a772292c5cf736a0e496c5896068fa8ef1e8`，
+根任务逐文件大小/哈希核对通过。122 DOCHEAD 的唯一字段差分为 client，3 section 换位；
+不签全部 raw 相同。独立核验器误将铜 availability 元数据也要求为空，原 exit1 保留，
+修为逐铜集合空且 availability 可用后通过；未放松几何库存。
+
+`a02-dev13-layout-20260927/` 冻结 244 文件，manifest
+`d4c6a71cca2d0ce8e1d24989c49e7e5fcdece8e69636568cf08778fbdfff756e`，根任务全部核对通过。
+唯一设计 mutation req87 为 `stackup set --layers 4 --plane 15 --signal 16`：
+setCount/countVerified 为 true；内层15 requested PLANE、written:false、actual SIGNAL，
+partial:true/verified:false/CLI exit1。编排即时停止，未创建板框、孔、器件布局或铜。
+随后显式 saved:true，完整 51 件/203 pad、铜/丝印/config 不变。
+native 97 原始差异保留，94 仅 ticket，实际 payload 为两个内层 use/show 和 DOCHEAD；
+PCB thumbnail 改变，其余6个其他 ZIP 项相同，三页原生 section 不变。
+本 partial 批未 reload，018/020/022 raw envelope 与021 dump stderr 仍报告 staleRisk；
+这里只签即时 typed 观察及原生归档的有限保全，不借 save 或 fresh 文案补签权威重载数据。
+
+这是将最终类型提前请求的编排错误，与公开 Skill 的 vias→SIGNAL 有网铜→PLANE→rebuild
+顺序不符；不能因此断言 written:false 的唯一 SDK 根因。续批先真实 reload，确认4层及
+完整件/pad/copper/native 后，用两内层 SIGNAL 中间态规划布局；最终 GND PLANE 要求保留。
+布局确认后正确顺序仍失败，应登记未满足需求，不以 SIGNAL 成品代签。
+续批执行员已报告保存重载保持4层；其完整布局/L1/投影现场材料仍待冻结与独立复核。
+根任务一次误读 review manifest 文件名产生 FileNotFoundError，正确读取 manifest.json 后
+32+244 文件核对通过，无 EDA 调用或写入，核验说明另存 progress-root 材料。
