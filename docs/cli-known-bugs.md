@@ -66,5 +66,11 @@ stderr warning，包含 bug 编号、影响及回读方法；stdout 的原始 JS
   1 mil，fresh 实际均为 0.2 mil。区域已返回 verified:false/partial:true 并 exit 1；
   铺铜创建缺少 fresh 边界校验，仍 exit 0，属于已确认的失败漏报。官方 API 签名与
   连接器入参相符，宽度变化的宿主原因未证明；不把参数改成 0.2 来补签。
-  三个失败对象已精确清理，当前包尚未修复。`poured:false` 和实际铜列表为空单列为事实，
-  不据此推断算法或 DRC 故障。见 [dev.9 B08](reviews/2026-09-26-v1.7.1-dev9-B08.md)。
+  三个失败对象已精确清理。dev.11 已修复回读校验及 CLI/Apply 失败传播，显式宽度不符
+  的现场用例正确 exit 1；宽度本身未修复。另一个预声明用例未传线宽，却出现优先级
+  2→1，仍正确拒绝；原因未知，成功创建路径尚未现场通过。
+  `rebuildAttempted:false` 只表示连接器没有调用重建；本次库存仍读到铜，已按
+  parent pour ID 核对并随边界精确清理。失败对象库存带 staleRisk，未经保存重载，
+  不据此验收铜持久化，也不以重建返回值推断实际铜为空或算法/DRC 故障。
+  见 [dev.9 B08](reviews/2026-09-26-v1.7.1-dev9-B08.md) 与
+  [修复和验证记录](reviews/2026-09-26-pour-readback-fix.md)；不补签基础或高级验收。
