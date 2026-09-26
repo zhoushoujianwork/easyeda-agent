@@ -274,7 +274,15 @@ and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建
 - `pcb.pour.create` — pour from a closed polygon `points` (`[[x,y],…]`, mil, y-up) on a
   copper layer, bound to a `net` (**required — a netless pour is dead copper; `pcb pour`
   now refuses an empty `--net`, issue #34**). `fill = solid` (default) `| grid | grid45`.
-  Size it to the board outline; verify `poured:true` + `pcb.drc.check`.
+  创建后按精确 ID fresh 回读边界的网、层、填充方式、几何和明确提供的名称、优先级、线宽。
+  `verified:true` 只证明边界参数兑现；`poured` 独立报告重建返回值，实际铜须再读
+  `pcb poured-list`，连通与制造质量另做 DRC。`poured:false` 或空铜本身不证明算法故障。
+  边界不符或回读未知时返回 `partial:true/verified:false`、保留已创建 ID，CLI/Apply 和
+  pour-fit、power-pour、power-planes 失败退出并停止依赖步骤；先按 ID 核对和清理，不重试创建。
+  Apply 的 action/run 两入口都保留此失败；通用 verify、显式 retry、continue 或 prompt
+  不能将已创建但未验证的边界改判成功或继续写入。先核对现场，再编新的修复计划。
+  已发现 Web 宿主把显式 1 mil 边界线宽读回为 0.2 mil 的情况；不得换成宿主值补签请求，
+  也不从 create 返回对象的参数回显推断已写入。新包只修正检测与传播，不宣称宿主宽度已修复。
 - `pcb.pour.list` / `pcb.pour.delete` — inspect / remove pours.
 - `easyeda pcb poured-list [--net GND]`（typed action `pcb.poured.list`）读取**重建后的实际
   铺铜图元**，按 pour primitiveId 返回每个 fill 的 complex polygon source、线宽、填充标志和

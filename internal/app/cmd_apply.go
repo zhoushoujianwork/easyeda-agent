@@ -917,6 +917,11 @@ func (r *applyRunner) execute() error {
 			}
 		}
 		fmt.Fprintf(r.stderr, "\n✗ step [%d/%d] %s failed: %v\n", i+1, len(r.pb.Steps), ref, execErr)
+		var boundaryErr *unverifiedPourBoundaryError
+		if errors.As(execErr, &boundaryErr) {
+			fmt.Fprintf(r.stderr, "  created pour boundary is unverified — stopping before dependent steps; journal: %s\n", r.journalPath)
+			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
+		}
 		var stateErr *schematicExpectationError
 		if errors.As(execErr, &stateErr) {
 			fmt.Fprintf(r.stderr, "  expectSchematic is a mandatory gate — stopping; journal: %s\n", r.journalPath)
@@ -966,6 +971,10 @@ func (r *applyRunner) executeStep(s *playbookStep, catalog map[string]protocol.A
 	var lastErr error
 	for attempt := 0; ; attempt++ {
 		result, err := r.executeOnce(s, timeout)
+		var boundaryErr *unverifiedPourBoundaryError
+		if errors.As(err, &boundaryErr) {
+			return nil, err // A generic verify or retry must not hide/replay this partial write.
+		}
 		if s.ExpectSchematic != nil {
 			// A read failure provides no evidence either. Never let verify or
 			// retry turn an absent or mismatched snapshot into a successful gate.
@@ -1082,6 +1091,9 @@ func (r *applyRunner) runAction(action string, payload map[string]any, timeout t
 	// step failure — before #151 a partial application errored at wire level
 	// and failed the step; the ok:true re-shaping must not silently weaken the
 	// record-replay regression gate.
+	if err := pourBoundaryError(action, parsed.Result); err != nil {
+		return anyResult(parsed.Result), err
+	}
 	if parsed.Result != nil {
 		partial, _ := parsed.Result["partial"].(bool)
 		na, _ := parsed.Result["notApplied"].([]any)
@@ -1130,7 +1142,7 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 	argv = append(argv, "--host", r.cfg.host, "--ports", r.cfg.ports)
 
 	var out, errBuf strings.Builder
-	code := Run(argv, &out, &errBuf)
+	code, commandErr := runCommand(argv, &out, &errBuf)
 	if !r.quiet {
 		// stream the subcommand's own output, indented, for observability
 		for _, line := range strings.Split(strings.TrimRight(out.String(), "\n"), "\n") {
@@ -1140,6 +1152,10 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 		}
 	}
 	if code != 0 {
+		var boundaryErr *unverifiedPourBoundaryError
+		if errors.As(commandErr, &boundaryErr) {
+			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)
+		}
 		msg := strings.TrimSpace(errBuf.String())
 		if msg == "" {
 			msg = strings.TrimSpace(lastLine(out.String()))

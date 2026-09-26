@@ -12377,6 +12377,7 @@ const pcbPourCreate: Handler = async (payload) => {
 	const src: Array<number | string> = [pts[0][0], pts[0][1], 'L'];
 	for (let i = 1; i < pts.length; i++) src.push(pts[i][0], pts[i][1]);
 	src.push(pts[0][0], pts[0][1]);
+	const requestedSource = src.slice();
 	const poly = eda.pcb_MathPolygon.createPolygon(src as unknown as TPCB_PolygonSourceArray);
 	if (!poly) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Failed to build pour polygon from points (createPolygon returned undefined — points must form a valid closed polygon).');
@@ -12393,19 +12394,49 @@ const pcbPourCreate: Handler = async (payload) => {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Copper pour creation returned no primitive (check layer/net/points).');
 	}
 
+	const primitiveId = pour.getState_PrimitiveId();
 	let poured = false;
-	try { poured = !!(await pour.rebuildCopperRegion()); }
-	catch { /* rebuild best-effort — the pour region exists even if the fill compute fails */ }
-
-	return {
-		result: {
-			primitiveId: pour.getState_PrimitiveId(),
-			net,
-			layer: Number(layer),
-			fill: String(fill),
-			poured,
-		},
+	let rebuildAttempted = false;
+	let rebuildError: string | undefined;
+	const readBoundary = async () => {
+		// Do not filter by the requested net: a wrong-net write must remain visible.
+		const pours = await eda.pcb_PrimitivePour.getAll();
+		if (!Array.isArray(pours)) throw new Error('Pour inventory unavailable after creation.');
+		const matches = pours.filter(p => p.getState_PrimitiveId() === primitiveId);
+		if (matches.length !== 1) throw new Error('Created pour is missing or ambiguous in fresh readback.');
+		const fresh = matches[0];
+		const actual = { primitiveId, net: fresh.getState_Net(), layer: fresh.getState_Layer(),
+			fill: fresh.getState_PourFillMethod(), pourName: fresh.getState_PourName() ?? null,
+			priority: fresh.getState_PourPriority(), lineWidth: fresh.getState_LineWidth(),
+			locked: fresh.getState_PrimitiveLock(), source: fresh.getState_ComplexPolygon().getSource() };
+		const differences: string[] = [];
+		if (actual.net !== net) differences.push('net');
+		if (actual.layer !== Number(layer)) differences.push('layer');
+		if (actual.fill !== String(fill)) differences.push('fill');
+		if (pourName !== undefined && actual.pourName !== pourName) differences.push('pourName');
+		if (priority !== undefined && actual.priority !== priority) differences.push('priority');
+		if (lineWidth !== undefined && actual.lineWidth !== lineWidth) differences.push('lineWidth');
+		if (!equivalentLinearRegionGeometry(requestedSource, actual.source)) differences.push('geometry');
+		return { fresh, actual, differences };
 	};
+	try {
+		let state = await readBoundary();
+		// Never generate copper from a boundary already known to differ from the request.
+		if (state.differences.length === 0) {
+			rebuildAttempted = true;
+			try { poured = !!(await state.fresh.rebuildCopperRegion()); }
+			catch (err) { rebuildError = describeThrown(err); }
+			state = await readBoundary();
+		}
+		return { result: { ...state.actual, poured, rebuildAttempted,
+			...(rebuildError ? { rebuildError } : {}), verified: state.differences.length === 0,
+			...(state.differences.length ? { partial: true, differences: state.differences } : {}) } };
+	}
+	catch (err) {
+		return { result: { primitiveId, poured, rebuildAttempted,
+			...(rebuildError ? { rebuildError } : {}), partial: true, verified: false, error: describeThrown(err) },
+			warnings: ['Pour was created but boundary readback failed; inspect this ID before retrying.'] };
+	}
 };
 
 const pcbPourList: Handler = async (payload) => {

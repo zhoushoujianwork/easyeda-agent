@@ -1965,8 +1965,10 @@ connected). Everything created is rolled back if any step fails. Verify with
 			Short: "Create a copper pour (铺铜) from a closed polygon, bound to a net (usually GND)",
 			Long: `Create a copper pour (铺铜) from a closed polygon of [x,y] points (mil, y-up).
 
-Builds the polygon internally — pass raw points, not a polygon object — then
-rebuilds the poured copper. Size it to the board outline; bind to GND for a ground
+Builds the polygon internally and verifies fresh boundary parameters before
+rebuilding copper. verified describes the boundary; poured is the separate
+rebuild result. A mismatch or unreadable boundary exits nonzero and retains the
+created ID for inspection. Size it to the board outline; bind to GND for a ground
 plane. fill = solid (default) | grid | grid45.`,
 			Args:    cobra.NoArgs,
 			Example: `  easyeda pcb pour --points '[[0,0],[2000,0],[2000,1500],[0,1500]]' --net GND --layer 2`,
@@ -2258,6 +2260,13 @@ clears existing pours on the same net so you don't stack them.`,
 				}
 				res, err := requestAction(cfg, "pcb.pour.create", window, payload)
 				if err != nil {
+					out := map[string]any{"ok": false, "partial": true, "net": net, "layer": layer, "cleared": cleared, "points": points, "error": err.Error()}
+					if res != nil {
+						out["result"] = res.Result
+					}
+					if encodeErr := json.NewEncoder(stdout).Encode(out); encodeErr != nil {
+						return encodeErr
+					}
 					return err
 				}
 				out := map[string]any{"ok": true, "net": net, "layer": layer, "inset": inset, "cleared": cleared, "points": points, "result": res.Result}

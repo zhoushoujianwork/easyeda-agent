@@ -211,20 +211,27 @@ func runPowerPour(cfg *appConfig, window, gndLayersSpec, railsMode string, margi
 	}
 
 	var results []map[string]any
+	var failureErr error
 	created, failed := 0, 0
 	for _, pl := range plans {
 		payload := map[string]any{"points": pl.Points, "net": pl.Net, "layer": pl.Layer}
-		if _, err := requestAction(cfg, "pcb.pour.create", window, payload); err != nil {
+		res, err := requestAction(cfg, "pcb.pour.create", window, payload)
+		if err != nil {
+			failureErr = err
 			failed++
-			results = append(results, map[string]any{"net": pl.Net, "layer": pl.Layer, "kind": pl.Kind, "error": err.Error()})
-			continue
+			failure := map[string]any{"net": pl.Net, "layer": pl.Layer, "kind": pl.Kind, "error": err.Error()}
+			if res != nil {
+				failure["result"] = res.Result
+			}
+			results = append(results, failure)
+			break // Do not build more copper after an unverified boundary.
 		}
 		created++
-		results = append(results, map[string]any{"net": pl.Net, "layer": pl.Layer, "kind": pl.Kind, "pads": pl.Pads})
+		results = append(results, map[string]any{"net": pl.Net, "layer": pl.Layer, "kind": pl.Kind, "pads": pl.Pads, "result": res.Result})
 	}
 
 	rebuilt := false
-	if rebuild && created > 0 {
+	if rebuild && created > 0 && failed == 0 {
 		if _, err := requestAction(cfg, "pcb.pour.rebuild", window, nil); err != nil {
 			fmt.Fprintf(stderr, "warning: pour-rebuild failed (%v) — run `pcb pour-rebuild` after `doc reload`\n", err)
 		} else {
@@ -234,11 +241,17 @@ func runPowerPour(cfg *appConfig, window, gndLayersSpec, railsMode string, margi
 
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
-	return enc.Encode(map[string]any{
+	if err := enc.Encode(map[string]any{
 		"ok": failed == 0, "created": created, "failed": failed,
 		"gndLayers": gndLayers, "railsMode": railsMode, "inset": inset, "rebuilt": rebuilt,
 		"pours": results,
-	})
+	}); err != nil {
+		return err
+	}
+	if failed > 0 {
+		return fmt.Errorf("power-pour: stopped after an unverified or failed boundary; inspect returned results before retrying: %w", failureErr)
+	}
+	return nil
 }
 
 // clearSameNetPours deletes every pour bound to `net` (best-effort; ignores errors).

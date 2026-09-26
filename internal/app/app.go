@@ -15,6 +15,13 @@ import (
 // Run is the main entry point called by main.go.
 // It returns 0 on success, 1 on any error.
 func Run(args []string, stdout, stderr io.Writer) int {
+	code, _ := runCommand(args, stdout, stderr)
+	return code
+}
+
+// Keep typed failures available to in-process callers such as Apply. Converting
+// them to an exit code alone would lose mandatory partial-write stop semantics.
+func runCommand(args []string, stdout, stderr io.Writer) (int, error) {
 	root := newRootCmd(stdout, stderr)
 	root.SetArgs(args)
 	root.SetOut(stdout)
@@ -25,16 +32,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// report — surface the code only.
 		var ec exitCodeError
 		if errors.As(err, &ec) {
-			return ec.code
+			return ec.code, err
 		}
 		// errActionFailed / errQuiet mean the response was already printed to
 		// stdout; no further message needed. All other errors get printed here.
 		if !errors.Is(err, errActionFailed) && !errors.Is(err, errQuiet) {
 			fmt.Fprintln(stderr, err)
 		}
-		return 1
+		return 1, err
 	}
-	return 0
+	return 0, nil
 }
 
 // errQuiet fails the command without printing anything extra — for commands

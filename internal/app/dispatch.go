@@ -97,9 +97,10 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 	var parsed struct {
 		OK     bool `json:"ok"`
 		Result struct {
-			OK       *bool `json:"ok"`
-			Verified *bool `json:"verified"`
-			Partial  bool  `json:"partial"`
+			PrimitiveID any   `json:"primitiveId"`
+			OK          *bool `json:"ok"`
+			Verified    *bool `json:"verified"`
+			Partial     bool  `json:"partial"`
 		} `json:"result"`
 		Error *struct {
 			Code    string `json:"code"`
@@ -118,6 +119,9 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 			Message: parsed.Error.Message, Detail: parsed.Error.Detail})
 	}
 	switch action {
+	case "pcb.pour.create":
+		return pourBoundaryError(action, map[string]any{"primitiveId": parsed.Result.PrimitiveID,
+			"verified": parsed.Result.Verified != nil && *parsed.Result.Verified, "partial": parsed.Result.Partial})
 	case "schematic.page.rename":
 		if parsed.Result.Partial || parsed.Result.OK == nil || !*parsed.Result.OK ||
 			parsed.Result.Verified == nil || !*parsed.Result.Verified {
@@ -128,6 +132,26 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		if parsed.Result.Partial || (parsed.Result.Verified != nil && !*parsed.Result.Verified) {
 			return fmt.Errorf("%s: write not fully verified; inspect returned IDs and fresh state before retrying", action)
 		}
+	}
+	return nil
+}
+
+// A pour create echo is not evidence of a persisted boundary. Keep the created
+// ID in the error so callers can account for a partial write without replaying it.
+type unverifiedPourBoundaryError struct{ primitiveID string }
+
+func (e *unverifiedPourBoundaryError) Error() string {
+	return fmt.Sprintf("pcb.pour.create: boundary %q not verified; inspect returned IDs and fresh state before retrying", e.primitiveID)
+}
+
+func pourBoundaryError(action string, result map[string]any) error {
+	if action != "pcb.pour.create" {
+		return nil
+	}
+	verified, _ := result["verified"].(bool)
+	partial, _ := result["partial"].(bool)
+	if !verified || partial || asString(result["primitiveId"]) == "" {
+		return &unverifiedPourBoundaryError{primitiveID: asString(result["primitiveId"])}
 	}
 	return nil
 }
@@ -237,7 +261,8 @@ type actionResult struct {
 
 // requestAction POSTs a typed action and returns the parsed response without
 // touching stdout. A non-nil error means the daemon was unreachable or the
-// action returned ok=false (with the connector's error message attached).
+// action returned ok=false (with the connector's error message attached), or
+// a created pour boundary was not verified. Partial results remain available.
 func requestAction(cfg *appConfig, action, window string, payload any) (*actionResult, error) {
 	return requestActionTimed(cfg, action, window, payload, defaultActionTimeout)
 }
@@ -310,7 +335,7 @@ func requestActionOnce(cfg *appConfig, action, window string, payload any, timeo
 		// —— 两者的下一步完全不同。见 stale_read_optin.go。
 		return res, &actionError{Action: action, Code: code, Message: msg}
 	}
-	return res, nil
+	return res, pourBoundaryError(action, res.Result)
 }
 
 // encodeResultEnvelope writes a reconstructed typed report wrapped in the same

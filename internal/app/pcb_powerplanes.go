@@ -189,6 +189,16 @@ func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, gnd
 		pres, perr := requestAction(cfg, "pcb.pour.create", window, map[string]any{
 			"net": p.Net, "layer": p.Layer, "points": rectCorners(rect[0], rect[1], rect[2], rect[3]),
 		})
+		if perr != nil {
+			out := map[string]any{"ok": false, "partial": true, "planes": plan, "failedNet": p.Net, "error": perr.Error()}
+			if pres != nil {
+				out["result"] = pres.Result
+			}
+			if err := json.NewEncoder(stdout).Encode(out); err != nil {
+				return err
+			}
+			return fmt.Errorf("power-planes: stopped before further routing, layer conversion or rebuild: %w", perr)
+		}
 		if perr == nil && pres != nil {
 			if b, ok := mnav(pres.Result, "poured").(bool); ok {
 				p.Poured = b
