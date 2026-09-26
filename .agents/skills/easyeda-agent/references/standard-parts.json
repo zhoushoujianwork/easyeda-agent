@@ -12,6 +12,18 @@
   ],
   "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
   "parts": {
+    "ind.2u2_swpa4030_nt": {
+      "value": "2.2uH",
+      "mpn": "SWPA4030S2R2NT",
+      "lcsc": "C279948",
+      "manufacturer": "Sunlord(顺络)",
+      "deviceUuid": "0993ffda052c4d228df85c5f81f431f2",
+      "footprint": "IND-SMD_L4.0-W4.0",
+      "basic": false,
+      "datasheetUrl": "https://item.szlcsc.com/datasheet/SWPA4030S2R2NT/266524.html",
+      "datasheetPdfUrl": "https://atta.szlcsc.com/upload/public/pdf/source/20250613/C109B0365842EAE552EDCE87CD96529A.pdf",
+      "desc": "2.2µH ±30% SWPA4030S2R2NT；MT资料入口返回的原厂2025/5/8表实际列NT，已按内容和当前库C279948交叉核对。已按最终位号L1单件测量；完整PCB与实板性能未验，额定和饱和电流须按手册条件分别核验。"
+    },
     "ic.ts3usb221a_uqfn10": {
       "value": "TS3USB221ARSER",
       "mpn": "TS3USB221ARSER",
@@ -68,8 +80,8 @@
       "footprint": "IND-SMD_L4.0-W4.0_LQH44PN2R2MP0L",
       "basic": false,
       "datasheetUrl": "https://item.szlcsc.com/datasheet/SWPA4030S2R2MT/37387.html",
-      "datasheetPdfUrl": "https://datasheet.lcsc.com/lcsc/2310251551_Sunlord-SWPA4030S2R2MT_C36409.pdf",
-      "desc": "2.2µH SWPA4030系列电感；目录未给额定电流，不从值或封装名推定载流。 2026-09-27 Web 4.1.60 库身份已核；单件测量不代表整板或实板通过。"
+      "datasheetPdfUrl": "https://atta.szlcsc.com/upload/public/pdf/source/20250613/C109B0365842EAE552EDCE87CD96529A.pdf",
+      "desc": "2.2µH SWPA4030系列电感；目录未给额定电流；该C号资料入口所得原厂表仅列NT（±30%），不能为MT（±20%）背书，MT电流参数仍待核验。 2026-09-27 Web 4.1.60 库身份已核；单件测量不代表整板或实板通过。"
     },
     "res.22k1_0402": {
       "value": "22.1kΩ",
