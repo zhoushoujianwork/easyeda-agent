@@ -42,7 +42,7 @@ actions.ts 候选 SHA-256 `64d6d75e4abcfa18fc6b3a58e26277d7d04f0c81da3dd1292bb8c
 报告 SHA-256 `1a7dad21ec2a41ae31b24af457a74af9b51e8aea210a30a4a18c7f208470f2bf`，
 输入 `6d93036e5c837e312fcc784916d70dec2dd5ef94b021514897915c0873c9a65f`，
 40 文件清单 `959a661c1fff478fe1a84a6264a4001f82d4014846d7b65f504530ef5d2aab54`。
-当前尚未现场安装或复验，#269 不关闭。
+代码已提交并推送 `698980e`；运行态升级已完成，导入现场复验仍待完成，#269 不关闭。
 
 ## 精确清理与原生边界
 
@@ -80,3 +80,26 @@ SHA-256 `63f3e0365f672b71e4dd5c3b9937d0b188ac9c2e753e4caeacc81efca937dba1`，根
 输入 `b0f1ed3aed32aff2d2bd8b0a1cad2c11e159734c1ca6fb3d39152c008f7c4bb7`，
 清单 `3cca01c90ba9d581bfcb4b092b7c99570890a53eb29f56901cd42d43b4cdc304`。
 新 runtime 上另跑：恢复 A+B 后先 save→reload→fresh/native 证明两件准确存在，再精确清理和再次保存重载。
+
+## dev.12 运行态升级
+
+完整本地包构建后，最终 `.eext` SHA-256
+`a836acc5d7990073bb67966deb658b80bd06a5a594e2243255be94da7098eab3`；ZIP时间戳导致与第一包哈希不同，
+其可执行 bundle 同为 `002b24f969f22092c0a5b2265ed219bceff1ace3ea2539cd321af572ff4661e1`。
+CLI包、bin和PATH均为 `fa12e2dd8295953f2b594536b4927ce63e46b811db945369a3f9f856fe15ae6c`。
+
+四页 typed 保存均 saved:true；旧 CLI/daemon 为 git-describe dev 戳，与旧 connector dev.11 的
+精确版本不同，差异保留。只读核对已安装 UUID、原权限、旧 bundle 与独立 dev.11 包哈希一致后，
+通过仓库已提交的专用热更新脚本原子替换同 UUID 两个扩展记录，保持权限并安排网页重载。
+新注册 `51b3eeb2-6cc7-457a-b3c5-02a454da312f`、目标工程/PCB、connector dev.12 与本地 package check READY 对齐；
+daemon PID 14017，CLI/daemon 精确版本 v1.7.1-dev.12。没有 GUI 工程写入或任意 JS 设计动作。
+
+重载后三页全部非属性 result 原值一致。global 属性按 ParentPrimitiveId+Key 配对，字段完全相同，
+仅 623/388/258 个 runtime ID 重铸及数组排序变化；全部原始差分保留，不称 raw 全等。
+原生 122 个 section 的 DOCHEAD 与顺序变化，但除 DOCHEAD 外逐行原字节相同，其他 7 个 ZIP 条目全等。
+PCB fresh dump 与 clean 基线除 capturedAt 全等，仍 648 条、无几何；partial 仍列空板无元件/无板框。
+
+190 文件冻结清单 SHA-256 `1f4536894405594015de50898a1e461e06c5325a279e186afc9e47a9c002c97d`，
+目录 `artifacts/release-v1.8.0-dev12-upgrade-20260927`；活动 daemon log 排除，启动 log 的冻结副本保留。
+核验辅助脚本的 dump 文本解析、空板 partial 和 120/122 section 数量三次监督断言错误保留，
+不作为产品失败。独立升级复核另进行，不能据升级结论签导入或 E2E。

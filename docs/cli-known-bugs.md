@@ -16,7 +16,7 @@
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
 | [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
 | [#268：切页后后台 PCB 保存返回 false](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) | 两批后台 `pcb.save` 外层 ok:true、saved:false；精确原因尚未确定，未观察到设计丢失。 | 外层 ok 不代表保存成功；稳定检查点核对显式 saved:true，再真实重载与 fresh 回读。 |
-| [#269：PCB 导入重复点击/实例](https://github.com/zhoushoujianwork/easyeda-agent/issues/269) | 一次导入 51→101，保存重载仍重复；关闭轮询重复点击的代码缺陷已隔离复现，现场唯一根因尚未证明。 | dev.12 候选已补单次确认/只读观察及重复身份检测、失败传播；先完成运行态更新与现场复验，不在旧 dev.11 重复导入。 |
+| [#269：PCB 导入重复点击/实例](https://github.com/zhoushoujianwork/easyeda-agent/issues/269) | 一次导入 51→101，保存重载仍重复；关闭轮询重复点击的代码缺陷已隔离复现，现场唯一根因尚未证明。 | dev.12 候选已补单次确认/只读观察及重复身份检测、失败传播；运行态已升级，继续现场复验，不在旧 dev.11 重复导入。 |
 
 本轮跟进的九项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
