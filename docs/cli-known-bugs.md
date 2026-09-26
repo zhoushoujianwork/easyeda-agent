@@ -16,8 +16,9 @@
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
 | [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
 | [#268：切页后后台 PCB 保存返回 false](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) | 两批后台 `pcb.save` 外层 ok:true、saved:false；精确原因尚未确定，未观察到设计丢失。 | 外层 ok 不代表保存成功；稳定检查点核对显式 saved:true，再真实重载与 fresh 回读。 |
+| [#269：PCB 导入重复点击/实例](https://github.com/zhoushoujianwork/easyeda-agent/issues/269) | 一次导入 51→101，保存重载仍重复；关闭轮询重复点击的代码缺陷已隔离复现，现场唯一根因尚未证明。 | dev.12 候选已补单次确认/只读观察及重复身份检测、失败传播；先完成运行态更新与现场复验，不在旧 dev.11 重复导入。 |
 
-本轮跟进的八项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
+本轮跟进的九项均保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
 
 2026-09-26 按用户要求，将本轮尚无可靠修法的三项登记为待后续修复：复用并重新打开 #55，
@@ -61,6 +62,10 @@ autosave 按窗口计时，未携带 mutation 的文档身份，显式保存成�
 完整数据/原生差分核对清理结果；不能将后台失败改成成功，也不能推定发生了数据丢失。
 后续补切页时序、timer 竞态和目标身份的正负例及现场持久化复验。
 
+[#269](https://github.com/zhoushoujianwork/easyeda-agent/issues/269) 的重复实体已按 101 个 fresh ID 精确删除并保存重载，
+三页源和其他工程数据未变；PCB 原生比原始多 464 条空 payload 历史记录，不称逐字恢复。
+候选与失败证据见[导入确认记录](reviews/2026-09-27-pcb-import-confirm-fix.md)。
+
 ## 本轮仍缺的验证
 
 1. 三项 bug 的实际行为修复及保存重载复测转为后续跟进，不作为本次启动完整用例的前置条件。
@@ -70,7 +75,8 @@ autosave 按窗口计时，未携带 mutation 的文档身份，显式保存成�
    不因此强制重跑全集。各版本状态见 [CLI Status](cli-STATUS.md)，不混用旧通过记录。
 3. 历史 A00 blocked（原选型测量 22/35）记录保留。本轮另从原始需求开始，已完成最终 51 位号测量，
    原 A01 布局失败保留，最新三页原理图已现场通过并完成有限独立复核；PCB 同步/布局、用户布局确认、
-   布线/DRC、最终落盘复核及 L1、受控 R1 尚缺；自然过期 sourceScene N1 子例已独立通过。
+   布线/DRC、最终落盘复核及 L1 尚缺；R1 中断/同源恢复/最终清理子项已独立通过，
+   恢复完成态缺真实 reload，整项仍 partial；自然过期 sourceScene N1 子例已独立通过。
    范围和顺序见[高级验收](cli-advanced-test.md)，已确认的复用工程与叠层 A 保留。
 
 上述是覆盖缺口，不另建成“已确认产品 bug”，也不拿离线检查或错误检测通过代签设计完成。

@@ -22,6 +22,7 @@ import { sweepDeadlines } from './deadlines';
 
 import {
 	connectPinEndpoint,
+	clickImportConfirm,
 	constraintList,
 	detectPolarityConventionOutliers,
 	getComponentOrThrow,
@@ -30,6 +31,7 @@ import {
 	isPowerRailNet,
 	normalizeDeviceRef,
 	pcbPadExtent,
+	pcbImportDuplicateIdentities,
 	planOtherPropertyBackfill,
 	polygonSourceToPoints,
 	PROJECTED_STATE_KEYS,
@@ -4054,6 +4056,89 @@ test('import confirm probe never clicks a non-apply button and ignores unrelated
 	const unrelated = await runImportConfirmStep('Design Rule Check', ['Apply Changes']);
 	assert.deepEqual(unrelated, { outcome: 'none', clicked: [] });
 });
+
+test('import confirmation clicks once while a delayed dialog closes', async t => {
+	const g = globalThis as any, previous = g.document;
+	t.after(() => { g.document = previous; });
+	let now = 0, clicks = 0;
+	const button = { innerText: '应用修改', offsetParent: {}, click: () => { clicks++; } };
+	const modal = { innerText: '确认导入信息', offsetParent: {}, querySelectorAll: () => [button] };
+	g.document = { querySelectorAll: () => now < 750 ? [modal] : [] };
+	const result = await clickImportConfirm(8000, { now: () => now, pause: async ms => { now += ms; } });
+	assert.equal(result, 'applied');
+	assert.equal(clicks, 1);
+	assert.equal(now, 750);
+});
+
+test('import confirmation that never closes remains unverified without another click', async t => {
+	const g = globalThis as any, previous = g.document;
+	t.after(() => { g.document = previous; });
+	let now = 0, clicks = 0;
+	const button = { innerText: 'Apply Changes', offsetParent: {}, click: () => { clicks++; } };
+	const modal = { innerText: 'Confirm Importing changes information', offsetParent: {}, querySelectorAll: () => [button] };
+	g.document = { querySelectorAll: () => [modal] };
+	assert.equal(await clickImportConfirm(8000, { now: () => now, pause: async ms => { now += ms; } }), 'dialog-open');
+	assert.equal(clicks, 1);
+	assert.equal(now, 10000);
+});
+
+test('import closure probe is read-only even when the apply button is still present', async t => {
+	const g = globalThis as any, previous = g.document;
+	t.after(() => { g.document = previous; });
+	let clicks = 0;
+	const button = { innerText: '应用修改', offsetParent: {}, click: () => { clicks++; } };
+	const modal = { innerText: '确认导入信息', offsetParent: {}, querySelectorAll: () => [button] };
+	g.document = { querySelectorAll: () => [modal] };
+	const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as { new (body: string): () => Promise<unknown> };
+	assert.equal(await new AsyncFunction(importConfirmStepSource(undefined, undefined, false))(), 'present');
+	assert.equal(clicks, 0);
+});
+
+test('PCB import identity check reports both duplicate instances and permits unlinked mechanical parts', () => {
+	assert.deepEqual(pcbImportDuplicateIdentities([
+		{ primitiveId: 'first', uniqueId: 'gge1' }, { primitiveId: 'second', uniqueId: 'gge1' },
+		{ primitiveId: 'third', uniqueId: 'gge2' }, { primitiveId: 'hole1', uniqueId: '' }, { primitiveId: 'hole2' },
+	]), [{ uniqueId: 'gge1', primitiveIds: ['first', 'second'] }]);
+});
+
+for (const mode of ['delayed', 'never-closes', 'no-button', 'duplicates', 'unreadable-identities']) {
+	test(`PCB import API true does not hide confirmation or identity failures: ${mode}`, async t => {
+		const g = globalThis as any, previousDocument = g.document, previousEda = g.eda;
+		t.after(() => { g.document = previousDocument; g.eda = previousEda; });
+		let now = 0, clicks = 0, ratlines = 0;
+		t.mock.method(Date, 'now', () => now);
+		t.mock.method(globalThis, 'setTimeout', (callback: () => void, ms: number) => {
+			return setImmediate(() => { now += ms; callback(); }) as unknown as ReturnType<typeof setTimeout>;
+		});
+		const button = { innerText: '应用修改', offsetParent: {}, click: () => { clicks++; } };
+		const modal = { innerText: '确认导入信息', offsetParent: {}, querySelectorAll: () => mode === 'no-button' ? [] : [button] };
+		g.document = { querySelectorAll: () => mode === 'never-closes' || mode === 'no-button' || now < 750 ? [modal] : [] };
+		const components = ['first', 'second'].map((id, index) => ({
+			getState_PrimitiveId: () => id,
+			getState_UniqueId: () => {
+				if (mode === 'unreadable-identities') throw new Error('read failed');
+				return mode === 'duplicates' ? 'gge1' : `gge${index + 1}`;
+			},
+		}));
+		g.eda = {
+			dmt_Board: { getCurrentBoardInfo: async () => ({ name: 'board', schematic: { uuid: 'sch' }, pcb: { uuid: 'pcb' } }) },
+			pcb_PrimitiveComponent: { getAll: async () => clicks ? components : [] },
+			pcb_Document: { importChanges: async () => true, startCalculatingRatline: async () => { ratlines++; return true; } },
+		};
+		const reply = await runAction('pcb.import_changes', {});
+		const result: any = reply.result;
+		assert.equal(result.imported, true, 'preserve the API result without treating it as verification');
+		assert.equal(clicks, mode === 'no-button' ? 0 : 1);
+		assert.equal(result.confirmationClickCount, clicks);
+		assert.equal(result.verified, mode === 'delayed');
+		assert.equal(result.partial, mode !== 'delayed');
+		assert.equal(ratlines, mode === 'delayed' ? 1 : 0);
+		if (mode === 'never-closes') assert.equal(result.confirm, 'dialog-open');
+		if (mode === 'no-button') assert.equal(result.confirm, 'no-button');
+		if (mode === 'duplicates') assert.deepEqual(result.duplicateUniqueIds, [{ uniqueId: 'gge1', primitiveIds: ['first', 'second'] }]);
+		if (mode === 'unreadable-identities') assert.equal(result.identityInventoryAvailable, false);
+	});
+}
 
 test('prim-delete waits for observed sync before the first official delete', async t => {
 	const g = globalThis as any, fx = edaWithUndeletableText([], ['w1']);

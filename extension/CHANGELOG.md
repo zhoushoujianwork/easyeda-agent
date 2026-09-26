@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1-dev.12] — 2026-09-27
+
+- 原理图导入 PCB 的确认只点击一次，后续用只读探测等待弹框关闭；超时保留 dialog-open，不再误报 applied。
+- 导入后回读非空 uniqueId，重复实例或身份库存不可读保留完整结果并标记未验证；该分支不继续飞线计算、属性回填或位号同步。
+- CLI/raw typed action/Apply 对未验证导入失败退出；通用 verify、重试、continue 或 prompt 不得覆盖失败或重复导入。
+- 开发修复候选，离线回归与独立复核后仍须安装新包并现场验证；不代表完整 ESP32 用例或 v1.8.0 发布已通过。
+
 ## [1.7.1-dev.11] — 2026-09-26
 
 - 在 dev.10 未安装候选上补齐 Apply 外层：未验证铺铜边界使用专用错误，action/run 两入口均在 verify、retry、continue 和 prompt 之前停止，保留原始对象 ID。

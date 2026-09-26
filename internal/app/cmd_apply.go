@@ -922,6 +922,11 @@ func (r *applyRunner) execute() error {
 			fmt.Fprintf(r.stderr, "  created pour boundary is unverified — stopping before dependent steps; journal: %s\n", r.journalPath)
 			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
 		}
+		var importErr *unverifiedPCBImportError
+		if errors.As(execErr, &importErr) {
+			fmt.Fprintf(r.stderr, "  PCB import is unverified — stopping before dependent steps; journal: %s\n", r.journalPath)
+			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
+		}
 		var stateErr *schematicExpectationError
 		if errors.As(execErr, &stateErr) {
 			fmt.Fprintf(r.stderr, "  expectSchematic is a mandatory gate — stopping; journal: %s\n", r.journalPath)
@@ -974,6 +979,10 @@ func (r *applyRunner) executeStep(s *playbookStep, catalog map[string]protocol.A
 		var boundaryErr *unverifiedPourBoundaryError
 		if errors.As(err, &boundaryErr) {
 			return nil, err // A generic verify or retry must not hide/replay this partial write.
+		}
+		var importErr *unverifiedPCBImportError
+		if errors.As(err, &importErr) {
+			return nil, err
 		}
 		if s.ExpectSchematic != nil {
 			// A read failure provides no evidence either. Never let verify or
@@ -1094,6 +1103,9 @@ func (r *applyRunner) runAction(action string, payload map[string]any, timeout t
 	if err := pourBoundaryError(action, parsed.Result); err != nil {
 		return anyResult(parsed.Result), err
 	}
+	if err := pcbImportResultError(action, parsed.Result); err != nil {
+		return anyResult(parsed.Result), err
+	}
 	if parsed.Result != nil {
 		partial, _ := parsed.Result["partial"].(bool)
 		na, _ := parsed.Result["notApplied"].([]any)
@@ -1154,6 +1166,10 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 	if code != 0 {
 		var boundaryErr *unverifiedPourBoundaryError
 		if errors.As(commandErr, &boundaryErr) {
+			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)
+		}
+		var importErr *unverifiedPCBImportError
+		if errors.As(commandErr, &importErr) {
 			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)
 		}
 		msg := strings.TrimSpace(errBuf.String())

@@ -65,6 +65,7 @@ list. 工程写入只允许参数化数据经 Cobra 子命令、typed action 或
   定位挂起；查不到时保留宿主默认行为，不猜 ID。返回 `ready:true` 至少要求当前 UUID
   与目标一致；PCB 身份确认不代表器件数据已完成加载，后续仍需读取验证。
 - `pcb.board.info` — current Board (schematic↔PCB linkage) + current PCB; the prerequisite context for `import_changes`.
+- `easyeda pcb import-changes --schematic <uuid>` — typed 导入只点击一次确认，后续只观察弹框关闭；关闭超时或 PCB 非空 uniqueId 重复属于未验证的部分写入，保留原回包与实例 ID，不自动回填、重试或继续队列。导入后仍须将全部位号、uniqueId 与焊盘网逐项对参数源，并保存重载；数量相同或 imported:true 不代替身份和电气验证。
 
 ### Board (板子/组合 — the schematic↔PCB binding)
 

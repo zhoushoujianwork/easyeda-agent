@@ -10249,6 +10249,7 @@ export const IMPORT_CONFIRM_APPLY_LABELS: ReadonlyArray<string> = [
 export function importConfirmStepSource(
 	titles: ReadonlyArray<string> = IMPORT_CONFIRM_DIALOG_TITLES,
 	applyLabels: ReadonlyArray<string> = IMPORT_CONFIRM_APPLY_LABELS,
+	apply = true,
 ): string {
 	const norm = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 	return `
@@ -10258,6 +10259,7 @@ export function importConfirmStepSource(
 		const modals = Array.from(document.querySelectorAll('.arco-modal, [class*=modal]'))
 			.filter(e => e.offsetParent !== null && titles.some(t => norm(e.innerText).includes(t)));
 		if (!modals.length) return 'none';
+		${apply ? '' : "return 'present';"}
 		const btn = modals.flatMap(m => Array.from(m.querySelectorAll('button')))
 			.find(b => applyLabels.includes(norm(b.innerText)) && b.offsetParent !== null);
 		if (!btn) return 'no-button';
@@ -10275,7 +10277,10 @@ export function importConfirmStepSource(
 // "reading 'querySelectorAll' of undefined"), while a `new AsyncFunction`'s
 // scope chain ends at the real global — the exact trick debug.exec_js uses,
 // which is why exec_js probes could always see the dialog.
-async function clickImportConfirm(timeoutMs: number): Promise<string> {
+export async function clickImportConfirm(timeoutMs: number, clock = {
+	now: () => Date.now(),
+	pause: (ms: number) => new Promise<void>(r => setTimeout(r, ms)),
+}): Promise<string> {
 	const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as {
 		new (body: string): () => Promise<unknown>;
 	};
@@ -10283,22 +10288,37 @@ async function clickImportConfirm(timeoutMs: number): Promise<string> {
 	// carry the 确认导入信息 text without the footer buttons (live-verified
 	// 'no-button' miss), so the button search must span ALL matching nodes.
 	const step = new AsyncFunction(importConfirmStepSource());
-	const pause = (ms: number) => new Promise(r => setTimeout(r, ms));
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
+	const observe = new AsyncFunction(importConfirmStepSource(undefined, undefined, false));
+	const deadline = clock.now() + timeoutMs;
+	while (clock.now() < deadline) {
 		const r = await step();
 		if (r === 'clicked') {
 			// Wait for the modal to actually close (the apply is async).
-			const closeBy = Date.now() + 10_000;
-			while (Date.now() < closeBy && (await step()) !== 'none') {
-				await pause(250);
+			// Polling must NEVER click again: the dialog can remain visible while
+			// the host is still applying the first import, so another click can
+			// materialize another set of footprints.
+			const closeBy = clock.now() + 10_000;
+			while (clock.now() < closeBy) {
+				if ((await observe()) === 'none') return 'applied';
+				await clock.pause(250);
 			}
-			return 'applied';
+			return 'dialog-open';
 		}
 		if (r === 'no-button') return 'no-button';
-		await pause(250);
+		await clock.pause(250);
 	}
 	return 'no-dialog';
+}
+
+export function pcbImportDuplicateIdentities(components: ReadonlyArray<{ uniqueId?: string; primitiveId: string }>): Array<{ uniqueId: string; primitiveIds: string[] }> {
+	const groups = new Map<string, string[]>();
+	for (const component of components) {
+		if (!component.uniqueId) continue; // Unlinked mechanical parts may be empty.
+		const ids = groups.get(component.uniqueId) ?? [];
+		ids.push(component.primitiveId);
+		groups.set(component.uniqueId, ids);
+	}
+	return [...groups].filter(([, ids]) => ids.length > 1).map(([uniqueId, primitiveIds]) => ({ uniqueId, primitiveIds }));
 }
 
 const pcbImportChanges: Handler = async (payload) => {
@@ -10359,12 +10379,6 @@ const pcbImportChanges: Handler = async (payload) => {
 		imported = confirmOutcome === 'applied'; // the click is what actually lands parts
 	}
 
-	if (imported && recomputeRatline) {
-		try {
-			await eda.pcb_Document.startCalculatingRatline();
-		}
-		catch { /* best-effort */ }
-	}
 	// The apply keeps materializing components AFTER the modal closes (live:
 	// counted 1 immediately, 20 a few seconds later) — poll until the count is
 	// stable across two reads before reporting it as ground truth.
@@ -10378,6 +10392,25 @@ const pcbImportChanges: Handler = async (payload) => {
 			componentsAfter = again;
 		}
 	}
+	let duplicateUniqueIds: ReturnType<typeof pcbImportDuplicateIdentities> = [];
+	let identityInventoryAvailable = false;
+	try {
+		const inventory = await eda.pcb_PrimitiveComponent.getAll();
+		if (Array.isArray(inventory)) {
+			duplicateUniqueIds = pcbImportDuplicateIdentities(inventory.map(component => ({
+				uniqueId: component.getState_UniqueId(), primitiveId: component.getState_PrimitiveId(),
+			})));
+			identityInventoryAvailable = true;
+		}
+	}
+	catch { /* preserve the import result, but do not validate unknown identities */ }
+	const verified = imported === true && confirmOutcome === 'applied' && identityInventoryAvailable
+		&& duplicateUniqueIds.length === 0 && componentsAfter >= 0;
+	const partial = !verified && (imported === true || confirmOutcome === 'dialog-open');
+	if (verified && recomputeRatline) {
+		try { await eda.pcb_Document.startCalculatingRatline(); }
+		catch { /* best-effort */ }
+	}
 
 	return {
 		result: {
@@ -10386,6 +10419,11 @@ const pcbImportChanges: Handler = async (payload) => {
 			apiTimedOut,
 			componentsBefore,
 			componentsAfter,
+			confirmationClickCount: confirmOutcome === 'applied' || confirmOutcome === 'dialog-open' ? 1 : 0,
+			identityInventoryAvailable,
+			duplicateUniqueIds,
+			partial,
+			verified,
 			createdBoard,
 			// Read schematic/pcb defensively: a Board can legitimately hold only one
 			// side (e.g. after a rebuild the schematic ref may be a deleted/orphaned
@@ -10393,7 +10431,9 @@ const pcbImportChanges: Handler = async (payload) => {
 			board: board
 				? { name: board.name, schematicUuid: board.schematic?.uuid ?? null, pcbUuid: board.pcb?.uuid ?? null }
 				: null,
-			reason: imported
+			reason: partial
+				? 'import not verified: confirmation dialog still open, duplicate uniqueIds, or unreadable identity inventory; preserve returned IDs and fresh state, do not repeat import'
+				: imported
 				? (confirmOutcome === 'no-button'
 					? 'the 确认导入信息 / "Confirm Importing changes information" dialog is open but its 应用修改 / "Apply Changes" button was not found — stop and inspect the dialog/readback; update the typed import handler before retrying'
 					: null)

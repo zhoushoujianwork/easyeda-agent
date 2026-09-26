@@ -116,10 +116,12 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 	var parsed struct {
 		OK     bool `json:"ok"`
 		Result struct {
-			PrimitiveID any   `json:"primitiveId"`
-			OK          *bool `json:"ok"`
-			Verified    *bool `json:"verified"`
-			Partial     bool  `json:"partial"`
+			PrimitiveID any    `json:"primitiveId"`
+			Imported    bool   `json:"imported"`
+			Confirm     string `json:"confirm"`
+			OK          *bool  `json:"ok"`
+			Verified    *bool  `json:"verified"`
+			Partial     bool   `json:"partial"`
 		} `json:"result"`
 		Error *struct {
 			Code    string `json:"code"`
@@ -138,6 +140,10 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 			Message: parsed.Error.Message, Detail: parsed.Error.Detail})
 	}
 	switch action {
+	case "pcb.import_changes":
+		return pcbImportResultError(action, map[string]any{"imported": parsed.Result.Imported,
+			"confirm": parsed.Result.Confirm, "verified": parsed.Result.Verified != nil && *parsed.Result.Verified,
+			"partial": parsed.Result.Partial})
 	case "pcb.pour.create":
 		return pourBoundaryError(action, map[string]any{"primitiveId": parsed.Result.PrimitiveID,
 			"verified": parsed.Result.Verified != nil && *parsed.Result.Verified, "partial": parsed.Result.Partial})
@@ -151,6 +157,22 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		if parsed.Result.Partial || (parsed.Result.Verified != nil && !*parsed.Result.Verified) {
 			return fmt.Errorf("%s: write not fully verified; inspect returned IDs and fresh state before retrying", action)
 		}
+	}
+	return nil
+}
+
+type unverifiedPCBImportError struct{ confirm string }
+
+func (e *unverifiedPCBImportError) Error() string {
+	return fmt.Sprintf("pcb.import_changes: import not verified (confirm=%q); preserve returned identities and fresh state before recomputing; do not repeat import", e.confirm)
+}
+
+func pcbImportResultError(action string, result map[string]any) error {
+	if action != "pcb.import_changes" {
+		return nil
+	}
+	if result["imported"] != true || result["confirm"] != "applied" || result["verified"] != true || result["partial"] == true {
+		return &unverifiedPCBImportError{confirm: asString(result["confirm"])}
 	}
 	return nil
 }
@@ -354,7 +376,10 @@ func requestActionOnce(cfg *appConfig, action, window string, payload any, timeo
 		// —— 两者的下一步完全不同。见 stale_read_optin.go。
 		return res, &actionError{Action: action, Code: code, Message: msg}
 	}
-	return res, pourBoundaryError(action, res.Result)
+	if err := pourBoundaryError(action, res.Result); err != nil {
+		return res, err
+	}
+	return res, pcbImportResultError(action, res.Result)
 }
 
 // encodeResultEnvelope writes a reconstructed typed report wrapped in the same
@@ -406,7 +431,8 @@ func dispatchCapture(cfg *appConfig, action, window string, payload any, stdout 
 	if err := json.Unmarshal(respBody, &parsed); err != nil || !parsed.OK {
 		return nil, errActionFailed
 	}
-	return &actionResult{OK: parsed.OK, Result: parsed.Result, Artifacts: parsed.Artifacts}, nil
+	res := &actionResult{OK: parsed.OK, Result: parsed.Result, Artifacts: parsed.Artifacts}
+	return res, pcbImportResultError(action, res.Result)
 }
 
 // healthWindow is the subset of a /health window entry the doc commands need to

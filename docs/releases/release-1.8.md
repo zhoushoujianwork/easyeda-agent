@@ -40,13 +40,17 @@
 | 发布前只读预检 | 初次 pass：`1.7.1-dev.11` 三方同版；最新恢复 CLI/daemon `v1.7.0-45-g2c6cd35`，connector 未改，Web 4.1.60 与目标 P3 路由核对通过 |
 | 三项基础失败 | 已接受为本次已知限制，保持 open；不再整体阻断，失败漏报修复不等于实际操作通过 |
 | 严格基础 B00–B10 | dev.9 为 9 pass / 2 fail，dev.11 全集 not-run；不为移除阻断而改写，准入依据见上文 |
-| 完整高级用例 | 51 位号测量与清理、三页 F1/F2/E1 和图签 L2、自然过期 sourceScene N1 子例独立通过；R1 续测，L1 与四层 PCB 未运行 |
+| 完整高级用例 | 三页及 N1 有限子例独立通过；R1 partial，缺恢复态 reload；PCB 导入 51→101 已精确清理，dev.12 修复候选待运行态与现场复验，L1/四层布局/布线未运行 |
 | 正式发布 | 待完整用例、独立复核与资产验证；当前未创建 tag 或上传正式资产 |
 
 原理图续测发现的 #262–#266 已修复或完成定向复验，旧失败全部保留。最新三页候选完成
 save→reload→fresh 对账和官方整页图检查，有限独立复核已通过，继续专项及 PCB；
 [#267](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) 的保留器件清页风险保持 open，
 该分支暂不使用，现场通过精确单线回退完成恢复。具体边界见[原理图续测记录](../reviews/2026-09-27-cli-schematic-gate.md)。
+
+PCB 导入发现 [#269](https://github.com/zhoushoujianwork/easyeda-agent/issues/269)，未继续依赖写入；
+单次确认、重复身份检测和失败传播已形成 dev.12 候选，仍待现场复验。
+R1 的恢复完成态重载缺口及清理原生差分见[当前记录](../reviews/2026-09-27-pcb-import-confirm-fix.md)。
 
 新失败的原始输入、诊断及十区重放见[布局回归记录](../reviews/2026-09-27-cli-layout-regression.md)。
 已按“无法可靠修复则登记 bug 后续跟进”的既有要求记录，未将新问题纳入三项例外，未降低验收标准。
