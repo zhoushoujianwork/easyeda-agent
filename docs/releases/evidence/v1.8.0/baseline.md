@@ -51,6 +51,12 @@
   `a00-selection-measurement/before-measurement.epro2` 为 102,943 字节、ZIP 6 条目，
   SHA-256 `84d009b660696612e3bf68a25fefe6df5122487791fd2346b8861eafe8d45aa7`。
   `restoreVerified=false` 保留：备份文件校验不等于已重导入恢复。原始只读基线批未 save/reload 的历史结论不改写。
+- 六件关键器件测量批已冻结 161 份材料，清单 SHA-256
+  `3fec52f6a543cfdf172aeafad8b5cc7491ef5a34fcd8abd0a5eb23ff95780233`。
+  各件按精确 PID 清理，最后 P1 typed save→reload→fresh 与完整基线仅差图框更新时间；
+  PCB 的 184 条原生记录前后严格相等。最终 `after-measurement.epro2` 为 107,984 字节，
+  SHA-256 `7c9a9cec6ed974560795f99537b22e0aac8626791b775fd4e7aaea6ffeb5c39d`，仍为 `restoreVerified=false`。
+  库缓存可使整份归档字节变化，不声明 ZIP 完全恢复；临时器件测量不等于最终设计持久化验收。
 
 ## 通过标准
 
