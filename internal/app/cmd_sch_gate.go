@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/schguard"
 )
 
 // ── sch gate: the S5 校验门, one command ──────────────────────────────────
@@ -325,13 +326,25 @@ func formatTypeTally(tally map[string]int) string {
 // 判据补上;补了还不进门,等于没补。
 func gateClustersStage(cfg *appConfig, window string, strict bool, geom *schGeomSnapshot) gateStage {
 	st := gateStage{Name: "clusters"}
-	comps, perr := geom.compsOr(cfg, window, map[string]any{"includeBBox": true, "includePins": true})
+	res, perr := geom.resultOr(cfg, window, map[string]any{"includeBBox": true, "includePins": true, "includeWires": true})
+	var comps []layoutComp
+	if perr == nil {
+		comps, perr = parseLayoutComps(res.Result)
+	}
 	if perr != nil {
 		st.Status, st.Error = gateStatusError, perr.Error()
 		st.Summary = "sch clusters 没能读到几何"
 		return st
 	}
-	wires, _ := fetchSchWirePolylines(cfg, window, "") // 读不到线只降级归属,不阻断
+	wires, werr := schClusterSnapshotWires(res.Result)
+	if werr != nil && strict {
+		st.Status, st.Error = gateStatusError, werr.Error()
+		st.Summary = "strict clusters 缺少同一快照的完整导线几何"
+		return st
+	}
+	if werr != nil {
+		wires, _ = fetchSchWirePolylines(cfg, window, "")
+	} // Legacy geometry never grants a crossing exemption.
 	clusters, _ := buildSchClusters(comps, wires)
 	var usable *layoutBBox
 	if sheet := sheetBBoxOf(comps); sheet != nil {
@@ -348,7 +361,8 @@ func gateClustersStage(cfg *appConfig, window string, strict bool, geom *schGeom
 	if _, _, docUUID, _, gst, _, gerr := loadSchGroupsContext(cfg, window); gerr == nil {
 		same = schSameLayoutOwnerFromState(gst, docUUID)
 	}
-	findings := judgeSchClustersWith(clusters, usable, minGap, same)
+	proof, _ := schguard.VerifiedWireCrossings(res.Result)
+	findings := judgeSchClustersWithCrossings(clusters, usable, minGap, same, proof)
 	st.Detail = schClusterReport{Clusters: clusters, Findings: findings, Sheet: usable}
 	var overlaps, offSheet, tight int
 	for _, f := range findings {

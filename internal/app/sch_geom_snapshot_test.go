@@ -50,6 +50,17 @@ func TestSchGeomSnapshot_AllPagesMustMatchExactly(t *testing.T) {
 	}
 }
 
+func TestSchGeomSnapshot_WiresNeedExplicitSuperset(t *testing.T) {
+	s := &schGeomSnapshot{comps: []layoutComp{{}}, withPins: true}
+	if s.covers(map[string]any{"includePins": true, "includeWires": true}) {
+		t.Fatal("pins-only snapshot cannot prove crossings")
+	}
+	s.withWires = true
+	if !s.covers(map[string]any{"includePins": true, "includeWires": true}) || !s.covers(map[string]any{"includePins": true}) {
+		t.Fatal("full snapshot should serve subset requests")
+	}
+}
+
 var errStub = stubErr("read failed")
 
 type stubErr string

@@ -120,25 +120,7 @@ func topologySegmentsAllowDegenerate(result map[string]any, allowDegenerate bool
 }
 
 func topologyAnchorRoots(segments []segment, anchors []Point) ([]int, error) {
-	parent := make([]int, len(segments))
-	for i := range parent {
-		parent[i] = i
-	}
-	var root func(int) int
-	root = func(i int) int {
-		for parent[i] != i {
-			parent[i] = parent[parent[i]]
-			i = parent[i]
-		}
-		return i
-	}
-	for i, s := range segments {
-		for j, t := range segments[:i] {
-			if SegmentsContact(s.a, s.b, t.a, t.b) {
-				parent[root(i)] = root(j)
-			}
-		}
-	}
+	roots := physicalSegmentRoots(segments, nil)
 	// An anchor at a bare X can lie on two independent trees. It is only a
 	// witness, never a union operation. Such ambiguous interior witnesses must
 	// be excluded; the endpoints of each original segment still prove both trees.
@@ -149,7 +131,7 @@ func topologyAnchorRoots(segments []segment, anchors []Point) ([]int, error) {
 			if !onSegment(p, s.a, s.b) {
 				continue
 			}
-			r := root(j)
+			r := roots[j]
 			if found >= 0 && found != r {
 				// A true new split endpoint at a former bare X is not represented
 				// by one old island. Let endpoint witnesses detect any actual merge.

@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zhoushoujianwork/easyeda-agent/internal/schguard"
 )
 
 // schCluster 是一个 L1 虚拟组。
@@ -50,9 +51,11 @@ type schCluster struct {
 
 // schClusterTyped 是一个归属成员的类型化记录。
 type schClusterTyped struct {
-	Kind string // part | wire | netflag | netport | netlabel …
-	Net  string
-	BBox layoutBBox
+	Kind    string // part | wire | netflag | netport | netlabel …
+	Net     string
+	BBox    layoutBBox
+	WireID  string
+	Segment *[4]float64 // exact observed segment; nil for bodies/markers/legacy members
 }
 
 // Model a schematic centreline with a 1-raw topological stroke for positive-area
@@ -196,7 +199,7 @@ func buildSchClusters(comps []layoutComp, wires []schGroupWire) ([]schCluster, i
 	at := map[[2]int64][]int{}
 	wireBox := make([]layoutBBox, len(wires))
 	wireBoxValid := make([]bool, len(wires))
-	wireMembers := make([][]layoutBBox, len(wires))
+	wireMembers := make([][]schClusterTyped, len(wires))
 	for wi, w := range wires {
 		if len(w.Points) < 4 {
 			continue
@@ -211,7 +214,7 @@ func buildSchClusters(comps []layoutComp, wires []schGroupWire) ([]schCluster, i
 			if !ok {
 				continue
 			}
-			wireMembers[wi] = append(wireMembers[wi], b)
+			wireMembers[wi] = append(wireMembers[wi], schClusterTyped{Kind: "wire", BBox: b, WireID: w.ID, Segment: &seg})
 			rawBox := layoutBBox{
 				MinX: math.Min(seg[0], seg[2]), MinY: math.Min(seg[1], seg[3]),
 				MaxX: math.Max(seg[0], seg[2]), MaxY: math.Max(seg[1], seg[3]),
@@ -264,9 +267,10 @@ func buildSchClusters(comps []layoutComp, wires []schGroupWire) ([]schCluster, i
 		}
 		for o := range touch[r] {
 			growBox(o, wireBox[wi])
-			for _, segmentBox := range wireMembers[wi] {
-				addMember(o, segmentBox)
-				note(o, "wire", "", segmentBox)
+			for _, member := range wireMembers[wi] {
+				addMember(o, member.BBox)
+				note(o, "wire", "", member.BBox)
+				typed[o][len(typed[o])-1] = member
 			}
 			wireCount[o]++
 		}
@@ -388,6 +392,10 @@ type schSameGroupFn func(a, b string) bool
 //
 // **重叠(ERROR)不豁免**:同组也不许压在一起,那是真几何缺陷。
 func judgeSchClustersWith(cs []schCluster, usable *layoutBBox, minGap float64, sameGroup schSameGroupFn) []schClusterFinding {
+	return judgeSchClustersWithCrossings(cs, usable, minGap, sameGroup, nil)
+}
+
+func judgeSchClustersWithCrossings(cs []schCluster, usable *layoutBBox, minGap float64, sameGroup schSameGroupFn, proof *schguard.WireCrossingProof) []schClusterFinding {
 	var out []schClusterFinding
 	for i := 0; i < len(cs); i++ {
 		for j := i + 1; j < len(cs); j++ {
@@ -398,8 +406,11 @@ func judgeSchClustersWith(cs []schCluster, usable *layoutBBox, minGap float64, s
 			ea, eb := cs[i].Box, cs[j].Box
 			envelopeGap := boxGapAlongAxes(ea, eb)
 			if envelopeGap < minGap || envelopeGap <= schVisibleWireHalfWidth || boxesIntersect(ea, eb) {
-				for _, a := range membersOf(cs[i]) {
-					for _, b := range membersOf(cs[j]) {
+				for ai, a := range membersOf(cs[i]) {
+					for bi, b := range membersOf(cs[j]) {
+						if schClusterMembersProvedCrossing(cs[i], ai, cs[j], bi, proof) {
+							continue
+						}
 						x := math.Min(a.MaxX, b.MaxX) - math.Max(a.MinX, b.MinX)
 						y := math.Min(a.MaxY, b.MaxY) - math.Max(a.MinY, b.MinY)
 						if x > 0 && y > 0 {
@@ -461,7 +472,7 @@ func runSchClusters(cfg *appConfig, window string, minGap float64, asJSON, stric
 	stdout, stderr io.Writer) error {
 
 	res, err := requestAction(cfg, "schematic.components.list", window,
-		map[string]any{"includeBBox": true, "includePins": true})
+		map[string]any{"includeBBox": true, "includePins": true, "includeWires": true})
 	if err != nil {
 		return fmt.Errorf("read components with real bbox/pin geometry: %w", err)
 	}
@@ -469,7 +480,13 @@ func runSchClusters(cfg *appConfig, window string, minGap float64, asJSON, stric
 	if err != nil {
 		return fmt.Errorf("parse components: %w", err)
 	}
-	wires, werr := fetchSchWirePolylines(cfg, window, "")
+	wires, werr := schClusterSnapshotWires(res.Result)
+	if werr != nil && strict {
+		return fmt.Errorf("strict clusters require wire geometry from the same complete snapshot: %w", werr)
+	}
+	if werr != nil {
+		wires, werr = fetchSchWirePolylines(cfg, window, "")
+	}
 	if werr != nil {
 		fmt.Fprintf(stderr, "warn: 读不到导线(%v)—— 桩线不计入组体积,marker 仍按最近引脚归属\n", werr)
 	}
@@ -492,7 +509,8 @@ func runSchClusters(cfg *appConfig, window string, minGap float64, asJSON, stric
 	if _, _, docUUID, _, st, _, gerr := loadSchGroupsContext(cfg, window); gerr == nil {
 		same = schSameLayoutOwnerFromState(st, docUUID)
 	}
-	findings := judgeSchClustersWith(clusters, usable, minGap, same)
+	proof, _ := schguard.VerifiedWireCrossings(res.Result)
+	findings := judgeSchClustersWithCrossings(clusters, usable, minGap, same, proof)
 	report := schClusterReport{Clusters: clusters, Findings: findings, Sheet: usable, Unowned: unowned,
 		TooBig: oversized}
 

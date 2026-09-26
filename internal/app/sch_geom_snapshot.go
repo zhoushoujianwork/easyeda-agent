@@ -19,8 +19,8 @@ package app
 // 就夹着 exec_js,缓存每次都被清空,真机一点没省。
 //
 // 显式快照没有失效问题可谈:它的作用域就是一次只读流程,读完即用完,调用方一眼能看出
-// 数据从哪来。nil 快照 = 各自去读,所以单命令路径(`sch layout-lint` / `sch clusters`)
-// 一行没改。
+// 数据从哪来。nil 快照 = 各自去读。clusters 的导线、pins 和 marker 必须来自同一
+// 含 includeWires 的快照,不能把两次读取拼成无接点交叉的证据。
 
 import "fmt"
 
@@ -31,18 +31,19 @@ type schGeomSnapshot struct {
 	res   *actionResult
 	err   error
 	// flags 记录这份快照是用什么参数读的,便于 compsOr 判定它能不能服务某次请求。
-	withPins bool
-	allPages bool
+	withPins  bool
+	withWires bool
+	allPages  bool
 }
 
-// gatePreloadGeometry 预读一次最宽的几何(bbox + pins)。读失败**不报错**:
+// gatePreloadGeometry 预读一次最宽的几何(bbox + pins + wires)。读失败**不报错**:
 // 各 stage 会各自去读并给出它自己的错误信息 —— 预读只是优化,不是新的失败点。
 func gatePreloadGeometry(cfg *appConfig, window string, allPages bool) *schGeomSnapshot {
-	payload := map[string]any{"includeBBox": true, "includePins": true}
+	payload := map[string]any{"includeBBox": true, "includePins": true, "includeWires": true}
 	if allPages {
 		payload["allPages"] = true
 	}
-	snap := &schGeomSnapshot{withPins: true, allPages: allPages}
+	snap := &schGeomSnapshot{withPins: true, withWires: true, allPages: allPages}
 	res, err := requestAction(cfg, "schematic.components.list", window, payload)
 	if err != nil {
 		snap.err = err
@@ -62,6 +63,10 @@ func gatePreloadGeometry(cfg *appConfig, window string, allPages bool) *schGeomS
 // 引脚判据,会静默判出「零个引脚问题」。allPages 必须完全一致:它改变的是返回集合。
 func (s *schGeomSnapshot) covers(payload map[string]any) bool {
 	if s == nil || s.err != nil || s.comps == nil {
+		return false
+	}
+	wantWires, _ := payload["includeWires"].(bool)
+	if wantWires && !s.withWires {
 		return false
 	}
 	wantPins, _ := payload["includePins"].(bool)

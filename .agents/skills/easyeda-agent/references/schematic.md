@@ -141,6 +141,10 @@ Web 宿主导出网表后可能仍运行 `RealTimeSync`，此时官方删除 API
   但同组真实 overlap 和跨组 tight 仍阻断；缺 ownership 时不得按同网或距离猜测豁免。
   `clusters` 对 owned wire 逐官方 flat segment 判成员相交，整条折线包络仅用于总体占地和
   页面边界，不能把 L 形空角算作碰撞。
+  owned wire 的描边框相交只有在同一次 fresh 完整采集证明为无接点正交内部 X 时才可排除：
+  保留原始段端，交点不得有任何导线端点、pin 或 marker；两侧物理线岛均需实际逐 pin
+  网表与 marker 证据完整且各自网络唯一。网络同名、check 的 INFO 文本或缺测快照不是豁免
+  依据；端点/T/共线接触及 part/marker 本体重叠继续拒绝。
   导线与 marker 本体/文字按可见 stroke 判碰撞；foreign wire 沿边、端点或 T 接不能因
   marker bbox 被统一内缩而漏检。只允许 marker 自身 lead 在自身 anchor 的精确收口。
 - `sch check --json` 的逐条问题在 `result.findings`。SDK DRC 可能只返回布尔/聚合值，
