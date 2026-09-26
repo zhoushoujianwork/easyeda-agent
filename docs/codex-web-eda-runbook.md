@@ -115,6 +115,8 @@ team UUID 下显式传 `--team` 的创建返回空 UUID，经 50 项完整清单
 先按[基础 CLI 动作测试](cli-live-test.md)和[逐例前置条件](cli-live-test-detail.md)
 确认 B00–B10 全部通过。以下步骤属于[高级 CLI 业务验收](cli-advanced-test.md)：
 它验证客户需求驱动的设计，不能用于补签基础动作门禁。
+用户已明确接受的版本范围例外按[高级进入条件](cli-advanced-test.md#进入条件)执行；
+v1.8.0 不再因 #55、#260、#261 等待全部修复或重复基础全集，原结果仍如实保留。
 
 给**新上下文**执行 subagent（`fork_turns: none`）只提供下列任务 prompt 和
 [`esp32MiniRequire.md`「一、客户原始需求」](../esp32MiniRequire.md#一客户原始需求)。不提供

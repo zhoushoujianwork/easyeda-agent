@@ -3,12 +3,14 @@
 [返回简版](cli-advanced-test.md)。高级用例只在同版
 [基础 CLI B00–B10](cli-live-test-detail.md)全部通过后运行。这里的 `sch`/`pcb` 命令用于
 跨对象规划和设计质量判定；同名命令域中的基础增删改查已在基础层单独验收。
+用户明确接受的本次范围例外按[简版进入条件](cli-advanced-test.md#进入条件)执行，
+包括 v1.8.0 的三项已知限制，不将该次准入误写成严格基础全通过。
 
 ## 全局前置条件
 
-1. 保存基础门禁的 `pass` 报告、安装包/源码 commit、CLI/daemon/连接器精确版本、
+1. 保存基础门禁的 `pass` 报告，或用户明确接受的范围决定及其基础证据；记录安装包/源码 commit、CLI/daemon/连接器精确版本、
    目标工程/页 UUID，以及专用工程的原始快照和语义哈希。任一基础项回退为
-   `fail`、`blocked` 或 `not-run`，停止现场高级用例并重新核对基础层。
+   未被该次范围决定接受的 `fail`、`blocked` 或 `not-run`，停止相关现场用例并重新核对基础层。
 2. 完整端到端回归只向无历史上下文的执行 Agent 提供
    [`esp32MiniRequire.md`「一、客户原始需求」](../esp32MiniRequire.md)；不喂 BOM、UUID、
    网表、预制布局或历史答案。单项算法回归可用冻结样例，但必须标明它不是完整端到端。
@@ -22,7 +24,7 @@
 
 | ID | 专项前置条件 | 操作 | 通过判据 |
 |---|---|---|---|
-| A00 需求与选型 | 基础门禁全通过；原始需求或单项样例身份已冻结 | 从需求选择器件、封装、功能块和约束；核对库身份、引脚、外围归属与参数来源 | 需求逐条映射到可复算源数据；变体歧义和缺失数据明确阻断，不把基础 `lib search` 成功当选型通过 |
+| A00 需求与选型 | 本轮基础准入满足（严格通过或明确接受的限定范围）；原始需求或单项样例身份已冻结 | 从需求选择器件、封装、功能块和约束；核对库身份、引脚、外围归属与参数来源 | 需求逐条映射到可复算源数据；变体歧义和缺失数据明确阻断，不把基础 `lib search` 成功当选型通过 |
 | A01 原理图规划与求解 | 原始快照、测量值和源数据 SHA-256 齐备 | `sch zone-review`、`layout-plan`、`layout-sheet-plan`、必要的 `compose`；分析候选、所有权和跨区关系 | 报告 `sourceSha256` 与原始字节匹配；唯一归属、核心外围跟随、direct 连接、位号与图纸边界判据满足。预算耗尽只说明本次搜索失败，不证明全局无解 |
 | A02 保护执行与原理图质量 | A01 形成完整候选，页面身份和基线未变 | `sch apply --dry-run` 后执行受保护队列；fresh `sch list/read/connectivity`，`layout-lint/check/bridge-check/drc/gate --strict`；save→reload→fresh readback | journal 全成功，目标对象和网络逐项吻合，范围外不变；0 overlap、0 fatal，严格 gate 按当前规则通过；保存重载后仍一致 |
 | A03 PCB 同步与规则 | A02 的原理图完整通过且已持久化 | `pcb new-board`、`board-info/docs/list/layers/nets`；按回读选择同步方式；设置叠层、板框、规则和功能约束 | board/schematic/PCB UUID 与 uniqueId、封装焊盘及网络逐项对应；四层与工艺规则由真实配置回读，不凭命令成功推断电源树 |
