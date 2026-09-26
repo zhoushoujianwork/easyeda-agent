@@ -1,0 +1,517 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-012",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 645.5,
+          "maxY": 550.5,
+          "minX": 554.5,
+          "minY": 449.5
+        },
+        "primitiveId": "",
+        "designator": "D3",
+        "value": "USBLC6-2SC6",
+        "textBboxes": [
+          {
+            "minX": 555,
+            "minY": 550,
+            "maxX": 563.9482421875,
+            "maxY": 558
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "USB_D+",
+            "x": 535,
+            "y": 530,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 535,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "3",
+            "name": "3",
+            "net": "USB_D-",
+            "x": 535,
+            "y": 470,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "4",
+            "net": "USB_D-",
+            "x": 665,
+            "y": 470,
+            "rotation": 0
+          },
+          {
+            "number": "5",
+            "name": "5",
+            "net": "USB_VBUS",
+            "x": 665,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "6",
+            "name": "6",
+            "net": "USB_D+",
+            "x": 665,
+            "y": 530,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-014",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 625.5,
+          "maxY": 565.5,
+          "minX": 574.5,
+          "minY": 434.5
+        },
+        "primitiveId": "",
+        "designator": "J1",
+        "value": "TYPE-C-31-M-12",
+        "textBboxes": [
+          {
+            "minX": 575,
+            "minY": 565,
+            "maxX": 582.39306640625,
+            "maxY": 573
+          }
+        ],
+        "pins": [
+          {
+            "number": "A1B12",
+            "name": "GND",
+            "net": "GND",
+            "x": 565,
+            "y": 555,
+            "rotation": 180
+          },
+          {
+            "number": "A4B9",
+            "name": "VBUS",
+            "net": "USB_VBUS",
+            "x": 565,
+            "y": 545,
+            "rotation": 180
+          },
+          {
+            "number": "B8",
+            "name": "SBU2",
+            "net": "",
+            "x": 565,
+            "y": 535,
+            "rotation": 180
+          },
+          {
+            "number": "A5",
+            "name": "CC1",
+            "net": "CC1",
+            "x": 565,
+            "y": 525,
+            "rotation": 180
+          },
+          {
+            "number": "B7",
+            "name": "DN2",
+            "net": "USB_D-",
+            "x": 565,
+            "y": 515,
+            "rotation": 180
+          },
+          {
+            "number": "A6",
+            "name": "DP1",
+            "net": "USB_D+",
+            "x": 565,
+            "y": 505,
+            "rotation": 180
+          },
+          {
+            "number": "A7",
+            "name": "DN1",
+            "net": "USB_D-",
+            "x": 565,
+            "y": 495,
+            "rotation": 180
+          },
+          {
+            "number": "B6",
+            "name": "DP2",
+            "net": "USB_D+",
+            "x": 565,
+            "y": 485,
+            "rotation": 180
+          },
+          {
+            "number": "A8",
+            "name": "SBU1",
+            "net": "",
+            "x": 565,
+            "y": 475,
+            "rotation": 180
+          },
+          {
+            "number": "B5",
+            "name": "CC2",
+            "net": "CC2",
+            "x": 565,
+            "y": 465,
+            "rotation": 180
+          },
+          {
+            "number": "B4A9",
+            "name": "VBUS",
+            "net": "USB_VBUS",
+            "x": 565,
+            "y": 455,
+            "rotation": 180
+          },
+          {
+            "number": "B1A12",
+            "name": "GND",
+            "net": "GND",
+            "x": 565,
+            "y": 445,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "EH",
+            "net": "GND",
+            "x": 635,
+            "y": 475,
+            "rotation": 0
+          },
+          {
+            "number": "3",
+            "name": "EH",
+            "net": "GND",
+            "x": 635,
+            "y": 465,
+            "rotation": 0
+          },
+          {
+            "number": "2",
+            "name": "EH",
+            "net": "GND",
+            "x": 635,
+            "y": 455,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "EH",
+            "net": "GND",
+            "x": 635,
+            "y": 445,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {
+        "B8": "nc",
+        "A8": "nc"
+      }
+    },
+    {
+      "id": "c-020",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R1",
+        "value": "5.1k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "CC1",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-021",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R2",
+        "value": "5.1k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "CC2",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-036",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R17",
+        "value": "470\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 602.84130859375,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "USB_VBUS",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-050",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C14",
+        "value": "100nF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 602.84130859375,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "USB_VBUS",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-012",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-014",
+        "pinNumber": "A6"
+      }
+    },
+    {
+      "componentId": "c-020",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-014",
+        "pinNumber": "A5"
+      }
+    },
+    {
+      "componentId": "c-021",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-014",
+        "pinNumber": "B5"
+      }
+    },
+    {
+      "componentId": "c-050",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-012",
+        "pinNumber": "5"
+      }
+    },
+    {
+      "componentId": "c-036",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-014",
+        "pinNumber": "A4B9"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "USB_D-": "module_port",
+    "USB_D+": "module_port",
+    "USB_VBUS": "local_power",
+    "CC1": "direct",
+    "CC2": "direct"
+  },
+  "zones": [
+    {
+      "id": "usb",
+      "title": "USB-C INPUT",
+      "coreComponentId": "c-014",
+      "componentIds": [
+        "c-014",
+        "c-012",
+        "c-020",
+        "c-021",
+        "c-050",
+        "c-036"
+      ]
+    }
+  ]
+}

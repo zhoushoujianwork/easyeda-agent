@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-010",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 508.5,
+          "minX": 592.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "D1",
+        "value": "SS34",
+        "textBboxes": [
+          {
+            "minX": 595,
+            "minY": 510,
+            "maxX": 603.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "A",
+            "net": "USB_VBUS",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "K",
+            "net": "SYS_5V",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-011",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 508.5,
+          "minX": 592.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "D2",
+        "value": "SS34",
+        "textBboxes": [
+          {
+            "minX": 595,
+            "minY": 510,
+            "maxX": 603.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "A",
+            "net": "TERM_5V",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "K",
+            "net": "SYS_5V",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-015",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 515.5,
+          "minX": 589.5,
+          "minY": 484.5
+        },
+        "primitiveId": "",
+        "designator": "J2",
+        "value": "KF301-5.0-2P",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 515,
+            "maxX": 597.39306640625,
+            "maxY": 523
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "TERM_5V",
+            "x": 580,
+            "y": 505,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 580,
+            "y": 495,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {}
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-011",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-015",
+        "pinNumber": "1"
+      }
+    },
+    {
+      "componentId": "c-010",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-011",
+        "pinNumber": "1"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "SYS_5V": "local_power",
+    "USB_VBUS": "local_power",
+    "TERM_5V": "local_power"
+  },
+  "zones": [
+    {
+      "id": "input",
+      "title": "5V INPUT OR",
+      "coreComponentId": "c-015",
+      "componentIds": [
+        "c-015",
+        "c-010",
+        "c-011"
+      ]
+    }
+  ]
+}

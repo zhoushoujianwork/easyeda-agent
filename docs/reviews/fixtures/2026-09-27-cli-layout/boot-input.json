@@ -1,0 +1,556 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-007",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 510.5,
+          "minX": 599.5,
+          "minY": 489.5
+        },
+        "primitiveId": "",
+        "designator": "Q1",
+        "value": "MMBT3904(RANGE:100-300)",
+        "textBboxes": [
+          {
+            "minX": 615,
+            "minY": 500,
+            "maxX": 624.337890625,
+            "maxY": 508
+          }
+        ],
+        "pins": [
+          {
+            "number": "3",
+            "name": "C",
+            "net": "EN",
+            "x": 610,
+            "y": 520,
+            "rotation": 90
+          },
+          {
+            "number": "1",
+            "name": "B",
+            "net": "RESET_BASE",
+            "x": 590,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "E",
+            "net": "RTS",
+            "x": 610,
+            "y": 480,
+            "rotation": 270
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-008",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 510.5,
+          "minX": 599.5,
+          "minY": 489.5
+        },
+        "primitiveId": "",
+        "designator": "Q2",
+        "value": "MMBT3904(RANGE:100-300)",
+        "textBboxes": [
+          {
+            "minX": 615,
+            "minY": 500,
+            "maxX": 624.337890625,
+            "maxY": 508
+          }
+        ],
+        "pins": [
+          {
+            "number": "3",
+            "name": "C",
+            "net": "BOOT",
+            "x": 610,
+            "y": 520,
+            "rotation": 90
+          },
+          {
+            "number": "1",
+            "name": "B",
+            "net": "BOOT_BASE",
+            "x": 590,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "E",
+            "net": "DTR",
+            "x": 610,
+            "y": 480,
+            "rotation": 270
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-017",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 620.5,
+          "maxY": 507.5,
+          "minX": 579.5,
+          "minY": 497.5
+        },
+        "primitiveId": "",
+        "designator": "SW1",
+        "value": "TS-1088-AR02016",
+        "textBboxes": [
+          {
+            "minX": 580,
+            "minY": 510,
+            "maxX": 595.1689453125,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 630,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "EN",
+            "x": 570,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-018",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 620.5,
+          "maxY": 507.5,
+          "minX": 579.5,
+          "minY": 497.5
+        },
+        "primitiveId": "",
+        "designator": "SW2",
+        "value": "TS-1088-AR02016",
+        "textBboxes": [
+          {
+            "minX": 580,
+            "minY": 510,
+            "maxX": 595.1689453125,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 630,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "BOOT",
+            "x": 570,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-022",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R3",
+        "value": "10k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "RESET_BASE",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "DTR",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-023",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R4",
+        "value": "10k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "BOOT_BASE",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "RTS",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-024",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R5",
+        "value": "10k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "EN",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-025",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R6",
+        "value": "10k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "BOOT",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-045",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C9",
+        "value": "1uF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 598.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "EN",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-022",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-007",
+        "pinNumber": "1"
+      }
+    },
+    {
+      "componentId": "c-008",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-022",
+        "pinNumber": "1"
+      }
+    },
+    {
+      "componentId": "c-023",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-008",
+        "pinNumber": "1"
+      }
+    },
+    {
+      "componentId": "c-024",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-007",
+        "pinNumber": "3"
+      }
+    },
+    {
+      "componentId": "c-025",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-008",
+        "pinNumber": "3"
+      }
+    },
+    {
+      "componentId": "c-045",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-007",
+        "pinNumber": "3"
+      }
+    },
+    {
+      "componentId": "c-017",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-007",
+        "pinNumber": "3"
+      }
+    },
+    {
+      "componentId": "c-018",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-008",
+        "pinNumber": "3"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "3V3": "local_power",
+    "EN": "module_port",
+    "BOOT": "module_port",
+    "DTR": "module_port",
+    "RTS": "module_port",
+    "RESET_BASE": "direct",
+    "BOOT_BASE": "direct"
+  },
+  "zones": [
+    {
+      "id": "boot",
+      "title": "BOOT AND RESET",
+      "coreComponentId": "c-007",
+      "componentIds": [
+        "c-007",
+        "c-008",
+        "c-022",
+        "c-023",
+        "c-024",
+        "c-025",
+        "c-045",
+        "c-017",
+        "c-018"
+      ]
+    }
+  ]
+}

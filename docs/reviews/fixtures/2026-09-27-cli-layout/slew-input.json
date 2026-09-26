@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-006",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 640.5,
+          "maxY": 520.5,
+          "minX": 559.5,
+          "minY": 479.5
+        },
+        "primitiveId": "",
+        "designator": "U6",
+        "value": "TPS22918DBVR",
+        "textBboxes": [
+          {
+            "minX": 560,
+            "minY": 520,
+            "maxX": 568.9482421875,
+            "maxY": 528
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "VIN",
+            "net": "SYS_5V",
+            "x": 540,
+            "y": 510,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "GND",
+            "net": "GND",
+            "x": 540,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "3",
+            "name": "ON",
+            "net": "SYS_5V",
+            "x": 540,
+            "y": 490,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "CT",
+            "net": "SLEW_CT",
+            "x": 660,
+            "y": 490,
+            "rotation": 0
+          },
+          {
+            "number": "5",
+            "name": "QOD",
+            "net": "",
+            "x": 660,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "6",
+            "name": "VOUT",
+            "net": "BUCK_5V",
+            "x": 660,
+            "y": 510,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {
+        "5": "nc"
+      }
+    },
+    {
+      "id": "c-048",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C12",
+        "value": "1uF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 602.84130859375,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "SYS_5V",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-049",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C13",
+        "value": "2.2nF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 602.84130859375,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "SLEW_CT",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-048",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-006",
+        "pinNumber": "1"
+      }
+    },
+    {
+      "componentId": "c-049",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-006",
+        "pinNumber": "4"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "BUCK_5V": "local_power",
+    "SYS_5V": "local_power",
+    "SLEW_CT": "direct"
+  },
+  "zones": [
+    {
+      "id": "slew",
+      "title": "POWER SOFT START",
+      "coreComponentId": "c-006",
+      "componentIds": [
+        "c-006",
+        "c-048",
+        "c-049"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "source": "v1.8.0 raw-requirement regression on 2026-09-27; measured on Web 4.1.60 / connector 1.7.1-dev.11",
+  "scope": "offline layout-plan inputs only; not final design or accepted E2E",
+  "files": [
+    {
+      "path": "boot-input.json",
+      "bytes": 11136,
+      "sha256": "f5ac2d8f6f9499826954dec7956ceed5130cf0f97976e7d98e4ea8e896f9db73"
+    },
+    {
+      "path": "buck-input.json",
+      "bytes": 11416,
+      "sha256": "dec5d03bb3f774b62107f2979c82332cad3b2f9d8270e85e6eb63b6b16be8cfa"
+    },
+    {
+      "path": "detect-input.json",
+      "bytes": 10712,
+      "sha256": "bdfef13bc254e426373dcc4913f91dca69f21bf85ba189d04c761c125510c59e"
+    },
+    {
+      "path": "input-input.json",
+      "bytes": 3630,
+      "sha256": "73cdd060676e8189a1951f7e5d32e6de34c33a9b2b8591fe3281e16c00584559"
+    },
+    {
+      "path": "led-input.json",
+      "bytes": 2568,
+      "sha256": "33d1396dcb50dcbd03517fdfa5a8dbef553e2c934272fa6876a62f711e466f2d"
+    },
+    {
+      "path": "mcu-input.json",
+      "bytes": 12414,
+      "sha256": "d8a926d7c8cf06ff333b3589174fa4cb57d4163b4854f1276c2f2b561ad46e01"
+    },
+    {
+      "path": "mux-input.json",
+      "bytes": 6586,
+      "sha256": "dcf3ecb846f7a4c7dfc2bf6cfe729de6c6b0a56e1644f1338fee55119e706adf"
+    },
+    {
+      "path": "slew-input.json",
+      "bytes": 4530,
+      "sha256": "82e5c332037f77cd700e308b1893756ac7c61932204d908fd87e1817a7337d7b"
+    },
+    {
+      "path": "uart-input.json",
+      "bytes": 6481,
+      "sha256": "4b2290e1391ddbf14ab8637c6dc6c3f3e37fed56773aaa110f69946f571e6f28"
+    },
+    {
+      "path": "usb-input.json",
+      "bytes": 10587,
+      "sha256": "022d6ffa3b9c2334ecae2c5b04ad9363003901394efb14734f76ae6557cf603b"
+    }
+  ]
+}

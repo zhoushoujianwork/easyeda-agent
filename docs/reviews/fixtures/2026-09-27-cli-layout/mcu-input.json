@@ -1,0 +1,593 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-001",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 650.5,
+          "maxY": 600.5,
+          "minX": 549.5,
+          "minY": 399.5
+        },
+        "primitiveId": "",
+        "designator": "U1",
+        "value": "2.4GHz",
+        "textBboxes": [
+          {
+            "minX": 550,
+            "minY": 390,
+            "maxX": 558.9482421875,
+            "maxY": 398
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "GND",
+            "net": "GND",
+            "x": 540,
+            "y": 590,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "3V3",
+            "net": "3V3",
+            "x": 540,
+            "y": 580,
+            "rotation": 180
+          },
+          {
+            "number": "3",
+            "name": "EN",
+            "net": "EN",
+            "x": 540,
+            "y": 570,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "SENSOR_VP",
+            "net": "",
+            "x": 540,
+            "y": 560,
+            "rotation": 180
+          },
+          {
+            "number": "5",
+            "name": "SENSOR_VN",
+            "net": "",
+            "x": 540,
+            "y": 550,
+            "rotation": 180
+          },
+          {
+            "number": "6",
+            "name": "IO34",
+            "net": "",
+            "x": 540,
+            "y": 540,
+            "rotation": 180
+          },
+          {
+            "number": "7",
+            "name": "IO35",
+            "net": "",
+            "x": 540,
+            "y": 530,
+            "rotation": 180
+          },
+          {
+            "number": "8",
+            "name": "IO32",
+            "net": "",
+            "x": 540,
+            "y": 520,
+            "rotation": 180
+          },
+          {
+            "number": "9",
+            "name": "IO33",
+            "net": "",
+            "x": 540,
+            "y": 510,
+            "rotation": 180
+          },
+          {
+            "number": "10",
+            "name": "IO25",
+            "net": "",
+            "x": 540,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "11",
+            "name": "IO26",
+            "net": "",
+            "x": 540,
+            "y": 490,
+            "rotation": 180
+          },
+          {
+            "number": "12",
+            "name": "IO27",
+            "net": "",
+            "x": 540,
+            "y": 480,
+            "rotation": 180
+          },
+          {
+            "number": "13",
+            "name": "IO14",
+            "net": "",
+            "x": 540,
+            "y": 470,
+            "rotation": 180
+          },
+          {
+            "number": "14",
+            "name": "IO12",
+            "net": "",
+            "x": 540,
+            "y": 460,
+            "rotation": 180
+          },
+          {
+            "number": "15",
+            "name": "GND",
+            "net": "GND",
+            "x": 540,
+            "y": 450,
+            "rotation": 180
+          },
+          {
+            "number": "16",
+            "name": "IO13",
+            "net": "",
+            "x": 540,
+            "y": 440,
+            "rotation": 180
+          },
+          {
+            "number": "17",
+            "name": "NC",
+            "net": "",
+            "x": 540,
+            "y": 430,
+            "rotation": 180
+          },
+          {
+            "number": "18",
+            "name": "NC",
+            "net": "",
+            "x": 540,
+            "y": 420,
+            "rotation": 180
+          },
+          {
+            "number": "19",
+            "name": "NC",
+            "net": "",
+            "x": 540,
+            "y": 410,
+            "rotation": 180
+          },
+          {
+            "number": "20",
+            "name": "NC",
+            "net": "",
+            "x": 660,
+            "y": 410,
+            "rotation": 0
+          },
+          {
+            "number": "21",
+            "name": "NC",
+            "net": "",
+            "x": 660,
+            "y": 420,
+            "rotation": 0
+          },
+          {
+            "number": "22",
+            "name": "NC",
+            "net": "",
+            "x": 660,
+            "y": 430,
+            "rotation": 0
+          },
+          {
+            "number": "23",
+            "name": "IO15",
+            "net": "",
+            "x": 660,
+            "y": 440,
+            "rotation": 0
+          },
+          {
+            "number": "24",
+            "name": "IO2",
+            "net": "",
+            "x": 660,
+            "y": 450,
+            "rotation": 0
+          },
+          {
+            "number": "25",
+            "name": "IO0",
+            "net": "BOOT",
+            "x": 660,
+            "y": 460,
+            "rotation": 0
+          },
+          {
+            "number": "26",
+            "name": "IO4",
+            "net": "",
+            "x": 660,
+            "y": 470,
+            "rotation": 0
+          },
+          {
+            "number": "27",
+            "name": "IO16",
+            "net": "",
+            "x": 660,
+            "y": 480,
+            "rotation": 0
+          },
+          {
+            "number": "28",
+            "name": "IO17",
+            "net": "",
+            "x": 660,
+            "y": 490,
+            "rotation": 0
+          },
+          {
+            "number": "29",
+            "name": "IO5",
+            "net": "",
+            "x": 660,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "30",
+            "name": "IO18",
+            "net": "LED_GPIO",
+            "x": 660,
+            "y": 510,
+            "rotation": 0
+          },
+          {
+            "number": "31",
+            "name": "IO19",
+            "net": "",
+            "x": 660,
+            "y": 520,
+            "rotation": 0
+          },
+          {
+            "number": "32",
+            "name": "NC",
+            "net": "",
+            "x": 660,
+            "y": 530,
+            "rotation": 0
+          },
+          {
+            "number": "33",
+            "name": "IO21",
+            "net": "GPIO21",
+            "x": 660,
+            "y": 540,
+            "rotation": 0
+          },
+          {
+            "number": "34",
+            "name": "RXD0",
+            "net": "UART_TX",
+            "x": 660,
+            "y": 550,
+            "rotation": 0
+          },
+          {
+            "number": "35",
+            "name": "TXD0",
+            "net": "UART_RX",
+            "x": 660,
+            "y": 560,
+            "rotation": 0
+          },
+          {
+            "number": "36",
+            "name": "IO22",
+            "net": "GPIO22",
+            "x": 660,
+            "y": 570,
+            "rotation": 0
+          },
+          {
+            "number": "37",
+            "name": "IO23",
+            "net": "",
+            "x": 660,
+            "y": 580,
+            "rotation": 0
+          },
+          {
+            "number": "38",
+            "name": "GND",
+            "net": "GND",
+            "x": 660,
+            "y": 590,
+            "rotation": 0
+          },
+          {
+            "number": "39",
+            "name": "GND",
+            "net": "GND",
+            "x": 600,
+            "y": 620,
+            "rotation": 90
+          }
+        ]
+      },
+      "pinStates": {
+        "4": "nc",
+        "5": "nc",
+        "6": "nc",
+        "7": "nc",
+        "8": "nc",
+        "9": "nc",
+        "10": "nc",
+        "11": "nc",
+        "12": "nc",
+        "13": "nc",
+        "14": "nc",
+        "16": "nc",
+        "17": "nc",
+        "18": "nc",
+        "19": "nc",
+        "20": "nc",
+        "21": "nc",
+        "22": "nc",
+        "23": "nc",
+        "24": "nc",
+        "26": "nc",
+        "27": "nc",
+        "28": "nc",
+        "29": "nc",
+        "31": "nc",
+        "32": "nc",
+        "37": "nc"
+      }
+    },
+    {
+      "id": "c-016",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 525.5,
+          "minX": 589.5,
+          "minY": 474.5
+        },
+        "primitiveId": "",
+        "designator": "J3",
+        "value": "PZ254V-11-04P-RD",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 525,
+            "maxX": 597.39306640625,
+            "maxY": 533
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 515,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 580,
+            "y": 505,
+            "rotation": 180
+          },
+          {
+            "number": "3",
+            "name": "3",
+            "net": "GPIO21",
+            "x": 580,
+            "y": 495,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "4",
+            "net": "GPIO22",
+            "x": 580,
+            "y": 485,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-037",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C1",
+        "value": "100nF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 598.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-038",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C2",
+        "value": "10uF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 598.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-037",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-001",
+        "pinNumber": "2"
+      }
+    },
+    {
+      "componentId": "c-038",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-001",
+        "pinNumber": "2"
+      }
+    },
+    {
+      "componentId": "c-016",
+      "pinNumber": "3",
+      "attachTo": {
+        "componentId": "c-001",
+        "pinNumber": "33"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "3V3": "local_power",
+    "EN": "module_port",
+    "BOOT": "module_port",
+    "LED_GPIO": "module_port",
+    "GPIO21": "direct",
+    "UART_TX": "module_port",
+    "UART_RX": "module_port",
+    "GPIO22": "direct"
+  },
+  "zones": [
+    {
+      "id": "mcu",
+      "title": "ESP32 AND GPIO",
+      "coreComponentId": "c-001",
+      "componentIds": [
+        "c-001",
+        "c-037",
+        "c-038",
+        "c-016"
+      ]
+    }
+  ]
+}

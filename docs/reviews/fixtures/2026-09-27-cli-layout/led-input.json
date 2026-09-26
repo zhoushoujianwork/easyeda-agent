@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-013",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 517.5,
+          "minX": 584.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "D4",
+        "value": "KT-0805Y",
+        "textBboxes": [
+          {
+            "minX": 585,
+            "minY": 520,
+            "maxX": 593.9482421875,
+            "maxY": 528
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "-",
+            "net": "GND",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "1",
+            "name": "+",
+            "net": "LED_A",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-026",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R7",
+        "value": "1k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "LED_A",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "LED_GPIO",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-026",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-013",
+        "pinNumber": "1"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "LED_GPIO": "module_port",
+    "LED_A": "direct"
+  },
+  "zones": [
+    {
+      "id": "led",
+      "title": "USER LED",
+      "coreComponentId": "c-013",
+      "componentIds": [
+        "c-013",
+        "c-026"
+      ]
+    }
+  ]
+}

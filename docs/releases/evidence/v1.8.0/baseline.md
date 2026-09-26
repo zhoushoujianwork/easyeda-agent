@@ -1,11 +1,11 @@
-# v1.8.0 测试基准（准备中）
+# v1.8.0 测试基准（A01 受阻）
 
 [发布主文档](../../release-1.8.md) · [测试用例](test-cases.md) · [执行报告](test-report.md)
 
 ## 输入与范围
 
 2026-09-27 用户确认进入此前建议的 v1.8.0 发布流程。本次采用默认 schema 1 完整验收范围，
-不沿用 v1.7.0 的基础 CLI 单独发布范围。正式候选尚未冻结；本轮已启动 A00/S0，尚未通过完整用例。
+不沿用 v1.7.0 的基础 CLI 单独发布范围。正式候选尚未冻结；本轮最终位号测量完成，A01 布局失败，尚未通过完整用例。
 
 唯一客户需求是 [`esp32MiniRequire.md` 第一节](../../../../esp32MiniRequire.md#一客户原始需求)。
 按原始 UTF-8 字节截取 `source[start:end]`：`start` 为标题 `## 一、客户原始需求` 的起始位置，
@@ -57,6 +57,14 @@
   PCB 的 184 条原生记录前后严格相等。最终 `after-measurement.epro2` 为 107,984 字节，
   SHA-256 `7c9a9cec6ed974560795f99537b22e0aac8626791b775fd4e7aaea6ffeb5c39d`，仍为 `restoreVerified=false`。
   库缓存可使整份归档字节变化，不声明 ZIP 完全恢复；临时器件测量不等于最终设计持久化验收。
+- 后续最终位号测量批：51 位号、29 种身份，744 文件清单 SHA-256
+  `5c2dc1594977a58dda1f0169e94588e0cca8df7e34d68752ec5a49d7c003ec64`，测量/精确清理/恢复已通过独立复核。
+  L1 随后因 MT/NT 手册冲突另批修订为 C279948，并补单件测量；原 744 文件批保持不变。
+  整阶段总清单 924 文件，SHA-256 `497a03f7807dd1d17475ea4ef84a3b29f5ed58e021d30b47ecd414bf9436fa1d`。
+  最终 `113-final-clean.epro2` SHA-256 `432e1eed79a871dcf3a5a3e2ae8c10cd71c49a11904789b26db5a547b7a0c47b`；
+  现场 P1 只有图框，PCB 184 条原生记录未变，`nativeRestoreVerified=false`。
+- A01 布局失败，已登记 [#262](https://github.com/zhoushoujianwork/easyeda-agent/issues/262)。
+  未执行完整设计 Apply 或 PCB；失败不改写本基准，三项用户例外仍仅按下文范围。
 
 ## 通过标准
 

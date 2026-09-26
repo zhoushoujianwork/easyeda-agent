@@ -1,0 +1,579 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-003",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 625.5,
+          "maxY": 520.5,
+          "minX": 574.5,
+          "minY": 479.5
+        },
+        "primitiveId": "",
+        "designator": "U3",
+        "value": "SY8089A1AAC",
+        "textBboxes": [
+          {
+            "minX": 575,
+            "minY": 520,
+            "maxX": 583.9482421875,
+            "maxY": 528
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "EN",
+            "net": "BUCK_5V",
+            "x": 565,
+            "y": 510,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "GND",
+            "net": "GND",
+            "x": 565,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "3",
+            "name": "LX",
+            "net": "LX",
+            "x": 565,
+            "y": 490,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "IN",
+            "net": "BUCK_5V",
+            "x": 635,
+            "y": 490,
+            "rotation": 0
+          },
+          {
+            "number": "5",
+            "name": "FB",
+            "net": "FB",
+            "x": 635,
+            "y": 510,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {}
+    },
+    {
+      "id": "c-019",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 617.1692,
+          "maxY": 504.85951,
+          "minX": 582.621,
+          "minY": 499.54999
+        },
+        "primitiveId": "",
+        "designator": "L1",
+        "value": "2.2uH",
+        "textBboxes": [
+          {
+            "minX": 585,
+            "minY": 505,
+            "maxX": 592.7861328125,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "3V3",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "LX",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-027",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R8",
+        "value": "100k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "FB",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-028",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 504.5,
+          "minX": 589.5,
+          "minY": 495.5
+        },
+        "primitiveId": "",
+        "designator": "R9",
+        "value": "22.1k\u03a9",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 505,
+            "maxX": 598.9482421875,
+            "maxY": 513
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "FB",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-041",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 508.5,
+          "minX": 594.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C5",
+        "value": "22uF",
+        "textBboxes": [
+          {
+            "minX": 595,
+            "minY": 510,
+            "maxX": 603.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "BUCK_5V",
+            "x": 585,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 615,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-042",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 508.5,
+          "minX": 594.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C6",
+        "value": "22uF",
+        "textBboxes": [
+          {
+            "minX": 595,
+            "minY": 510,
+            "maxX": 603.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 585,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 615,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-043",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 508.5,
+          "minX": 594.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C7",
+        "value": "22uF",
+        "textBboxes": [
+          {
+            "minX": 595,
+            "minY": 510,
+            "maxX": 603.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 585,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 615,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-044",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 605.5,
+          "maxY": 508.5,
+          "minX": 594.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C8",
+        "value": "22pF",
+        "textBboxes": [
+          {
+            "minX": 595,
+            "minY": 510,
+            "maxX": 603.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 585,
+            "y": 500,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "2",
+            "net": "FB",
+            "x": 615,
+            "y": 500,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-051",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C15",
+        "value": "100nF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 602.84130859375,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "BUCK_5V",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-019",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-003",
+        "pinNumber": "3"
+      }
+    },
+    {
+      "componentId": "c-041",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-003",
+        "pinNumber": "4"
+      }
+    },
+    {
+      "componentId": "c-051",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-003",
+        "pinNumber": "4"
+      }
+    },
+    {
+      "componentId": "c-042",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-019",
+        "pinNumber": "2"
+      }
+    },
+    {
+      "componentId": "c-043",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-019",
+        "pinNumber": "2"
+      }
+    },
+    {
+      "componentId": "c-027",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-003",
+        "pinNumber": "5"
+      }
+    },
+    {
+      "componentId": "c-028",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-003",
+        "pinNumber": "5"
+      }
+    },
+    {
+      "componentId": "c-044",
+      "pinNumber": "2",
+      "attachTo": {
+        "componentId": "c-003",
+        "pinNumber": "5"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "3V3": "local_power",
+    "BUCK_5V": "local_power",
+    "LX": "direct",
+    "FB": "direct"
+  },
+  "zones": [
+    {
+      "id": "buck",
+      "title": "3V3 BUCK",
+      "coreComponentId": "c-003",
+      "componentIds": [
+        "c-003",
+        "c-019",
+        "c-041",
+        "c-042",
+        "c-043",
+        "c-044",
+        "c-051",
+        "c-027",
+        "c-028"
+      ]
+    }
+  ]
+}

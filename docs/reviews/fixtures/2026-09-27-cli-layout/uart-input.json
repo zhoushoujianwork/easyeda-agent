@@ -1,0 +1,317 @@
+{
+  "schemaVersion": 1,
+  "spacing": 10,
+  "maxCandidates": 100000,
+  "routing": {
+    "maxExpandedNodes": 500000,
+    "maxReroutes": 8
+  },
+  "components": [
+    {
+      "id": "c-002",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 635.5,
+          "maxY": 545.5,
+          "minX": 564.5,
+          "minY": 454.5
+        },
+        "primitiveId": "",
+        "designator": "U2",
+        "value": "CH340C",
+        "textBboxes": [
+          {
+            "minX": 565,
+            "minY": 545,
+            "maxX": 573.9482421875,
+            "maxY": 553
+          }
+        ],
+        "pins": [
+          {
+            "number": "1",
+            "name": "GND",
+            "net": "GND",
+            "x": 555,
+            "y": 535,
+            "rotation": 180
+          },
+          {
+            "number": "2",
+            "name": "TXD",
+            "net": "UART_TX",
+            "x": 555,
+            "y": 525,
+            "rotation": 180
+          },
+          {
+            "number": "3",
+            "name": "RXD",
+            "net": "UART_RX",
+            "x": 555,
+            "y": 515,
+            "rotation": 180
+          },
+          {
+            "number": "4",
+            "name": "V3",
+            "net": "3V3",
+            "x": 555,
+            "y": 505,
+            "rotation": 180
+          },
+          {
+            "number": "5",
+            "name": "D+",
+            "net": "UART_D+",
+            "x": 555,
+            "y": 495,
+            "rotation": 180
+          },
+          {
+            "number": "6",
+            "name": "D-",
+            "net": "UART_D-",
+            "x": 555,
+            "y": 485,
+            "rotation": 180
+          },
+          {
+            "number": "7",
+            "name": "NC.",
+            "net": "",
+            "x": 555,
+            "y": 475,
+            "rotation": 180
+          },
+          {
+            "number": "8",
+            "name": "OUT#",
+            "net": "",
+            "x": 555,
+            "y": 465,
+            "rotation": 180
+          },
+          {
+            "number": "9",
+            "name": "CTS#",
+            "net": "",
+            "x": 645,
+            "y": 465,
+            "rotation": 0
+          },
+          {
+            "number": "10",
+            "name": "DSR#",
+            "net": "",
+            "x": 645,
+            "y": 475,
+            "rotation": 0
+          },
+          {
+            "number": "11",
+            "name": "RI#",
+            "net": "",
+            "x": 645,
+            "y": 485,
+            "rotation": 0
+          },
+          {
+            "number": "12",
+            "name": "DCD#",
+            "net": "",
+            "x": 645,
+            "y": 495,
+            "rotation": 0
+          },
+          {
+            "number": "13",
+            "name": "DTR#",
+            "net": "DTR",
+            "x": 645,
+            "y": 505,
+            "rotation": 0
+          },
+          {
+            "number": "14",
+            "name": "RTS#",
+            "net": "RTS",
+            "x": 645,
+            "y": 515,
+            "rotation": 0
+          },
+          {
+            "number": "15",
+            "name": "R232",
+            "net": "GND",
+            "x": 645,
+            "y": 525,
+            "rotation": 0
+          },
+          {
+            "number": "16",
+            "name": "VCC",
+            "net": "3V3",
+            "x": 645,
+            "y": 535,
+            "rotation": 0
+          }
+        ]
+      },
+      "pinStates": {
+        "7": "nc",
+        "8": "nc",
+        "9": "nc",
+        "10": "nc",
+        "11": "nc",
+        "12": "nc"
+      }
+    },
+    {
+      "id": "c-039",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C3",
+        "value": "100nF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 598.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    },
+    {
+      "id": "c-040",
+      "measurement": {
+        "x": 600,
+        "y": 500,
+        "rotation": 0,
+        "mirror": false,
+        "bbox": {
+          "maxX": 610.5,
+          "maxY": 508.5,
+          "minX": 589.5,
+          "minY": 491.5
+        },
+        "primitiveId": "",
+        "designator": "C4",
+        "value": "100nF",
+        "textBboxes": [
+          {
+            "minX": 590,
+            "minY": 510,
+            "maxX": 598.9482421875,
+            "maxY": 518
+          }
+        ],
+        "pins": [
+          {
+            "number": "2",
+            "name": "2",
+            "net": "GND",
+            "x": 620,
+            "y": 500,
+            "rotation": 0
+          },
+          {
+            "number": "1",
+            "name": "1",
+            "net": "3V3",
+            "x": 580,
+            "y": 500,
+            "rotation": 180
+          }
+        ]
+      },
+      "pinStates": {},
+      "allowedRotations": [
+        0,
+        90,
+        180,
+        270
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "componentId": "c-039",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-002",
+        "pinNumber": "16"
+      }
+    },
+    {
+      "componentId": "c-040",
+      "pinNumber": "1",
+      "attachTo": {
+        "componentId": "c-002",
+        "pinNumber": "4"
+      }
+    }
+  ],
+  "netPolicies": {
+    "GND": "local_ground",
+    "3V3": "local_power",
+    "UART_TX": "module_port",
+    "UART_RX": "module_port",
+    "UART_D+": "module_port",
+    "UART_D-": "module_port",
+    "DTR": "module_port",
+    "RTS": "module_port"
+  },
+  "zones": [
+    {
+      "id": "uart",
+      "title": "USB SERIAL",
+      "coreComponentId": "c-002",
+      "componentIds": [
+        "c-002",
+        "c-039",
+        "c-040"
+      ]
+    }
+  ]
+}
