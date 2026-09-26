@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -1016,20 +1017,34 @@ NOT line up — re-wire the affected pins, then run ` + "`easyeda sch drc`" + ` 
 					// 陈旧组吃掉。先于删除解析 id→位号(删完 list 就查不到了)。
 					cascadePlan = planSchGroupMemberCascade(cfg, window, ids, stderr)
 				}
-				res, err := dispatchCapture(cfg, "schematic.primitives.delete", window, payload, stdout)
+				var raw bytes.Buffer
+				res, err := dispatchCapture(cfg, "schematic.primitives.delete", window, payload, &raw)
 				if err != nil {
+					_, _ = stdout.Write(raw.Bytes())
 					return err
 				}
 				// 连接器的存活判定是删完**立刻**回读的,可能采到尚未落定的快照。
 				// 幸存者 settle 一拍后复核一轮,用复核回执定案(sch_prim_delete_settle.go)。
 				res = primDeleteSettleRecheck(cfg, window, res, stderr)
+				var envelope map[string]any
+				if err := json.Unmarshal(raw.Bytes(), &envelope); err != nil {
+					return err
+				}
+				envelope["result"] = res.Result
+				delete(envelope, "warnings")
+				if warnings, ok := res.Result["warnings"]; ok {
+					envelope["warnings"] = warnings
+				}
+				if err := writeJSON(stdout, envelope); err != nil {
+					return err
+				}
 				// Registry leg of the delete cascade: only designators whose delete
 				// was VERIFIED (not in result.survived) leave the group table.
 				if len(cascadePlan) > 0 {
-					survived := survivedIDSet(res.Result)
+					confirmed := confirmedDeletedIDSet(res.Result)
 					var gone []string
 					for id, desig := range cascadePlan {
-						if !survived[id] {
+						if confirmed[id] {
 							gone = append(gone, desig)
 						}
 					}
@@ -2157,6 +2172,10 @@ func warnDisconnectPartial(res *actionResult, stderr io.Writer) {
 func failOnSurvivingPrimitives(res *actionResult, stderr io.Writer) error {
 	if res == nil || res.Result == nil {
 		return nil
+	}
+	if res.Result["verified"] == false {
+		fmt.Fprintln(stderr, "✗ 删除后回读不完整，部分 ID 的结果未知；停止依赖步骤，保留回包并 fresh 回读，不自动重试或清理分组。")
+		return errActionFailed
 	}
 	partial, _ := res.Result["partial"].(bool)
 	if !partial {

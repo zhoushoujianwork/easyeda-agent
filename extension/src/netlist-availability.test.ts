@@ -64,6 +64,8 @@ function install(t: { after: (f: () => void) => void }, netlist: () => Promise<u
 	const previous = globals.eda;
 	t.after(() => { globals.eda = previous; });
 	globals.eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
+		dmt_EditorControl: { activateDocument: async () => true },
 		sch_PrimitiveComponent: {
 			getAll: async () => [part('R1', 100, 200)],
 			getAllPinsByPrimitiveId: async () => [pin('1', 'a', 90, 200), pin('2', 'b', 110, 200)],

@@ -1479,6 +1479,8 @@ test('components.list: includePins distinguishes empty success, unavailable data
 				throw new Error('pin channel unavailable');
 			},
 		},
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
+		dmt_EditorControl: { activateDocument: async () => true },
 		sch_ManufactureData: { getNetlistFile: async () => undefined },
 	};
 	try {
@@ -2548,6 +2550,7 @@ function edaWithUndeletableText(textIds: string[], wireIds: string[]) {
 	const prim = (id: string) => ({ getState_PrimitiveId: () => id }) as any;
 	const noopClass = () => ({ getAll: async () => [], delete: async () => true });
 	return {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
 		sch_PrimitiveComponent: { getAll: async () => [], delete: async () => true },
 		sch_PrimitiveText: {
 			getAll: async () => alive.texts.map(prim),
@@ -2600,6 +2603,41 @@ test('prim-delete: a fully successful delete carries no partial flag', async () 
 	finally {
 		delete (globalThis as any).eda;
 	}
+});
+
+for (const invalid of ['throw', 'undefined', 'null', 'object', 'invalid-id', 'duplicate-id']) {
+	test(`prim-delete: ${invalid} readback is unknown, never deleted or survived`, async t => {
+		const fx = edaWithUndeletableText([], []);
+		let deleted = false;
+		fx.sch_PrimitiveComponent = {
+			delete: async () => { deleted = true; return true; },
+			getAll: async () => {
+				if (!deleted) return [{ getState_PrimitiveId: () => 'p1' }] as any;
+				if (invalid === 'throw') throw new Error('read unavailable');
+				return ({ undefined: undefined, null: null, object: {}, 'invalid-id': [{}], 'duplicate-id': [1, 2].map(() => ({ getState_PrimitiveId: () => 'p1' })) } as any)[invalid];
+			},
+		};
+		(globalThis as any).eda = fx;
+		t.after(() => { delete (globalThis as any).eda; });
+		const res: any = await runAction('schematic.primitives.delete', { primitiveIds: ['p1'] });
+		assert.equal(res.result.total, 0);
+		assert.equal(res.result.partial, true);
+		assert.equal(res.result.verified, false);
+		assert.deepEqual(res.result.deletedIds, {});
+		assert.equal(res.result.survived, undefined);
+		assert.deepEqual(res.result.unverified, { components: ['p1'] });
+	});
+}
+
+test('prim-delete: failed kind enumeration cannot prove notFound', async t => {
+	const fx = edaWithUndeletableText([], []);
+	fx.sch_PrimitiveWire.getAll = async () => { throw new Error('wire read unavailable'); };
+	(globalThis as any).eda = fx;
+	t.after(() => { delete (globalThis as any).eda; });
+	const res: any = await runAction('schematic.primitives.delete', { primitiveIds: ['wire-maybe'] });
+	assert.equal(res.result.notFound, undefined);
+	assert.equal(res.result.partial, true);
+	assert.deepEqual(res.result.unverified, { unknownKind: ['wire-maybe'] });
 });
 
 test('guarded schematic clear refuses changed wire, flag and graphic before deletion', async () => {
@@ -2736,6 +2774,7 @@ function installComponentDeleteStub(opts: {
 		getState_Line: () => [...w.points],
 	});
 	(globalThis as any).eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
 		sch_PrimitiveComponent: {
 			getAll: async () => [...parts.map(mkPart), ...flags.map(mkFlag)],
 			getAllPinsByPrimitiveId: async (id: string) => {
@@ -2824,6 +2863,36 @@ test('component.delete: cascade:false keeps the old behavior (no wire/flag clean
 	}
 });
 
+test('component.delete: unknown main deletion never cascades into a live stub', async t => {
+	const fx = installComponentDeleteStub({ parts: [{ id: 'u1', designator: 'U1', pins: [[100, 100]] }],
+		flags: [{ id: 'f1', x: 100, y: 130 }], wires: [{ id: 'w1', points: [100, 100, 100, 130] }] });
+	t.after(() => { delete (globalThis as any).eda; });
+	const api = (globalThis as any).eda.sch_PrimitiveComponent;
+	api.delete = async () => { api.getAll = async () => { throw new Error('verification unavailable'); }; return true; };
+	const res: any = await runAction('schematic.component.delete', { primitiveIds: ['u1'] });
+	assert.equal(res.result.deleted, false);
+	assert.equal(res.result.verified, false);
+	assert.deepEqual(res.result.unverified, ['u1']);
+	assert.deepEqual(res.result.deletedIds, []);
+	assert.deepEqual(fx.liveWireIds(), ['w1']);
+	assert.deepEqual(fx.liveFlagIds(), ['f1']);
+	assert.deepEqual(fx.deleteCalls, []);
+});
+
+test('prim-delete: page drift after delete is unknown even if the other page is empty', async t => {
+	const fx = edaWithUndeletableText([], []);
+	let switched = false;
+	fx.dmt_SelectControl.getCurrentDocumentInfo = async () => ({ uuid: switched ? 'other' : 'page', tabId: switched ? 'other@project' : 'page@project' });
+	fx.sch_PrimitiveComponent = { getAll: async () => switched ? [] : [{ getState_PrimitiveId: () => 'p1' }] as any,
+		delete: async () => { switched = true; return true; } };
+	(globalThis as any).eda = fx;
+	t.after(() => { delete (globalThis as any).eda; });
+	const res: any = await runAction('schematic.primitives.delete', { primitiveIds: ['p1'] });
+	assert.equal(res.result.total, 0);
+	assert.equal(res.result.verified, false);
+	assert.deepEqual(res.result.unverified, { components: ['p1'] });
+});
+
 test('component.delete: a lying cascade delete is reported as notApplied, never claimed removed', async () => {
 	const fx = installComponentDeleteStub({
 		parts: [{ id: 'u1', designator: 'U1', pins: [[100, 100]] }],
@@ -2848,6 +2917,18 @@ test('component.delete: a lying cascade delete is reported as notApplied, never 
 
 // ─── schematic.pin.disconnect (multi-stub sweep + delete verified by re-read) ──
 import { schematicPinDisconnect } from './actions';
+
+test('disconnect: unreadable post-delete wires are unknown, not disconnected', async t => {
+	installDisconnectStub();
+	t.after(() => { delete (globalThis as any).eda; });
+	const api = (globalThis as any).eda.sch_PrimitiveWire;
+	api.delete = async () => { api.getAll = async () => undefined; return true; };
+	const res: any = await schematicPinDisconnect({ wirePrimitiveId: 'w1' });
+	assert.equal(res.result.disconnected, false);
+	assert.equal(res.result.verified, false);
+	assert.deepEqual(res.result.deletedWires, []);
+	assert.deepEqual(res.result.unverified.wires, ['w1']);
+});
 
 /**
  * A pin at (100,100) hosting TWO stubs (one flag each) — the shape that exposed
@@ -2887,6 +2968,7 @@ function installDisconnectStub(opts: { keepWireIds?: Array<string> } = {}) {
 	};
 	const deleteCalls: Array<{ kind: string; ids: Array<string> }> = [];
 	(globalThis as any).eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
 		sch_PrimitiveWire: {
 			getAll: async () => wires.map(mkWire),
 			delete: async (ids: Array<string>) => {
@@ -3289,6 +3371,8 @@ test('sch check: polarity-convention-outlier fires on the #183 nine-cap page (ha
 	caps.push({ id: 'c9', designator: 'C9', pinNets: [['1', 'GND'], ['2', '+3V3']] });
 	caps.push({ id: 'cn1', designator: 'CN1', pinNets: [['1', 'GND'], ['2', '+3V3']] }); // C+非数字:电源端子不得进电容票仓
 	(globalThis as any).eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
+		dmt_EditorControl: { activateDocument: async () => true },
 		sch_PrimitiveComponent: {
 			getAll: async () => caps.map(c => ({
 				getState_ComponentType: () => 'component',

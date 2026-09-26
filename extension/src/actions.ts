@@ -12,6 +12,7 @@ import { exactJSON, preservedInstance } from './preserve-instance';
 import { barePcbRuleConfiguration, pcbRulesEqual, planPcbConfig } from './pcb-config';
 import { pcbNetColorSet } from './pcb-net-color';
 import { documentTypeLabel, readResponseContext } from './eda-context';
+import { getSchematicNetlistFile, NetlistContextError } from './schematic-netlist-file';
 import { readProjectFootprintSourceArchive, readProjectNativeSourceArchive } from './native-footprint-source';
 import {
 	assertLegacySimpleWireOperation,
@@ -1272,6 +1273,7 @@ export const schematicComponentsList: Handler = async (payload) => {
 			pinNetsError = collected.error;
 		}
 		catch (err) {
+			if (err instanceof NetlistContextError) throw err;
 			pinNetsByDesignator = null;
 			pinNetsError = describeThrown(err);
 		}
@@ -2084,6 +2086,7 @@ async function collectSchDeleteCascadePlan(ids: Array<string>): Promise<Array<Sc
 }
 
 const schematicComponentDelete: Handler = async (payload) => {
+	const deleteContext = await captureSchDeletionContext();
 	const primitiveIds = payload.primitiveIds;
 	if (
 		!(typeof primitiveIds === 'string')
@@ -2094,7 +2097,7 @@ const schematicComponentDelete: Handler = async (payload) => {
 			'Missing required field "primitiveIds" (string or string[]).',
 		);
 	}
-	const ids = typeof primitiveIds === 'string' ? [primitiveIds] : primitiveIds;
+	const ids = [...new Set(typeof primitiveIds === 'string' ? [primitiveIds] : primitiveIds)];
 	// ADR-0004 Decision 5: cascade the part's exclusive stub trees + riding
 	// flags. `cascade:false` opts out (a caller managing whole trees itself —
 	// e.g. the move kernel — must keep the old semantics).
@@ -2116,18 +2119,19 @@ const schematicComponentDelete: Handler = async (payload) => {
 	// value can be trusted — only a re-read can say what actually went away.
 	try {
 		for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
+			await assertSchDeletionContext(deleteContext);
 			await eda.sch_PrimitiveComponent.delete(ids.slice(i, i + SCH_DELETE_BATCH));
 		}
 	}
 	catch (err) {
 		throw edaError(err, 'Failed to delete components.');
 	}
-	let survived: Array<string> = [];
-	try {
-		const alive = new Set((await eda.sch_PrimitiveComponent.getAll()).map(c => c.getState_PrimitiveId()));
-		survived = ids.filter(id => alive.has(id));
-	}
-	catch { /* verification is best-effort; fall through reporting what we asked for */ }
+	const verification = await verifySchPrimitiveDeletion({ components: ids }, deleteContext);
+	const survived = verification.survived.components ?? [];
+	const unverified = verification.unverified.components ?? [];
+	const removed = verification.deleted.components ?? [];
+	const cascadeUnverified: Record<string, Array<string>> = {};
+	warnings.push(...verification.warnings);
 
 	// Execute the cascade — but only for trees whose touching targets are ALL
 	// proven gone: deleting the stubs of a component that survived would
@@ -2135,12 +2139,12 @@ const schematicComponentDelete: Handler = async (payload) => {
 	let cascaded: { wires: Array<string>; flags: Array<string> } | undefined;
 	const notApplied: Array<{ kind: string; id: string }> = [];
 	if (cascade) {
-		const survivedSet = new Set(survived);
+		const removedSet = new Set(removed);
 		const wireIds: Array<string> = [];
 		const flagIds: Array<string> = [];
 		for (const tree of plannedTrees) {
-			if (tree.ownerIds.some(id => survivedSet.has(id))) {
-				warnings.push(`cascade skipped a stub tree (${tree.wireIds.join(', ')}): its component(s) survived the delete`);
+			if (tree.ownerIds.some(id => !removedSet.has(id))) {
+				warnings.push(`cascade skipped a stub tree (${tree.wireIds.join(', ')}): component deletion was not verified`);
 				continue;
 			}
 			wireIds.push(...tree.wireIds);
@@ -2150,20 +2154,23 @@ const schematicComponentDelete: Handler = async (payload) => {
 			// The canvas already changed (components are gone) — a cascade failure
 			// must degrade to warnings + notApplied, never throw (#151).
 			try {
-				if (wireIds.length) await deleteSchGroup('wires', wireIds);
-				if (flagIds.length) await deleteSchGroup('components', flagIds);
+				await assertSchDeletionContext(deleteContext);
+				if (wireIds.length) await deleteSchGroup('wires', wireIds, deleteContext);
+				if (flagIds.length) await deleteSchGroup('components', flagIds, deleteContext);
 			}
 			catch (err) {
 				warnings.push(warnText('cascade delete failed', err));
 			}
 			// Read back: only proven-removed ids are claimed; survivors are
 			// structured notApplied (the platform's delete lies — SCH_DELETE_BATCH).
-			const surviving = await survivingSchPrimitives({ wires: wireIds, components: flagIds });
-			const wiresLeft = new Set(surviving.wires ?? []);
-			const flagsLeft = new Set(surviving.components ?? []);
+			const check = await verifySchPrimitiveDeletion({ wires: wireIds, components: flagIds }, deleteContext);
+			warnings.push(...check.warnings);
+			Object.assign(cascadeUnverified, check.unverified);
+			const wiresLeft = new Set([...(check.survived.wires ?? []), ...(check.unverified.wires ?? [])]);
+			const flagsLeft = new Set([...(check.survived.components ?? []), ...(check.unverified.components ?? [])]);
 			cascaded = {
-				wires: wireIds.filter(id => !wiresLeft.has(id)),
-				flags: flagIds.filter(id => !flagsLeft.has(id)),
+				wires: check.deleted.wires ?? [],
+				flags: check.deleted.components ?? [],
 			};
 			notApplied.push(
 				...[...wiresLeft].map(id => ({ kind: 'wire', id })),
@@ -2171,7 +2178,7 @@ const schematicComponentDelete: Handler = async (payload) => {
 			);
 			if (notApplied.length) {
 				warnings.push(
-					`cascade cleanup: ${notApplied.length} primitive(s) survived the delete `
+					`cascade cleanup: ${notApplied.length} primitive(s) not verified deleted `
 					+ `(${notApplied.map(n => `${n.kind}:${n.id}`).join(', ')}) — re-read before assuming they are gone.`,
 				);
 			}
@@ -2183,12 +2190,16 @@ const schematicComponentDelete: Handler = async (payload) => {
 
 	return {
 		result: {
-			deleted: survived.length === 0,
+			deleted: removed.length === ids.length,
 			requested: ids.length,
-			removed: ids.length - survived.length,
+			removed: removed.length,
+			deletedIds: removed,
 			...(survived.length ? { survived } : {}),
+			...(unverified.length ? { verified: false, unverified } : {}),
+			...(Object.keys(cascadeUnverified).length ? { verified: false, cascadeUnverified } : {}),
 			...(cascaded ? { cascaded } : {}),
-			...(notApplied.length ? { partial: true, notApplied } : {}),
+			...(survived.length || unverified.length || notApplied.length ? { partial: true } : {}),
+			...(notApplied.length ? { notApplied } : {}),
 			...(warnings.length ? { warnings } : {}),
 		},
 		...(warnings.length ? { warnings } : {}),
@@ -2479,6 +2490,28 @@ function warnText(label: string, err: unknown): string {
 // re-read to confirm rather than trust the return.
 const SCH_DELETE_BATCH = 50;
 
+type SchDeletionContext = { uuid: string; tabId: string };
+async function captureSchDeletionContext(): Promise<SchDeletionContext> {
+	const doc = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+	if (!doc?.uuid || !doc.tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'Cannot identify the schematic tab for deletion.');
+	return { uuid: doc.uuid, tabId: doc.tabId };
+}
+async function assertSchDeletionContext(expected: SchDeletionContext): Promise<void> {
+	const actual = await captureSchDeletionContext();
+	if (actual.uuid !== expected.uuid || actual.tabId !== expected.tabId) throw new ActionError(ErrorCodes.INVALID_STATE, 'Schematic tab changed during deletion; outcome unknown.');
+}
+
+function checkedSchPrimitiveIds(live: unknown): Array<string> {
+	if (!Array.isArray(live)) throw new Error('getAll did not return an array');
+	const ids = live.map(p => {
+		const id = p?.getState_PrimitiveId();
+		if (typeof id !== 'string' || !id) throw new Error('getAll returned an invalid primitive ID');
+		return id as string;
+	});
+	if (new Set(ids).size !== ids.length) throw new Error('getAll returned duplicate primitive IDs');
+	return ids;
+}
+
 /**
  * Re-enumerate the page and report which of the requested ids are STILL there,
  * grouped by the same kind keys the caller deleted under.
@@ -2486,32 +2519,39 @@ const SCH_DELETE_BATCH = 50;
  * A delete that returns true is not evidence: large batches silently no-op
  * (SCH_DELETE_BATCH) and some primitive classes keep the primitive outright
  * (issue #164 — zone-draw's text/rectangle labels reported deleted, then came
- * back). Only a re-read can say what actually went away. Best-effort per kind:
- * a class whose getAll throws is treated as "cannot verify", and its ids are
- * NOT claimed as survivors.
+ * back). A failed/malformed read is unknown, never proof of absence or presence.
  */
-export async function survivingSchPrimitives(
+export async function verifySchPrimitiveDeletion(
 	idsByKey: Record<string, Array<string>>,
-): Promise<Record<string, Array<string>>> {
-	const out: Record<string, Array<string>> = {};
+	context: SchDeletionContext,
+): Promise<{ deleted: Record<string, Array<string>>; survived: Record<string, Array<string>>; unverified: Record<string, Array<string>>; warnings: Array<string> }> {
+	const deleted: Record<string, Array<string>> = {};
+	const survived: Record<string, Array<string>> = {};
+	const unverified: Record<string, Array<string>> = {};
+	const warnings: Array<string> = [];
 	for (const [key, ids] of Object.entries(idsByKey)) {
 		if (!ids.length) continue;
 		const kind = SCH_PAGE_PRIMITIVE_KINDS.find(k => k.key === key);
 		try {
+			await assertSchDeletionContext(context);
 			const live = kind ? await kind.getAll() : await eda.sch_PrimitiveComponent.getAll();
-			const alive = new Set((live ?? []).map(p => p.getState_PrimitiveId()));
-			out[key] = ids.filter(id => alive.has(id));
+			const alive = new Set(checkedSchPrimitiveIds(live));
+			await assertSchDeletionContext(context);
+			survived[key] = ids.filter(id => alive.has(id));
+			deleted[key] = ids.filter(id => !alive.has(id));
 		}
-		catch {
-			out[key] = []; // unverifiable → do not invent survivors
+		catch (err) {
+			unverified[key] = [...ids];
+			warnings.push(warnText(`delete readback unavailable for ${key}; outcome unknown`, err));
 		}
 	}
-	return out;
+	return { deleted, survived, unverified, warnings };
 }
 
-async function deleteSchGroup(key: string, ids: Array<string>): Promise<void> {
+async function deleteSchGroup(key: string, ids: Array<string>, context?: SchDeletionContext): Promise<void> {
 	const kind = SCH_PAGE_PRIMITIVE_KINDS.find(k => k.key === key);
 	for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
+		if (context) await assertSchDeletionContext(context);
 		const batch = ids.slice(i, i + SCH_DELETE_BATCH);
 		if (!kind) {
 			await eda.sch_PrimitiveComponent.delete(batch);
@@ -2835,21 +2875,24 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 	}
 
 	// Build an id → owning-kind index across components + every page class.
+	const deleteContext = await captureSchDeletionContext();
 	const index = new Map<string, string>();
+	const enumerationWarnings: Array<string> = [];
 	try {
-		for (const c of await eda.sch_PrimitiveComponent.getAll()) index.set(c.getState_PrimitiveId(), 'components');
+		for (const id of checkedSchPrimitiveIds(await eda.sch_PrimitiveComponent.getAll())) index.set(id, 'components');
 	}
 	catch (err) {
 		throw edaError(err, 'Failed to enumerate schematic components.');
 	}
 	for (const kind of SCH_PAGE_PRIMITIVE_KINDS) {
 		try {
-			for (const p of await kind.getAll()) index.set(p.getState_PrimitiveId(), kind.key);
+			for (const id of checkedSchPrimitiveIds(await kind.getAll())) index.set(id, kind.key);
 		}
-		catch { /* a missing class type is non-fatal for id routing */ }
+		catch (err) { enumerationWarnings.push(warnText(`enumerate ${kind.key}`, err)); }
 	}
 
 	// Resolve targets: explicit ids, or the current selection.
+	await assertSchDeletionContext(deleteContext);
 	let targets = requested;
 	if (targets === null) {
 		try {
@@ -2862,9 +2905,11 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 
 	const idsByKey: Record<string, Array<string>> = {};
 	const notFound: Array<string> = [];
+	const unlocated: Array<string> = [];
+	targets = [...new Set(targets)];
 	for (const id of targets) {
 		const key = index.get(id);
-		if (!key) { notFound.push(id); continue; }
+		if (!key) { (enumerationWarnings.length ? unlocated : notFound).push(id); continue; }
 		(idsByKey[key] ??= []).push(id);
 	}
 
@@ -2872,7 +2917,8 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 	for (const [key, ids] of Object.entries(idsByKey)) {
 		if (!ids.length) continue;
 		try {
-			await deleteSchGroup(key, ids);
+			await assertSchDeletionContext(deleteContext);
+			await deleteSchGroup(key, ids, deleteContext);
 		}
 		catch (err) {
 			warnings.push(warnText(`delete ${key}`, err));
@@ -2885,14 +2931,21 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 	// REQUEST — the same "enumerated count reported as the deleted count" bug
 	// page.clear was already fixed for, and what let issue #164's zone-draw
 	// labels report a clean sweep while every one of them survived.
-	const survivedByKey = await survivingSchPrimitives(idsByKey);
+	const verification = await verifySchPrimitiveDeletion(idsByKey, deleteContext);
+	if (!Object.keys(idsByKey).length) await assertSchDeletionContext(deleteContext);
+	if (unlocated.length) {
+		verification.unverified.unknownKind = unlocated;
+		verification.warnings.push(...enumerationWarnings);
+	}
+	const survivedByKey = verification.survived;
+	warnings.push(...verification.warnings);
 	const deleted: Record<string, number> = {};
 	const deletedIds: Record<string, Array<string>> = {};
 	let total = 0;
 	let survivedTotal = 0;
 	for (const [key, ids] of Object.entries(idsByKey)) {
 		const survived = survivedByKey[key] ?? [];
-		const gone = ids.filter(id => !survived.includes(id));
+		const gone = verification.deleted[key] ?? [];
 		deleted[key] = gone.length;
 		if (gone.length) deletedIds[key] = gone;
 		total += gone.length;
@@ -2920,6 +2973,7 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 			requested: targets.length,
 			deletedIds,
 			...(survivedTotal ? { partial: true, survived, survivedTotal } : {}),
+			...(Object.keys(verification.unverified).length ? { partial: true, verified: false, unverified: verification.unverified } : {}),
 			...(notFound.length ? { notFound } : {}),
 			...(warnings.length ? { warnings } : {}),
 		},
@@ -3857,8 +3911,8 @@ async function collectNetlistPinNets(_allPages = false): Promise<NetlistPinNets>
 	const muted = (error?: string): NetlistPinNets =>
 		({ byDesignator, available: false, ...(error ? { error } : {}) });
 	let file: File | undefined;
-	try { file = await eda.sch_ManufactureData.getNetlistFile(); }
-	catch (err) { return muted(describeThrown(err)); }
+	try { file = await getSchematicNetlistFile(); }
+	catch (err) { if (err instanceof NetlistContextError) throw err; return muted(describeThrown(err)); }
 	if (!file) return muted('netlist export returned no file');
 	let parsed: unknown;
 	try { parsed = JSON.parse(await file.text()); }
@@ -4581,7 +4635,7 @@ const schematicExportNetlist: Handler = async (payload) => {
 	const netlistType = payload.netlistType as ESYS_NetlistType | undefined;
 	let file;
 	try {
-		file = await eda.sch_ManufactureData.getNetlistFile(fileName, netlistType);
+		file = await getSchematicNetlistFile(fileName, netlistType);
 	}
 	catch (err) {
 		throw edaError(err, 'Failed to export netlist.');
@@ -7809,6 +7863,7 @@ const schematicPowerConnectPin: Handler = async (payload) => {
 // Target the pin by either `designator`+`pin`, or a known `flagPrimitiveId` /
 // `wirePrimitiveId` (whatever connect_pin returned). At least one locator required.
 export const schematicPinDisconnect: Handler = async (payload) => {
+	const deleteContext = await captureSchDeletionContext();
 	const designator = optionalString(payload, 'designator');
 	const pinNumber = optionalString(payload, 'pin');
 	const flagPrimitiveId = optionalString(payload, 'flagPrimitiveId');
@@ -7995,11 +8050,12 @@ export const schematicPinDisconnect: Handler = async (payload) => {
 	const wireIds = [...stubPids].filter(Boolean);
 	const validFlags = [...new Set(flagIds.filter(Boolean))];
 	try {
+		await assertSchDeletionContext(deleteContext);
 		if (wireIds.length) {
-			await deleteSchGroup('wires', wireIds);
+			await deleteSchGroup('wires', wireIds, deleteContext);
 		}
 		if (validFlags.length) {
-			await deleteSchGroup('components', validFlags);
+			await deleteSchGroup('components', validFlags, deleteContext);
 		}
 	}
 	catch (err) {
@@ -8012,26 +8068,31 @@ export const schematicPinDisconnect: Handler = async (payload) => {
 	// "disconnected:true"). Re-read and report survivors as a structured partial
 	// (partial-application convention: ok stays true, the canvas HAS changed for
 	// whatever really got deleted; nothing is claimed applied without proof).
-	const surviving = await survivingSchPrimitives({ wires: wireIds, components: validFlags });
-	const survivedWireIds = surviving.wires ?? [];
-	const survivedFlagIds = surviving.components ?? [];
+	const verification = await verifySchPrimitiveDeletion({ wires: wireIds, components: validFlags }, deleteContext);
+	const survivedWireIds = verification.survived.wires ?? [];
+	const survivedFlagIds = verification.survived.components ?? [];
+	const unverifiedWireIds = verification.unverified.wires ?? [];
+	const unverifiedFlagIds = verification.unverified.components ?? [];
 	const survivedIds = [...survivedWireIds, ...survivedFlagIds];
 	const notApplied = [
 		...survivedWireIds.map(id => ({ kind: 'wire', id })),
 		...survivedFlagIds.map(id => ({ kind: 'flag', id })),
+		...unverifiedWireIds.map(id => ({ kind: 'wire', id })),
+		...unverifiedFlagIds.map(id => ({ kind: 'flag', id })),
 	];
-	const fullyApplied = survivedIds.length === 0;
+	const fullyApplied = notApplied.length === 0;
 
 	return {
 		result: {
 			// True only when every targeted primitive is PROVEN gone by re-read.
 			disconnected: fullyApplied,
 			...(fullyApplied ? {} : { partial: true }),
+			...(verification.warnings.length ? { verified: false, unverified: verification.unverified, warnings: verification.warnings } : {}),
 			pin: designator && pinNumber ? `${designator}:${pinNumber}` : undefined,
 			at: pinX !== undefined && pinY !== undefined ? { x: pinX, y: pinY } : undefined,
 			// Only ids verified gone — never the mere delete-call arguments.
-			deletedWires: wireIds.filter(id => !survivedWireIds.includes(id)),
-			deletedFlags: validFlags.filter(id => !survivedFlagIds.includes(id)),
+			deletedWires: verification.deleted.wires ?? [],
+			deletedFlags: verification.deleted.components ?? [],
 			// Survivors of the delete call (platform silently kept them): the pin
 			// may still be electrically connected. Empty on full success.
 			notApplied,

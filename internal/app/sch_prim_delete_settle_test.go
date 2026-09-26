@@ -2,9 +2,49 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestPrimDeleteCommandEmitsFinalResultAndAttempts(t *testing.T) {
+	deletes := 0
+	cfg, _, cleanup := newBlockApplyTestDaemon(t, func(call blockApplyTestCall) string {
+		switch call.Action {
+		case "schematic.components.list":
+			return `{"ok":true,"result":{"components":[{"primitiveId":"gone","componentType":"part","designator":"C1"},{"primitiveId":"retry","componentType":"part","designator":"C2"}]}}`
+		case "schematic.primitives.delete":
+			deletes++
+			if deletes == 1 {
+				return `{"ok":true,"result":{"requested":2,"total":1,"deletedIds":{"components":["gone"]},"partial":true,"survivedTotal":1,"survived":{"components":["retry"]}},"warnings":["initial survivor"]}`
+			}
+			return `{"ok":true,"result":{"requested":1,"total":1,"deletedIds":{"components":["retry"]}}}`
+		default:
+			return `{"ok":true,"result":{}}`
+		}
+	})
+	defer cleanup()
+	var stdout, stderr bytes.Buffer
+	cmd := newSchCmd(cfg, &stdout, &stderr)
+	cmd.SetArgs([]string{"prim-delete", "--ids", "gone,retry", "--window", "w1"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("one final JSON required: %v: %s", err, stdout.String())
+	}
+	r := got["result"].(map[string]any)
+	if deletes != 2 || r["partial"] == true || r["total"] != float64(2) {
+		t.Fatalf("stdout contradicts exit success: %v", got)
+	}
+	if got["warnings"] != nil {
+		t.Fatalf("stale top-level warning: %v", got)
+	}
+	if len(r["attempts"].([]any)) != 2 {
+		t.Fatalf("lost original attempts: %v", r)
+	}
+}
 
 func primDeletePartialResult(ids ...string) *actionResult {
 	list := make([]any, 0, len(ids))
@@ -91,5 +131,57 @@ func TestPrimDeleteSettleRecheckIsANoOpOnACleanDelete(t *testing.T) {
 	}
 	if primDeleteSettleRecheck(cfg, "w1", nil, &stderr) != nil {
 		t.Fatal("nil result must pass through")
+	}
+}
+
+func TestPrimDeleteUnknownNeverRetriesOrUnregisters(t *testing.T) {
+	cfg, daemon, cleanup := newBlockApplyTestDaemon(t, func(call blockApplyTestCall) string {
+		t.Errorf("unknown deletion must not be retried: %s", call.Action)
+		return `{"ok":true,"result":{}}`
+	})
+	defer cleanup()
+	res := primDeletePartialResult("kept")
+	res.Result["verified"] = false
+	res.Result["unverified"] = map[string]any{"components": []any{"unknown"}}
+	res.Result["deletedIds"] = map[string]any{"components": []any{"gone"}}
+	var stderr bytes.Buffer
+	out := primDeleteSettleRecheck(cfg, "w1", res, &stderr)
+	if len(daemon.snapshot()) != 0 || out != res {
+		t.Fatal("unknown state was retried")
+	}
+	if err := failOnSurvivingPrimitives(out, &stderr); err == nil {
+		t.Fatal("unknown state passed")
+	}
+	confirmed := confirmedDeletedIDSet(out.Result)
+	if !confirmed["gone"] || confirmed["unknown"] || confirmed["kept"] {
+		t.Fatalf("unsafe registry removal: %v", confirmed)
+	}
+}
+
+func TestPrimDeleteMergePreservesKnownIDsAndRejectsIncompleteRetry(t *testing.T) {
+	first := primDeletePartialResult("retry").Result
+	first["requested"] = 2.0
+	first["deletedIds"] = map[string]any{"components": []any{"gone"}}
+	for _, second := range []map[string]any{{}, {"deletedIds": map[string]any{"components": []any{"unrelated"}}}} {
+		out := mergePrimDeleteResults(first, second)
+		if out["partial"] != true || out["verified"] != false {
+			t.Fatalf("incomplete retry passed: %v", out)
+		}
+		ids := confirmedDeletedIDSet(out)
+		if !ids["gone"] || ids["retry"] || ids["unrelated"] {
+			t.Fatalf("bad confirmed IDs: %v", ids)
+		}
+	}
+	for _, second := range []map[string]any{
+		{"deletedIds": map[string]any{"components": []any{"retry"}}},
+		{"notFound": []any{"retry"}},
+	} {
+		out := mergePrimDeleteResults(first, second)
+		if out["partial"] == true || out["total"] != 2 {
+			t.Fatalf("valid retry not merged: %v", out)
+		}
+		if ids := confirmedDeletedIDSet(out); len(ids) != 2 || !ids["gone"] || !ids["retry"] {
+			t.Fatalf("lost removals: %v", ids)
+		}
 	}
 }

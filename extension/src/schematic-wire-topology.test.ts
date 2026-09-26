@@ -192,6 +192,8 @@ function installScene(t: { after: (f: () => void) => void }, opts: { sameNet?: b
 	];
 	const netlist = { components: Object.fromEntries(coords.map((_,i) => [`p${i}`, {props:{Designator:`R${i+1}`},pinInfoMap:{one:{number:'1',net:opts.missingPinNet && i === 1 ? '' : names[i]}}}])) };
 	globals.eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
+		dmt_EditorControl: { activateDocument: async () => true },
 		sch_PrimitiveComponent: {
 			getAll: async () => [...parts,...markers],
 			getAllPinsByPrimitiveId: async (id: string) => {
@@ -315,6 +317,7 @@ function installLegacyScene(t: {after:(f:()=>void)=>void}, inputs: Array<{id:str
 	const mock=(w:{id:string;line:unknown}):any=>({...wire(w.id,w.line),getState_Color:()=>null,getState_LineWidth:()=>null,getState_LineType:()=>null});
 	const part:any={getState_PrimitiveId:()=> 'part',getState_ComponentType:()=> 'part',getState_Designator:()=> 'R1',getState_X:()=>-20,getState_Y:()=>0};
 	globals.eda={
+		dmt_SelectControl:{getCurrentDocumentInfo:async()=>({uuid:'page',tabId:'page@project'})},
 		sch_PrimitiveComponent:{getAll:async()=>[part],getAllPinsByPrimitiveId:async()=>[{getState_PinNumber:()=> '1',getState_X:()=>-20,getState_Y:()=>0}],modify:async()=>{mutations++;throw new Error('component must not move before refusal');},delete:async()=>{mutations++;return true;}},
 		sch_PrimitiveWire:{getAll:async()=>live.map(mock),delete:async(ids:string[])=>{mutations++;live=live.filter(w=>!ids.includes(w.id));return true;},create:async(points:number[])=>{mutations++;created.push(points);const w={id:'new',line:points};live.push(w);return mock(w);}},
 	};

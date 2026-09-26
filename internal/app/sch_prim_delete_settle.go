@@ -1,29 +1,8 @@
 package app
 
-// sch_prim_delete_settle.go — `sch prim-delete` 的 settle 复核。
-//
-// 连接器侧 `survivingSchPrimitives` 在 delete 之后**立刻** `getAll()` 判存活。
-// 那一读可能采到还没落定的快照,于是把「已经删掉」报成 survived —— 上层
-// (failOnSurvivingPrimitives)据此非零退出,人再删一遍,一轮轮空转。
-//
-// 这里不去改连接器(改 extension 意味着重打包 .eext,真机验证成本高,而这条能在
-// Go 侧闭合):首轮报幸存时,等一拍 settle 再对**幸存 id**重发一次删除。第二次
-// 回执就是定案:
-//
-//   - 那些 id 其实早删掉了 → 第二次它们进 notFound,不再 partial → 判定成功;
-//   - 真没删掉(平台大批量静默 no-op / 刚建的图元短暂拒删)→ 第二次顺手补删并
-//     再回读一次;
-//   - 删除仍未生效 → 保留 partial、如实失败；仅凭残留不推断根因。
-//
-// 与 deleteVerifiedOneByOne 是同一把尺:删一轮 → settle 回读 → 幸存者重删一次 →
-// 再回读定案。重发 delete 是安全的:对已经不在页上的 id,连接器把它归 notFound
-// 而不是再删一次别的东西。
-//
-// 这里同样**不**需要 sch_place_adopt.go 的新鲜度门(2026-08-20 复核):读得太早
-// 只会把已删的报成 survived(偏保守,上层重删 + 给处方),不会把没删的报成删掉。
-// 唯一的反向坏帧要求回读倒退到这些 id 出生之前,而 `sch prim-delete` 处理的是
-// **用户手上已有的** id(不是本命令几秒前建的),那种倒退不在这条路径的风险面上。
-// 完整推导见 sch_delete_verified.go 的 settleAliveSet 注释。
+// A bounded second deletion is issued only for confirmed survivors. Unknown
+// readback never authorizes another mutation. The final result retains both
+// attempts and only explicitly confirmed removals may leave the group registry.
 
 import (
 	"fmt"
@@ -36,12 +15,12 @@ import (
 // primDeleteSettleRecheck 对首轮 delete 报出的幸存者做一次 settle 复核,返回
 // **用于定案**的 result(复核成功时是第二轮的回执,否则退回首轮回执)。
 //
-// stdout 上留下的始终是首轮的原始回执;最终判定看 stderr 与退出码。
+// 调用方输出合并后的最终结果；原始尝试保留在 attempts 中。
 func primDeleteSettleRecheck(cfg *appConfig, window string, res *actionResult, stderr io.Writer) *actionResult {
 	if res == nil || res.Result == nil {
 		return res
 	}
-	if partial, _ := res.Result["partial"].(bool); !partial {
+	if partial, _ := res.Result["partial"].(bool); !partial || res.Result["verified"] == false {
 		return res
 	}
 	survivors := survivedIDSet(res.Result)
@@ -64,11 +43,88 @@ func primDeleteSettleRecheck(cfg *appConfig, window string, res *actionResult, s
 		fmt.Fprintf(stderr, "  复核失败(%v)—— 按首轮回执定案\n", err)
 		return res
 	}
-	if partial, _ := second.Result["partial"].(bool); !partial {
-		fmt.Fprintln(stderr, "✓ 复核后这些图元已不在页上")
-		return second
+	if second == nil || second.Result == nil {
+		return res
 	}
-	return second
+	merged := mergePrimDeleteResults(res.Result, second.Result)
+	if partial, _ := merged["partial"].(bool); !partial {
+		fmt.Fprintln(stderr, "✓ 复核后这些图元已不在页上")
+	}
+	return &actionResult{OK: true, Result: merged}
+}
+
+// Only explicit, positively verified IDs can leave the group registry.
+func confirmedDeletedIDSet(result map[string]any) map[string]bool {
+	if result == nil {
+		return map[string]bool{}
+	}
+	return survivedIDSet(map[string]any{"survived": result["deletedIds"]})
+}
+
+// Retrying only survivors must preserve the first attempt's confirmed removals.
+// A retry's notFound confirms absence of that previously observed survivor.
+func mergePrimDeleteResults(first, second map[string]any) map[string]any {
+	out := make(map[string]any, len(second)+3)
+	for k, v := range second {
+		out[k] = v
+	}
+	groups := map[string][]any{}
+	addGroups := func(value any) {
+		if m, ok := value.(map[string]any); ok {
+			for kind, value := range m {
+				seen := map[string]bool{}
+				for _, v := range groups[kind] {
+					seen[asString(v)] = true
+				}
+				for id := range survivedIDSet(map[string]any{"survived": value}) {
+					if !seen[id] {
+						groups[kind] = append(groups[kind], id)
+					}
+				}
+			}
+		}
+	}
+	addGroups(first["deletedIds"])
+	absent := survivedIDSet(map[string]any{"survived": second["notFound"]})
+	removed := confirmedDeletedIDSet(second)
+	remaining := survivedIDSet(second)
+	unknown := survivedIDSet(map[string]any{"survived": second["unverified"]})
+	var unresolved []any
+	if m, ok := first["survived"].(map[string]any); ok {
+		for kind, values := range m {
+			for id := range survivedIDSet(map[string]any{"survived": values}) {
+				if !remaining[id] && !unknown[id] && (absent[id] || removed[id]) {
+					groups[kind] = append(groups[kind], id)
+				} else if !remaining[id] {
+					unresolved = append(unresolved, id)
+				}
+			}
+		}
+	}
+	if len(unresolved) > 0 {
+		out["partial"], out["verified"] = true, false
+		out["unverified"] = map[string]any{"settle": unresolved}
+	}
+	if len(remaining) > 0 {
+		out["partial"] = true
+	}
+	counts, ids := map[string]any{}, map[string]any{}
+	total := 0
+	for kind, group := range groups {
+		sort.Slice(group, func(i, j int) bool { return asString(group[i]) < asString(group[j]) })
+		counts[kind], ids[kind] = len(group), group
+		total += len(group)
+	}
+	out["deleted"], out["deletedIds"], out["total"] = counts, ids, total
+	if requested, ok := first["requested"]; ok {
+		out["requested"] = requested
+	}
+	delete(out, "notFound")
+	if original, ok := first["notFound"]; ok {
+		out["notFound"] = original
+	}
+	out["attempts"] = []any{first, second}
+	return out
 }
 
 // primDeleteResidueGuidance reports residual facts and preserves diagnostic
