@@ -126,3 +126,48 @@ SDK 已返回实际 PID `bdee3961676b43e4` 与反向等几何线段；即时 `wi
 
 两项最新修订合并后的全量 Go **4075 通过、0 失败、1 跳过**，15 个包通过；Skill 与 diff 检查通过。
 运行时已暂停，待干净提交版本恢复 P3→P1→P2；图面、电气、保存重载、SDK strict 和完整用例仍未通过。
+
+## 三页原理图完整现场候选
+
+以上保留原失败和当时结论。新批次使用 CLI/daemon `v1.7.0-45-g2c6cd35`、
+connector `1.7.1-dev.11` 和 Web 4.1.60，于 UTC 2026-09-26 20:46:08 完成最后现场调用。
+冻结目录 `artifacts/release-v1.8.0-e2e-20260927/a01-schematic-final-recovery-20260927/`
+清单覆盖 146 件文件，SHA-256 `1410c197c426231d34f8638146d516aa1d0ccbed9ca77dc3d37a0fee78567ed8`；
+根任务逐件重算大小与哈希一致。本批候选待独立复核，不提前签完整 E2E。
+
+P3 的部分电路不满足 preserve-instances，普通 replace 亦正确拒绝。发现
+[#267](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) 后未调用广义保留器件清页，
+只以参数化 typed `sch prim-delete` 删除失败创建的唯一导线，再保存重载。
+六件完整记录、51 脚及 NC 保留；394 个属性按唯一 parent+Key 配对后除运行期 primitiveId 外字段一致，
+171 个属性运行期 ID 被宿主重铸。最初原始 ID 全等断言失败和完整映射保留，不把语义不变说成原始 record 全等。
+真实 unwired 快照通过现有 reuseUnwired 编译出 73 步，无 clear/删件/place；未改守卫或历史队列。
+
+| 页面 | 完整队列 | 件/物理脚 | connected/NC | 实际线段/命名 wire | 外围归属/direct 树 |
+|---|---:|---:|---:|---:|---:|
+| P1 | 15/15 | 29/88 | 84/4 | 191/42 | 24/8 |
+| P2 | 13/13 | 16/56 | 50/6 | 101/30 | 13/4 |
+| P3 | 73/73 | 6/51 | 24/27 | 55/15 | 4/3 |
+| 合计 | 101/101 | 51/195 | 158/37 | 347/87 | 41/15 |
+
+每页均实际 save→doc reload→完整 fresh，layout-lint、连接 strict 和 SDK strict 均通过，
+SDK 各 0 fatal/0 error/0 warn。官方 Designator bbox 与测量计划匹配；15 个 direct 是真实同岛线树，
+41 条归属有物理路径；原生全工程网表逐脚与源一致，共 33 网。
+P3 完成后 UART_RX/TX 各有 U1+U2 两脚，同参数 P1/P2 SDK 告警归零；支持此前未完成跨页网络的解释，
+但旧回包无明细，不能声称已知旧警告的精确根因。
+
+三份新 composition 仅把 Drawed.showValue 从 true 改 false，其余电路/绑定/几何/预算未变；
+重新完整 Compose/Apply 后，三页官方图各有一处黑色表格作者、无额外蓝色作者或越框 Name/Description。
+Name/Description/Drawed 均 false,false，表格整体显示仍 true。未知显隐现场负例 not-run：
+三页实际非空可编辑字段都已有布尔值，没有人为造错；该边界由既有离线 83 项复核覆盖。
+
+#266 的新 P3 有 58 个唯一 wire/connect mutation 请求，56 个首读通过，两条线实际追加到第二读。
+wire-000 的 req_60 首读 seq2739 无线且 coverageError，次读 seq2740 出现同一新 PID `b72b4d155bd2250e`，
+完整几何检查通过。176 条对应原始审计、逐步 observations 与 readbackAttempts 均冻结；
+只声明 typed mutation 未重复，不推断 SDK 内部调用次数。
+
+最终原生包 SHA-256 `62641b2d555e5d98b86187ff34ec4f11ed425009442a0aaf9d8e6e65dd9be285`，
+ZIP 有效、restoreVerified=false；官方原生网表 SHA-256
+`4feb9a1c2f2f2d3a7f67d6f30a6ed17c0cbc29696dd241c21da5b1a44e17e3c6`。
+PCB 184 条原生记录包含文档头均与本批起点相同，未做 PCB 调用。
+本批成本已 record：墙钟 16.206 分钟、daemon 2.156 分钟、差值 14.050 分钟，756 调用；token 未记录。
+M1 历史有限范围不扩签；F1/F2/E1/L2 交新独立复核，L1/N1/R1、PCB 与完整发布仍未运行。
