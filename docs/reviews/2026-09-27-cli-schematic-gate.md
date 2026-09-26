@@ -171,3 +171,46 @@ ZIP 有效、restoreVerified=false；官方原生网表 SHA-256
 PCB 184 条原生记录包含文档头均与本批起点相同，未做 PCB 调用。
 本批成本已 record：墙钟 16.206 分钟、daemon 2.156 分钟、差值 14.050 分钟，756 调用；token 未记录。
 M1 历史有限范围不扩签；F1/F2/E1/L2 交新独立复核，L1/N1/R1、PCB 与完整发布仍未运行。
+
+### 最新有限独立结论
+
+以上候选已独立通过 F1/F2/E1 本次三页子集，以及真实图签 L2 参数修正子例，无 blocking findings。
+独立数据断言 4535 项通过；另逐张查看三页官方 PNG。174 份原始输入及 42 份派生材料哈希有效。
+主报告 SHA-256 `93bb42397521ea5c4693771550160472a25c58ea1c6659cf7180ad2d7f54c264`，
+详细稿 `ff7fbf2bb87f2d8e2c188860f08c9bdad00bf9e99017d32c0d469ffbce760af7`，
+输入 `40e95ab24b36826b9cdb2ddc43b652e617dffe7bb21828a4c31bc4d36738a3c8`，
+清单 `398b4fad74205960d9efbf9172b68bcf731ee58d4db64f2b622ac4bdb567aaeb`。
+目录为 `artifacts/release-v1.8.0-e2e-20260927/a01-final-schematic-independent-review/`。
+#262/#264/#265/#266 按各自源码修复和真实原理图范围关闭，不签完整 E2E 或发布。
+
+P2 的 42 条隐藏 pin 属性（21 Pin Number、20 Pin Type、1 Pin Name）有 38 AlignMode、12 Y、11 X 差分，
+前后显隐全部 false,false，内容和父属不变。P1/P2 有 623/388 个属性运行期 ID 重铸；P3 回退及后续
+重载也保留 171 个属性 ID 的映射。官方 pin SVG 仅内部绘图 ID 变化，P2 的 R5.1 另有
+`5.684341886080802e-14 raw` 浮点尾差；按 `1e-6 raw` 容差核对、原始差值不删。
+P1/P2 原生记录无新增/删除，data 仅三个预期图签 ATTR 显隐及 DOCHEAD 时间/版本变化。
+这些证明范围内持久化及可见几何未被新增改错，不证明隐藏属性原回包全等或所有宿主内部状态稳定。
+
+#266 两次可观察追加读取间隔分别 257.330/253.717ms，首读开始到末读结束 383.330/292.717ms，
+外层耗时 499/339ms；58 个 typed mutation 一一匹配队列、无重复。原 176 行审计不含逐次完整 context/seq，
+seq2739→2740 和 seq2785→2786 出自 geometryGuard observations，不从源码补造缺失回包。
+迟到/取消/漂移负例仍仅签原离线修复复核；不证明所有宿主延迟都小于 2s。
+
+### N1 自然过期状态子例
+
+后续另批目录 `artifacts/release-v1.8.0-e2e-20260927/n1-stale-rejection-20260927/`，
+45 文件清单 SHA-256 `e4d5f09dccb8e9bb13c0d2d18b4860995b2b8ff3d6f43bba411fdc17702b684e`，
+原 146 文件未改。实际运行 P3 旧 73 步队列，SHA-256
+`e9407ad6b376ed6373c966165f89c2578190c8837e9a43a8b7ca9c91a0ab2ce9`，新 journal 独立。
+CLI exit 1，在第 2 步 verify-source-before-reset 因新增 marker 的 sourceScene 漂移拒绝；
+没有到第 4 步 save 或之后 NC/wire，不冒称是 wires=0 断言触发。
+
+57 条原始审计均为只读动作，0 设计 mutation；三页全部 85294 个 result 叶值逐项原样一致，
+两份原生备份的八个 ZIP entry 解压内容逐字节相同，PCB 184 条记录一致。本批未执行保存重载，
+不把备份内容不变说成重新导入恢复已验证。最后现场调用 UTC 2026-09-26 21:09:33，窗口释放。
+
+本地 readiness 辅助断言错误拒绝显式 Mutates:false，外层编排未依据该失败短路；两项瑕疵及原始
+错误保留，不签失败预检通过。独立按完整队列、原始审计、前后数据重新检查 302 项均通过，
+仅签真实自然过期 sourceScene 写前拒绝子例，无该子例 blocking finding；不覆盖其他 N1/R1/PCB 分支。
+独立报告 SHA-256 `920b26c7e01774e099a8fdaa9ced1f0dc76ad82a654de4a823e30c7c34b81c51`，
+输入 `c0e85ce2174fd9376264e715f38def26fb19ddb334de1f8afb6fcc3fccdfe1bc`，
+八件独立清单 `47bbe3c5cc79816b2eb033c3ea6e1662a90090bfe33c964ea7d1e6176e5dabe7`。
