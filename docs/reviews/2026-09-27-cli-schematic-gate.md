@@ -80,3 +80,21 @@ PCB 两层 GND、天线/孔/丝印/热仍待实际阶段验证。
 主报告 SHA-256 `eee9e5dfb19848bde08ae2be2133bd93977d1ef157949ce993ae9a779caccac9`；
 详细稿 SHA-256 `9dd79a71d0bff5118435355cbc37889580fc35fcd57f5122668bbaffba5438cc`，
 输入 SHA-256 `dda3a1aa638f562466d6c9f19274823c570e4b3d757cd1a7fb4c060b18cb730e`。
+
+## 已提交版本的现场定向复测
+
+固定运行版本 `v1.7.0-41-g2d041b5`（CLI/daemon 相同），connector `1.7.1-dev.11`、
+Web `4.1.60`，唯一窗口 `fd5c2e25-edde-46d2-a67f-3cbfe1505253`。
+新记录位于 `artifacts/release-v1.8.0-schematic-fix-live-20260927/`；不覆盖旧失败批次。
+
+- P2 诊断前后完整 result 逐字段相同。真实 `sch clusters --strict --json --members` exit 0，
+  旧 SW2/R5 交叉误报消失；P2 完整保存重载后的 gate 仍待执行。
+- 全工程 `sch nets --all --strict --json` 非零报告仅 UART_RX、UART_TX 各 U2 一脚，
+  其余跨页 USB 网络有完整端点。P1 与 P2 同参数 SDK strict DRC 均为 0 fatal / 0 error / 2 warn，
+  无明细；尚不能把数量相同视为 SDK 根因已确定。先独立完成 P3，再对照同参数检查。
+- P3 默认 Name 的 showTitle/showValue 都为 null。仅请求文字的调用返回宿主 TypeError
+  `Cannot set properties of undefined (setting 'value')`，前后 titleblock result 相同。
+  这是 #264 新发现的默认状态边界，不能宣称 text-only 全覆盖；未知显隐不默认 false。
+- 本轮参数源明确要求的 Name/Description=false,false、Drawed=false,true 写入成功；
+  typed save→真实 reload→fresh getter 后三项正文和布尔精确匹配，整体图签可见状态仍 true。
+  这只签显式字段持久化，官方完整图面与三页电路仍在续测。
