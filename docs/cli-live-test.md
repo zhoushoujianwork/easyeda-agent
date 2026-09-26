@@ -53,3 +53,6 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 个人空间范围 B00–B10 同版通过；团队按用户要求留待后续，已知 bug 继续跟踪。
 历史失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)。
 尚未关闭的 bug 及当前使用建议见 [已知问题](cli-known-bugs.md)；保留命令可用与验收放行分开判断。
+
+2026-09-26 [dev.4 同包复跑](reviews/2026-09-26-v1.7.1-dev4-basic-cli.md)：B00/B01 通过，
+B02 目标连接器重连受阻，B03–B10 未运行。当前门禁未放行，不影响历史 dev.21 的限定结论。

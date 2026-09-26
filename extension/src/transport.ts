@@ -31,10 +31,11 @@
  */
 
 import { ActionQueue, isBypassAction } from './action-queue';
-import { sweepDeadlines } from './deadlines';
+import { armDeadline, sweepDeadlines, type DeadlineHandle } from './deadlines';
 import { buildContextFrame, readEasyEdaVersion } from './eda-context';
 import { runAction } from './actions';
 import { createWebSocketId } from './transport-identity';
+import { startWatchdogClock, type WatchdogClock } from './watchdog-clock';
 import {
 	ActionError,
 	CAPABILITIES,
@@ -164,8 +165,10 @@ let currentPort: number | null = null;
 let lastGoodPort: number | null = null;
 let handshakeVerified = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let cancelPendingAttempt: (() => void) | null = null;
 let watchdogStarted = false;
-let watchdogWorker: Worker | null = null;
+let watchdogClock: WatchdogClock | null = null;
+let removeWakeListeners: (() => void) | null = null;
 // Set by an explicit stop() so the always-on watchdog does NOT immediately
 // reconnect behind the user's back; cleared by start()/reconnect().
 let suspended = false;
@@ -190,6 +193,8 @@ let windowId: string | null = null;
 // the user switched tabs in the UI). Reset on each new connection so a reconnect
 // always re-pushes. Empty string = nothing sent yet.
 let lastContextSig = '';
+let contextSequence = 0;
+let lastPublishedContextSequence = 0;
 let isConnecting = false;
 let connectionSessionId = 0;
 // Whether we've already shown the "Connected" toast for the current connected
@@ -216,6 +221,7 @@ interface SharedTransportRuntime {
 	getConnectionStatus: () => ConnectionStatus;
 	reconnect: () => void;
 	stop: (showToast?: boolean) => void;
+	dispose: () => void;
 	start: (source?: TransportStartSource) => void;
 	bootstrapFromModuleLoad: () => void;
 }
@@ -229,6 +235,7 @@ function isSharedTransportRuntime(value: unknown): value is SharedTransportRunti
 		&& typeof candidate.getConnectionStatus === 'function'
 		&& typeof candidate.reconnect === 'function'
 		&& typeof candidate.stop === 'function'
+		&& typeof candidate.dispose === 'function'
 		&& typeof candidate.start === 'function'
 		&& typeof candidate.bootstrapFromModuleLoad === 'function';
 }
@@ -243,7 +250,8 @@ function getOrCreateSharedRuntime(): SharedTransportRuntime {
 	// A re-import can evaluate a different connector build in the same editor
 	// process. Retire its controller before publishing this implementation.
 	if (existing && typeof existing === 'object') {
-		const previousStop = (existing as { stop?: unknown }).stop;
+		const old = existing as { stop?: unknown; dispose?: unknown };
+		const previousStop = typeof old.dispose === 'function' ? old.dispose : old.stop;
 		if (typeof previousStop === 'function') {
 			try {
 				previousStop.call(existing, false);
@@ -257,6 +265,7 @@ function getOrCreateSharedRuntime(): SharedTransportRuntime {
 		getConnectionStatus: localGetConnectionStatus,
 		reconnect: localReconnect,
 		stop: localStop,
+		dispose: localDispose,
 		start: localStart,
 		bootstrapFromModuleLoad: localBootstrapFromModuleLoad,
 	};
@@ -425,6 +434,7 @@ function closeWebSocket(): void {
 
 function cancelConnectionFlow(resetRetryCount = true): void {
 	nextConnectionSessionId();
+	cancelPendingAttempt?.();
 	isConnecting = false;
 	clearRetryTimer();
 	stopHeartbeat();
@@ -447,6 +457,7 @@ function localReconnect(): void {
 	eda.sys_Message.showToastMessage(eda.sys_I18n.text('Reconnecting...'));
 	connectionAnnounced = false;
 	suspended = false;
+	startWatchdog();
 	cancelConnectionFlow();
 	void scanAndConnect(true); // explicit user action — never sit out the backoff
 }
@@ -464,6 +475,17 @@ function localStop(showToast = true): void {
 	if (showToast) {
 		eda.sys_Message.showToastMessage(eda.sys_I18n.text('Connection stopped'));
 	}
+}
+
+// An explicit connection stop keeps the deadline sweep alive for in-flight
+// action guards. Unloading/replacing the extension releases its clock entirely.
+function localDispose(): void {
+	localStop(false);
+	watchdogClock?.stop();
+	watchdogClock = null;
+	watchdogStarted = false;
+	removeWakeListeners?.();
+	removeWakeListeners = null;
 }
 
 /**
@@ -538,7 +560,7 @@ export function bootstrapFromModuleLoad(): void {
 export function deactivate(): void {
 	const host = eda as unknown as Record<string, unknown>;
 	const runtime = getOrCreateSharedRuntime();
-	runtime.stop(false);
+	runtime.dispose();
 	if (host[SHARED_RUNTIME_KEY] === runtime) {
 		try {
 			delete host[SHARED_RUNTIME_KEY];
@@ -649,16 +671,21 @@ async function scanAndConnect(force = false): Promise<void> {
 function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 	return new Promise((resolve) => {
 		let settled = false;
-		let timer: ReturnType<typeof setTimeout>;
-		let registerTimer: ReturnType<typeof setTimeout>;
+		let accepted = false;
+		let handshakeExpiresAt = 0;
+		let timer: DeadlineHandle | undefined;
+		let registerTimer: DeadlineHandle | undefined;
+		const cancel = () => settle(false);
 
 		const settle = (success: boolean) => {
 			if (settled) {
 				return;
 			}
 			settled = true;
-			clearTimeout(timer);
-			clearTimeout(registerTimer);
+			accepted = success;
+			timer?.cancel();
+			registerTimer?.cancel();
+			if (cancelPendingAttempt === cancel) cancelPendingAttempt = null;
 			if (!success && isConnectionSessionActive(sessionId)) {
 				closeWebSocket();
 			}
@@ -669,6 +696,7 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 			resolve(false);
 			return;
 		}
+		cancelPendingAttempt = cancel;
 
 		// Close any stale connection first. CRITICAL: register() silently ignores
 		// the new url/callback if a connection with the same id is still "active"
@@ -683,7 +711,8 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 				settle(false);
 				return;
 			}
-			timer = setTimeout(() => settle(false), CONNECTION_TIMEOUT_MS);
+			handshakeExpiresAt = Date.now() + CONNECTION_TIMEOUT_MS;
+			timer = armDeadline(CONNECTION_TIMEOUT_MS, () => settle(false));
 			handshakeVerified = false;
 			diag(`register port=${port} session=${sessionId}`);
 
@@ -705,13 +734,18 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 						// Ignore it entirely — it must NOT touch the shared heartbeat
 						// state, or a stale pong would mask the CURRENT session's
 						// liveness. The current session's own loop tracks its misses.
-						if (!isConnectionSessionActive(sessionId)) {
+						if (!isConnectionSessionActive(sessionId) || (settled && !accepted)) {
 							diag(`onMessage STALE session=${sessionId} type=${msg?.type}`);
 							return;
 						}
 
 						// Handshake phase.
 						if (msg.type === 'handshake') {
+							if (accepted) return; // A duplicate handshake cannot replace the registered window.
+							if (Date.now() >= handshakeExpiresAt) {
+								settle(false); // Do not accept late delivery before a throttled timeout callback runs.
+								return;
+							}
 							if ((msg as { service?: string }).service === SERVICE_ID) {
 								handshakeVerified = true;
 								windowId = crypto.randomUUID();
@@ -749,7 +783,9 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 			}
 		};
 
-		registerTimer = setTimeout(doRegister, REGISTER_DELAY_MS);
+		// Registration must progress even if main-thread timers are frozen. The
+		// worker sweeps this one-shot release guard; cancellation removes it.
+		registerTimer = armDeadline(REGISTER_DELAY_MS, doRegister);
 	});
 }
 
@@ -787,8 +823,17 @@ async function sendContext(force = false): Promise<void> {
 	if (!windowId) {
 		return;
 	}
+	const registeredWindow = windowId;
+	const session = connectionSessionId;
+	const socket = wsId;
+	const sequence = ++contextSequence;
 	try {
-		const frame = await buildContextFrame(windowId);
+		const frame = await buildContextFrame(registeredWindow);
+		// Context reads can outlive a disconnect or finish out of order. Never
+		// send an old window identity on a new connection or replace newer data.
+		if (!handshakeVerified || session !== connectionSessionId || socket !== wsId
+			|| registeredWindow !== windowId || sequence < lastPublishedContextSequence) return;
+		lastPublishedContextSequence = sequence;
 		const sig = contextSig(frame);
 		if (!force && sig === lastContextSig) {
 			return;
@@ -960,19 +1005,7 @@ function startWatchdog(): void {
 		}
 		catch { /* never let a tick throw kill the loop */ }
 	};
-	try {
-		// Inline blob worker: it only owns a timer and posts a tick — all eda.* work
-		// stays on the main thread (eda.* is main-thread only).
-		const code = `setInterval(function(){postMessage(0);}, ${HEARTBEAT_INTERVAL_MS});`;
-		const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
-		watchdogWorker = new Worker(url);
-		watchdogWorker.onmessage = tick;
-		diag('watchdog: worker ticker started');
-	}
-	catch {
-		diag('watchdog: worker unavailable — main-thread interval (throttled when backgrounded)');
-		setInterval(tick, HEARTBEAT_INTERVAL_MS);
-	}
+	watchdogClock = startWatchdogClock(tick, diag);
 	// Belt-and-suspenders: recover immediately on window focus / network up — the
 	// main path for the setInterval-fallback case, and faster recovery generally.
 	// When we come back to the foreground and are NOT verified, force a clean
@@ -993,6 +1026,11 @@ function startWatchdog(): void {
 		globalThis.addEventListener?.('focus', wake);
 		globalThis.addEventListener?.('online', wake);
 		globalThis.addEventListener?.('visibilitychange', wake);
+		removeWakeListeners = () => {
+			globalThis.removeEventListener?.('focus', wake);
+			globalThis.removeEventListener?.('online', wake);
+			globalThis.removeEventListener?.('visibilitychange', wake);
+		};
 	}
 	catch { /* no addEventListener in this host — ignore */ }
 }

@@ -1,7 +1,7 @@
 /// <reference types="@jlceda/pro-api-types" />
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 
 const globals = globalThis as Record<string, any>;
 const registrations: string[] = [];
@@ -36,6 +36,8 @@ const transport = require('./transport') as {
 	stop: (showToast?: boolean) => void;
 };
 
+after(() => transport.deactivate());
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 test('module bootstrap cannot restart after stop invalidates its delayed callback', async () => {
@@ -54,7 +56,7 @@ test('module bootstrap cannot restart after stop invalidates its delayed callbac
 
 test('re-evaluating the bundle reuses one controller and delegates lifecycle actions', async () => {
 	registrations.length = 0;
-	delete globals.eda.__easyedaAgentTransportRuntime;
+	transport.deactivate();
 	const modulePath = require.resolve('./transport');
 	const loadFresh = (): typeof transport => {
 		delete require.cache[modulePath];

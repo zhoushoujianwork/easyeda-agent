@@ -20,7 +20,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 
 type Frame = { type: string; id?: string; seq?: number; seqAbandoned?: number; unordered?: boolean };
 
@@ -61,7 +61,8 @@ actions.runAction = async (action: string): Promise<{ result: Record<string, unk
 };
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const transport = require('./transport') as { reconnect: () => void; stop: (showToast?: boolean) => void };
+const transport = require('./transport') as { reconnect: () => void; stop: (showToast?: boolean) => void; deactivate: () => void };
+after(() => transport.deactivate());
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 

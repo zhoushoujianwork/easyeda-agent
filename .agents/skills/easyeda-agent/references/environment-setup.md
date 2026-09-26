@@ -176,6 +176,16 @@ easyeda doc switch "<doc-name-or-uuid>" --project "<project>"
 
 - 没有 daemon：检查当前安装路径与启动日志；开发环境恢复现有 `make dev`。
 - daemon 正常但 `windows` 为空：检查编辑器、登录态、扩展启用和外部交互权限。
+- daemon 重启后必须等原目标工程/文档的连接器重新注册；另一个旧窗口重连不证明目标恢复。
+  有界观察仍缺目标时保留启动日志与 health，停止依赖该连接的现场动作；不能刷新工程刷过验收。
+  连接器的注册释放等待与握手截止时间须由 worker 时钟兜底，取消或到期后的旧回调不能恢复连接；
+  异步上下文读取绑定原连接身份，并拒绝晚到旧值覆盖已发布的新值。
+  daemon 仅接收当前已注册 windowId 对应的 context，身份不符时保留原注册与路由。
+  Web V4 扩展沙箱可能屏蔽裸 `Worker`/`Blob`/`URL` 名称；连接器须从浏览器 `globalThis`
+  创建固定脚本的后台时钟。日志为 `host worker ticker started` 才说明创建成功；若降级为
+  main-thread interval，仍有后台节流风险。显式 stop 保留动作期限扫描，停用或替换控制器时
+  终止 worker、撤销 blob URL 并移除唤醒监听。离线模型和 worker 探针不替代同包重启回读；
+  整个 renderer 暂停时，worker 也不能保证连接恢复。
 - 已连接：核对目标工程/文档、连接器版本及 `versionGate`。`health` 提供当前 CLI 与
   连接器的兼容证据；GitHub latest 只用于显式安装对账，不决定本次操作能否继续。按 findings
   评估当前步骤是否依赖缺失能力，并记录实际运行版本。

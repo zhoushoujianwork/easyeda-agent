@@ -76,14 +76,18 @@ func (c *conn) applyRegister(msg protocol.Register, now time.Time) {
 	c.lastSeen = now
 }
 
-func (c *conn) applyContext(msg protocol.ContextMessage, now time.Time) {
+// applyContext accepts document changes only for this registered session.
+// A delayed context from an older handshake must not rewrite the connection
+// identity: the hub is keyed by the window ID established by registration.
+func (c *conn) applyContext(msg protocol.ContextMessage, now time.Time) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if msg.WindowID != "" {
-		c.windowID = msg.WindowID
+	if c.windowID == "" || msg.WindowID == "" || msg.WindowID != c.windowID {
+		return false
 	}
 	c.ctx = msg.Context()
 	c.lastSeen = now
+	return true
 }
 
 // applyResponseContext refreshes the cached window context from the live context

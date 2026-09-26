@@ -48,3 +48,8 @@ stderr warning，包含 bug 编号、影响及回读方法；stdout 的原始 JS
 - [dev.21 复测](reviews/2026-09-25-v1.6.0-dev21-basic-cli.md)的个人空间 B00–B10 已通过；
   保留上述 bug，不把本次成功写成历史缺陷已修复，也不补签范围外路径或高级 CLI 验收。
 - 各 issue 已列出后续需采集的证据和关闭条件。
+
+- dev.4 基础复跑 B02：同版 daemon 重启后目标 connector 在有界观察内缺失，只有旧版
+  无文档窗口返回；工程已保存，未继续写入。迟到目标的日志确认 worker 创建失败和后台
+  注册等待延后。dev.7 修复沙箱时钟、超时和旧 context 身份覆盖；初步回读通过，正式同包基础门禁仍在重跑。
+  见[重连修复记录](reviews/2026-09-26-cli-reconnect-fix.md)。

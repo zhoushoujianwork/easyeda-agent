@@ -106,7 +106,10 @@ func (s *Server) handleFrame(ctx context.Context, c *conn, data []byte) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return
 		}
-		c.applyContext(msg, now)
+		if !c.applyContext(msg, now) {
+			s.logf("connector ignored context windowId=%q registeredWindowId=%q", msg.WindowID, c.id())
+			return
+		}
 		s.hub.dedupeContext(c)
 
 	case protocol.TypePing:
