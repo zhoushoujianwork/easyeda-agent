@@ -1,6 +1,6 @@
 # 高级 CLI 业务验收
 
-基础 CLI 本轮集中检查已收尾，日常可用范围与 bug 跟进见 [CLI Status](STATUS.md)。
+基础 CLI 本轮集中检查已收尾，日常可用范围与 bug 跟进见 [CLI Status](cli-STATUS.md)。
 高级验收单独保留待完成状态，本页维护其进入条件和执行要求。
 
 高级 CLI 用参数和真实工程数据完成选型、规划、求解、Compose/Apply、设计检查、PCB 布局布线
