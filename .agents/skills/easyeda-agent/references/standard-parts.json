@@ -12,6 +12,43 @@
   ],
   "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
   "parts": {
+    "mcu.esp32_wroom32e_n4": {
+      "value": "ESP32-WROOM-32E-N4",
+      "mpn": "ESP32-WROOM-32E-N4",
+      "lcsc": "C701341",
+      "manufacturer": "Espressif",
+      "deviceUuid": "e4a798823d404a9eb4a64b410b140e26",
+      "footprint": "WIFI-SMD_ESP32-WROOM-32E",
+      "basic": false,
+      "datasheetUrl": "https://documentation.espressif.com/esp32-wroom-32e_esp32-wroom-32ue_datasheet_en.html",
+      "desc": "ESP32 Wi-Fi/Bluetooth 模组，N4 为 4MB Flash，板载天线。2026-09-27 Web 4.1.60 单件实测39符号脚/47实体焊盘；39号GND由9个实体组成，不压成单点。库身份/几何已测，整板与实板性能未验。"
+    },
+    "conn.usb_c_typec31m12": {
+      "value": "TYPE-C-31-M-12",
+      "mpn": "TYPE-C-31-M-12",
+      "lcsc": "C165948",
+      "manufacturer": "HRO(韩国韩荣)",
+      "deviceUuid": "74d31c19993b4b9581f3175a7da4b280",
+      "footprint": "USB-C_SMD-TYPE-C-31-M-12_1",
+      "basic": false,
+      "datasheetUrl": "https://item.szlcsc.com/datasheet/TYPE-C-31-M-12/177331.html",
+      "datasheetPdfUrl": "https://datasheet.lcsc.com/datasheet/pdf/9e56b777c022540fcce7c7f67825f55e.pdf?productCode=C165948",
+      "desc": "具名 USB-C 16P 母座。2026-09-27 Web 4.1.60 单件实测16符号脚/16实体焊盘，含组合VBUS/GND与4个外壳固定脚；正反插的两组D+/D-分别并联，CC1/CC2独立处理。库身份/几何已测，PCB装配未验。"
+    },
+    "esd.usblc6_2sc6_st": {
+      "value": "USBLC6-2SC6",
+      "mpn": "USBLC6-2SC6",
+      "lcsc": "C7519",
+      "manufacturer": "STMicroelectronics",
+      "deviceUuid": "41567551402d47e3a0236ab3d895b322",
+      "footprint": "SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BL",
+      "package": "SOT-23-6",
+      "class": "esd",
+      "basic": false,
+      "datasheetUrl": "https://item.szlcsc.com/datasheet/USBLC6-2SC6/7996.html",
+      "datasheetPdfUrl": "https://www.st.com/resource/en/datasheet/usblc6-2.pdf",
+      "desc": "ST 双路USB保护，与UMW C2687116分开选型。DS4260 Rev7 p2：25°C、VR=1.65V，I/O-GND电容typ2.5/max3.5pF，I/O-I/O typ1.2/max1.7pF。1/6=I/O1、3/4=I/O2、2=GND、5=VBUS；2026-09-27 Web 4.1.60 已测6脚/6焊盘，未完成整板或实板验证。"
+    },
     "mcu.esp32s3_wroom1": {
       "value": "ESP32-S3-WROOM-1",
       "mpn": "ESP32-S3-WROOM-1",
