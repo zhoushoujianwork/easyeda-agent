@@ -1,8 +1,9 @@
 # 基础 CLI 真实链路测试
 
-当前续测补充：dev.8 新开页面在 B00 发现 daemon 将同文档连接互踢。
-[dev.9 连接身份修复](reviews/2026-09-26-window-identity-fix.md)已完成独立复核、安装对账和
-定向现场恢复；[完整基础门禁](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)仍按新包逐项重跑，不沿用历史通过项。
+2026-09-26 按用户决定，**本轮基础 CLI 集中检查已收尾**，已覆盖的常用操作可用于日常工作，
+已知失败按 bug 跟踪并在修复后定向复测。当前可用范围与后续进度统一维护在 [CLI Status](STATUS.md)。
+[最近完整基础检测](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)为 dev.9 的 9 pass / 2 fail；
+dev.11 的定向错值检测和清理恢复通过，完整基础未运行。收尾不把失败记录改成通过。
 
 ## 测什么
 
@@ -53,7 +54,7 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 [dev.14 基础现场复测](reviews/2026-09-24-v1.6.0-dev14-basic-cli-live.md)按各自版本和覆盖范围阅读，
 不能把其中的求解或 DRC 结果合并进基础门禁。
 
-最新完整复测见 [dev.21 基础验收](reviews/2026-09-25-v1.6.0-dev21-basic-cli.md)：
+历史完整通过批次见 [dev.21 基础验收](reviews/2026-09-25-v1.6.0-dev21-basic-cli.md)：
 个人空间范围 B00–B10 同版通过；团队按用户要求留待后续，已知 bug 继续跟踪。
 历史失败项调查见 [dev.19/20 修复汇总](reviews/2026-09-25-v1.6.0-basic-cli-repairs.md)。
 尚未关闭的 bug 及当前使用建议见 [已知问题](cli-known-bugs.md)；保留命令可用与验收放行分开判断。

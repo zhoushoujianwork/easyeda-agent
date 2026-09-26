@@ -12,6 +12,7 @@
   <a href="https://github.com/zhoushoujianwork/easyeda-agent"><b>GitHub</b></a> ·
   <a href="https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector"><b>立创插件市场</b></a> ·
   <a href="docs/quick-start.md"><b>快速开始</b></a> ·
+  <a href="docs/STATUS.md"><b>CLI Status</b></a> ·
   <a href="README.en.md">English</a>
 </p>
 
@@ -34,7 +35,7 @@
 | **复用成熟电路** | 从内置电路块库复用 CH340、ESP32 自动下载、按键、USB Hub、降压等拓扑，放件、连线并对账 |
 | **检查与交付** | 原理图连接与几何检查、PCB DRC/DFM、BOM、网表、制造文件、截图、审计日志和显式保存 |
 
-完整能力与状态见 [功能清单](docs/FEATURES.md)，命令索引见
+当前可用范围与检查进度见 [CLI Status](docs/STATUS.md)，完整能力见 [功能清单](docs/FEATURES.md)，命令索引见
 [原理图 CLI](docs/cli/schematic.md) 和 [PCB CLI](docs/cli/pcb.md)。
 
 ## 直接这样告诉 Agent

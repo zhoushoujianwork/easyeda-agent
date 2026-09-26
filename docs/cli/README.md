@@ -3,6 +3,9 @@
 `easyeda` CLI 的功能地图入口——**只记最终功能形态**,按域分文档;每个动作都以 typed
 Cobra 子命令暴露(`--help` 自描述),机器可读真值是 `easyeda actions` / `make actions`。
 
+当前日常可用范围、已知限制和检查进度见 [CLI Status](../STATUS.md)；本索引的“已支持”表示有实现，
+不表示该领域全部命令已现场验收。
+
 本索引按 `sch`/`pcb` 等命令域组织，不表示验收层级。单对象增删改查、路由与持久化先按
 [基础 CLI 测试](../cli-live-test.md)验收；求解、Compose/Apply、DRC 和整板结果在基础门禁
 全部通过后按[高级 CLI 验收](../cli-advanced-test.md)检查。

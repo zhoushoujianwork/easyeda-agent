@@ -8,6 +8,7 @@
 
 | 当前任务 | 先读 | 需要更多信息时 |
 |---|---|---|
+| CLI 现在能否日常使用、检查是否收尾 | [CLI Status](STATUS.md) | 当前可用范围、已知限制和后续跟进 |
 | 安装、连接和升级 | [quick-start.md](quick-start.md) | [dev-environment.md](dev-environment.md) |
 | Codex 内置浏览器本地版本测试 | [codex-web-eda-runbook.md](codex-web-eda-runbook.md) | [原理图验收实例](reviews/2026-09-23-v1.6.0-schematic-acceptance.md) |
 | 基础 CLI 动作与真实链路测试 | [cli-live-test.md](cli-live-test.md) | [B00–B10 前置条件与步骤](cli-live-test-detail.md) |
@@ -32,6 +33,7 @@
 |---|---|---|
 | 仓库协作、分支和发布约束 | 根目录 [AGENTS.md](../AGENTS.md) | `CLAUDE.md` 软链接，不复制正文 |
 | 仓库查询和维护流程 | `.agents/skills/easyeda-repo-*/` | `.claude` 和用户级安装链接共享源目录 |
+| CLI 当前可用范围、检查进度与跟进总览 | [STATUS.md](STATUS.md) | 首页、CLI 索引和测试文档引用；问题细节留在已知问题与 issue，原始证据留在 reviews |
 | 设计工作流、命令、操作知识 | `.agents/skills/easyeda-agent/` | README / 文档索引仅链接；发布包内引用自包含 |
 | 新概念、架构理由与能力边界 | 本目录对应主题页 | 在 Skill 的相关决策点引用已纳入包内的操作知识 |
 | 可重用设计输入、参数和步骤 | 公开 Skill 的 `references/examples/` | 通过样例索引发现，保留状态与证据 |
