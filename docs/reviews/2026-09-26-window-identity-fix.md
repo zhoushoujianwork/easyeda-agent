@@ -45,7 +45,8 @@ windowId 持续变化。这是连接身份判断错误，不能归因于用户�
 双连接保持各自 windowId；DOM 只读对照显示旧页为 hidden 且 URL 含 PCB/P1，
 可见页仅 P1，与 Codex 当前标签一致。明确绑定可见页，typed P1 保存返回 `saved:true` 后，
 按开发热更新流程原子更新已安装同 UUID connector，保留权限并只重载可见页。
-P1 reload 前后的完整 `sch list.result` 与 `context` 严格相同。
+P1 reload 前后默认 `sch list` 返回的完整 `result` 与 `context` 严格相同；
+该调用未启用 pins/bbox/page-primitives，不是全类快照，完整基线留给 B00。
 
 后台旧 dev.8 连接使首次全局包对账返回 exit 10（保留 14 号记录）。读取它的 shared runtime，
 确认 implementation、windowId 和 hidden 状态后，仅调用本仓库已有 controller 的 `stop(false)`；
@@ -59,3 +60,8 @@ P1 reload 前后的完整 `sch list.result` 与 `context` 严格相同。
 冻结证据 102 件，`evidence-manifest.json` SHA-256
 `e5b578bcc84887e2eb2af8e3e74a7201f30fc537c2ddb46ca3565739f418870d`；
 持续写入的 daemon 日志单独排除，复核使用 `dev9-daemon-snapshot.log`。
+
+定向恢复的独立复核通过，报告 `review/dev9-recovery-independent-review.md`，SHA-256
+`c4c0792fcce703b53374a2163c93c7089c9dc9961545f7f7c36dd9311c80a00c`。
+复核 102 件冻结文件、9 项包资产、实装 CLI/200 项 Skill 文件及 `.version`，
+热更新脚本正文与已提交模板完全相同。19 条审计 action 全成功，范围与上述恢复步骤一致。

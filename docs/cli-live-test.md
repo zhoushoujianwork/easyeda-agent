@@ -1,5 +1,9 @@
 # 基础 CLI 真实链路测试
 
+当前续测补充：dev.8 新开页面在 B00 发现 daemon 将同文档连接互踢。
+[dev.9 连接身份修复](reviews/2026-09-26-window-identity-fix.md)已完成独立复核、安装对账和
+定向现场恢复；[完整基础门禁](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)仍按新包逐项重跑，不沿用历史通过项。
+
 ## 测什么
 
 本测试只验证 `easyeda` 的基础操作是否可靠：命令解析、CLI → daemon → Web 连接器 →
