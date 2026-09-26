@@ -27,29 +27,116 @@ type schCompositionModule struct {
 	Terminals    []schCompositionTerminal `json:"terminals,omitempty"`
 }
 type schCompositionSource struct {
-	SchemaVersion int                    `json:"schemaVersion"`
-	Connectivity  connectivity.Document  `json:"connectivity"`
-	Sheet         layoutBBox             `json:"sheet"`
-	SheetBorder   *layoutBBox            `json:"sheetBorder,omitempty"`
-	Keepouts      []layoutBBox           `json:"keepouts"`
-	TitleBlock    map[string]string      `json:"titleBlock,omitempty"`
-	Modules       []schCompositionModule `json:"modules"`
+	SchemaVersion int                      `json:"schemaVersion"`
+	Connectivity  connectivity.Document    `json:"connectivity"`
+	Sheet         layoutBBox               `json:"sheet"`
+	SheetBorder   *layoutBBox              `json:"sheetBorder,omitempty"`
+	Keepouts      []layoutBBox             `json:"keepouts"`
+	TitleBlock    schCompositionTitleBlock `json:"titleBlock,omitempty"`
+	Modules       []schCompositionModule   `json:"modules"`
 }
 type schCompositionPlan struct {
-	SchemaVersion           int                   `json:"schemaVersion"`
-	Connectivity            connectivity.Document `json:"connectivity"`
-	Sheet                   layoutBBox            `json:"sheet"`
-	SheetBorder             *layoutBBox           `json:"sheetBorder,omitempty"`
-	PlacementBoundarySource string                `json:"placementBoundarySource"`
-	UsableBounds            layoutBBox            `json:"usableBounds"`
-	Keepouts                []layoutBBox          `json:"keepouts"`
-	TitleBlock              map[string]string     `json:"titleBlock,omitempty"`
-	Layout                  powerLayoutPlan       `json:"layout"`
-	Rows                    int                   `json:"rows"`
-	RowHeight               float64               `json:"rowHeight"`
-	RowHeights              []float64             `json:"rowHeights"`
-	PageMargin              float64               `json:"pageMargin"`
-	ModuleGap               float64               `json:"moduleGap"`
+	SchemaVersion           int                      `json:"schemaVersion"`
+	Connectivity            connectivity.Document    `json:"connectivity"`
+	Sheet                   layoutBBox               `json:"sheet"`
+	SheetBorder             *layoutBBox              `json:"sheetBorder,omitempty"`
+	PlacementBoundarySource string                   `json:"placementBoundarySource"`
+	UsableBounds            layoutBBox               `json:"usableBounds"`
+	Keepouts                []layoutBBox             `json:"keepouts"`
+	TitleBlock              schCompositionTitleBlock `json:"titleBlock,omitempty"`
+	Layout                  powerLayoutPlan          `json:"layout"`
+	Rows                    int                      `json:"rows"`
+	RowHeight               float64                  `json:"rowHeight"`
+	RowHeights              []float64                `json:"rowHeights"`
+	PageMargin              float64                  `json:"pageMargin"`
+	ModuleGap               float64                  `json:"moduleGap"`
+}
+
+// Preserve the legacy string form in source/plan JSON, while carrying explicit
+// visibility through the same typed path. Omitted booleans remain omitted: they
+// mean preserve host state, not false (and never an inferred true).
+type schCompositionTitleBlock map[string]schCompositionTitleBlockField
+
+type schCompositionTitleBlockField struct {
+	Value      string `json:"value"`
+	ShowTitle  *bool  `json:"showTitle,omitempty"`
+	ShowValue  *bool  `json:"showValue,omitempty"`
+	legacyText bool
+}
+
+func (field schCompositionTitleBlockField) MarshalJSON() ([]byte, error) {
+	if field.legacyText && field.ShowTitle == nil && field.ShowValue == nil {
+		return json.Marshal(field.Value)
+	}
+	type object schCompositionTitleBlockField
+	return json.Marshal(object(field))
+}
+
+func (field *schCompositionTitleBlockField) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	var decoded schCompositionTitleBlockField
+	if len(data) > 0 && data[0] == '"' {
+		if err := json.Unmarshal(data, &decoded.Value); err != nil {
+			return err
+		}
+		decoded.legacyText = true
+		*field = decoded
+		return nil
+	}
+	if len(data) == 0 || data[0] != '{' {
+		return fmt.Errorf("expected a text string or an object with value and optional boolean showTitle/showValue")
+	}
+	var properties map[string]json.RawMessage
+	if err := json.Unmarshal(data, &properties); err != nil {
+		return err
+	}
+	value, ok := properties["value"]
+	if !ok || len(bytes.TrimSpace(value)) == 0 || bytes.TrimSpace(value)[0] != '"' {
+		return fmt.Errorf("value must be a nonempty string")
+	}
+	if err := json.Unmarshal(value, &decoded.Value); err != nil {
+		return err
+	}
+	for key, raw := range properties {
+		switch key {
+		case "value":
+		case "showTitle", "showValue":
+			raw = bytes.TrimSpace(raw)
+			if !bytes.Equal(raw, []byte("true")) && !bytes.Equal(raw, []byte("false")) {
+				return fmt.Errorf("%s must be a boolean when supplied", key)
+			}
+			visible := bytes.Equal(raw, []byte("true"))
+			if key == "showTitle" {
+				decoded.ShowTitle = &visible
+			} else {
+				decoded.ShowValue = &visible
+			}
+		default:
+			return fmt.Errorf("unknown option %q", key)
+		}
+	}
+	*field = decoded
+	return nil
+}
+
+func (fields *schCompositionTitleBlock) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("titleBlock: %w", err)
+	}
+	if raw == nil {
+		return fmt.Errorf("titleBlock must be a nonempty field map, not null")
+	}
+	decoded := make(schCompositionTitleBlock, len(raw))
+	for key, value := range raw {
+		var field schCompositionTitleBlockField
+		if err := json.Unmarshal(value, &field); err != nil {
+			return fmt.Errorf("titleBlock field %q: %w", key, err)
+		}
+		decoded[key] = field
+	}
+	*fields = decoded
+	return nil
 }
 
 // The title block belongs to one target page, not to a placement zone. Keep
@@ -62,7 +149,7 @@ var schCompositionTitleBlockStructural = map[string]bool{
 	"Border": true, "Title Block": true, "Color": true,
 }
 
-func validateSchCompositionTitleBlock(fields map[string]string) error {
+func validateSchCompositionTitleBlock(fields schCompositionTitleBlock) error {
 	if fields == nil {
 		return nil // older sources do not touch the current title block
 	}
@@ -73,7 +160,7 @@ func validateSchCompositionTitleBlock(fields map[string]string) error {
 		if key == "" || strings.TrimSpace(key) != key || strings.HasPrefix(key, "@") || schCompositionTitleBlockStructural[key] {
 			return fmt.Errorf("titleBlock field %q is not an editable text item", key)
 		}
-		if strings.TrimSpace(value) == "" {
+		if strings.TrimSpace(value.Value) == "" {
 			return fmt.Errorf("titleBlock field %q needs a nonempty value", key)
 		}
 	}
@@ -88,6 +175,10 @@ sheet, keepouts, optional per-page titleBlock text and ordered modules
 (id/title/placements/wires/flags/terminals). Discover titleBlock keys with
 sch titleblock-get on the target page. Only nonempty editable text fields are
 accepted; title-block structure, paper geometry and @derived fields are refused.
+Each field accepts a legacy string or {value, showTitle?, showValue?}. Visibility
+options must be explicit booleans; omission preserves host state. Null, unknown
+options and empty updates are refused. Attribute visibility does not hide the
+title-block table itself; verify its text with an official whole-page export.
 Optional sheetBorder is the explicit inner drawing-border bbox, separate from
 the full sheet bbox retained for Apply verification. Frames leave at least
 10 raw clearance inside that border, including their half-unit stroke; bounds
@@ -858,9 +949,10 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 	}
 	pb.Steps = append(pb.Steps, frames...)
 	if len(p.TitleBlock) > 0 {
-		patch := make(map[string]map[string]string, len(p.TitleBlock))
+		patch := make(schCompositionTitleBlock, len(p.TitleBlock))
 		for key, value := range p.TitleBlock {
-			patch[key] = map[string]string{"value": value}
+			value.legacyText = false // the titleblock CLI patch always uses objects
+			patch[key] = value
 		}
 		data, err := json.Marshal(patch)
 		if err != nil {
