@@ -102,4 +102,33 @@ PCB fresh dump 与 clean 基线除 capturedAt 全等，仍 648 条、无几何�
 190 文件冻结清单 SHA-256 `1f4536894405594015de50898a1e461e06c5325a279e186afc9e47a9c002c97d`，
 目录 `artifacts/release-v1.8.0-dev12-upgrade-20260927`；活动 daemon log 排除，启动 log 的冻结副本保留。
 核验辅助脚本的 dump 文本解析、空板 partial 和 120/122 section 数量三次监督断言错误保留，
-不作为产品失败。独立升级复核另进行，不能据升级结论签导入或 E2E。
+不作为产品失败。独立升级复核 4468 项证据断言通过，仅签升级/fresh。报告 SHA-256
+`ec39ce6bfd8a877d2f2850d5acc309eec6f06c8bc7c666bf7816f8f680ee9e78`，
+inputs-v3 `abfbabcd88774886bdfae363296d2041adafd6bdbb21044759cab9923f025d73`，
+checklist-v3 `1f778aa001c6b3524e5a2ba2c8c7a9550c26c9d5dc03a296ca5f0de9c0c76e3b`，
+21文件清单 `e5b50afbad0231f6d9cc6459e571ffae001312a639d4bfc2d8f182349511a8c6`。
+122个DOCHEAD差异为client122、ticket61、user59，116个section换序；这些原始差分保留。
+不据升级结论签导入或 E2E。
+
+## 新 dev.12 R1 与单次导入
+
+新 R1 136 件清单 `62e7ba7d751af19c4b7f077703e8e9afb6324126b9f6f1f3aec641c63f258efd`，
+根任务逐件大小/hash 匹配。048a–e 的 A+B 显式保存→真实 reload→完整 fresh/native，确在 050/051 清理之前。
+实际 SIGINT/exit130、A-only fresh、同源 B-only 重算、完成态持久化、精确清理及第二次持久化闭合。
+8 次保存均 saved:true；三页本批前后 whole result 全等，PCB 几何恢复本批起点，原生仍 648 条。
+仅签两个临时非铜 region 场景；#260 默认实际 0.2mil 及 restoreVerified=false 保留。
+
+独立 3770 项证据断言通过，报告 `cafcd2ca95c0e871d62b16068daed1294570709ca668cd55a89e2879709cf33d`，
+输入 `416f483cc54115170a43a4b158a891fe73436d6545975cc0b4033211ba9adadc`，
+48 件清单 `478083176bff4609106e3086811ea66d087805168b509a201b67f5abe5ce41ef`。
+目录 `artifacts/release-v1.8.0-e2e-20260927/r1-dev12-independent-review`；旧 126 partial、80 监督失败不改。
+根任务首轮匹配新独立清单误把仓库相对路径再次拼接目录，修正路径解析后48件匹配；非产品错误。
+
+新导入 46 件清单 `f0b0a4e721d9bfb52e6ed0cf95a3a83742ae325cbaaa653e1016f9f7cf5bcacf`，
+目录 `artifacts/release-v1.8.0-e2e-20260927/a02-dev12-import-20260927`。仅一次 typed import req_425：
+confirmationClickCount=1、components 0→51、identityInventoryAvailable=true、duplicateUniqueIds=[]、verified=true。
+51 个唯一位号/uniqueId/PID，全部 195 源脚（158 网络/37NC）与 203 实际 pad 双向对账；
+额外8个来自U1.39共有9个GND散热分块焊盘，每个net/native均核对。
+33 网与源一致；原生当前活跃 owner PAD_NET=203，历史416空记录另列，不能将总619当当前pad。
+012显式saved:true→013真实reload→014/015/016/017fresh/native闭合，三页whole result不变。
+仍2层、无板框/铜，独立导入复核待完成，不签四层/布局/E2E。
