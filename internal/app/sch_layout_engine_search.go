@@ -22,6 +22,8 @@ type schematicNamingConflict struct {
 	pin            powerLayoutPin
 	endpointOwners map[string]bool
 	ownersComplete bool
+	layout         *powerLayoutPlan
+	markerBlockers map[string]bool
 }
 
 func (e *schematicNamingConflict) Error() string {
@@ -33,13 +35,20 @@ func (e *schematicNamingConflict) FailureDetails() any {
 		refs = append(refs, ref)
 	}
 	sort.Strings(refs)
+	blockers := []string{}
+	for ref := range e.markerBlockers {
+		blockers = append(blockers, ref)
+	}
+	sort.Strings(blockers)
 	return struct {
-		Kind                      string   `json:"kind"`
-		Net                       string   `json:"net"`
-		EndpointRefs              []string `json:"endpointRefs"`
-		OwnersComplete            bool     `json:"ownersComplete"`
-		GlobalInfeasibilityProven bool     `json:"globalInfeasibilityProven"`
-	}{"naming-conflict", e.net, refs, e.ownersComplete, false}
+		Kind                      string           `json:"kind"`
+		Net                       string           `json:"net"`
+		EndpointRefs              []string         `json:"endpointRefs"`
+		OwnersComplete            bool             `json:"ownersComplete"`
+		GlobalInfeasibilityProven bool             `json:"globalInfeasibilityProven"`
+		NamingLayout              *powerLayoutPlan `json:"namingLayout,omitempty"`
+		ObservedMarkerBlockerRefs []string         `json:"observedMarkerBlockerRefs,omitempty"`
+	}{"naming-conflict", e.net, refs, e.ownersComplete, false, e.layout, blockers}
 }
 
 func libAttachmentPairs(id string, own powerLayoutPlacement, hint SchematicLayoutPeripheral, placed map[string]powerLayoutPlacement, order []string, policies map[string]string) ([]libAttachmentPair, error) {
@@ -220,12 +229,12 @@ func libPlacePeripheralPairsWithRouting(current powerLayoutPlan, measured powerL
 							conflict.observe(lastErr)
 							continue
 						}
-						// A short provisional direct join can be electrically complete
+						// A short provisional named join can be electrically complete
 						// while sealing both outward pin exits. Reject that position
 						// here, while the distance shell can still try another XY,
 						// instead of repeatedly failing the terminal regeneration.
-						if policies[q.Net] == "direct" && libPinsShareIsland(&candidate, pair.host, q) && !libIslandMergeCanContinue(&candidate, pair.host, q) {
-							conflict.reasons["direct-frontier-sealed"]++
+						if q.Net != "" && libPinsShareIsland(&candidate, pair.host, q) && !libIslandMergeCanContinue(&candidate, pair.host, q) {
+							conflict.reasons["named-frontier-sealed"]++
 							continue
 						}
 						// This is a geometry/routing checkpoint, not a completed
@@ -358,12 +367,15 @@ func libNameIslands(p *powerLayoutPlan, policies map[string]string, budget ...*i
 			return errLibLayoutBudget
 		}
 		before := probe
-		reachable, complete := libNamingFrontier(&base, island, policies[island.net], &probe)
+		blockers := map[string]bool{}
+		reachable, complete := libNamingFrontier(&base, island, policies[island.net], &probe, blockers)
 		if len(budget) > 0 {
 			*budget[0] -= before - probe
 		}
 		if !reachable && complete {
-			return libNamingConflict(&base, island)
+			conflict := libNamingConflict(&base, island)
+			conflict.markerBlockers = blockers
+			return conflict
 		}
 		if !complete && len(budget) > 0 && *budget[0] <= 0 {
 			return errLibLayoutBudget
@@ -558,6 +570,21 @@ func libNameIslandsJointWithMode(base *powerLayoutPlan, policies map[string]stri
 
 func libNamingConflict(p *powerLayoutPlan, island libIsland) *schematicNamingConflict {
 	conflict := &schematicNamingConflict{net: island.net, pin: island.pins[0], endpointOwners: map[string]bool{}, ownersComplete: true}
+	snapshot := *p
+	snapshot.Placements = make([]powerLayoutPlacement, len(p.Placements))
+	for i, c := range p.Placements {
+		snapshot.Placements[i] = plTranslate(c, 0, 0)
+		for j, pin := range snapshot.Placements[i].Pins {
+			if pin.Rotation != nil {
+				rotation := *pin.Rotation
+				snapshot.Placements[i].Pins[j].Rotation = &rotation
+			}
+		}
+	}
+	snapshot.Wires = clonePowerLayoutWires(p.Wires)
+	snapshot.Flags = append([]powerLayoutFlag(nil), p.Flags...)
+	snapshot.namingBlockers = nil
+	conflict.layout = &snapshot
 	for _, pin := range island.pins {
 		if ref := libExactPinOwner(p, pin); ref != "" {
 			conflict.endpointOwners[ref] = true
@@ -758,6 +785,9 @@ func libJoinNetsPass(p *powerLayoutPlan, policies map[string]string, railsOnly, 
 			}
 			for bi, b := range islands[:i] {
 				if a.net == b.net {
+					if routing != nil && routing.requiredJoin != nil && !routing.requiredJoin.matchesIslands(p, a, b) {
+						continue
+					}
 					for _, x := range a.pins {
 						for _, y := range b.pins {
 							length := math.Abs(x.X-y.X) + math.Abs(x.Y-y.Y)

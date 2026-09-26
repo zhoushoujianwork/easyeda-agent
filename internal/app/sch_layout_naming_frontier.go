@@ -10,12 +10,12 @@ import (
 // geometry. Callers decide whether a failed probe is a necessary placement
 // constraint or only a provisional routing conflict. A spent probe budget is
 // inconclusive and must never be used to prune a placement or route.
-func libNamingFrontier(p *powerLayoutPlan, island libIsland, policy string, budget *int) (reachable, complete bool) {
-	witness, complete := libNamingFrontierWitness(p, island, policy, budget)
+func libNamingFrontier(p *powerLayoutPlan, island libIsland, policy string, budget *int, blockers ...map[string]bool) (reachable, complete bool) {
+	witness, complete := libNamingFrontierWitness(p, island, policy, budget, blockers...)
 	return witness != nil, complete
 }
 
-func libNamingFrontierWitness(p *powerLayoutPlan, island libIsland, policy string, budget *int) (*powerLayoutPlan, bool) {
+func libNamingFrontierWitness(p *powerLayoutPlan, island libIsland, policy string, budget *int, blockers ...map[string]bool) (*powerLayoutPlan, bool) {
 	if p == nil || len(island.pins) == 0 {
 		return nil, false
 	}
@@ -30,6 +30,10 @@ func libNamingFrontierWitness(p *powerLayoutPlan, island libIsland, policy strin
 	trial.Placements = append([]powerLayoutPlacement(nil), p.Placements...)
 	trial.Wires = clonePowerLayoutWires(p.Wires)
 	trial.Flags = append([]powerLayoutFlag(nil), p.Flags...)
+	trial.namingBlockers = nil
+	if len(blockers) > 0 {
+		trial.namingBlockers = blockers[0]
+	}
 	kind := "net_port_bi"
 	switch policy {
 	case "local_ground":

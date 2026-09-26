@@ -34,7 +34,7 @@ func TestRunBlockApplyRefusesBeforePlacingWhenDevicesAreUnresolvable(t *testing.
 	msg := err.Error()
 	for _, want := range []string{
 		"nothing was placed", // the canvas claim the whole design rests on
-		"led.red_0805",       // both parts named, not just the first
+		"led.yellow_0805",    // both parts named, not just the first
 		"res.1k_0402",
 		"dev-led", "dev-res", // the uuids, so the parts file can be edited
 		"was not found", // the library's own words, not a paraphrase
@@ -56,7 +56,7 @@ func TestRunBlockApplyRefusesBeforePlacingWhenDevicesAreUnresolvable(t *testing.
 // send the user re-resolving a library that is fine apart from one part.
 func TestBapUnresolvedDevicesErrorSeparatesOneBadPartFromAWholeSite(t *testing.T) {
 	one := bapUnresolvedDevicesError([]bapUnresolvedDevice{{
-		bapDeviceRef: bapDeviceRef{DeviceUUID: "dev-led", LCSC: "C1", PartKeys: []string{"led.red_0805"}},
+		bapDeviceRef: bapDeviceRef{DeviceUUID: "dev-led", LCSC: "C1", PartKeys: []string{"led.yellow_0805"}},
 		Reason:       `Device "dev-led" was not found.`,
 	}}, 4, "parts.json").Error()
 	if strings.Contains(one, "different EasyEDA site") {
@@ -84,7 +84,7 @@ func TestBapPlanDevicesCollapsesRepeatedDevices(t *testing.T) {
 	got := bapPlanDevices([]bapPlacement{
 		{PartKey: "res.5k1_0402", LibraryUUID: "lib", DeviceUUID: "dev-res", LCSC: "C2"},
 		{PartKey: "res.5k1_0402", LibraryUUID: "lib", DeviceUUID: "dev-res"},
-		{PartKey: "led.red_0805", LibraryUUID: "lib", DeviceUUID: "dev-led", LCSC: "C1"},
+		{PartKey: "led.yellow_0805", LibraryUUID: "lib", DeviceUUID: "dev-led", LCSC: "C1"},
 		{PartKey: "broken", LibraryUUID: "lib", DeviceUUID: ""},
 	})
 	if len(got) != 2 {

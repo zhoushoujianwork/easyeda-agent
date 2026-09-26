@@ -201,6 +201,7 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		return nil, err
 	}
 	peripheralNetRoles := schematicMandatoryPeripheralSignalPolicies(&input)
+	routing.requiredConnections = schematicRequiredAttachments(input)
 	// Ownership promotion is part of the effective electrical contract: a
 	// module_port shared by this zone's core and owned peripheral becomes direct.
 	// Snapshot only the promoted policies so every routing entry point agrees.

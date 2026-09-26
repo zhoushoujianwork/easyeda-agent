@@ -64,23 +64,25 @@ type SchematicRoutingDiagnostics struct {
 }
 
 type schematicRoutingContext struct {
-	options         SchematicRoutingOptions
-	expanded        int
-	reroutes        int
-	completed       int
-	components      map[string]string
-	netPins         map[string]int
-	policies        map[string]string
-	rejections      map[string]*SchematicRoutingRejection
-	boundaries      []SchematicRoutingBoundaryAttempt
-	candidates      []SchematicRoutingCandidateSummary
-	cache           map[string]schematicMazeCacheEntry
-	templates       map[string][][]powerLayoutWire
-	templateHits    int
-	duration        time.Duration
-	relocation      int
-	candidateBudget *int
-	namingReserve   int
+	options             SchematicRoutingOptions
+	expanded            int
+	reroutes            int
+	completed           int
+	components          map[string]string
+	netPins             map[string]int
+	policies            map[string]string
+	rejections          map[string]*SchematicRoutingRejection
+	boundaries          []SchematicRoutingBoundaryAttempt
+	candidates          []SchematicRoutingCandidateSummary
+	cache               map[string]schematicMazeCacheEntry
+	templates           map[string][][]powerLayoutWire
+	templateHits        int
+	duration            time.Duration
+	relocation          int
+	candidateBudget     *int
+	namingReserve       int
+	requiredConnections []schematicRequiredConnection
+	requiredJoin        *schematicRequiredConnection
 }
 
 func (c *schematicRoutingContext) beginReroute() bool {

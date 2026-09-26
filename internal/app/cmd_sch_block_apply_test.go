@@ -43,9 +43,9 @@ func TestEmitBapManifestDeclaresRawLayoutUnits(t *testing.T) {
 // parts led_indicator_gpio uses.
 func fixtureDevices() map[string]bapDevice {
 	return map[string]bapDevice{
-		"led.red_0805": {LibraryUUID: "lib", DeviceUUID: "dev-led", LCSC: "C1"},
-		"res.1k_0402":  {LibraryUUID: "lib", DeviceUUID: "dev-res", LCSC: "C2"},
-		"res.10k_0402": {LibraryUUID: "lib", DeviceUUID: "dev-res10k"},
+		"led.yellow_0805": {LibraryUUID: "lib", DeviceUUID: "dev-led", LCSC: "C1"},
+		"res.1k_0402":     {LibraryUUID: "lib", DeviceUUID: "dev-res", LCSC: "C2"},
+		"res.10k_0402":    {LibraryUUID: "lib", DeviceUUID: "dev-res10k"},
 	}
 }
 
@@ -202,7 +202,7 @@ func TestPlanBlockApplyRejectsUnknownBind(t *testing.T) {
 func TestPlanBlockApplyMissingPart(t *testing.T) {
 	b, topo := ledBlock(t)
 	devices := fixtureDevices()
-	delete(devices, "led.red_0805")
+	delete(devices, "led.yellow_0805")
 	_, err := planBlockApply(bapInput{
 		Block: b, Topology: topo, Devices: devices, Existing: map[string]bool{},
 	})
@@ -215,7 +215,7 @@ func TestBapPrefixFor(t *testing.T) {
 	for _, tc := range []struct{ key, want string }{
 		{"res.1k_0402", "R"},
 		{"cap.100nf_0402", "C"},
-		{"led.red_0805", "LED"},
+		{"led.yellow_0805", "LED"},
 		{"mcu.esp32s3_chip", "U"},
 		{"conn.usb_c_16p", "J"},
 		{"sw.tact_smd", "SW"},

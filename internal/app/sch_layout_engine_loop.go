@@ -64,6 +64,9 @@ func libFinishSchematicLayoutMode(p powerLayoutPlan, netPolicies map[string]stri
 	base.Wires = clonePowerLayoutWires(p.Wires)
 	base.Flags = append([]powerLayoutFlag(nil), p.Flags...)
 	finish := func(trial *powerLayoutPlan) error {
+		if e := libJoinRequiredAttachments(trial, netPolicies, routing); e != nil {
+			return e
+		}
 		if e := libNameIslands(trial, netPolicies, budget); e != nil {
 			return e
 		}

@@ -70,6 +70,7 @@ type powerLayoutPlan struct {
 	Flags           []powerLayoutFlag      `json:"flags"`
 	ExpectedPinNets map[string]string      `json:"expectedPinNets"`
 	Frames          []schFrameSpec         `json:"frames"`
+	namingBlockers  map[string]bool
 }
 
 type powerLayoutSnapshot struct {

@@ -278,7 +278,7 @@ func bapPortTestBlock(t *testing.T) blocks.Block {
 	raw := map[string]any{
 		"id": "block.port_test", "desc": "t",
 		"parts": map[string]any{
-			"U": map[string]any{"part": "led.red_0805", "qty": 1},
+			"U": map[string]any{"part": "led.yellow_0805", "qty": 1},
 			"C": map[string]any{"part": "res.1k_0402", "qty": 1},
 		},
 		// 只有一条内部网,且**不带 PORT 标记**

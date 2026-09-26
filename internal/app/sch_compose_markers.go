@@ -91,10 +91,12 @@ func compositionWireMarkerGeometry(p *powerLayoutPlan, comps []layoutComp) error
 					continue
 				}
 				if plOnSegment(anchor, a, b) {
+					libRecordNamingWireBlockers(p, w)
 					return fmt.Errorf("wire-marker overlap: foreign wire %s %v→%v touches %s anchor", w.Net, a, b, c.Net)
 				}
 				segment, ok := schVisibleWireSegmentBBox([4]float64{a[0], a[1], b[0], b[1]})
 				if ok && boxesIntersect(segment, box) {
+					libRecordNamingWireBlockers(p, w)
 					return fmt.Errorf("wire-marker overlap: wire %s %v→%v crosses %s body/text", w.Net, a, b, c.Net)
 				}
 			}

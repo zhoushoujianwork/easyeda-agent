@@ -80,6 +80,9 @@ func schematicFeasibilityPoses(input SchematicLayoutInput, allowed map[string][]
 		poses = append(poses, pose)
 		return true
 	}
+	// Explicit attachment pins can require different coordinated rotations;
+	// rotating every peripheral by the same rank misses that useful first pose.
+	add(schematicAttachmentFacingPose(input, allowed))
 	for rank := 0; rank < 3; rank++ {
 		pose := map[string]float64{}
 		for _, c := range components {
@@ -151,6 +154,18 @@ func runSchematicLayoutFeasibility(input SchematicLayoutInput, measured map[stri
 				quota = *budget
 			}
 		}
+		if index == 1 && len(schematicAttachmentFacingPose(input, allowed)) > 0 {
+			// Preserve the measured first attempt, then let the coherent attachment
+			// pose receive at least half the returned quota, capped at the default
+			// 20k boost, without shrinking a larger fair share. Unused quota returns.
+			preferred := *budget / 2
+			if preferred > 20000 {
+				preferred = 20000
+			}
+			if preferred > quota {
+				quota = preferred
+			}
+		}
 		if quota < 1 {
 			quota = 1
 		}
@@ -199,4 +214,61 @@ func runSchematicLayoutFeasibility(input SchematicLayoutInput, measured map[stri
 		report.StopReason = "candidate-budget-exhausted"
 	}
 	return nil, report, &schematicFeasibilityError{Report: report, Cause: lastErr}
+}
+
+// Derive rotations only from explicit ownership and measured pin directions.
+// No coordinates, inferred electrical ownership, or unapproved rotations enter
+// this proposal. Child poses use the selected parent's measured rigid transform.
+func schematicAttachmentFacingPose(input SchematicLayoutInput, allowed map[string][]float64) map[string]float64 {
+	pose := map[string]float64{}
+	geometry := map[string]powerLayoutPlacement{}
+	components := map[string]SchematicLayoutComponent{}
+	for _, c := range input.Components {
+		geometry[c.ID], components[c.ID] = c.Measurement, c
+	}
+	ready := map[string]bool{input.CoreComponentID: true}
+	for pass := 0; pass < len(input.Components); pass++ {
+		progress := false
+		for _, h := range input.Attachments {
+			if ready[h.ComponentID] || h.AttachTo == nil || !ready[h.AttachTo.ComponentID] {
+				continue
+			}
+			c, exists := components[h.ComponentID]
+			if !exists || h.ComponentID == input.CoreComponentID {
+				continue
+			}
+			host := geometry[h.AttachTo.ComponentID]
+			hp, ok := libPin(host, h.AttachTo.PinNumber)
+			if !ok {
+				continue
+			}
+			hostSide, err := libPinSide(hp, host.BBox)
+			if err != nil {
+				continue
+			}
+			if len(c.AllowedRotations) > 1 && h.PinNumber != "" {
+				for _, angle := range allowed[c.ID] {
+					candidate := plRotate(c.Measurement, int(schematicVariantRotation(angle-c.Measurement.Rotation)/90))
+					own, ok := libPin(candidate, h.PinNumber)
+					if !ok || own.Net == "" || own.Net != hp.Net {
+						continue
+					}
+					side, err := libPinSide(own, candidate.BBox)
+					if err != nil || side != oppositeDirection(hostSide) {
+						continue
+					}
+					geometry[c.ID] = candidate
+					if angle != c.Measurement.Rotation {
+						pose[c.ID] = angle
+					}
+					break
+				}
+			}
+			ready[c.ID], progress = true, true
+		}
+		if !progress {
+			break
+		}
+	}
+	return pose
 }

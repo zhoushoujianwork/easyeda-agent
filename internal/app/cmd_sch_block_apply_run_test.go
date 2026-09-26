@@ -80,7 +80,7 @@ func blockApplyPartsFixture(t *testing.T) string {
 	raw := []byte(`{
 		"libraryUuid": "lib",
 		"parts": {
-			"led.red_0805": {"deviceUuid": "dev-led", "lcsc": "C1"},
+			"led.yellow_0805": {"deviceUuid": "dev-led", "lcsc": "C1"},
 			"res.1k_0402": {"deviceUuid": "dev-res", "lcsc": "C2"}
 		}
 	}`)

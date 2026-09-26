@@ -28,15 +28,17 @@ type SchematicLayoutSearchDiagnostics struct {
 }
 
 type SchematicRelocationAttempt struct {
-	ComponentID   string   `json:"componentId"`
-	ComponentRef  string   `json:"componentRef"`
-	Trigger       string   `json:"trigger,omitempty"`
-	Group         []string `json:"group"`
-	DX            float64  `json:"dx"`
-	DY            float64  `json:"dy"`
-	ExpandedNodes int      `json:"expandedNodes"`
-	Result        string   `json:"result"`
-	Message       string   `json:"message,omitempty"`
+	ComponentID                string   `json:"componentId"`
+	ComponentRef               string   `json:"componentRef"`
+	Trigger                    string   `json:"trigger,omitempty"`
+	Group                      []string `json:"group"`
+	DX                         float64  `json:"dx"`
+	DY                         float64  `json:"dy"`
+	ExpandedNodes              int      `json:"expandedNodes"`
+	Result                     string   `json:"result"`
+	Message                    string   `json:"message,omitempty"`
+	RegenerationCandidateQuota int      `json:"regenerationCandidateQuota,omitempty"`
+	RegenerationCandidatesUsed int      `json:"regenerationCandidatesUsed,omitempty"`
 }
 
 // SchematicLayoutSearchFailure retains bounded termination accounting without
@@ -531,6 +533,13 @@ func (s *schematicRepairSearch) namingIslandTargets(p *powerLayoutPlan, namingEr
 	for ref := range conflict.endpointOwners {
 		eligible[ref] = true
 	}
+	// A singleton core port can be obstructed by a different-net peripheral.
+	// Use only owners observed in actual marker/body/pin rejections, not nearby
+	// components inferred from distance or a shared rail. A move is a bounded
+	// proposal; the complete forest must still be regenerated and checked.
+	for ref := range conflict.markerBlockers {
+		eligible[ref] = true
+	}
 	// An isolated core island can still be blocked by the explicitly owned
 	// peripheral that must connect to that very pin. Terminal regeneration may
 	// have withdrawn its provisional wire, so it is not yet an island endpoint.
@@ -600,6 +609,7 @@ func (s *schematicRepairSearch) tryTerminalRelocation(p powerLayoutPlan, refs []
 			}
 		}
 		targetSpent := 0
+		namingQuota := 4096
 		rootID := ""
 		for id, measured := range s.measured {
 			if measured.Designator == ref {
@@ -696,8 +706,11 @@ func (s *schematicRepairSearch) tryTerminalRelocation(p powerLayoutPlan, refs []
 				}
 			}
 			limit := s.sliceBudget()
-			if trigger == "naming-island" && limit > 4096 {
-				limit = 4096
+			if trigger == "naming-island" {
+				limit = namingQuota
+				if limit > *s.budget {
+					limit = *s.budget
+				}
 			}
 			if trigger == "naming-island" && limit > targetAllowance-targetSpent {
 				limit = targetAllowance - targetSpent
@@ -706,6 +719,7 @@ func (s *schematicRepairSearch) tryTerminalRelocation(p powerLayoutPlan, refs []
 				break
 			}
 			before := limit
+			attempt.RegenerationCandidateQuota = limit
 			expandedBefore := 0
 			if s.routing != nil {
 				expandedBefore = s.routing.expanded
@@ -716,6 +730,14 @@ func (s *schematicRepairSearch) tryTerminalRelocation(p powerLayoutPlan, refs []
 				s.routing.relocation--
 			}
 			*s.budget -= before - limit
+			attempt.RegenerationCandidatesUsed = before - limit
+			if trigger == "naming-island" {
+				if errors.Is(err, errLibLayoutBudget) && namingQuota < 16384 {
+					namingQuota *= 2
+				} else if !errors.Is(err, errLibLayoutBudget) {
+					namingQuota = 4096
+				}
+			}
 			if trigger == "naming-island" {
 				targetSpent += before - limit
 			}
@@ -876,5 +898,16 @@ func (s *schematicRepairSearch) terminalSliceBudget() int {
 	if s.initial <= 4096 {
 		return *s.budget
 	}
-	return s.sliceBudget()
+	quota := s.sliceBudget()
+	// A coordinated pose can receive a smaller slice than the measured pose.
+	// Keep one complete bounded naming pass possible before backtracking the
+	// placement: repeatedly retrying a truncated pass cannot discover a legal
+	// incumbent. This still debits, and never exceeds, the shared remainder.
+	if quota < 4096 {
+		quota = 4096
+	}
+	if quota > *s.budget {
+		quota = *s.budget
+	}
+	return quota
 }

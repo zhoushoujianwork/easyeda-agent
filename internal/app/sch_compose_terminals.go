@@ -182,20 +182,24 @@ func schTerminalCandidate(p *powerLayoutPlan, f powerLayoutFlag, segments []powe
 	boxes := schTerminalMarkerBoxes(f)
 	for _, c := range p.Placements {
 		if plSegmentBox(a, b, c.BBox) {
+			libRecordNamingBlocker(p, c.Designator)
 			return fmt.Errorf("lead crosses %s body", c.Designator)
 		}
 		for _, box := range boxes {
 			if boxesGapOverlap(box, c.BBox, 5) {
+				libRecordNamingBlocker(p, c.Designator)
 				return fmt.Errorf("marker body/text is too close to %s", c.Designator)
 			}
 		}
 		for _, pin := range c.Pins {
 			if pin.Net != f.Net && plOnSegment([2]float64{pin.X, pin.Y}, a, b) {
+				libRecordNamingBlocker(p, c.Designator)
 				return fmt.Errorf("lead touches NC/foreign pin %s.%s", c.Designator, pin.Number)
 			}
 			point := layoutBBox{MinX: pin.X, MaxX: pin.X, MinY: pin.Y, MaxY: pin.Y}
 			for _, box := range boxes {
 				if boxesGapOverlap(box, point, 5) {
+					libRecordNamingBlocker(p, c.Designator)
 					return fmt.Errorf("marker body/text is too close to pin %s.%s", c.Designator, pin.Number)
 				}
 			}
@@ -203,6 +207,7 @@ func schTerminalCandidate(p *powerLayoutPlan, f powerLayoutFlag, segments []powe
 	}
 	for _, s := range segments {
 		if s.Net != f.Net && plSegmentsContact(a, b, s.Points[0], s.Points[1]) {
+			libRecordNamingWireBlockers(p, s)
 			return fmt.Errorf("lead crosses foreign wire %s", s.Net)
 		}
 	}
@@ -229,4 +234,38 @@ func schTerminalCandidate(p *powerLayoutPlan, f powerLayoutFlag, segments []powe
 		}
 	}
 	return nil
+}
+
+// Probe-local evidence records actual rejected marker/body or pin geometry.
+// It does not claim that these objects block every possible lead.
+func libRecordNamingBlocker(p *powerLayoutPlan, ref string) {
+	if p.namingBlockers != nil && ref != "" {
+		p.namingBlockers[ref] = true
+	}
+}
+
+// Attribute the specific rejected wire to its real physical island, rather
+// than treating every component carrying the same net text as a blocker.
+func libRecordNamingWireBlockers(p *powerLayoutPlan, wire powerLayoutWire) {
+	if p.namingBlockers == nil || len(wire.Points) != 2 {
+		return
+	}
+	for _, island := range libIslands(p) {
+		if island.net != wire.Net {
+			continue
+		}
+		contact := false
+		for _, pin := range island.pins {
+			contact = contact || plOnSegment([2]float64{pin.X, pin.Y}, wire.Points[0], wire.Points[1])
+		}
+		for _, index := range island.wireIndices {
+			actual := p.Wires[index]
+			contact = contact || plSegmentsContact(actual.Points[0], actual.Points[1], wire.Points[0], wire.Points[1])
+		}
+		if contact {
+			for _, pin := range island.pins {
+				libRecordNamingBlocker(p, libExactPinOwner(p, pin))
+			}
+		}
+	}
 }
