@@ -226,12 +226,12 @@ func TestArrangeGroups_FramesDoNotOverlapNeighbours(t *testing.T) {
 func TestGroupAnnotatedExtent_WidensForLongNotes(t *testing.T) {
 	dev := layoutBBox{MinX: 0, MinY: 0, MaxX: 200, MaxY: 100}
 	short := groupAnnotatedExtent(dev, []string{"短"})
-	long := groupAnnotatedExtent(dev, []string{"交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(1,0)→(1,0) 进下载"})
+	long := groupAnnotatedExtent(dev, []string{"交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(0,1)→(1,0) BOOT低"})
 	if long.MaxX <= short.MaxX {
 		t.Errorf("长说明必须把框撑宽: short=%v long=%v", short.MaxX, long.MaxX)
 	}
 	// 撑宽之后,说明整行必须真的装得下
-	w, _ := noteSizeOf("交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(1,0)→(1,0) 进下载", groupNoteFontSize)
+	w, _ := noteSizeOf("交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(0,1)→(1,0) BOOT低", groupNoteFontSize)
 	if long.MaxX-long.MinX < w {
 		t.Errorf("框宽 %v 装不下说明宽 %v", long.MaxX-long.MinX, w)
 	}
@@ -240,7 +240,7 @@ func TestGroupAnnotatedExtent_WidensForLongNotes(t *testing.T) {
 // 说明该去适应电路宽度,而不是把框撑到一页装不下(真机:不折行时两个组换行后
 // 第二行差 6 个单位,直接报「装不下」)。
 func TestWrapNoteLines_FitsWithinDeviceWidth(t *testing.T) {
-	long := "交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(1,0)→(1,0) 进下载(IO0 拉低、EN 高)"
+	long := "交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(0,1)→(1,0) BOOT低(IO0 拉低、EN 高)"
 	const width = 300.0
 	got := wrapNoteLines([]string{long}, width)
 	if len(got) < 2 {

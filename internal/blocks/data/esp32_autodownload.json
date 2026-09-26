@@ -3,10 +3,10 @@
   "desc": "ESP32 双三极管自动下载(交叉耦合:DTR/RTS → EN/IO0 时序),配 CH340 使用",
   "category": "mcu-support",
   "author": "@zhoushoujianwork",
-  "contributors": [],
+  "contributors": ["Codex"],
   "added": "v0.6.0",
-  "updated": "v0.6.0",
-  "source": "official-ref:立创·ESP32S3R8N8开发板(嘉立创官方开源,core 原理图 Q1/Q2/R16/R17)——sch read 抄取真实拓扑与用值",
+  "updated": "v1.7.1-dev.11",
+  "source": "official-ref:立创·ESP32S3R8N8开发板(嘉立创官方开源,core 原理图 Q1/Q2/R16/R17)——sch read 抄取真实拓扑与用值。2026-09-27 按 Espressif ESP32 DevKitC V4 Auto program 修正 notes 中对调的单低输入态,internal_nets 未改变:https://dl.espressif.com/dl/schematics/esp32_devkitc_v4-sch.pdf ;启动时序:https://docs.espressif.com/projects/esptool/en/latest/esp32/advanced-topics/boot-mode-selection.html",
   "validated": "ceshi 2026-07-09 by @zhoushoujianwork: place(4件)→wire(10 netport)→sch check(0 findings,全脚连上零悬空)→bridge-check(0/0)→sch drc(0 fatal/0 error)。netlist 逐网核实交叉耦合:DTR=Q1.E+R_DTR / RTS=Q2.E+R_RTS / Q1B=Q1.B+R_RTS / Q2B=Q2.B+R_DTR / IO0=Q1.C / EN=Q2.C,与立创官方板一致。",
   "parts": {
     "Q1": {
@@ -77,7 +77,7 @@
     }
   },
   "schematic_notes": [
-    "交叉耦合真值表(DTR,RTS→EN,IO0):(1,1)→(1,1) 正常运行;(0,0)→(1,1) 正常;(1,0)→(1,0) 进下载(IO0 拉低、EN 高);(0,1)→(0,1) 复位(EN 拉低)。单独拉某一根不会误复位,靠两根时序差实现自动进下载。",
+    "交叉耦合静态表(DTR,RTS→EN,IO0，引脚电平):(1,1)→(1,1);(0,0)→(1,1);(1,0)→(0,1) 复位(EN 拉低);(0,1)→(1,0) BOOT 拉低。双低不持续复位;下载模式需复位释放时采样 GPIO0,结合 EN 上拉、电容和控制时序核对,静态表不证明实板烧录。串口 API 的 asserted 对应低电平。",
     "接线要点(从立创官方板抄):Q1.E=DTR、Q1.B←R_RTS←RTS、Q1.C=IO0;Q2.E=RTS、Q2.B←R_DTR←DTR、Q2.C=EN。DTR/RTS 交叉到对面管子的基极,别接成同侧。",
     "本块必须和 block.ch340c_usb_serial 的 DTR/RTS 对接,并把 EN/IO0 接到 block.esp32s3_wroom1_module 的同名 port。三块合起来 = 完整 USB 烧录+自动下载+模组系统。",
     "真实符号脚名(官方板核实):三极管 E/C/B;基极中间节点在官方板是 $1N4145/$1N4146 内部网,本块用 Q.B=R.2 表达。"

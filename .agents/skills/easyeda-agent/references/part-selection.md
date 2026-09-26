@@ -11,6 +11,14 @@ part — so the BOM is manufacturable without surprise feeder fees or stockouts.
 命中后块的 `parts` map 直接给出 `standard-parts.json` 的 role，可复用候选身份；仍须核对
 当前需求与器件参数，不能省略下面的参数核验。只有块里没有、或板级专有件才重新搜索候选。
 
+**ESP32 自动下载块的电平语义**：`block.esp32_autodownload` 的交叉耦合拓扑按
+`DTR,RTS → EN,IO0` 引脚电平核对：`11→11`、`00→11`、`10→01`（复位）、
+`01→10`（BOOT 拉低）。旧版 notes 曾将后两行写反；不能据旧说明反接电路。
+这里的 0/1 是引脚电平，串口 API 的 DTR/RTS asserted 为低电平；双低不持续复位。
+进入下载还需要复位释放时采样 GPIO0，结合 EN 上拉、电容与控制时序核对，静态表不证明实板烧录。
+来源：[Espressif DevKitC V4 原理图](https://dl.espressif.com/dl/schematics/esp32_devkitc_v4-sch.pdf)
+与 [启动模式说明](https://docs.espressif.com/projects/esptool/en/latest/esp32/advanced-topics/boot-mode-selection.html)。
+
 ## 数据手册优先
 
 标准器件条目应同时保存 `datasheetUrl`（立创型号页）和可直接读取的
