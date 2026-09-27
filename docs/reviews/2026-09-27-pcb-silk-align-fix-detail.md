@@ -73,12 +73,35 @@ v4统一身份/显隐/可读性检查，initial、归一前fresh、每项位置�
 `5e63566ff1e553e9f23235f29d64081f43ddf05f014b604784f9f61f8df0a639`，报告
 `dad018a0e125a6e2910482c737f5ef45a6de928c45dd47d5fe7685dab205324f`，输入
 `6fac01864586aecfd2d1ff13a506cb30a839a9e680a3f4c16506149e18162f75`。
-末次15文件与规范源哈希一致；只签有限离线候选，提交后包/运行态采用及现场仍待完成，#271保持open。
+末次15文件与规范源哈希一致；只签有限离线候选，后续采用见下文，#271保持open。
 
 本地打包曾误用正式release-build带dev版本，被版本格式检查拒绝；改local-build后因changelog标题缺方括号
 再次被检查拒绝。保留两次日志，修正标题及目标后再构建开发包；未创建tag/Release，不放宽发布检查。
 离线例覆盖旧三对/J2有限几何、负奖励、自身body、上下侧/通孔、缺测、无位、目标缺失、
 返回空/anchor失配、实际bbox碰撞、旋转fresh测量、镜像不兑现和跨入口停止依赖。
+
+## 提交后开发包与运行态升级
+
+修复提交 `83a98b287accf4f2c00d936063fb1f396ea27e30` 已推送 dev。最终包11文件清单
+`349d7c36fb46ba74b24993f88c867de4730ccb4e36983618e347e75ccf128318`；darwin-arm64 CLI
+`8ee05e310b82ceb57453e91099c50fa7cd81fb6f9ba69495685571fea2285bf3`，bundle
+`cb9090857e9f6cfd6ff6864892b23d64a4780869237d2b24127e730ef1443355`。
+独立采用581项核验通过、346份输入哈希复验，15源文件与v4逐字相同，五平台VCS绑定clean提交，
+201个公开Skill文件对应同源。提交前后Go二进制非逐字等同；采用依据来源与绑定构建，不宣称机器码等价。
+120文件独立清单 `385f30bceca8bfed0c8718e185bec2a46e40e55a60e4894cce925ac1a59913b2`，
+报告 `959c7be7d84db5ee43e78095f17345af38aa546ca6fb559f70a4eaad4b8258ee`。
+
+逐页升级前saved:true后，安装本地CLI/Skill，仅更新已安装同UUID连接器并保持原权限；
+新注册窗口 `0d63a71d-f32b-489a-8984-09ca1da2646c` 的CLI/daemon/connector为dev.14、Web4.1.60，
+目标PCB身份一致，local check为READY。root对完整三页与51组件/203焊盘、full board、native对账：
+三页非属性全部相同，属性按parent/key核对仅623/388/258个primitiveId重铸；PCB组件result逐字同，
+board仅capturedAt差异；122原生section非DOCHEAD行逐字同，122个header client token及section顺序变化保留，
+其他7个ZIP条目逐字相同。未执行设计几何修复，旧位号相交仍是现场复测的开始状态。
+
+升级冻结262文件清单 `fdafb56b77686bf41d24317ba1c1f3dbb32c392418fed7a83579102ef32bbbd7`，
+目录 `artifacts/release-v1.8.0-dev14-upgrade-20260927/`，active daemon日志不入冻结；独立升级复核待完成。
+成功安装后的文字stdout误按JSON解析、首次新注册context尚空、离线字段大小写期望错误均保留；
+没有重复安装、额外刷新或设计写入重放。根已将窗口独占交回原执行员，从fresh状态验证位号修复。
 
 ## 点灯模块 L1 有限结果
 

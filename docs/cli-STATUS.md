@@ -1,10 +1,10 @@
 # CLI Status
 
 更新于 **2026-09-27**。本页维护 CLI 的当前可用范围、检查进度和后续跟进入口。
-当前续测 runtime：CLI/daemon `v1.7.1-dev.13`，connector `1.7.1-dev.13`；
+当前续测 runtime：CLI/daemon `v1.7.1-dev.14`，connector `1.7.1-dev.14`；
 旧导入失败和清理实测仍属于 CLI/daemon `v1.7.0-45-g2c6cd35`、connector `1.7.1-dev.11`，不被新运行态覆盖。
 三页原理图及 N1 有限复核已完成，新 dev.12 R1 有限场景独立通过；PCB 导入重复实例已精确清理。
-dev.12 R1 与新导入已独立通过；dev.13 投影修复、包和运行态升级独立通过，四层 SIGNAL 中间态已保存重载，实际布局续测中。最近完整基础批次：
+dev.12 R1 与新导入已独立通过；dev.13 投影修复、包和升级独立通过，dev.14 位号修复及包离线独立通过、已升级并完成root全量基线对账，独立升级核查与现场位号复测进行中。四层 SIGNAL 中间态已保存重载。最近完整基础批次：
 `1.7.1-dev.9`。开发戳绑定代码提交，不代表 v1.8.0 已发布；这是实测记录，不是实时健康检测。
 
 **此前基础 CLI 集中检查已收尾，已覆盖的常用操作基本满足日常使用；已知问题转入 bug 跟踪。**
@@ -77,7 +77,7 @@ P1 保存重载后的有限对象/网络恢复独立复核通过；不签完整�
 首次叠层编排提前请求 PLANE，类型写入被拒绝，原 partial 失败保留、原因尚未确定。
 层数 4 已保存重载；继续用内层 SIGNAL 中间态布局，用户确认后按既定铺网顺序验证最终 GND PLANE，不豁免最终要求。
 51件、四M3孔与四铜层RF禁布区已保存重载；位号对齐报告clean，但真实文字bbox仍有相交，
-[#271](https://github.com/zhoushoujianwork/easyeda-agent/issues/271) 红灯事实与有限评分反例已独立确认，dev.14 v4候选有限离线独立通过，待包/现场采用。
+[#271](https://github.com/zhoushoujianwork/easyeda-agent/issues/271) 红灯事实与有限评分反例已独立确认，修复`83a98b2`及dev.14包有限离线独立通过，运行态已升级，实际位号复测进行中，仍open。
 点灯模块两件无铜整体移动/恢复L1有限独立通过；不签带铜移动或其他模块，见[位号修复与L1证据](reviews/2026-09-27-pcb-silk-align-fix.md)。
 完整状态见[导入记录](reviews/2026-09-27-pcb-import-confirm-fix.md)及[投影修复](reviews/2026-09-27-pcb-polygon-projection-fix.md)。
 复现、影响、使用建议和关闭条件统一维护在 [已知问题](cli-known-bugs.md)及对应 issue，

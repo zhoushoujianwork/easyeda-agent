@@ -37,7 +37,7 @@
 
 | 项目 | 状态 |
 |---|---|
-| 发布前只读预检 | 初次 dev.11 与旧恢复开发戳保留；当前 CLI/daemon/connector dev.13、Web 4.1.60、目标 PCB、新窗口及 READY 已独立复核 |
+| 发布前只读预检 | 旧运行态证据保留；当前 CLI/daemon/connector dev.14、Web 4.1.60、目标 PCB、新窗口及 READY 已核对，root完整基线对账通过、独立升级核查进行中 |
 | 三项基础失败 | 已接受为本次已知限制，保持 open；不再整体阻断，失败漏报修复不等于实际操作通过 |
 | 严格基础 B00–B10 | dev.9 为 9 pass / 2 fail，dev.11 全集 not-run；不为移除阻断而改写，准入依据见上文 |
 | 完整高级用例 | 三页/N1/R1、新单次导入及 dev.13 升级有限独立通过；旧失败保留。四层 SIGNAL 中间态已保存重载，两件无铜L1有限独立通过，布局因 #271 暂停；最终 GND PLANE、两轮布局与用户确认、整板布线未通过 |
@@ -52,7 +52,7 @@ PCB 导入发现 [#269](https://github.com/zhoushoujianwork/easyeda-agent/issues
 单次确认、重复身份检测和失败传播 `698980e` 已在 dev.12 保存重载与独立复核通过，有限关闭；
 另发现 [#270](https://github.com/zhoushoujianwork/easyeda-agent/issues/270) 多边形焊盘投影缺陷，
 `faac8be` dev.13 修复、提交后包/升级及实际四个J1多边形平移保存重载独立通过，#270有限关闭。
-51件、四M3孔及RF禁布区已保存重载；位号对齐假clean新缺陷 [#271](https://github.com/zhoushoujianwork/easyeda-agent/issues/271) 已独立确认，dev.14 v4候选有限离线独立通过，待包/现场采用。
+51件、四M3孔及RF禁布区已保存重载；位号对齐假clean新缺陷 [#271](https://github.com/zhoushoujianwork/easyeda-agent/issues/271) 已独立确认，修复`83a98b2`及dev.14包有限离线独立通过，已升级并开始现场复测，仍open。
 两件无铜L1整体移动/恢复有限独立通过；范围和新修法见[位号修复记录](../reviews/2026-09-27-pcb-silk-align-fix.md)。
 首次提前设置 PLANE 的编排错误及 partial 拒绝保留；4 层 SIGNAL 中间态已保存重载。
 布局确认后按既定顺序验证最终 GND PLANE，不将类型拒绝纳入三项例外。

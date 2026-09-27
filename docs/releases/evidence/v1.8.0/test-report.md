@@ -136,5 +136,14 @@ USB里程碑424文件清单 `a9e76a80b5ce4251509ced7df5d8116337cbf59f483597303ed
 根任务全核对，报告 `7689ea36aa70edb9c5cc7f6f168ec24865a313a4bea503dc48c4df47a46c1980`。
 #270按实际四个L单环平移有限关闭，不签孔/ARC/非零旋转现场、POLYGON net-path或整板E2E。
 后续L1点灯两件无铜整体移动/恢复54原件及28依赖/3版本补充完成987项有限独立复核；不签带铜移动。
-RF已保存重载；silk-align假clean的三对相交及自身bbox漏检已独立确认并登记#271，dev.14 v4候选有限离线独立通过，待包/现场采用，布局仍未通过。
+RF已保存重载；silk-align假clean的三对相交及自身bbox漏检已独立确认并登记#271，修复`83a98b2`及dev.14包有限离线独立通过、运行态已升级并开始实际位号复测，布局仍未通过。
 原始失败、独立红灯与L1哈希见[位号修复详细记录](../../../reviews/2026-09-27-pcb-silk-align-fix-detail.md)。
+
+dev.14提交后开发包581项独立核验通过、346输入哈希复验；120文件清单
+`385f30bceca8bfed0c8718e185bec2a46e40e55a60e4894cce925ac1a59913b2`，报告
+`959c7be7d84db5ee43e78095f17345af38aa546ca6fb559f70a4eaad4b8258ee`。
+升级前四页saved:true，采用已安装连接器的同UUID更新并保持权限，新注册dev.14/目标PCB及READY通过。
+root全量差分证明三页非属性相同、属性仅1269个runtime ID重铸，51组件/203pad相同、board仅采集时间不同；
+原生122section设计行及7其他ZIP条目相同，122个DOCHEAD client token及section顺序变化保留。
+262文件升级清单 `fdafb56b77686bf41d24317ba1c1f3dbb32c392418fed7a83579102ef32bbbd7`，
+升级独立核查待完成，不签位号修复、Layout或E2E。
