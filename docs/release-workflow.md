@@ -24,8 +24,11 @@
 `docs/releases/evidence/vX.Y.0/` 的测试报告、基准、测试用例和 `manifest.json`。
 测试报告必须记录现场完整流程及局部修改的实际结果、失败项、回读证据和独立 Agent 复核；
 基准记录原始需求、起始状态、环境版本与验收阈值；测试用例记录输入、步骤和判据。
-固定端到端回归只把 `esp32MiniRequire.md` 第一节原始需求交给执行 Agent，不能把预制
-BOM、UUID 或网表当输入。现场未过时写失败或进行中报告，不能填 `pass`。
+2026-09-27 用户简化后续测试收尾，默认固定端到端回归只把
+[最小点灯板](test-case-esp32-blink.md)第一节原始需求交给执行 Agent，不能把预制
+BOM、UUID 或网表当输入。单页原理图和两层 PCB 完成后按声明范围收尾；
+四层开发板仅在任务或相关改动要求时扩展验证。现场未过时写失败或进行中报告，不能填 `pass`。
+这次文档修改不变更已发布 v1.8.0 的材料、哈希和未完成的完整 ESP32 结论。
 
 `make release-check` 对中版本要求 Git 已跟踪的四个文件、`manifest.json` 的
 `result=pass` 与 `independentReview=pass`、精确版本和三份文件的 SHA256；缺失或

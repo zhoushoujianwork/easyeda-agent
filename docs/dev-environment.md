@@ -31,7 +31,8 @@ develop + regression-test the connector against a LIVE editor, hands-free:
    Rule 7 in the skill). "Builds + unit tests pass" ≠ "works live" — several bugs
    this project shipped only surfaced on a real board.
 4. **Probe → file → fix → merge → re-verify** — run a real design task as the
-   probe (the fixed regression case is [`esp32MiniRequire.md`](../esp32MiniRequire.md);
+   probe (the default regression is the [minimal blink board](test-case-esp32-blink.md);
+   the four-layer `esp32MiniRequire.md` board is an extended case;
    the copy-a-golden-board harness is `training/copy-check.py`), file each gap as
    a GitHub issue labeled `ready-for-agent`, let ClawFlow implement + open a PR,
    then **you merge and live-verify** (the operator can't do runtime acceptance —

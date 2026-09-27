@@ -147,5 +147,7 @@ PCB mutation 后即时读取可能带 `staleRisk`。它提示宿主缓存风险�
 [固定机械例子](examples/260919-at32f415/fixed-mechanics.md)，再扩展到 15 个功能模块、关键网络与整板。
 资料只有题目，没有完成态 PCB；未现场复现的步骤保持 `source-only` 或 `offline-verified`。
 
-独立验证者只接收原题要求和实际回读，逐项报告差异。完整回归仍按仓库 `AGENTS.md` 使用
-`esp32MiniRequire.md` 第一节原始需求，检查共享基础设施没有破坏既有从需求到整板的流程。
+独立验证者只接收原题要求和实际回读，逐项报告差异。仓库日常收尾按 `AGENTS.md` 使用
+`docs/test-case-esp32-blink.md` 第一节：板外稳压 3.3V 的 ESP32-S3 模组最小点灯板、单页原理图和两层 PCB。
+按需求执行 S0–S6/P0–P10，不把不适用的 USB/降压/四层内电层变成小板必测项；
+四层开发板 `esp32MiniRequire.md` 和考试整板仅按任务或受影响能力补测。小板结果不外推复杂板。

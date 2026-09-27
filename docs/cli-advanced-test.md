@@ -28,9 +28,13 @@
 
 满足本轮准入条件后，按[高级用例与前置条件](cli-advanced-test-detail.md)检查：
 原理图数据驱动选型与布局、保护 Apply、严格质量门；PCB 同步、规则、布局、用户确认、
-布线与铜、保存重载和独立复核。完整端到端只把
-[`esp32MiniRequire.md` 第一节](../esp32MiniRequire.md)的客户原始需求交给执行 Agent，
-按[现行验收标准](e2e-automation-acceptance.md)及公开 Skill 的 S0–S6/P0–P10 流程执行。
+布线、保存重载和独立复核。2026-09-27 用户选择简化收尾：默认只跑
+[最小点灯板第一节](test-case-esp32-blink.md#一客户原始需求)，单页原理图、两层 PCB、板外稳压 3.3V。
+按[现行验收标准](e2e-automation-acceptance.md)及公开 Skill 的 S0–S6/P0–P10 执行，
+不添加板载 USB、降压、四层内电层或完整开发板需求。专项只按受影响能力和声明范围补测。
+
+原 [ESP32 四层开发板](../esp32MiniRequire.md)保留为扩展回归，旧结果和 v1.8.0 的 E2E in-progress
+保持原判；新最小点灯完整用例为 not-run，不能用换用例补签旧测试。
 
 高级结论按每个设计事实给出 `pass`、`fail`、`blocked` 或 `not-run`，保留输入哈希、
 候选报告、Apply journal、DRC 和 save→reload→fresh readback。离线候选、单页 gate

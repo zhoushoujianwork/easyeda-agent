@@ -25,7 +25,7 @@
 | 维护 Skill 和知识 | [skill-design.md](skill-design.md)、[编写约定](../.agents/skills/README.md) | [Agent 协作设计](agent-collaboration.md) |
 | 判断是否需要发布新版本 | [下一版本发布评估](releases/next-release.md) | 修复范围、版本建议和待补验收 |
 | 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [v1.8.0 发布准备](releases/release-1.8.md)、[仓库发布授权规则](../AGENTS.md) |
-| 验证从需求到成品 | [e2e-automation-acceptance.md](e2e-automation-acceptance.md) | [原始回归需求](../esp32MiniRequire.md)第一节、[仓库规则](../AGENTS.md) |
+| 日常测试收尾、从需求到成品 | [最小点灯板原始需求](test-case-esp32-blink.md)第一节 | [执行详细稿](test-case-esp32-blink-detail.md)、[验收标准](e2e-automation-acceptance.md)、[仓库规则](../AGENTS.md)；四层开发板为扩展回归 |
 | 查历史检查结论 | [历史证据索引](reviews/README.md) 与对应报告 | 回到该记录的版本、输入、原始证据和未覆盖项 |
 
 ## 信息只有一个维护位置

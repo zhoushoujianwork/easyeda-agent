@@ -448,10 +448,12 @@ These are planned and **not implemented** today.
   fanout-with-vias、几条 DFM 检查(REF方向/两脚线宽/时钟3W/冗余过孔·线段)。详见 memory
   `pcb-automatic-tool-v251-reeval-and-layout-defects`。
 
-### 验收用例 roadmap (acceptance regressions, NOT yet run end-to-end)
+### 默认收尾与扩展回归
 
-两块 ESP32 最小系统板作为**端到端检查验收基准**——跑通即证明放置→布线→`pcb check`
-(含新的丝印正反 / 走线压焊盘 / 非正交走线规则)→DRC 全流程闭环。
+2026-09-27 用户选择[最小点灯板](test-case-esp32-blink.md)为默认端到端收尾用例：
+板外稳压 3.3V、ESP32-S3 模组加一颗 LED、单页原理图、两层 PCB。
+当前 not-run；完整建模→布局→布线→检查→保存重载后只签该小板范围。
+下面两块复杂板保留为扩展回归，只在任务要求或相关能力变更时执行；旧未通过项不补签。
 
 - **task #34 — ESP32 **模组**开发板 (module dev board).** 拿原始需求
   [`esp32MiniRequire.md`](../esp32MiniRequire.md)(4 层板 + 点灯 + 5V 供电端子 + 降压 3V3 +

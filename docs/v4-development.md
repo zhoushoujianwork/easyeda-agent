@@ -27,7 +27,8 @@
 | PCB 读 | 器件、层、网络、板框、配置、规则、报告 | read-verified | 69 器件考试板实读 |
 | 类型 | Connector 对官方 0.4.25 类型 | offline-verified | `npm run typecheck` |
 | 写入 | PCB typed mutation + save/reload | live-verified | 显示原点 `0,0→10,20→save/reload→10,20→0,0→save/reload→0,0`，几何不变且基线恢复 |
-| 整板 | `esp32MiniRequire.md` S0–S6/P0–P10 | pending | 只允许第一节原始需求作输入；项目 `ceshi`；完成后清理 |
+| 默认整板收尾 | [最小点灯板](test-case-esp32-blink.md) S0–S6/P0–P10 | not-run | 单页、两层、板外稳压 3.3V；只交第一节原始需求；保留基线并清理本轮对象 |
+| 四层扩展整板 | `esp32MiniRequire.md` S0–S6/P0–P10 | pending | 保留旧状态，涉及对应能力时续测；不作为默认收尾前置 |
 
 ## P0 门禁
 
@@ -41,8 +42,8 @@
 | 自定义位号 | implemented | 显式锚定 pattern；验证/保留；allocator 不猜 V4 递增序列 |
 | V4 现场写入烟测 | live-verified | 4.1.60，PCB `2e719e9419653c72`；可逆原点经过两次 save/reload 并恢复 0,0 |
 
-P0 已完成，但不等于 V4 完整兼容。固定 `esp32MiniRequire.md` 整板回归仍是发布验收门禁；
-完成前发布说明必须保留 `full-E2E-pending`，不得把兼容烟测写成整板通过。
+P0 已完成，但不等于 V4 完整兼容。2026-09-27 用户将后续默认整板回归改为最小点灯板；
+其通过只证明单页、两层范围。四层扩展仍保留 `full-E2E-pending`，不得把兼容烟测或小板写成四层整板通过。
 
 ### P0 现场证据（2026-09-21）
 
@@ -58,8 +59,9 @@ P0 已完成，但不等于 V4 完整兼容。固定 `esp32MiniRequire.md` 整�
 
 ## 发布验收门禁（P0 之后）
 
-固定整板回归必须落实全部需求、0 overlap、0 fatal、网络连通、4 层电源树、DRC 与已落盘证据。
-输入只能使用 `esp32MiniRequire.md` 第一节原始需求，使用项目 `ceshi`，完成后清理还原。
+默认回归必须落实最小点灯板需求、0 overlap/越界、DRC 无错误、全部必接网络连通、丝印极性和已落盘证据。
+输入只使用[最小点灯板](test-case-esp32-blink.md)第一节，使用 `ceshi` 或已获准复用的专用工程，
+完成后清理本轮对象。四层电源树、USB/降压和多页按相关变更补扩展回归，发布仍以明确批准范围为准。
 
 ## P1/P2 队列
 

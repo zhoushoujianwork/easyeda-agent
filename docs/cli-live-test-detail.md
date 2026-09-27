@@ -65,7 +65,7 @@ B03 创建对照须区分个人与团队：个人工程省略 `create --team`，
 B00–B10 **全部为 `pass`** 才放行[高级 CLI 业务验收](cli-advanced-test.md)。任一用例
 `fail`、`blocked` 或 `not-run` 时，保留其证据并停在基础层；不能用求解器成功、
 DRC 数值或其他高级结果抵消基础动作缺测。高级测试另按
-[固定 ESP32 原始需求](../esp32MiniRequire.md)和[端到端验收标准](e2e-automation-acceptance.md)
+[固定最小点灯板原始需求](test-case-esp32-blink.md)和[端到端验收标准](e2e-automation-acceptance.md)
 执行。
 
 上述是默认的严格基础门禁。用户已为 [v1.8.0 明确接受三项已知限制](releases/release-1.8.md#已接受的已知限制)，
