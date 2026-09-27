@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0] - 2026-09-27
+
+- 修复连接器重连、窗口身份与迟到上下文处理，保留明确选窗和在途写入不重放行为。
+- 修复原理图删除、完整回读、布局检查及导入 PCB 的单次确认和重复身份检测。
+- PCB 模块移动同步投影 POLYGON 焊盘；位号排列使用完整对象边界和写后实测，部分成功停止依赖步骤。
+- 页改名、区域边界线宽和铺铜优先级等未解决问题继续在 CLI Status 跟进。
+- 完整 ESP32 成品、整板布线与最终 DRC 尚未完成；本条为发布准备，实际发布状态以 tag 和 GitHub Release 为准。
+
 ## [1.7.1-dev.14] - 2026-09-27
 
 - Separate hard collisions from placement preferences; include the owner's complete rendered envelope.
