@@ -16,12 +16,21 @@
 
 ## 发布进度
 
-源码及本地软件包已统一为 1.8.0；五平台 CLI、连接器、Skill 和安装脚本准备通过。
-正在完成声明范围的验收包、正式构建/smoke、主分支集成和远端资产校验，尚未创建发布 tag 或正式 Release。
+**已正式发布：[GitHub v1.8.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.8.0)。**
+发布时间为 2026-09-27 12:08:27（UTC+8）；annotated tag 对应提交 `2734b298b7dfd09d000b412d94420401248bc66c`，已集成到 main。
+GitHub Release 为非草稿，五平台 CLI、连接器、Skill、双平台安装脚本、验收包和校验和共 11 项远端资产
+名称、大小及 SHA256 全部匹配。[checksums.txt](https://github.com/zhoushoujianwork/easyeda-agent/releases/download/v1.8.0/checksums.txt)
+包含十项载荷的摘要，校验和文件自身也已与 GitHub 摘要核对。
+
+正式构建、release-check 和离线 smoke 通过；本机正式 CLI 的 15 项命令检查、201 文件 Skill 包及连接器版本/UUID 校验通过。
+发布脚本测试 122 项、协作检查 13 项通过；运行逻辑与已采用的 `83a98b2` 一致。
+其他平台仅编译与资产完整性检查，不声明跨平台运行或正式 1.8.0 现场全集复测。
 
 验收材料使用 schema 3 `cli-fixes`，记录用户的版本与范围决定；完整 E2E 保持 in-progress。
 此前完整设计报告原文保存在 [历史执行记录](evidence/v1.8.0/test-report-detail.md)，不补签完整设计通过。
-发布前只完成剩余的软件打包与资产检查，不重复已通过的现场流程。
+独立范围复核见[复核报告](evidence/v1.8.0/independent-review.md)。
+ClawHub 已成功发布 `easyeda-agent@1.8.0`，回执 ID 为 `k979dcfrqscpn9se5wqg0ks3g18f6460`。
+skillhub.cn [自动发布任务](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/36293441739)已成功；平台审核与连接器市场人工提交另行跟进。
 
 [CLI 修复报告](evidence/v1.8.0/test-report.md) · [基准](evidence/v1.8.0/baseline.md) ·
 [用例](evidence/v1.8.0/test-cases.md) · [发布流程](../release-workflow.md)
