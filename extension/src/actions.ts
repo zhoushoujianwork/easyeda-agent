@@ -1,4 +1,5 @@
 import { projectOpen, projectExport } from './project-transfer';
+import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
 /**
  * Typed-action dispatch. Each action maps to exactly one (occasionally a small
  * cluster of) `eda.*` call(s), serializes the result to plain JSON, and returns
@@ -8532,20 +8533,15 @@ export const pcbStackupSet: Handler = async (payload) => {
 // per-designator-position setter exists on the component itself. Verified live: R2's
 // designator moved exactly to the requested (x,y).
 type silkRect = { minX: number; minY: number; maxX: number; maxY: number };
-type silkItem = {
-	cid: string; desig: string; cb: silkRect; attrId: string;
-	w: number; h: number; offx: number; offy: number;
-};
 
 function silkOverlap(a: silkRect, b: silkRect, m: number): boolean {
 	return a.minX < b.maxX + m && a.maxX > b.minX - m && a.minY < b.maxY + m && a.maxY > b.minY - m;
 }
 
 // ── silk-align geometry helpers (module scope) ──
-type silkObs = { rect: silkRect; kind: string; owner: string; m: number };
+type silkObs = { rect: silkRect; kind: string; owner: string; m: number; layer?: number };
 const silkCenter = (r: silkRect) => ({ x: (r.minX + r.maxX) / 2, y: (r.minY + r.maxY) / 2 });
 const silkInflate = (r: silkRect, m: number): silkRect => ({ minX: r.minX - m, minY: r.minY - m, maxX: r.maxX + m, maxY: r.maxY + m });
-const silkUnion = (a: silkRect, b: silkRect): silkRect => ({ minX: Math.min(a.minX, b.minX), minY: Math.min(a.minY, b.minY), maxX: Math.max(a.maxX, b.maxX), maxY: Math.max(a.maxY, b.maxY) });
 const silkInside = (inner: silkRect, outer: silkRect): boolean => inner.minX >= outer.minX && inner.minY >= outer.minY && inner.maxX <= outer.maxX && inner.maxY <= outer.maxY;
 // min rect-to-rect gap (0 if overlapping/touching).
 function silkGap(a: silkRect, b: silkRect): number {
@@ -8555,11 +8551,20 @@ function silkGap(a: silkRect, b: silkRect): number {
 }
 // boardOutlineIds collects every BOARD_OUTLINE-layer(11) primitive id — lines, arcs,
 // AND polylines (a rounded/closed outline is often a single pcb_PrimitivePolyline).
-async function boardOutlineIds(): Promise<string[]> {
+function silkInventory<T>(value: T[] | null | undefined, name: string): T[] {
+	if (!Array.isArray(value)) throw new Error(`Unreadable ${name} inventory`);
+	return value;
+}
+async function boardOutlineIds(strict = false): Promise<string[]> {
 	const ids: string[] = [];
-	for (const l of (await eda.pcb_PrimitiveLine.getAll()) ?? []) if (Number(l.getState_Layer()) === 11) ids.push(l.getState_PrimitiveId());
-	for (const a of (await eda.pcb_PrimitiveArc.getAll()) ?? []) if (Number(a.getState_Layer()) === 11) ids.push(a.getState_PrimitiveId());
-	try { for (const p of (await eda.pcb_PrimitivePolyline.getAll()) ?? []) if (Number(p.getState_Layer()) === 11) ids.push(p.getState_PrimitiveId()); } catch { /* polyline API optional */ }
+	const inventory = <T>(value: T[] | null | undefined, name: string) => strict ? silkInventory(value, name) : value ?? [];
+	const layer = (value: unknown) => {
+		if (strict && (typeof value !== 'number' || !Number.isFinite(value))) throw new Error('Outline primitive layer unavailable');
+		return Number(value);
+	};
+	for (const l of inventory(await eda.pcb_PrimitiveLine.getAll(), 'outline lines')) if (layer(l.getState_Layer()) === 11) ids.push(l.getState_PrimitiveId());
+	for (const a of inventory(await eda.pcb_PrimitiveArc.getAll(), 'outline arcs')) if (layer(a.getState_Layer()) === 11) ids.push(a.getState_PrimitiveId());
+	try { for (const p of inventory(await eda.pcb_PrimitivePolyline.getAll(), 'outline polylines')) if (layer(p.getState_Layer()) === 11) ids.push(p.getState_PrimitiveId()); } catch (err) { if (strict) throw err; /* optional for other callers */ }
 	return ids;
 }
 
@@ -8586,107 +8591,162 @@ function silkCorridor(cb: silkRect, dx: number, dy: number, obs: silkObs[], self
 }
 
 const pcbSilkAlign: Handler = async (payload) => {
-	// Position-aware auto-placement of component designators: for each part pick the
-	// best of up/down/left/right by LOCAL FREE SPACE + board position + crowd axis,
-	// avoiding other parts' PADS (the #1 fix — a label over exposed copper is clipped),
-	// bodies, keep-out regions, the board edge, and other labels. Rotation stays 0
-	// (upright, keeps `pcb check` clean); bottom parts go to bottom silk + mirror.
+	for (const key of ['offset', 'spacing']) if (payload[key] !== undefined && typeof payload[key] !== 'number') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `${key} must be a number`);
+	if (payload.side !== undefined && typeof payload.side !== 'string') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'side must be a string');
 	const side = (optionalString(payload, 'side') ?? '').toLowerCase();
-	const refs = Array.isArray(payload.refs) ? (payload.refs as unknown[]).map(String) : null;
-	// spacing coefficient scales the drift distance so labels sit further from the
-	// footprint (assembly / hand-solder room). Cassembly is the HARD minimum gap the
-	// label keeps from its OWN pads (the body is inflated by it) so a designator never
-	// crowds the copper you solder to; other-pad margin Cpad is larger still.
+	const refs = optionalStringArray(payload, 'refs') ?? null;
+	if (refs && (!refs.length || refs.some(ref => !ref.trim()))) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'refs must contain nonempty designators');
 	const spacing = optionalNumber(payload, 'spacing') ?? 1.5;
-	const baseOffset = (optionalNumber(payload, 'offset') ?? 15) * spacing;
-
+	const offset = optionalNumber(payload, 'offset') ?? 15;
+	if (!Number.isFinite(spacing) || spacing <= 0 || !Number.isFinite(offset) || offset < 0
+		|| (side && !['top', 'bottom', 'left', 'right'].includes(side))) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Invalid silk placement offset, spacing or side.');
+	const baseOffset = offset * spacing;
+	if (!Number.isFinite(baseOffset)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Silk offset × spacing is not finite.');
 	const Cpad = 12, Cedge = 15, Cregion = 6, Clabel = 6, Cbody = 6, HALO = 2, Cassembly = 10;
 	const STEP = 22, R_MAX = 6, MAX_SCAN = 200, GAP_CAP = 120;
-
-	let comps;
-	try { comps = await eda.pcb_PrimitiveComponent.getAll(); }
-	catch (err) { throw edaError(err, 'Failed to list components for silk-align.'); }
-	comps = comps ?? [];
-
-	const bbox1 = async (id: string): Promise<silkRect | null> => {
-		try { return (await eda.pcb_Primitive.getPrimitivesBBox([id])) as silkRect; } catch { return null; }
-	};
-
-	// board-outline safeArea (containment box, shrunk by Cedge).
-	let safeArea: silkRect | null = null;
-	{
-		const olIds = await boardOutlineIds();
-		if (olIds.length) {
-			try { const b = (await eda.pcb_Primitive.getPrimitivesBBox(olIds)) as silkRect; if (b) safeArea = silkInflate(b, -Cedge); } catch { /* no outline */ }
-		}
-	}
-	const boardCenter = safeArea ? silkCenter(safeArea) : null;
-
-	// ── one-time obstacle build: pads (by owner) + bodies (pad-union) + regions + frozen silk ──
-	const OBS: silkObs[] = [];
-	const BODY: Record<string, silkRect> = {};
-	for (const c of comps) {
-		const cid = c.getState_PrimitiveId();
-		let pads: Array<{ getState_PrimitiveId(): string; getState_X?(): number; getState_Y?(): number }> = [];
-		try { pads = (await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(cid)) ?? []; } catch { pads = []; }
-		let body: silkRect | null = null;
-		for (const p of pads) {
-			let pr = await bbox1(p.getState_PrimitiveId());
-			if (!pr) { const x = p.getState_X?.() ?? 0, y = p.getState_Y?.() ?? 0; pr = { minX: x - 15, minY: y - 15, maxX: x + 15, maxY: y + 15 }; }
-			OBS.push({ rect: silkInflate(pr, Cpad), kind: 'PAD', owner: cid, m: 0 });
-			body = body ? silkUnion(body, pr) : pr;
-		}
-		if (!body) body = await bbox1(cid);
-		if (body) { BODY[cid] = body; OBS.push({ rect: body, kind: 'BODY', owner: cid, m: Cbody }); }
-	}
-	for (const r of (await eda.pcb_PrimitiveRegion.getAll()) ?? []) {
-		const rb = await bbox1(r.getState_PrimitiveId());
-		if (!rb) continue;
-		const rules = (r.getState_RuleType?.() ?? []) as unknown as number[];
-		OBS.push({ rect: rb, kind: rules.includes(2) ? 'REGION_H' : 'REGION_S', owner: '', m: Cregion });
-	}
-	for (const s of (await eda.pcb_PrimitiveString.getAll()) ?? []) {
-		const ly = Number(s.getState_Layer?.());
-		if (ly !== 3 && ly !== 4) continue;
-		const sb = await bbox1(s.getState_PrimitiveId());
-		if (sb) OBS.push({ rect: sb, kind: 'FROZEN', owner: '', m: Clabel });
-	}
-
-	// ── build items (in-scope designators) + seed placed-label boxes; freeze the rest ──
-	type Item = { c: typeof comps[number]; cid: string; desig: string; attrId: string; cb: silkRect; w: number; h: number; offx: number; offy: number; layer: number; curLayer: number; curMirror: boolean };
+	let comps = silkInventory(await eda.pcb_PrimitiveComponent.getAll(), 'components');
+	const componentIdentity = (c: typeof comps[number]) => JSON.stringify([c.getState_PrimitiveId(), c.getState_Designator(), c.getState_Layer()]);
+	const initialIdentities = comps.map(componentIdentity).sort();
+	type Item = { cid: string; desig: string; attrId: string; cb: silkRect; w: number; h: number; offx: number; offy: number; layer: number; targetLayer: number; targetMirror: boolean };
 	const items: Item[] = [];
 	const skipped: Array<Record<string, unknown>> = [];
-	const LAB: Record<string, silkRect> = {};
-	for (const c of comps) {
-		const cid = c.getState_PrimitiveId();
-		const desig = c.getState_Designator?.() ?? '';
-		if (!desig) continue;
-		const cb = BODY[cid];
-		if (!cb) { skipped.push({ designator: desig, reason: 'no component body' }); continue; }
-		let attrId: string | null = null;
-		try {
-			const ids = await eda.pcb_PrimitiveAttribute.getAllPrimitiveId(cid);
-			for (const id of ids ?? []) {
-				const a = await eda.pcb_PrimitiveAttribute.get(id);
-				if (a && (String(a.getState_Key?.() ?? '').toLowerCase().includes('desig') || a.getState_Value?.() === desig)) { attrId = id; break; }
+	const unresolved: Array<Record<string, unknown>> = [];
+	const details: Array<Record<string, unknown>> = [];
+	const normalization: Array<Record<string, unknown>> = [];
+	const appliedIds: string[] = [];
+	const verification: Array<Record<string, unknown>> = [];
+	const finish = (verified: boolean) => ({ result: {
+		aligned: details.filter(d => d.ok === true).length, warned: 0, unresolved: unresolved.length, skipped: skipped.length,
+		verified, partial: !verified && (appliedIds.length > 0 || normalization.length > 0),
+		details, unresolvedDetails: unresolved, skippedDetails: skipped, normalization, appliedIds, verification,
+		geometryScope: 'rendered component envelopes, measured pads and text; outline bounding-box containment',
+	} });
+	const bbox1 = async (id: string): Promise<silkRect> => {
+		const b = await eda.pcb_Primitive.getPrimitivesBBox([id]);
+		if (!validSilkRect(b)) throw new Error(`Missing or invalid rendered bbox: ${id}`);
+		return { minX: b.minX, minY: b.minY, maxX: b.maxX, maxY: b.maxY };
+	};
+	let safeArea: silkRect | null = null;
+	let OBS: silkObs[] = [];
+	const BODY: Record<string, silkRect> = {};
+	const LAB: Record<string, SilkLabel> = {};
+	const onSilk = (layer: number) => layer === 3 || layer === 4;
+	const textVisible = (a: { getState_KeyVisible?(): unknown; getState_ValueVisible?(): unknown }) => {
+		const key = a.getState_KeyVisible?.(), value = a.getState_ValueVisible?.();
+		if (typeof key !== 'boolean' || typeof value !== 'boolean') throw new Error('Text visibility unavailable');
+		return key || value;
+	};
+	const readPose = (a: { getState_X(): unknown; getState_Y(): unknown; getState_Layer(): unknown; getState_Rotation(): unknown; getState_Mirror(): unknown; getState_Reverse(): unknown }) => {
+		const x = a.getState_X(), y = a.getState_Y(), layer = a.getState_Layer(), rotation = a.getState_Rotation(), mirror = a.getState_Mirror(), reverse = a.getState_Reverse();
+		if (typeof x !== 'number' || !Number.isFinite(x) || typeof y !== 'number' || !Number.isFinite(y)
+			|| typeof layer !== 'number' || !Number.isFinite(layer) || typeof rotation !== 'number' || !Number.isFinite(rotation)
+			|| typeof mirror !== 'boolean' || typeof reverse !== 'boolean') throw new Error('Designator pose fields unavailable');
+		return { x, y, layer, rotation, mirror, reverse };
+	};
+	const readLayer = (value: unknown): number => {
+		if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('Obstacle layer unavailable');
+		return value;
+	};
+	const assertSelectedIdentity = (a: { getState_PrimitiveId(): unknown; getState_ParentPrimitiveId(): unknown; getState_Value(): unknown; getState_KeyVisible(): unknown; getState_ValueVisible(): unknown }, cid: string, desig: string, attrId: string) => {
+		if (!attrId || a.getState_PrimitiveId() !== attrId || a.getState_ParentPrimitiveId() !== cid || a.getState_Value() !== desig) throw new Error(`Designator identity mismatch: ${desig}`);
+		if (!textVisible(a) || a.getState_ValueVisible() !== true) throw new Error(`Designator visibility not verified: ${desig}`);
+	};
+	const readSelected = async (it: Item) => {
+		const a = await eda.pcb_PrimitiveAttribute.get(it.attrId);
+		if (!a) throw new Error(`Designator disappeared: ${it.desig}`);
+		assertSelectedIdentity(a, it.cid, it.desig, it.attrId);
+		const pose = readPose(a);
+		return { a, pose };
+	};
+	const readObstacles = async () => {
+		const obs: silkObs[] = [];
+		comps = silkInventory(await eda.pcb_PrimitiveComponent.getAll(), 'fresh components');
+		if (JSON.stringify(comps.map(componentIdentity).sort()) !== JSON.stringify(initialIdentities)) throw new Error('Component identity/side inventory changed during silk alignment');
+		const ids = await boardOutlineIds(true);
+		if (!ids.length) throw new Error('Board outline bbox unavailable; cannot verify placement bounds.');
+		const outline = await eda.pcb_Primitive.getPrimitivesBBox(ids);
+		if (!validSilkRect(outline) || !validSilkRect(silkInflate(outline, -Cedge))) throw new Error('Invalid board outline bbox.');
+		safeArea = silkInflate(outline, -Cedge);
+		for (const c of comps) {
+			const cid = c.getState_PrimitiveId(), componentLayer = readLayer(c.getState_Layer());
+			if (componentLayer !== 1 && componentLayer !== 2) throw new Error(`Unknown component side: ${cid}`);
+			const body = await bbox1(cid); // never replace the rendered envelope with pad union
+			BODY[cid] = body;
+			obs.push({ rect: body, kind: 'BODY', owner: cid, m: Cbody, layer: componentLayer === 2 ? 4 : 3 });
+			for (const pad of silkInventory(await eda.pcb_PrimitiveComponent.getAllPinsByPrimitiveId(cid), `pads of ${cid}`)) {
+				const padLayer = readLayer(pad.getState_Layer());
+				if (![1, 2, 12].includes(padLayer)) throw new Error(`Unknown pad layer: ${pad.getState_PrimitiveId()}`);
+				obs.push({ rect: silkInflate(await bbox1(pad.getState_PrimitiveId()), Cpad), kind: 'PAD', owner: cid, m: 0,
+					...(padLayer === 12 ? {} : { layer: padLayer === 2 ? 4 : 3 }) });
 			}
-		} catch { /* skip below */ }
-		if (!attrId) { if (!refs || refs.includes(desig)) skipped.push({ designator: desig, reason: 'no designator attribute found' }); continue; }
-		const a = await eda.pcb_PrimitiveAttribute.get(attrId);
-		const db = await bbox1(attrId);
-		if (!a || !db) { skipped.push({ designator: desig, reason: 'designator attribute not readable' }); continue; }
-		// out-of-scope designators are frozen obstacles (still block in-scope placement).
-		if (refs && !refs.includes(desig)) { OBS.push({ rect: db, kind: 'FROZEN', owner: '', m: Clabel }); continue; }
-		const ax = a.getState_X() ?? 0, ay = a.getState_Y() ?? 0;
-		const bc = silkCenter(db);
-		items.push({
-			c, cid, desig, attrId, cb, w: db.maxX - db.minX, h: db.maxY - db.minY,
-			offx: bc.x - ax, offy: bc.y - ay, layer: Number(c.getState_Layer?.() ?? 1),
-			curLayer: Number(a.getState_Layer?.() ?? 3), curMirror: !!a.getState_Mirror?.(),
-		});
-		LAB[attrId] = db;
-	}
-
+		}
+		for (const region of silkInventory(await eda.pcb_PrimitiveRegion.getAll(), 'regions')) {
+			const layer = readLayer(region.getState_Layer());
+			// Internal copper restrictions do not obstruct outer silkscreen.
+			if (layer !== 1 && layer !== 2 && layer !== 12 && layer !== 3 && layer !== 4) continue;
+			const rules = region.getState_RuleType();
+			if (!Array.isArray(rules) || !rules.every(rule => [2, 5, 6, 7, 8, 9].includes(rule))) throw new Error('Region rules unavailable or unsupported');
+			obs.push({ rect: await bbox1(region.getState_PrimitiveId()), kind: rules.includes(2) ? 'REGION_H' : 'REGION_S', owner: region.getState_PrimitiveId(), m: Cregion,
+				...(layer === 12 ? {} : { layer: layer === 2 || layer === 4 ? 4 : 3 }) });
+		}
+		for (const text of silkInventory(await eda.pcb_PrimitiveString.getAll(), 'strings')) {
+			const layer = readLayer(text.getState_Layer());
+			if (onSilk(layer)) obs.push({ rect: await bbox1(text.getState_PrimitiveId()), kind: 'FROZEN', owner: text.getState_PrimitiveId(), m: Clabel, layer });
+		}
+		const selected = new Set(items.map(it => it.attrId));
+		for (const attr of silkInventory(await eda.pcb_PrimitiveAttribute.getAll(), 'attributes')) {
+			const layer = readLayer(attr.getState_Layer());
+			if (!selected.has(attr.getState_PrimitiveId()) && onSilk(layer) && textVisible(attr)) {
+				obs.push({ rect: await bbox1(attr.getState_PrimitiveId()), kind: 'FROZEN', owner: attr.getState_PrimitiveId(), m: Clabel, layer });
+			}
+		}
+		return obs;
+	};
+	const measure = async (it: Item, expected?: { x: number; y: number }) => {
+		const { pose } = await readSelected(it), { x, y } = pose;
+		if (pose.layer !== it.targetLayer || pose.mirror !== it.targetMirror || pose.rotation !== 0 || pose.reverse) throw new Error(`Designator pose not verified: ${it.desig}`);
+		if (expected && (Math.abs(x - expected.x) > 1e-6 || Math.abs(y - expected.y) > 1e-6)) throw new Error(`Designator anchor mismatch: ${it.desig}`);
+		const b = await bbox1(it.attrId), bc = silkCenter(b);
+		it.w = b.maxX - b.minX; it.h = b.maxY - b.minY; it.offx = bc.x - x; it.offy = bc.y - y;
+		LAB[it.attrId] = { rect: silkInflate(b, HALO), layer: it.targetLayer };
+		return b;
+	};
+	// Read all requested identities and geometry before any normalization or position write.
+	try {
+		for (const c of comps) {
+			const cid = c.getState_PrimitiveId(), desig = c.getState_Designator?.() ?? '';
+			if (!desig || (refs && !refs.includes(desig))) continue;
+			const attrs = silkInventory(await eda.pcb_PrimitiveAttribute.getAll(cid), `attributes of ${cid}`);
+			const matches = attrs.filter(a => String(a.getState_Key?.() ?? '').toLowerCase().includes('desig'));
+			const matchingValue = attrs.filter(a => a.getState_Value?.() === desig);
+			const a = matches.length === 1 ? matches[0] : matches.length === 0 && matchingValue.length === 1 ? matchingValue[0] : null;
+			if (!a || !textVisible(a)) { skipped.push({ designator: desig, reason: 'Designator identity ambiguous, missing or hidden' }); continue; }
+			if (typeof a.getState_PrimitiveId() !== 'string') throw new Error(`Designator ID unavailable: ${desig}`);
+			assertSelectedIdentity(a, cid, desig, a.getState_PrimitiveId());
+			readPose(a);
+			const layer = Number(c.getState_Layer()), b = await bbox1(a.getState_PrimitiveId());
+			items.push({ cid, desig, attrId: a.getState_PrimitiveId(), cb: await bbox1(cid), w: b.maxX - b.minX, h: b.maxY - b.minY,
+				offx: 0, offy: 0, layer, targetLayer: layer === 2 ? 4 : 3, targetMirror: layer === 2 });
+		}
+		if (refs) for (const ref of new Set(refs)) if (!items.some(it => it.desig === ref)) skipped.push({ designator: ref, reason: 'Requested designator not uniquely readable' });
+		for (const it of items) if (items.filter(other => other.desig === it.desig).length !== 1) skipped.push({ designator: it.desig, reason: 'Duplicate designator identity' });
+		if (!items.length || skipped.length) return finish(false);
+		OBS = await readObstacles();
+		for (const it of items) {
+			const { pose } = await readSelected(it);
+			if (pose.rotation !== 0 || pose.layer !== it.targetLayer || pose.mirror !== it.targetMirror || pose.reverse) {
+				// Measure the actual upright text, not the old rotated/mirrored bbox.
+				const entry: Record<string, unknown> = { designator: it.desig, primitiveId: it.attrId, requested: { rotation: 0, layer: it.targetLayer, mirror: it.targetMirror, reverse: false }, ok: false };
+				normalization.push(entry);
+				const result = await eda.pcb_PrimitiveAttribute.modify(it.attrId, entry.requested as never);
+				if (!result) throw new Error(`Normalization returned no object: ${it.desig}`);
+				await measure(it); entry.ok = true;
+			} else await measure(it);
+		}
+		OBS = await readObstacles(); // pose normalization can change host-rendered envelopes
+		for (const it of items) it.cb = BODY[it.cid];
+	} catch (err) { skipped.push({ reason: String(err), phase: 'preflight-or-normalization' }); return finish(false); }
+	const boardCenter = safeArea ? silkCenter(safeArea) : null;
 	// ── most-constrained-first order (MRV): fewest free sides / closest to edge first ──
 	const N = [0, 1], S = [0, -1], E = [1, 0], W = [-1, 0];
 	const diags = [[1, 1], [-1, 1], [1, -1], [-1, -1]];
@@ -8750,68 +8810,56 @@ const pcbSilkAlign: Handler = async (payload) => {
 		return scored.map(s => s.dir).concat(diags);
 	};
 
-	const scoreSlot = (L: silkRect, it: Item, rank: number): number => {
-		let padH = 0, ownPadH = 0, off = 0, khard = 0, lab = 0, oBody = 0, ksoft = 0, minClr = Infinity;
-		if (safeArea && !silkInside(L, safeArea)) off = 1;
-		for (const o of OBS) {
-			if (o.kind === 'PAD') { if (o.owner !== it.cid) { if (silkOverlap(L, o.rect, 0)) padH++; } else if (silkOverlap(L, o.rect, 0)) ownPadH++; }
-			else if (o.kind === 'BODY') { if (o.owner !== it.cid && silkOverlap(L, o.rect, o.m)) oBody++; }
-			else if (o.kind === 'REGION_H') { if (silkOverlap(L, o.rect, o.m)) khard++; }
-			else if (o.kind === 'REGION_S') { if (silkOverlap(L, o.rect, o.m)) ksoft++; }
-			else if (o.kind === 'FROZEN') { if (silkOverlap(L, o.rect, o.m)) lab++; }
-			if (o.kind === 'BODY' && o.owner === it.cid) continue;
-			const g = silkGap(L, o.rect); if (g < minClr) minClr = g;
-		}
-		for (const [id, lb] of Object.entries(LAB)) { if (id !== it.attrId && silkOverlap(L, lb, Clabel)) lab++; }
-		const reward = -25 * Math.min(minClr, 30) / 30;
-		return 1e9 * padH + 1e8 * off + 1e6 * khard + 4e3 * ownPadH + 1e4 * lab + 5e3 * oBody + 100 * ksoft + rank * 25 + reward;
+	const evaluate = (L: silkRect, it: Item, rank: number) => {
+		const facts = silkSlotFacts(L, it.cid, it.attrId, it.targetLayer, OBS, LAB, safeArea, Clabel);
+		return { ...facts, cost: 100 * facts.softRegions + rank * 25 - 25 * Math.min(facts.minClearance, 30) / 30 };
 	};
-
-	const aligned: Array<Record<string, unknown>> = [];
-	const unresolved: Array<Record<string, unknown>> = [];
+	type Plan = { it: Item; lx: number; ly: number; L: silkRect; cost: number; x: number; y: number };
+	const plans: Plan[] = [];
 	for (const it of items) {
-		const cc = silkCenter(it.cb);
-		// offset from the body inflated by the assembly-clearance floor, so the label
-		// keeps ≥ Cassembly from its OWN pads (never crowds the copper).
-		const cbP = silkInflate(it.cb, Cassembly);
-		const hw = (cbP.maxX - cbP.minX) / 2, hh = (cbP.maxY - cbP.minY) / 2;
-		const pref = rankSides(it);
-		let best: { lx: number; ly: number; L: silkRect; cost: number } | null = null;
-		for (let ring = 0; ring < R_MAX && !(best && best.cost < 1e4); ring++) {
+		const cc = silkCenter(it.cb), cbP = silkInflate(it.cb, Cassembly);
+		const hw = (cbP.maxX - cbP.minX) / 2, hh = (cbP.maxY - cbP.minY) / 2, pref = rankSides(it);
+		let best: Plan | null = null;
+		for (let ring = 0; ring < R_MAX && !best; ring++) {
 			const d = baseOffset + ring * STEP;
 			for (let i = 0; i < pref.length; i++) {
-				const [dx, dy] = pref[i];
-				const lx = cc.x + dx * (hw + d + it.w / 2);
-				const ly = cc.y + dy * (hh + d + it.h / 2);
+				const [dx, dy] = pref[i], lx = cc.x + dx * (hw + d + it.w / 2), ly = cc.y + dy * (hh + d + it.h / 2);
 				const L = silkInflate({ minX: lx - it.w / 2, minY: ly - it.h / 2, maxX: lx + it.w / 2, maxY: ly + it.h / 2 }, HALO);
-				const cost = scoreSlot(L, it, i < 4 ? i : 3);
-				if (!best || cost < best.cost) best = { lx, ly, L, cost };
-				if (cost < 1e4) break;
+				const facts = evaluate(L, it, i < 4 ? i : 3);
+				if (facts.clean && (!best || facts.cost < best.cost)) best = { it, lx, ly, L, cost: facts.cost, x: lx - it.offx, y: ly - it.offy };
 			}
 		}
-		if (!best || best.cost >= 1e8) {
-			unresolved.push({ designator: it.desig, reason: best && best.cost >= 1e9 ? 'pad-collision' : 'boxed-in-or-off-board', bestCost: best ? best.cost : null });
-			continue;
-		}
-		const layer = it.layer === 2 ? 4 : 3, mirror = it.layer === 2;
-		const mod: Record<string, unknown> = { x: best.lx - it.offx, y: best.ly - it.offy, rotation: 0 };
-		if (layer !== it.curLayer) mod.layer = layer;
-		if (mirror !== it.curMirror) mod.mirror = mirror;
-		try {
-			let r;
-			try { r = await eda.pcb_PrimitiveAttribute.modify(it.attrId, mod as never); }
-			catch (e) {
-				if ('mirror' in mod || 'layer' in mod) { delete mod.mirror; delete mod.layer; r = await eda.pcb_PrimitiveAttribute.modify(it.attrId, mod as never); }
-				else throw e;
-			}
-			LAB[it.attrId] = best.L;
-			aligned.push({ designator: it.desig, x: Math.round(best.lx * 100) / 100, y: Math.round(best.ly * 100) / 100, side: pref[0], clean: best.cost < 1e4, warnBodyOverlap: best.cost >= 5e3 && best.cost < 1e4, ok: !!r });
-		}
-		catch (err) { skipped.push({ designator: it.desig, reason: `modify failed: ${String(err)}` }); }
+		if (!best) unresolved.push({ designator: it.desig, primitiveId: it.attrId, reason: 'No collision-free slot within search range' });
+		else { plans.push(best); LAB[it.attrId] = { rect: best.L, layer: it.targetLayer }; }
 	}
-
-	const warned = aligned.filter(a => a.warnBodyOverlap === true).length;
-	return { result: { aligned: aligned.length, warned, unresolved: unresolved.length, skipped: skipped.length, details: aligned, unresolvedDetails: unresolved, skippedDetails: skipped } };
+	// An unresolved label remains in place. Do not partially apply the positional plan.
+	if (unresolved.length) return finish(false);
+	for (const plan of plans) {
+		const { it, x, y } = plan;
+		try {
+			const { pose } = await readSelected(it);
+			if (pose.layer !== it.targetLayer || pose.mirror !== it.targetMirror || pose.rotation !== 0 || pose.reverse) throw new Error('Designator pose changed before position write');
+			// Record attempted IDs even when the SDK throws/returns undefined: a write may have happened.
+			appliedIds.push(it.attrId);
+			const r = await eda.pcb_PrimitiveAttribute.modify(it.attrId, { x, y, rotation: 0, layer: it.targetLayer as never, mirror: it.targetMirror, reverse: false });
+			if (!r) throw new Error('modify returned no object');
+			details.push({ designator: it.desig, primitiveId: it.attrId, x, y, clean: false, ok: true });
+		} catch (err) { skipped.push({ designator: it.desig, primitiveId: it.attrId, reason: String(err), phase: 'position-write' }); break; }
+	}
+	// Fresh reads of all planned labels and every obstacle; planned rectangles are never evidence.
+	try {
+		OBS = await readObstacles();
+		const actual = new Map<string, silkRect>();
+		for (const plan of plans) actual.set(plan.it.attrId, await measure(plan.it, { x: plan.x, y: plan.y }));
+		for (const plan of plans) {
+			const it = plan.it, bbox = actual.get(it.attrId)!;
+			const facts = evaluate(silkInflate(bbox, HALO), it, 0);
+			verification.push({ designator: it.desig, primitiveId: it.attrId, bbox, clean: facts.clean, conflicts: facts.conflicts });
+			const detail = details.find(d => d.primitiveId === it.attrId);
+			if (detail) detail.clean = facts.clean;
+		}
+	} catch (err) { skipped.push({ reason: String(err), phase: 'fresh-verification' }); }
+	return finish(skipped.length === 0 && details.length === items.length && verification.length === items.length && verification.every(v => v.clean === true));
 };
 
 // pcb.silk.list — enumerate every SILKSCREEN TEXT primitive with its layer +

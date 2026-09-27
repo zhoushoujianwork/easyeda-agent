@@ -917,6 +917,10 @@ func (r *applyRunner) execute() error {
 			}
 		}
 		fmt.Fprintf(r.stderr, "\n✗ step [%d/%d] %s failed: %v\n", i+1, len(r.pb.Steps), ref, execErr)
+		var silkErr *unverifiedSilkAlignmentError
+		if errors.As(execErr, &silkErr) {
+			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
+		}
 		var boundaryErr *unverifiedPourBoundaryError
 		if errors.As(execErr, &boundaryErr) {
 			fmt.Fprintf(r.stderr, "  created pour boundary is unverified — stopping before dependent steps; journal: %s\n", r.journalPath)
@@ -976,6 +980,10 @@ func (r *applyRunner) executeStep(s *playbookStep, catalog map[string]protocol.A
 	var lastErr error
 	for attempt := 0; ; attempt++ {
 		result, err := r.executeOnce(s, timeout)
+		var silkErr *unverifiedSilkAlignmentError
+		if errors.As(err, &silkErr) {
+			return nil, err
+		}
 		var boundaryErr *unverifiedPourBoundaryError
 		if errors.As(err, &boundaryErr) {
 			return nil, err // A generic verify or retry must not hide/replay this partial write.
@@ -1100,6 +1108,9 @@ func (r *applyRunner) runAction(action string, payload map[string]any, timeout t
 	// step failure — before #151 a partial application errored at wire level
 	// and failed the step; the ok:true re-shaping must not silently weaken the
 	// record-replay regression gate.
+	if err := silkAlignmentError(action, parsed.Result); err != nil {
+		return anyResult(parsed.Result), err
+	}
 	if err := pourBoundaryError(action, parsed.Result); err != nil {
 		return anyResult(parsed.Result), err
 	}
@@ -1164,6 +1175,10 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 		}
 	}
 	if code != 0 {
+		var silkErr *unverifiedSilkAlignmentError
+		if errors.As(commandErr, &silkErr) {
+			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)
+		}
 		var boundaryErr *unverifiedPourBoundaryError
 		if errors.As(commandErr, &boundaryErr) {
 			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)

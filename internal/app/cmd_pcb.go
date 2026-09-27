@@ -4280,15 +4280,18 @@ with 'pcb outline-get'; its rendered bbox includes the stroke. Run BEFORE pour/r
 		var refs []string
 		c := &cobra.Command{
 			Use:   "silk-align",
-			Short: "Align component designators (位号) with collision avoidance (no overlaps)",
+			Short: "Place component designators (位号) and verify measured collisions",
 			Long: `Reposition every component's DESIGNATOR silkscreen with COLLISION AVOIDANCE: for
 each label it searches candidate slots around the footprint (preferred --side first,
 then the other directions, at increasing distance) and takes the first that hits no
-other component body and no already-placed label — so dense-cluster designators get
+component envelope, pad or other measured label — so dense-cluster designators get
 pushed into open space instead of piling on top of each other. --side (top|bottom|
 left|right) biases the search, --offset is the base gap, --refs limits to specific
-parts. Reports unresolvedCollisions (still-overlapping labels ⇒ the layout is too
-dense — loosen placement). Verify with 'pcb snapshot'.`,
+parts. Requires readable rendered geometry and outline bounds. A complete plan is
+built before position writes; upright pose normalization is measured separately.
+Fresh text bboxes and pose are checked after writing. Unresolved, missing or
+unverified geometry returns a nonzero exit with appliedIds and partial evidence;
+read the actual state before recomputing. Snapshot is supplementary evidence.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda pcb silk-align
   easyeda pcb silk-align --side bottom --offset 15

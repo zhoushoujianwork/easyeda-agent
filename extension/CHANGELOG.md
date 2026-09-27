@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1-dev.14] - 2026-09-27
+
+- Separate hard collisions from placement preferences; include the owner's complete rendered envelope.
+- Reject unknown geometry, plan before positional writes, and verify actual text pose/bboxes after writes.
+- Preserve normalization/attempted IDs on partial results; CLI and Apply stop before retries or dependent writes.
+- Offline tests do not certify the pending live PCB layout or v1.8.0 release.
+
 ## [1.7.1-dev.13] — 2026-09-27
 
 - CLI 公共 PCB 投影同步移动/旋转 POLYGON 绝对路径，保留孔洞、ARC 和相对尺寸形状；未知或损坏路径拒绝候选。

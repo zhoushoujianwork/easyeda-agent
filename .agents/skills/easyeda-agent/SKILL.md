@@ -4,7 +4,7 @@ description: "通过本地 easyeda CLI、daemon 和连接器操作嘉立创EDA�
 license: MIT
 metadata:
   author: zhoushoujianwork
-  version: "1.7.1-dev.13"
+  version: "1.7.1-dev.14"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 

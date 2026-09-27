@@ -139,6 +139,15 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		return errors.Join(errActionFailed, &actionError{Action: action, Code: parsed.Error.Code,
 			Message: parsed.Error.Message, Detail: parsed.Error.Detail})
 	}
+	if action == "pcb.silk.align" {
+		var envelope struct {
+			Result map[string]any `json:"result"`
+		}
+		if err := json.Unmarshal(respBody, &envelope); err != nil {
+			return errActionFailed
+		}
+		return silkAlignmentError(action, envelope.Result)
+	}
 	switch action {
 	case "pcb.import_changes":
 		return pcbImportResultError(action, map[string]any{"imported": parsed.Result.Imported,
@@ -193,6 +202,29 @@ func pourBoundaryError(action string, result map[string]any) error {
 	partial, _ := result["partial"].(bool)
 	if !verified || partial || asString(result["primitiveId"]) == "" {
 		return &unverifiedPourBoundaryError{primitiveID: asString(result["primitiveId"])}
+	}
+	return nil
+}
+
+type unverifiedSilkAlignmentError struct{}
+
+func (*unverifiedSilkAlignmentError) Error() string {
+	return "pcb.silk.align: placement not verified; preserve appliedIds, normalization and fresh geometry before recomputing; do not blindly retry"
+}
+
+func silkAlignmentError(action string, result map[string]any) error {
+	if action != "pcb.silk.align" {
+		return nil
+	}
+	if result["verified"] != true || result["partial"] == true {
+		return &unverifiedSilkAlignmentError{}
+	}
+	// Counters are mandatory: old connectors could report success without a geometry verification.
+	for _, key := range []string{"unresolved", "skipped"} {
+		count, ok := result[key].(float64)
+		if !ok || count != 0 {
+			return &unverifiedSilkAlignmentError{}
+		}
 	}
 	return nil
 }
@@ -379,6 +411,9 @@ func requestActionOnce(cfg *appConfig, action, window string, payload any, timeo
 	if err := pourBoundaryError(action, res.Result); err != nil {
 		return res, err
 	}
+	if err := silkAlignmentError(action, res.Result); err != nil {
+		return res, err
+	}
 	return res, pcbImportResultError(action, res.Result)
 }
 
@@ -432,6 +467,9 @@ func dispatchCapture(cfg *appConfig, action, window string, payload any, stdout 
 		return nil, errActionFailed
 	}
 	res := &actionResult{OK: parsed.OK, Result: parsed.Result, Artifacts: parsed.Artifacts}
+	if err := silkAlignmentError(action, res.Result); err != nil {
+		return res, err
+	}
 	return res, pcbImportResultError(action, res.Result)
 }
 
