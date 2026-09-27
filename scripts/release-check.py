@@ -60,6 +60,18 @@ def basic_scope(manifest: dict) -> bool:
         if any(key in manifest for key in ("acceptanceScope", "deferredScope", "deferredUntil")):
             raise ValueError("legacy evidence cannot override its full acceptance scope")
         return False
+    if manifest.get("schemaVersion") == 3:
+        decision = manifest.get("scopeDecision")
+        if (manifest.get("acceptanceScope") != "cli-fixes"
+                or manifest.get("deferredScope") != "full-design-e2e"
+                or manifest.get("deferredUntil") != "follow-up"
+                or not isinstance(decision, dict)
+                or decision.get("approvedBy") != "user"
+                or decision.get("version") != manifest.get("version")
+                or not isinstance(decision.get("date"), str)
+                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", decision.get("date", ""))):
+            raise ValueError("schema 3 requires explicit user-approved cli-fixes scope and full-design-e2e follow-up")
+        return False
     if (manifest.get("schemaVersion") != 2 or manifest.get("acceptanceScope") != "basic-cli"
             or manifest.get("deferredScope") != "advanced-cli"
             or manifest.get("deferredUntil") != "next-release"):
@@ -67,7 +79,7 @@ def basic_scope(manifest: dict) -> bool:
     return True
 
 
-def check_case_results(contents: dict[str, bytes], basic: bool = False) -> None:
+def check_case_results(contents: dict[str, bytes], basic: bool = False, cli_fixes: bool = False) -> None:
     cases = case_rows(contents["test-cases.md"])
     report = case_rows(contents["test-report.md"])
     required = BASIC_CASES | ADVANCED_CASES if basic else REQUIRED_CASES
@@ -76,7 +88,10 @@ def check_case_results(contents: dict[str, bytes], basic: bool = False) -> None:
         raise ValueError("acceptance report must cover every test case required by its declared scope")
     for case_id, cells in report.items():
         status = cells[1].lower()
-        if basic and case_id in ADVANCED_CASES:
+        if cli_fixes and case_id == "E2E":
+            if status not in {"in-progress", "not-run"}:
+                raise ValueError("deferred full-design E2E must remain in-progress or not-run")
+        elif basic and case_id in ADVANCED_CASES:
             if status != "not-run":
                 raise ValueError(f"deferred acceptance case {case_id} must remain not-run")
         elif status != "pass" and not (not basic and case_id == "L2" and status == "not-applicable"):
@@ -116,7 +131,7 @@ def evidence_files(repo: Path, tag: str) -> dict[str, bytes]:
     for name in EVIDENCE_FILES:
         if hashlib.sha256(contents[name]).hexdigest() != manifest["sha256"][name]:
             raise ValueError(f"{root}/{name}: SHA256 differs from reviewed manifest")
-    check_case_results(contents, basic)
+    check_case_results(contents, basic, manifest.get("schemaVersion") == 3)
     return contents
 
 

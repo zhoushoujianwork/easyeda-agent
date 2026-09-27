@@ -198,6 +198,12 @@ and report remaining validation gaps accurately.
 保存重载、实际设计质量或独立复核要求；其他缺陷不自动豁免。具体范围见
 [`v1.8.0 发布准备`](docs/releases/release-1.8.md#已接受的已知限制)。
 
+2026-09-27 用户随后确认“CLI 修复发布”并指令“发布”：v1.8.0 使用显式 `cli-fixes`
+材料（schema 3），已验证的有限 CLI 修复范围独立通过即可发布；完整 ESP32 成品 E2E
+保留 `in-progress`，整板布线、最终 GND 内电层和 DRC 后续跟进，不作为这次发版前置。
+这项决定只调整本次发布范围，不补签完整设计、不更改现场工程写入和布局确认规则，
+不成为后续版本的默认豁免。版本、安装包、哈希及远端资产核验继续执行。
+
 ## Layout
 
 | Path | What |

@@ -60,3 +60,12 @@ schema 2：`acceptanceScope: "basic-cli"`、`deferredScope: "advanced-cli"`、
 继续使用 schema 1；完整设计用例 M1/F1/F2/E1/L1/N1/R1/E2E 与独立复核仍须实际通过。
 三项历史失败在报告的已知限制中保留，不改成成功，也不增加跳过完整用例或哈希核验的开关。
 发布包内 baseline/report 必须保留该范围披露，使资产脱离仓库文档后仍能理解结论。
+
+## v1.8.0 后续确认的 CLI 修复发布范围（schema 3）
+
+用户随后批准直接发布 v1.8.0，完整 ESP32 成品留待后续。schema 3 声明
+`acceptanceScope: cli-fixes`、`deferredScope: full-design-e2e`、`deferredUntil: follow-up`；
+`scopeDecision` 记录用户、日期和绑定版本。`result: pass` 只代表已验证的有限 CLI 修复范围。
+M1/F1/F2/E1/L1/N1/R1 的具体有限用例仍须 pass 并独立复核，E2E 必须保持
+in-progress 或 not-run；既有失败、未完成铜/DRC 不改判。原 schema 1/2 要求不变，
+该范围不自动用于其他版本。版本、三个材料哈希、验收包及软件资产校验保持完整。

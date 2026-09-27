@@ -69,6 +69,18 @@ def basic_scope(manifest):
         require(not any(key in manifest for key in ("acceptanceScope", "deferredScope", "deferredUntil")),
                 "legacy evidence cannot override its full acceptance scope")
         return False
+    if manifest.get("schemaVersion") == 3:
+        decision = manifest.get("scopeDecision")
+        require(manifest.get("acceptanceScope") == "cli-fixes"
+                and manifest.get("deferredScope") == "full-design-e2e"
+                and manifest.get("deferredUntil") == "follow-up"
+                and isinstance(decision, dict)
+                and decision.get("approvedBy") == "user"
+                and decision.get("version") == manifest.get("version")
+                and isinstance(decision.get("date"), str)
+                and re.fullmatch(r"\d{4}-\d{2}-\d{2}", decision["date"]),
+                "schema 3 requires explicit user-approved cli-fixes scope and full-design-e2e follow-up")
+        return False
     require(manifest.get("schemaVersion") == 2 and manifest.get("acceptanceScope") == "basic-cli"
             and manifest.get("deferredScope") == "advanced-cli"
             and manifest.get("deferredUntil") == "next-release",
@@ -100,6 +112,7 @@ def check_assets(directory, tag=None):
                     and manifest.get("version") == tag and manifest.get("result") == "pass"
                     and manifest.get("independentReview") == "pass", "acceptance evidence verdict missing")
             basic = basic_scope(manifest)
+            cli_fixes = manifest.get("schemaVersion") == 3
             require(isinstance(manifest.get("sha256"), dict)
                     and set(manifest["sha256"]) == set(EVIDENCE_FILES[1:]),
                     "acceptance evidence document hashes missing")
@@ -115,7 +128,10 @@ def check_assets(directory, tag=None):
                     "acceptance report does not cover every required case")
             for case_id, cells in report.items():
                 status = cells[1].lower()
-                if basic and case_id in ADVANCED_CASES:
+                if cli_fixes and case_id == "E2E":
+                    require(status in {"in-progress", "not-run"},
+                            "deferred full-design E2E must remain in-progress or not-run")
+                elif basic and case_id in ADVANCED_CASES:
                     require(status == "not-run", f"deferred acceptance case {case_id} must remain not-run")
                 else:
                     require(status == "pass" or not basic and case_id == "L2" and status == "not-applicable",

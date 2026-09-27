@@ -1,11 +1,19 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "version": "v1.8.0",
-  "result": "in-progress",
-  "independentReview": "not-run",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.8.0",
+    "date": "2026-09-27"
+  },
+  "result": "pass",
+  "independentReview": "pass",
   "sha256": {
-    "test-report.md": "3224bb561103dd4e8c368700d24341cdc6865dea022143f535cd7106bc107fd5",
-    "baseline.md": "452bc61a773e1d7e2de3a8fccdde842111ef77e82c2900ff0e6cd6f8036fe5c2",
-    "test-cases.md": "ce6ea577a40bef6fe2e3c841a3bc8afc02fa986324395d3e0405761ececddf1b"
+    "test-report.md": "f8f7f3617e6b3a375b475960cc69a76e92507de6c20bcb188c05f5dce101c129",
+    "baseline.md": "503d22a1509c15fa93d73d4a444bbeddfcefdbce30a4ea5739e4c915299e3f95",
+    "test-cases.md": "497073fb82d7902f4d98ec97334a99d1aaab3b26358977682d6b618150ccf79b"
   }
 }

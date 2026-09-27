@@ -47,6 +47,12 @@ B00–B10 必须全部现场通过，A00–A06 必须明确 `not-run`，独立�
 完整用例与独立复核必须通过；三项失败记录另行保留，不把它们填成 `pass`。
 验收材料及发布说明披露已接受范围；运行时错值检测和资产校验不变。
 
+用户随后批准直接按 CLI 修复范围发布 v1.8.0，使用 schema 3 `acceptanceScope=cli-fixes`，
+声明 `full-design-e2e` 留待 `follow-up`，并记录绑定版本的用户范围决定。
+M1/F1/F2/E1/L1/N1/R1 等已实际验证的有限范围仍须通过并独立复核；E2E 必须保留
+`in-progress` 或 `not-run`，不能以发布通过改成完整设计通过。此明确选择不改变 schema 1/2
+原有要求，也不自动应用于其他版本。完整记录见[本次发布准备](releases/release-1.8.md)。
+
 发布分为本地准备与外部发布。准备阶段先显式同步
 `extension/extension.json`、`extension/package.json`、`extension/package-lock.json`
 的版本（含 lock 的 `packages[""].version`），补齐 `extension/CHANGELOG.md` 对应条目，
