@@ -73,7 +73,7 @@ v4统一身份/显隐/可读性检查，initial、归一前fresh、每项位置�
 `5e63566ff1e553e9f23235f29d64081f43ddf05f014b604784f9f61f8df0a639`，报告
 `dad018a0e125a6e2910482c737f5ef45a6de928c45dd47d5fe7685dab205324f`，输入
 `6fac01864586aecfd2d1ff13a506cb30a839a9e680a3f4c16506149e18162f75`。
-末次15文件与规范源哈希一致；只签有限离线候选，后续采用见下文，#271保持open。
+末次15文件与规范源哈希一致；只签有限离线候选，后续采用与现场结果见下文。
 
 本地打包曾误用正式release-build带dev版本，被版本格式检查拒绝；改local-build后因changelog标题缺方括号
 再次被检查拒绝。保留两次日志，修正标题及目标后再构建开发包；未创建tag/Release，不放宽发布检查。
@@ -99,9 +99,36 @@ board仅capturedAt差异；122原生section非DOCHEAD行逐字同，122个header
 其他7个ZIP条目逐字相同。未执行设计几何修复，旧位号相交仍是现场复测的开始状态。
 
 升级冻结262文件清单 `fdafb56b77686bf41d24317ba1c1f3dbb32c392418fed7a83579102ef32bbbd7`，
-目录 `artifacts/release-v1.8.0-dev14-upgrade-20260927/`，active daemon日志不入冻结；独立升级复核待完成。
+目录 `artifacts/release-v1.8.0-dev14-upgrade-20260927/`，active daemon日志不入冻结；独立升级复核已完成。
 成功安装后的文字stdout误按JSON解析、首次新注册context尚空、离线字段大小写期望错误均保留；
 没有重复安装、额外刷新或设计写入重放。根已将窗口独占交回原执行员，从fresh状态验证位号修复。
+
+独立升级4,886项有效断言及594输入最终哈希复验通过，137条审计原字节闭合；
+38文件清单 `90f9aef1f8b2d4249799b2e7b99fe101fb32f708831c6fa25efcdcf82ae010b9`，
+报告 `456db6c75b79ee1ec0efde96c0a8ac53d64db6635c7f6ba1be54e2cfb9825ed9`。
+根重算全部38文件大小和SHA一致；只签升级保全，不补签位号现场或整板设计。
+
+## 实际 51 位号有限复测
+
+fresh全部51目标按offset15/spacing1.5重算，006返回verified:true/partial:false，随后
+save→真实reload→完整51组件/203pad→full board→native→typed整板预览。全部组件原始记录、
+所有实际pad、其他board几何/规则/铜与非位号属性保持。旧三对文字相交与J2自身遮挡消失；
+最终实测文字至完整组件bbox最小16.038mil、至pad 27.998mil、文字之间20.482mil。
+
+严格区分51个检查目标、50个位号几何变化（U4未变）、51 ATTR ticket+DOCHEAD共52条native raw变化。
+原报告简写“51个位号x/y改变”不作精确计数依据。16个native/getter末位差≤2.274e−13mil，
+U1.x/D3.y较写后observation在持久化后约+0.00005mil，均保留并以最终fresh几何判据复核，
+不称计划/原包全部相等。native缩略图变化及restoreVerified:false保留；所有非PCB原始section相同。
+84条audit、3次saved:true、单次align设计写入及reload临时同项目P3 current后回PCB已绑定，
+SDK DRC passed:false单列，不据silk通过补签DRC。
+
+37文件现场清单 `e3f17751fa663e9f16599c5425b65c2fce1678c73d51d93aa9677c96ab7ce7c5`；
+独立15,868项有效核验、45输入哈希复验通过，15文件清单
+`755280cc3d3276a169dc127eecb2d9005e6a02bee85b8ec0a309a609eeebb04b`，报告
+`324e0d30f81e0b53ce98abcb4d82388f86a2f921c1f871758de044bba580f1f1`。
+根重算全部37现场件和15独立件匹配；#271以`83a98b2`采用提交及该有限现场结论关闭，
+[关闭说明](https://github.com/zhoushoujianwork/easyeda-agent/issues/271#issuecomment-5851596372)。
+不签BOTTOM制造镜像、任意凹/弧板、14标记、完整Layout/route/最终PLANE/DRC/E2E。
 
 ## 点灯模块 L1 有限结果
 
