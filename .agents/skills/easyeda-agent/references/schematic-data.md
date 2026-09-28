@@ -521,6 +521,18 @@ sheet planner 和各页 render 输入。samePageAs 必须引用另一现有 zone
 无解证明，但失败必须带明确终止类型且不能输出半成品。
 
 普通器件集合不需要建 Lib：使用 `sch layout-plan --from input.json --out geometry.json`。
+可选 `layoutMode:"unbounded"` 或 `--unbounded`（含 `--zones`）使用展开式通道布局，
+不设区域宽高和纸张上限：保留实测姿态，核心归零、器件分列，每网分配水平通道，
+同一区所有同网引脚通过真实导线连接，命名标记置于通道末端。允许导线内部 X 相交，
+端点/T 接触、异网共线重叠、符号/位号及引脚出口避让仍按原校验执行。
+它以较大图幅和较多交叉换取较少搜索，不能与 `optimization` 同用；allowedRotations
+仍校验但不尝试旋转，routing 仍校验但不使用迷宫路由。maxCandidates 仍有限，每放一个
+器件、连接一个引脚、分配一个网络通道各消耗一次；区间预算隔离规则保持原样。
+省略 layoutMode 或设 `search` 使用原求解器。无边界结果在 `search.strategy` 中记录
+`unbounded-channels-v1`，报告另记有效 `layoutMode`，源哈希始终对应原始输入字节。
+成功的多区结果可直接 `layout-render --from zones-geometry.json --out local.svg`，不传
+sheet 即无纸张预览；不会自动修改宿主纸张。无法通过完整校验仍失败，不保证任意输入
+可解，不将展开图称为紧凑排版或现场验证通过。
 dev.8 的通用失败诊断入口为 `sch layout-plan ... --report report.json`（也适用于
 `--zones`）：报告记录源 SHA-256、运行算法版本、decode/solve/emit 阶段、成功或失败，
 以及可取得的结构化冲突对象、阻挡归属、路由耗时、展开节点、重布次数和搜索预算。

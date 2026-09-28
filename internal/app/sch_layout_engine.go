@@ -66,6 +66,7 @@ type SchematicOptimizationReport struct {
 }
 type SchematicLayoutInput struct {
 	SchemaVersion   int                          `json:"schemaVersion"`
+	LayoutMode      string                       `json:"layoutMode,omitempty"`
 	CoreComponentID string                       `json:"coreComponentId"`
 	Components      []SchematicLayoutComponent   `json:"components"`
 	NetPolicies     map[string]string            `json:"netPolicies"`
@@ -116,6 +117,9 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		return nil, err
 	}
 	input = detached
+	if err := validateSchematicLayoutMode(input.LayoutMode, input.Optimization); err != nil {
+		return nil, err
+	}
 	if input.SchemaVersion != 1 || len(input.Components) == 0 {
 		return nil, fmt.Errorf("schemaVersion:1 and components required")
 	}
@@ -209,10 +213,16 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 	for net, policy := range input.NetPolicies {
 		routing.policies[net] = policy
 	}
-	result, feasibility, err := runSchematicLayoutFeasibility(input, measured, allowed, budget,
-		func(pose map[string]powerLayoutPlacement, quota *int) (*SchematicLayoutResult, error) {
-			return solveSchematicLayout(input, pose, members, hints, quota, routing)
-		})
+	var result *SchematicLayoutResult
+	var feasibility *SchematicFeasibilityReport
+	if input.LayoutMode == "unbounded" {
+		result, err = solveSchematicUnbounded(input, measured, members, budget)
+	} else {
+		result, feasibility, err = runSchematicLayoutFeasibility(input, measured, allowed, budget,
+			func(pose map[string]powerLayoutPlacement, quota *int) (*SchematicLayoutResult, error) {
+				return solveSchematicLayout(input, pose, members, hints, quota, routing)
+			})
+	}
 	if err != nil {
 		return nil, err
 	}

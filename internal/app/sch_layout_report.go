@@ -19,6 +19,7 @@ type schLayoutReport struct {
 	Status                    string               `json:"status"`
 	Phase                     string               `json:"phase"`
 	Zones                     bool                 `json:"zones"`
+	LayoutMode                string               `json:"layoutMode,omitempty"`
 	SourceSHA256              string               `json:"sourceSha256,omitempty"`
 	Error                     string               `json:"error,omitempty"`
 	FailureClass              string               `json:"failureClass,omitempty"`
@@ -82,9 +83,12 @@ func schLayoutCanonicalPath(path string, depth int) (string, error) {
 	return abs, nil // A missing parent makes the later file write fail explicitly.
 }
 
-func writeSchLayoutReport(path string, source []byte, phase string, zones bool, result any, cause error) error {
+func writeSchLayoutReport(path string, source []byte, phase string, zones bool, result any, cause error, mode ...string) error {
 	r := schLayoutReport{SchemaVersion: 1, Operation: "schematic.layout-plan", AlgorithmVersion: version.Version,
 		Scope: "offline-layout-only", Status: "planned", Phase: "complete", Zones: zones, Diagnostics: []any{}}
+	if len(mode) > 0 {
+		r.LayoutMode = mode[0]
+	}
 	if source != nil {
 		r.SourceSHA256 = sha256Hex(source)
 		if zones {

@@ -13,7 +13,7 @@ import (
 
 func newSchLayoutPlanCmd(stdout io.Writer) *cobra.Command {
 	var from, out, report string
-	var zones bool
+	var zones, unbounded bool
 	c := &cobra.Command{Use: "layout-plan", Short: "Plan a measured component set offline without Lib or project metadata", Long: `Compute local placements, wires, markers and score from schemaVersion:1,
 coreComponentId, components:[{id,measurement,pinStates?,allowedRotations?}], netPolicies keyed by
 net NAME, optional attachments and maxCandidates. measurement contains explicit
@@ -34,6 +34,12 @@ optimization request isolates per-zone budgets, even without unified spacing.
 Zone output includes variants:[{id,layout,contentBounds,frame}], selectedVariantId.
 Pass the complete packet to layout-sheet-plan --flow z for bounded shape selection.
 No library UUID, Lib membership, project, sheet or daemon required. No Apply.
+Optional layoutMode:"unbounded" or --unbounded uses expanded columns and one
+channel per net, without a region or paper size limit. Measured poses stay locked;
+optimization cannot be combined with this mode. Finite maxCandidates still applies.
+Interior X wire crossings are allowed in both modes; foreign endpoints, T contacts,
+collinear overlaps, symbol bodies and pin exits remain protected. Output may be large.
+Render --zones output directly without sheet data for a paper-free local preview.
 Optional --report writes machine-readable diagnostics on success or failure,
 including input SHA-256, phase and structured search conflicts when available.
 Failure remains nonzero and never emits a partial layout. A bounded search failure
@@ -69,9 +75,10 @@ Example:
 		phase := "read"
 		var source []byte
 		var result any
+		mode := ""
 		defer func() {
 			if report != "" {
-				if err := writeSchLayoutReport(report, source, phase, zones, result, runErr); err != nil {
+				if err := writeSchLayoutReport(report, source, phase, zones, result, runErr, mode); err != nil {
 					if runErr != nil {
 						runErr = fmt.Errorf("%w; diagnostic report could not be written: %w", runErr, err)
 					} else {
@@ -89,6 +96,10 @@ Example:
 		if zones {
 			var input SchematicZonesInput
 			input, err = decodeSchematicZonesInput(raw)
+			if unbounded {
+				input.LayoutMode = "unbounded"
+			}
+			mode = input.LayoutMode
 			if err == nil {
 				phase = "zone-review"
 				var review *SchematicZoneReview
@@ -102,6 +113,10 @@ Example:
 		} else {
 			var input SchematicLayoutInput
 			input, err = decodeSchematicLayoutInput(raw)
+			if unbounded {
+				input.LayoutMode = "unbounded"
+			}
+			mode = input.LayoutMode
 			if err == nil {
 				phase = "solve"
 				result, err = PlanSchematicLayout(input)
@@ -131,6 +146,7 @@ Example:
 	}}
 	c.Flags().StringVar(&from, "from", "", "measured component-set JSON, without Lib metadata")
 	c.Flags().BoolVar(&zones, "zones", false, "plan explicitly owned per-core zones; unified spacing isolates per-zone budgets")
+	c.Flags().BoolVar(&unbounded, "unbounded", false, "expand components into routing columns without region/paper limits; allow X crossings, retain electrical checks")
 	c.Flags().StringVar(&out, "out", "", "write local geometry only after validation; defaults to stdout")
 	c.Flags().StringVar(&report, "report", "", "write separate machine-readable diagnostics, including failed search evidence; failure still exits nonzero")
 	return c
@@ -174,6 +190,12 @@ func decodeSchematicLayoutInput(raw []byte) (SchematicLayoutInput, error) {
 	}
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &fields)
+	if string(fields["layoutMode"]) == "null" {
+		return input, fmt.Errorf("layoutMode must be search or unbounded, not null")
+	}
+	if err := validateSchematicLayoutMode(input.LayoutMode, input.Optimization); err != nil {
+		return input, err
+	}
 	if err := validateLayoutOptimizationJSON(fields); err != nil {
 		return input, err
 	}

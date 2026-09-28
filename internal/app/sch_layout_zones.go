@@ -17,6 +17,7 @@ type SchematicZone struct {
 }
 type SchematicZonesInput struct {
 	SchemaVersion int                          `json:"schemaVersion"`
+	LayoutMode    string                       `json:"layoutMode,omitempty"`
 	Spacing       *float64                     `json:"spacing,omitempty"`
 	Components    []SchematicLayoutComponent   `json:"components"`
 	NetPolicies   map[string]string            `json:"netPolicies"`
@@ -155,7 +156,7 @@ func PlanSchematicZones(in SchematicZonesInput) (*SchematicZonesResult, error) {
 		out.Spacing = &spacing
 	}
 	for _, z := range in.Zones {
-		local := SchematicLayoutInput{SchemaVersion: 1, CoreComponentID: z.CoreComponentID, NetPolicies: map[string]string{}, Optimization: in.Optimization, Routing: in.Routing}
+		local := SchematicLayoutInput{SchemaVersion: 1, LayoutMode: in.LayoutMode, CoreComponentID: z.CoreComponentID, NetPolicies: map[string]string{}, Optimization: in.Optimization, Routing: in.Routing}
 		for _, id := range z.ComponentIDs {
 			c := components[id]
 			local.Components = append(local.Components, c)

@@ -1,0 +1,1154 @@
+{
+  "attachments": [
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "2"
+      },
+      "componentId": "cmp-C5",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "2"
+      },
+      "componentId": "cmp-C6",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "3"
+      },
+      "componentId": "cmp-C7",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "3"
+      },
+      "componentId": "cmp-Q1",
+      "pinNumber": "3"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "27"
+      },
+      "componentId": "cmp-Q2",
+      "pinNumber": "3"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-LED1",
+        "pinNumber": "1"
+      },
+      "componentId": "cmp-R10",
+      "pinNumber": "2"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "3"
+      },
+      "componentId": "cmp-R5",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "27"
+      },
+      "componentId": "cmp-R6",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "16"
+      },
+      "componentId": "cmp-R7",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-Q1",
+        "pinNumber": "1"
+      },
+      "componentId": "cmp-R8",
+      "pinNumber": "2"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-Q2",
+        "pinNumber": "1"
+      },
+      "componentId": "cmp-R9",
+      "pinNumber": "2"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "3"
+      },
+      "componentId": "cmp-SW1",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U1",
+        "pinNumber": "27"
+      },
+      "componentId": "cmp-SW2",
+      "pinNumber": "1"
+    }
+  ],
+  "components": [
+    {
+      "id": "cmp-U1",
+      "measurement": {
+        "bbox": {
+          "maxX": 35.5,
+          "maxY": 210.5,
+          "minX": -35.5,
+          "minY": -210.5
+        },
+        "designator": "U1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "3V3",
+            "net": "V3V3",
+            "number": "2",
+            "rotation": 180,
+            "x": -45,
+            "y": 15
+          },
+          {
+            "name": "EN",
+            "net": "MCU_EN",
+            "number": "3",
+            "rotation": 180,
+            "x": -45,
+            "y": 5
+          },
+          {
+            "name": "RXD0",
+            "net": "UART0_RX",
+            "number": "36",
+            "rotation": 180,
+            "x": -45,
+            "y": -5
+          },
+          {
+            "name": "TXD0",
+            "net": "UART0_TX",
+            "number": "37",
+            "rotation": 180,
+            "x": -45,
+            "y": -15
+          },
+          {
+            "name": "EPAD",
+            "net": "GND",
+            "number": "41",
+            "rotation": 0,
+            "x": 45,
+            "y": -200
+          },
+          {
+            "name": "GND",
+            "net": "GND",
+            "number": "40",
+            "rotation": 0,
+            "x": 45,
+            "y": -170
+          },
+          {
+            "name": "GND",
+            "net": "GND",
+            "number": "1",
+            "rotation": 0,
+            "x": 45,
+            "y": -160
+          },
+          {
+            "name": "IO48",
+            "net": "",
+            "number": "25",
+            "rotation": 0,
+            "x": 45,
+            "y": -130
+          },
+          {
+            "name": "IO47",
+            "net": "",
+            "number": "24",
+            "rotation": 0,
+            "x": 45,
+            "y": -120
+          },
+          {
+            "name": "IO46",
+            "net": "GPIO46_STRAP",
+            "number": "16",
+            "rotation": 0,
+            "x": 45,
+            "y": -110
+          },
+          {
+            "name": "IO45",
+            "net": "",
+            "number": "26",
+            "rotation": 0,
+            "x": 45,
+            "y": -100
+          },
+          {
+            "name": "IO42",
+            "net": "",
+            "number": "35",
+            "rotation": 0,
+            "x": 45,
+            "y": -90
+          },
+          {
+            "name": "IO41",
+            "net": "",
+            "number": "34",
+            "rotation": 0,
+            "x": 45,
+            "y": -80
+          },
+          {
+            "name": "IO40",
+            "net": "",
+            "number": "33",
+            "rotation": 0,
+            "x": 45,
+            "y": -70
+          },
+          {
+            "name": "IO39",
+            "net": "",
+            "number": "32",
+            "rotation": 0,
+            "x": 45,
+            "y": -60
+          },
+          {
+            "name": "IO38",
+            "net": "",
+            "number": "31",
+            "rotation": 0,
+            "x": 45,
+            "y": -50
+          },
+          {
+            "name": "IO37",
+            "net": "",
+            "number": "30",
+            "rotation": 0,
+            "x": 45,
+            "y": -40
+          },
+          {
+            "name": "IO36",
+            "net": "",
+            "number": "29",
+            "rotation": 0,
+            "x": 45,
+            "y": -30
+          },
+          {
+            "name": "IO35",
+            "net": "",
+            "number": "28",
+            "rotation": 0,
+            "x": 45,
+            "y": -20
+          },
+          {
+            "name": "IO21",
+            "net": "",
+            "number": "23",
+            "rotation": 0,
+            "x": 45,
+            "y": -10
+          },
+          {
+            "name": "IO20",
+            "net": "",
+            "number": "14",
+            "rotation": 0,
+            "x": 45,
+            "y": 0
+          },
+          {
+            "name": "IO19",
+            "net": "",
+            "number": "13",
+            "rotation": 0,
+            "x": 45,
+            "y": 10
+          },
+          {
+            "name": "IO18",
+            "net": "",
+            "number": "11",
+            "rotation": 0,
+            "x": 45,
+            "y": 20
+          },
+          {
+            "name": "IO17",
+            "net": "LED_GPIO",
+            "number": "10",
+            "rotation": 0,
+            "x": 45,
+            "y": 30
+          },
+          {
+            "name": "IO16",
+            "net": "",
+            "number": "9",
+            "rotation": 0,
+            "x": 45,
+            "y": 40
+          },
+          {
+            "name": "IO15",
+            "net": "",
+            "number": "8",
+            "rotation": 0,
+            "x": 45,
+            "y": 50
+          },
+          {
+            "name": "IO14",
+            "net": "",
+            "number": "22",
+            "rotation": 0,
+            "x": 45,
+            "y": 60
+          },
+          {
+            "name": "IO13",
+            "net": "",
+            "number": "21",
+            "rotation": 0,
+            "x": 45,
+            "y": 70
+          },
+          {
+            "name": "IO12",
+            "net": "",
+            "number": "20",
+            "rotation": 0,
+            "x": 45,
+            "y": 80
+          },
+          {
+            "name": "IO11",
+            "net": "",
+            "number": "19",
+            "rotation": 0,
+            "x": 45,
+            "y": 90
+          },
+          {
+            "name": "IO10",
+            "net": "",
+            "number": "18",
+            "rotation": 0,
+            "x": 45,
+            "y": 100
+          },
+          {
+            "name": "IO9",
+            "net": "",
+            "number": "17",
+            "rotation": 0,
+            "x": 45,
+            "y": 110
+          },
+          {
+            "name": "IO8",
+            "net": "",
+            "number": "12",
+            "rotation": 0,
+            "x": 45,
+            "y": 120
+          },
+          {
+            "name": "IO7",
+            "net": "",
+            "number": "7",
+            "rotation": 0,
+            "x": 45,
+            "y": 130
+          },
+          {
+            "name": "IO6",
+            "net": "",
+            "number": "6",
+            "rotation": 0,
+            "x": 45,
+            "y": 140
+          },
+          {
+            "name": "IO5",
+            "net": "",
+            "number": "5",
+            "rotation": 0,
+            "x": 45,
+            "y": 150
+          },
+          {
+            "name": "IO4",
+            "net": "",
+            "number": "4",
+            "rotation": 0,
+            "x": 45,
+            "y": 160
+          },
+          {
+            "name": "IO3",
+            "net": "",
+            "number": "15",
+            "rotation": 0,
+            "x": 45,
+            "y": 170
+          },
+          {
+            "name": "IO2",
+            "net": "",
+            "number": "38",
+            "rotation": 0,
+            "x": 45,
+            "y": 180
+          },
+          {
+            "name": "IO1",
+            "net": "",
+            "number": "39",
+            "rotation": 0,
+            "x": 45,
+            "y": 190
+          },
+          {
+            "name": "IO0",
+            "net": "MCU_BOOT",
+            "number": "27",
+            "rotation": 0,
+            "x": 45,
+            "y": 200
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -26.0517578125,
+            "maxY": 218,
+            "minX": -35,
+            "minY": 210
+          }
+        ],
+        "x": 0,
+        "y": 0
+      },
+      "pinStates": {
+        "11": "nc",
+        "12": "nc",
+        "13": "nc",
+        "14": "nc",
+        "15": "nc",
+        "17": "nc",
+        "18": "nc",
+        "19": "nc",
+        "20": "nc",
+        "21": "nc",
+        "22": "nc",
+        "23": "nc",
+        "24": "nc",
+        "25": "nc",
+        "26": "nc",
+        "28": "nc",
+        "29": "nc",
+        "30": "nc",
+        "31": "nc",
+        "32": "nc",
+        "33": "nc",
+        "34": "nc",
+        "35": "nc",
+        "38": "nc",
+        "39": "nc",
+        "4": "nc",
+        "5": "nc",
+        "6": "nc",
+        "7": "nc",
+        "8": "nc",
+        "9": "nc"
+      }
+    },
+    {
+      "id": "cmp-C5",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C5",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "1",
+            "net": "V3V3",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          },
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-C6",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C6",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "V3V3",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R5",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R5",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "V3V3",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "MCU_EN",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-C7",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C7",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "1",
+            "net": "MCU_EN",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          },
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-SW1",
+      "measurement": {
+        "bbox": {
+          "maxX": 20.5,
+          "maxY": 7.5,
+          "minX": -20.5,
+          "minY": -2.5
+        },
+        "designator": "SW1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 30,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "MCU_EN",
+            "number": "1",
+            "rotation": 180,
+            "x": -30,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -4.8310546875,
+            "maxY": 18,
+            "minX": -20,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R6",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R6",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "V3V3",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "MCU_BOOT",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-SW2",
+      "measurement": {
+        "bbox": {
+          "maxX": 20.5,
+          "maxY": 7.5,
+          "minX": -20.5,
+          "minY": -2.5
+        },
+        "designator": "SW2",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 30,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "MCU_BOOT",
+            "number": "1",
+            "rotation": 180,
+            "x": -30,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -4.8310546875,
+            "maxY": 18,
+            "minX": -20,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R7",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R7",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "GPIO46_STRAP",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-Q1",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 10.5,
+          "minX": -0.5,
+          "minY": -10.5
+        },
+        "designator": "Q1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "C",
+            "net": "MCU_EN",
+            "number": "3",
+            "rotation": 90,
+            "x": 10,
+            "y": 20
+          },
+          {
+            "name": "B",
+            "net": "DTR_BASE",
+            "number": "1",
+            "rotation": 180,
+            "x": -10,
+            "y": 0
+          },
+          {
+            "name": "E",
+            "net": "RTS_N",
+            "number": "2",
+            "rotation": 270,
+            "x": 10,
+            "y": -20
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": 24.337890625,
+            "maxY": 8,
+            "minX": 15,
+            "minY": 0
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-Q2",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 10.5,
+          "minX": -0.5,
+          "minY": -10.5
+        },
+        "designator": "Q2",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "C",
+            "net": "MCU_BOOT",
+            "number": "3",
+            "rotation": 90,
+            "x": 10,
+            "y": 20
+          },
+          {
+            "name": "B",
+            "net": "RTS_BASE",
+            "number": "1",
+            "rotation": 180,
+            "x": -10,
+            "y": 0
+          },
+          {
+            "name": "E",
+            "net": "DTR_N",
+            "number": "2",
+            "rotation": 270,
+            "x": 10,
+            "y": -20
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": 24.337890625,
+            "maxY": 8,
+            "minX": 15,
+            "minY": 0
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R8",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R8",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "DTR_BASE",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "DTR_N",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R9",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R9",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "RTS_BASE",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "RTS_N",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-LED1",
+      "measurement": {
+        "bbox": {
+          "maxX": 5.5,
+          "maxY": 17.5,
+          "minX": -15.5,
+          "minY": -8.5
+        },
+        "designator": "LED1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "-",
+            "net": "GND",
+            "number": "2",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          },
+          {
+            "name": "+",
+            "net": "LED_A",
+            "number": "1",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": 2.51025390625,
+            "maxY": 28,
+            "minX": -15,
+            "minY": 20
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R10",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R10",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "LED_A",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "LED_GPIO",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": 2.84130859375,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "maxCandidates": 20000,
+  "netPolicies": {
+    "DTR_BASE": "direct",
+    "DTR_N": "module_port",
+    "GND": "local_ground",
+    "GPIO46_STRAP": "direct",
+    "LED_A": "direct",
+    "LED_GPIO": "module_port",
+    "MCU_BOOT": "direct",
+    "MCU_EN": "direct",
+    "RTS_BASE": "direct",
+    "RTS_N": "module_port",
+    "UART0_RX": "module_port",
+    "UART0_TX": "module_port",
+    "V3V3": "local_power"
+  },
+  "routing": {
+    "maxExpandedNodes": 1000000,
+    "maxReroutes": 6
+  },
+  "schemaVersion": 1,
+  "spacing": 10,
+  "zones": [
+    {
+      "componentIds": [
+        "cmp-U1",
+        "cmp-C5",
+        "cmp-C6",
+        "cmp-R5",
+        "cmp-C7",
+        "cmp-SW1",
+        "cmp-R6",
+        "cmp-SW2",
+        "cmp-R7",
+        "cmp-Q1",
+        "cmp-Q2",
+        "cmp-R8",
+        "cmp-R9"
+      ],
+      "coreComponentId": "cmp-U1",
+      "id": "MCU",
+      "title": "ESP32-S3 / boot / reset"
+    },
+    {
+      "componentIds": [
+        "cmp-LED1",
+        "cmp-R10"
+      ],
+      "coreComponentId": "cmp-LED1",
+      "id": "LED",
+      "title": "Status LED"
+    }
+  ]
+}

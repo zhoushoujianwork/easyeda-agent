@@ -47,6 +47,12 @@ easyeda sch sheet-geometry --project <project> --json
 `layout-plan --zones` 本身不读取纸张边界，功能框也在区内求解成功后才生成。
 若失败阶段是 `solve`，取消纸张或功能框设置不会改变区内搜索；先根据
 `--report` 定位放置、真实直连或命名引线冲突，再调整参数或求解器。
+需要优先得到完整可连通的展开图时，可用 `layout-plan --unbounded --zones --from source.json
+--out zones-geometry.json --report report.json`，或在源 JSON 设置 `layoutMode:"unbounded"`。
+该模式保留姿态、分列摆放、每网独立通道，允许无连接点的 X 交叉，不限制区域宽高；
+仍拒绝异网端点/T 接触、共线重叠及穿越符号/位号/引脚出口。预算仍有限，不能与
+`optimization` 同用。结果可能明显变宽变高，需检查阅读效果；直接渲染时不传 sheet，
+纸张设置由用户在最终需要打印时选择。此离线选项不会修改宿主纸张，也不豁免现场回读。
 纸张默认 `--flow z`：输入功能顺序从左到右、同行顶齐，下一行按该行最高框推进；
 不补短框下空洞，不回填旧页。同页集合按最早成员聚拢、成员顺序不变，整体试放或换页。
 旧自由装箱需显式 `--flow compact`，不能为减少页数悄悄改变用户要求的 Z 型阅读流。

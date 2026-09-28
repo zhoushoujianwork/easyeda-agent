@@ -16,6 +16,7 @@
 - 私有器件库现场佐证：[AS07-M1101D-SMA](examples/as07-m1101d-sma/README.md)。从用户尺寸/引脚图创建 Symbol、Footprint、Device，再按反馈修正符号和框外丝印；保留最终规格、官方渲染和回读数据。额外文字及修正使用官方 API 调试路径，不代表单条 build 已覆盖；未完成实例接线、PCB DRC 或实物装配验证。
 - 原理图统一架构：[数据驱动架构基准](../.agents/skills/easyeda-agent/references/schematic-data.md#数据驱动架构基准)。原始快照保留，源数据驱动计算、检查和修复；不是现场逐件试摆后看图兜底。
 - 通用两层布局：`layout-plan --zones` 消费明确核心/外围归属和约束，`layout-sheet-plan` 只选择/平移完整候选；固定 `layout-render` 与 `compose --layout-page` 保留同一目标。任一区失败不能拼半成品。
+- 原理图展开布局：`layout-plan --unbounded` / `layoutMode:"unbounded"` 保留实测姿态、分列摆件、每网独立通道，无区域/纸张尺寸限制；允许内部 X 交叉，继续拒绝短接和遮挡。仅离线布局能力，不保证紧凑或任意输入可解；现场 Apply 仍须身份、回读等证据。
 - 局部数据编辑：`sch layout-edit` 按稳定 ID 将核心及其唯一归属 zone 作为一个相对坐标系平移；刚体目标碰撞时固定核心目标并仅重算本区。单脚标签修复只沿官方引脚外向轴生成候选，并通过 daemon 作用域 action 逐对象核对、串行替换和回读；普通写线仍按目标连接表和实际回读核对。
 - 检查范围：位号参与遮挡/入框，其他器件属性文字排除页面碰撞和框包络；当前实现/安装版是否覆盖须按真实报告举证，不以规范代替验证。
 - 原理图：以 Connectivity IR（器件、引脚、网络、pin-to-net）为电气事实，布局与 Lib 模块复用不得改变连接核心。

@@ -1,0 +1,954 @@
+{
+  "attachments": [
+    {
+      "attachTo": {
+        "componentId": "cmp-USB1",
+        "pinNumber": "A4B9"
+      },
+      "componentId": "cmp-C1",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U2",
+        "pinNumber": "3"
+      },
+      "componentId": "cmp-C2",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U2",
+        "pinNumber": "4"
+      },
+      "componentId": "cmp-C3",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U2",
+        "pinNumber": "2"
+      },
+      "componentId": "cmp-C4",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U5",
+        "pinNumber": "2"
+      },
+      "componentId": "cmp-D1",
+      "pinNumber": "2"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-U4",
+        "pinNumber": "1"
+      },
+      "componentId": "cmp-D2",
+      "pinNumber": "2"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-USB1",
+        "pinNumber": "A6"
+      },
+      "componentId": "cmp-D3",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-USB1",
+        "pinNumber": "A5"
+      },
+      "componentId": "cmp-R1",
+      "pinNumber": "2"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-USB1",
+        "pinNumber": "B5"
+      },
+      "componentId": "cmp-R2",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-USB1",
+        "pinNumber": "A6"
+      },
+      "componentId": "cmp-R3",
+      "pinNumber": "1"
+    },
+    {
+      "attachTo": {
+        "componentId": "cmp-USB1",
+        "pinNumber": "A7"
+      },
+      "componentId": "cmp-R4",
+      "pinNumber": "1"
+    }
+  ],
+  "components": [
+    {
+      "id": "cmp-USB1",
+      "measurement": {
+        "bbox": {
+          "maxX": 40.5,
+          "maxY": 30.5,
+          "minX": -30.5,
+          "minY": -40.5
+        },
+        "designator": "USB1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "EP",
+            "net": "GND",
+            "number": "11",
+            "rotation": 270,
+            "x": 15,
+            "y": -50
+          },
+          {
+            "name": "EP",
+            "net": "GND",
+            "number": "10",
+            "rotation": 270,
+            "x": -5,
+            "y": -50
+          },
+          {
+            "name": "EP",
+            "net": "GND",
+            "number": "9",
+            "rotation": 90,
+            "x": 15,
+            "y": 40
+          },
+          {
+            "name": "EP",
+            "net": "GND",
+            "number": "8",
+            "rotation": 90,
+            "x": -5,
+            "y": 40
+          },
+          {
+            "name": "CC2",
+            "net": "CC2",
+            "number": "B5",
+            "rotation": 0,
+            "x": 50,
+            "y": 20
+          },
+          {
+            "name": "DP2",
+            "net": "USB_DP_CONN",
+            "number": "B6",
+            "rotation": 0,
+            "x": 50,
+            "y": 10
+          },
+          {
+            "name": "DN2",
+            "net": "USB_DN_CONN",
+            "number": "B7",
+            "rotation": 0,
+            "x": 50,
+            "y": 0
+          },
+          {
+            "name": "SBU2",
+            "net": "",
+            "number": "B8",
+            "rotation": 0,
+            "x": 50,
+            "y": -10
+          },
+          {
+            "name": "GND",
+            "net": "GND",
+            "number": "A1B12",
+            "rotation": 0,
+            "x": 50,
+            "y": -20
+          },
+          {
+            "name": "VBUS",
+            "net": "USB_VBUS",
+            "number": "A4B9",
+            "rotation": 0,
+            "x": 50,
+            "y": -30
+          },
+          {
+            "name": "CC1",
+            "net": "CC1",
+            "number": "A5",
+            "rotation": 180,
+            "x": -40,
+            "y": -30
+          },
+          {
+            "name": "DP1",
+            "net": "USB_DP_CONN",
+            "number": "A6",
+            "rotation": 180,
+            "x": -40,
+            "y": -20
+          },
+          {
+            "name": "DN1",
+            "net": "USB_DN_CONN",
+            "number": "A7",
+            "rotation": 180,
+            "x": -40,
+            "y": -10
+          },
+          {
+            "name": "SBU1",
+            "net": "",
+            "number": "A8",
+            "rotation": 180,
+            "x": -40,
+            "y": 0
+          },
+          {
+            "name": "VBUS",
+            "net": "USB_VBUS",
+            "number": "B4A9",
+            "rotation": 180,
+            "x": -40,
+            "y": 10
+          },
+          {
+            "name": "GND",
+            "net": "GND",
+            "number": "B1A12",
+            "rotation": 180,
+            "x": -40,
+            "y": 20
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -11.7138671875,
+            "maxY": 48,
+            "minX": -30,
+            "minY": 40
+          }
+        ],
+        "x": 0,
+        "y": 0
+      },
+      "pinStates": {
+        "A8": "nc",
+        "B8": "nc"
+      }
+    },
+    {
+      "id": "cmp-R1",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "CC1",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "GND",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R2",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R2",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "CC2",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-D3",
+      "measurement": {
+        "bbox": {
+          "maxX": 35.5,
+          "maxY": 20.5,
+          "minX": -35.5,
+          "minY": -20.5
+        },
+        "designator": "D3",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "I/O1",
+            "net": "USB_DP_CONN",
+            "number": "1",
+            "rotation": 180,
+            "x": -45,
+            "y": 10
+          },
+          {
+            "name": "GND",
+            "net": "GND",
+            "number": "2",
+            "rotation": 180,
+            "x": -45,
+            "y": 0
+          },
+          {
+            "name": "I/O2",
+            "net": "USB_DN_CONN",
+            "number": "3",
+            "rotation": 180,
+            "x": -45,
+            "y": -10
+          },
+          {
+            "name": "I/O2",
+            "net": "USB_DN_CONN",
+            "number": "4",
+            "rotation": 0,
+            "x": 45,
+            "y": -10
+          },
+          {
+            "name": "VBUS",
+            "net": "USB_VBUS",
+            "number": "5",
+            "rotation": 0,
+            "x": 45,
+            "y": 0
+          },
+          {
+            "name": "I/O1",
+            "net": "USB_DP_CONN",
+            "number": "6",
+            "rotation": 0,
+            "x": 45,
+            "y": 10
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -26.0517578125,
+            "maxY": 28,
+            "minX": -35,
+            "minY": 20
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R3",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R3",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "USB_DP_UART",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "USB_DP_CONN",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-R4",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "R4",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "USB_DN_UART",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "USB_DN_CONN",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-U5",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 4.5,
+          "minX": -10.5,
+          "minY": -4.5
+        },
+        "designator": "U5",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "USB_FUSED",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "USB_VBUS",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 13,
+            "minX": -10,
+            "minY": 5
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-D1",
+      "measurement": {
+        "bbox": {
+          "maxX": 5.5,
+          "maxY": 8.5,
+          "minX": -7.5,
+          "minY": -8.5
+        },
+        "designator": "D1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "A",
+            "net": "USB_FUSED",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "K",
+            "net": "V5_SYS",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": 3.9482421875,
+            "maxY": 18,
+            "minX": -5,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-C1",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C1",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "USB_VBUS",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-U4",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 15.5,
+          "minX": -10.5,
+          "minY": -15.5
+        },
+        "designator": "U4",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "1",
+            "net": "EXT_5V",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 5
+          },
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 180,
+            "x": -20,
+            "y": -5
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 23,
+            "minX": -10,
+            "minY": 15
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-D2",
+      "measurement": {
+        "bbox": {
+          "maxX": 5.5,
+          "maxY": 8.5,
+          "minX": -7.5,
+          "minY": -8.5
+        },
+        "designator": "D2",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "A",
+            "net": "EXT_5V",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "K",
+            "net": "V5_SYS",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": 3.9482421875,
+            "maxY": 18,
+            "minX": -5,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-U2",
+      "measurement": {
+        "bbox": {
+          "maxX": 35.5,
+          "maxY": 20.5,
+          "minX": -35.5,
+          "minY": -20.5
+        },
+        "designator": "U2",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "GND",
+            "net": "GND",
+            "number": "1",
+            "rotation": 180,
+            "x": -45,
+            "y": 10
+          },
+          {
+            "name": "VOUT",
+            "net": "V3V3",
+            "number": "2",
+            "rotation": 180,
+            "x": -45,
+            "y": 0
+          },
+          {
+            "name": "VIN",
+            "net": "V5_SYS",
+            "number": "3",
+            "rotation": 180,
+            "x": -45,
+            "y": -10
+          },
+          {
+            "name": "VOUT",
+            "net": "V3V3",
+            "number": "4",
+            "rotation": 0,
+            "x": 45,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -27.445144653320312,
+            "maxY": 26.75,
+            "minX": -35,
+            "minY": 20
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-C2",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C2",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "1",
+            "net": "V5_SYS",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          },
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-C3",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C3",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "1",
+            "net": "V3V3",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          },
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "cmp-C4",
+      "measurement": {
+        "bbox": {
+          "maxX": 10.5,
+          "maxY": 8.5,
+          "minX": -10.5,
+          "minY": -8.5
+        },
+        "designator": "C4",
+        "mirror": false,
+        "pins": [
+          {
+            "name": "2",
+            "net": "GND",
+            "number": "2",
+            "rotation": 0,
+            "x": 20,
+            "y": 0
+          },
+          {
+            "name": "1",
+            "net": "V3V3",
+            "number": "1",
+            "rotation": 180,
+            "x": -20,
+            "y": 0
+          }
+        ],
+        "rotation": 0,
+        "textBboxes": [
+          {
+            "maxX": -1.0517578125,
+            "maxY": 18,
+            "minX": -10,
+            "minY": 10
+          }
+        ],
+        "x": 0,
+        "y": 0
+      }
+    }
+  ],
+  "maxCandidates": 20000,
+  "netPolicies": {
+    "CC1": "direct",
+    "CC2": "direct",
+    "EXT_5V": "direct",
+    "GND": "module_port",
+    "USB_DN_CONN": "direct",
+    "USB_DN_UART": "module_port",
+    "USB_DP_CONN": "direct",
+    "USB_DP_UART": "module_port",
+    "USB_FUSED": "direct",
+    "USB_VBUS": "module_port",
+    "V3V3": "local_power",
+    "V5_SYS": "local_power"
+  },
+  "routing": {
+    "maxExpandedNodes": 1000000,
+    "maxReroutes": 6
+  },
+  "schemaVersion": 1,
+  "spacing": 10,
+  "zones": [
+    {
+      "componentIds": [
+        "cmp-USB1",
+        "cmp-R1",
+        "cmp-R2",
+        "cmp-D3",
+        "cmp-R3",
+        "cmp-R4",
+        "cmp-C1"
+      ],
+      "coreComponentId": "cmp-USB1",
+      "id": "USB",
+      "title": "USB-C / data protection"
+    },
+    {
+      "componentIds": [
+        "cmp-U5",
+        "cmp-D1"
+      ],
+      "coreComponentId": "cmp-U5",
+      "id": "USB_POWER",
+      "title": "USB input power conditioning"
+    },
+    {
+      "componentIds": [
+        "cmp-U4",
+        "cmp-D2"
+      ],
+      "coreComponentId": "cmp-U4",
+      "id": "TERMINAL",
+      "title": "External 5V terminal"
+    },
+    {
+      "componentIds": [
+        "cmp-U2",
+        "cmp-C2",
+        "cmp-C3",
+        "cmp-C4"
+      ],
+      "coreComponentId": "cmp-U2",
+      "id": "REGULATOR",
+      "title": "3V3 regulator"
+    }
+  ]
+}
