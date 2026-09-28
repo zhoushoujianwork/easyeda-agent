@@ -41,6 +41,12 @@ easyeda sch sheet-geometry --project <project> --json
 普通 zones 的本地效果先走固定链路：
 `layout-plan --zones → layout-sheet-plan → layout-render`，所有区完整通过才出效果。
 输入顶层 spacing 统一内边距、框间距和页边距；区内回退只影响本区，整页仅平移区框。
+只看完整区内布局时，可将成功的 `layout-plan --zones` 输出直接交给
+`sch layout-render --from zones-geometry.json --out local.svg`，暂不提供 sheet；
+这仅是无纸张约束的局部预览，合页、入框、图签及现场 Apply 仍待后续验证。
+`layout-plan --zones` 本身不读取纸张边界，功能框也在区内求解成功后才生成。
+若失败阶段是 `solve`，取消纸张或功能框设置不会改变区内搜索；先根据
+`--report` 定位放置、真实直连或命名引线冲突，再调整参数或求解器。
 纸张默认 `--flow z`：输入功能顺序从左到右、同行顶齐，下一行按该行最高框推进；
 不补短框下空洞，不回填旧页。同页集合按最早成员聚拢、成员顺序不变，整体试放或换页。
 旧自由装箱需显式 `--flow compact`，不能为减少页数悄悄改变用户要求的 Z 型阅读流。
