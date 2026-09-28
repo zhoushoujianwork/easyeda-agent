@@ -13,7 +13,7 @@ import (
 
 func newSchLayoutPlanCmd(stdout io.Writer) *cobra.Command {
 	var from, out, report string
-	var zones, unbounded bool
+	var zones, unbounded, lib, netLabels bool
 	c := &cobra.Command{Use: "layout-plan", Short: "Plan a measured component set offline without Lib or project metadata", Long: `Compute local placements, wires, markers and score from schemaVersion:1,
 coreComponentId, components:[{id,measurement,pinStates?,allowedRotations?}], netPolicies keyed by
 net NAME, optional attachments and maxCandidates. measurement contains explicit
@@ -40,6 +40,17 @@ optimization cannot be combined with this mode. Finite maxCandidates still appli
 Interior X wire crossings are allowed in both modes; foreign endpoints, T contacts,
 collinear overlaps, symbol bodies and pin exits remain protected. Output may be large.
 Render --zones output directly without sheet data for a paper-free local preview.
+With --lib: read the existing lib-layout canonical input directly, preserving
+library/pin consistency, module ownership and per-module net policies. Output is
+local zones geometry for layout-render, not a compose source. Declared sheet data
+is validated as input but does not bound or pack local geometry. --lib and --zones
+are mutually exclusive. Use --lib --unbounded for expanded canonical modules.
+Optional --net-labels or layoutMode:"net-labels" explicitly replaces physical
+direct/attachment paths with independently named component pin islands. Electrical
+nets, ownership, NC and measured poses remain unchanged. Every marker has a real
+lead; symbols and labels still avoid collisions. Components pack in rows without
+a paper limit. The result records layoutMode; it does not claim direct wires were
+preserved. Incompatible with --unbounded and optimization; naming remains budgeted.
 Optional --report writes machine-readable diagnostics on success or failure,
 including input SHA-256, phase and structured search conflicts when available.
 Failure remains nonzero and never emits a partial layout. A bounded search failure
@@ -78,7 +89,7 @@ Example:
 		mode := ""
 		defer func() {
 			if report != "" {
-				if err := writeSchLayoutReport(report, source, phase, zones, result, runErr, mode); err != nil {
+				if err := writeSchLayoutReport(report, source, phase, zones || lib, result, runErr, mode); err != nil {
 					if runErr != nil {
 						runErr = fmt.Errorf("%w; diagnostic report could not be written: %w", runErr, err)
 					} else {
@@ -93,11 +104,27 @@ Example:
 		}
 		source = raw
 		phase = "decode"
-		if zones {
+		if lib {
+			var input libLayoutSource
+			input, err = decodeLibLayout(raw)
+			if unbounded {
+				mode = "unbounded"
+			}
+			if netLabels {
+				mode = "net-labels"
+			}
+			if err == nil {
+				phase = "solve"
+				result, err = planLibLayoutZones(input, mode)
+			}
+		} else if zones {
 			var input SchematicZonesInput
 			input, err = decodeSchematicZonesInput(raw)
 			if unbounded {
 				input.LayoutMode = "unbounded"
+			}
+			if netLabels {
+				input.LayoutMode = "net-labels"
 			}
 			mode = input.LayoutMode
 			if err == nil {
@@ -115,6 +142,9 @@ Example:
 			input, err = decodeSchematicLayoutInput(raw)
 			if unbounded {
 				input.LayoutMode = "unbounded"
+			}
+			if netLabels {
+				input.LayoutMode = "net-labels"
 			}
 			mode = input.LayoutMode
 			if err == nil {
@@ -147,6 +177,10 @@ Example:
 	c.Flags().StringVar(&from, "from", "", "measured component-set JSON, without Lib metadata")
 	c.Flags().BoolVar(&zones, "zones", false, "plan explicitly owned per-core zones; unified spacing isolates per-zone budgets")
 	c.Flags().BoolVar(&unbounded, "unbounded", false, "expand components into routing columns without region/paper limits; allow X crossings, retain electrical checks")
+	c.Flags().BoolVar(&lib, "lib", false, "read canonical lib-layout input and emit local zones without sheet packing; retains identity and connectivity checks")
+	c.Flags().BoolVar(&netLabels, "net-labels", false, "explicitly replace inter-component direct wires with same-net labels and real pin leads; unbounded row layout")
+	c.MarkFlagsMutuallyExclusive("lib", "zones")
+	c.MarkFlagsMutuallyExclusive("unbounded", "net-labels")
 	c.Flags().StringVar(&out, "out", "", "write local geometry only after validation; defaults to stdout")
 	c.Flags().StringVar(&report, "report", "", "write separate machine-readable diagnostics, including failed search evidence; failure still exits nonzero")
 	return c
@@ -191,7 +225,7 @@ func decodeSchematicLayoutInput(raw []byte) (SchematicLayoutInput, error) {
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &fields)
 	if string(fields["layoutMode"]) == "null" {
-		return input, fmt.Errorf("layoutMode must be search or unbounded, not null")
+		return input, fmt.Errorf("layoutMode must be search, unbounded or net-labels, not null")
 	}
 	if err := validateSchematicLayoutMode(input.LayoutMode, input.Optimization); err != nil {
 		return input, err

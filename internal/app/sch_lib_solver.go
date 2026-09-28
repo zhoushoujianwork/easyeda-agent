@@ -12,6 +12,29 @@ import (
 // The electrical graph and measured poses are immutable. Only translations,
 // routes and naming markers are searched, on a bounded five-raw grid.
 func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
+	computed, err := computeLibLayout(input, "", false)
+	if err != nil {
+		return nil, err
+	}
+	return computed.composition, nil
+}
+
+// The canonical adapter is shared by legacy composition and local-only layout.
+// Local output never invents a larger measured sheet to fit expanded geometry.
+type libLayoutComputation struct {
+	composition *schCompositionSource
+	zones       *SchematicZonesResult
+}
+
+func planLibLayoutZones(input libLayoutSource, mode string) (*SchematicZonesResult, error) {
+	computed, err := computeLibLayout(input, mode, true)
+	if err != nil {
+		return nil, err
+	}
+	return computed.zones, nil
+}
+
+func computeLibLayout(input libLayoutSource, mode string, localOnly bool) (*libLayoutComputation, error) {
 	raw, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
@@ -20,7 +43,7 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 	if err = json.Unmarshal(raw, &src); err != nil {
 		return nil, err
 	}
-	fail := func(format string, args ...any) (*schCompositionSource, error) {
+	fail := func(format string, args ...any) (*libLayoutComputation, error) {
 		return nil, fmt.Errorf("unresolved: "+format, args...)
 	}
 	if src.SchemaVersion != 1 || src.Connectivity.ProjectID == "" || src.Connectivity.DocumentID == "" || !plBoxValid(src.Sheet) {
@@ -126,6 +149,7 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 		return fail("every component must belong to one module")
 	}
 	result := &schCompositionSource{SchemaVersion: 1, Connectivity: d, Sheet: src.Sheet, SheetBorder: src.SheetBorder, Keepouts: src.Keepouts}
+	zones := &SchematicZonesResult{SchemaVersion: 1}
 	seenModules := map[string]bool{}
 	for _, intent := range src.LayoutModules {
 		cm, ok := modules[intent.ID]
@@ -171,7 +195,7 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 			}
 			hints[h.ComponentID] = h
 		}
-		input := SchematicLayoutInput{SchemaVersion: 1, CoreComponentID: intent.CoreComponentID, NetPolicies: netPolicies, Attachments: intent.Peripherals}
+		input := SchematicLayoutInput{SchemaVersion: 1, LayoutMode: mode, CoreComponentID: intent.CoreComponentID, NetPolicies: netPolicies, Attachments: intent.Peripherals}
 		for _, id := range members {
 			states := map[string]string{}
 			for _, pin := range byID[id].Pins {
@@ -185,7 +209,18 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 		}
 		local, e := planSchematicLayoutWithBudget(input, &budget)
 		if e != nil {
-			return fail("module %s: %v", intent.ID, e)
+			return nil, fmt.Errorf("unresolved: module %s: %w", intent.ID, e)
+		}
+		if localOnly {
+			setSchematicMarkerAnchorZone(local, intent.ID)
+			zone := SchematicZone{ID: intent.ID, Title: intent.Title, CoreComponentID: intent.CoreComponentID, ComponentIDs: members}
+			measured, err := measureSchematicZoneVariant(zone, "", local, nil)
+			if err != nil {
+				return nil, err
+			}
+			zones.Zones = append(zones.Zones, SchematicZoneResult{ID: zone.ID, Title: zone.Title, CoreComponentID: zone.CoreComponentID,
+				ContentBounds: measured.ContentBounds, Frame: measured.Frame, Layout: measured.Layout})
+			zones.CandidatesUsed += local.CandidatesUsed
 		}
 		p := powerLayoutPlan{Placements: local.Placements, Wires: local.Wires, Flags: local.Flags}
 		result.Modules = append(result.Modules, schCompositionModule{ID: intent.ID, Title: intent.Title, Placements: p.Placements, Wires: p.Wires, Flags: p.Flags})
@@ -193,8 +228,10 @@ func planLibLayout(input libLayoutSource) (*schCompositionSource, error) {
 	if len(seenModules) != len(modules) {
 		return fail("layoutModules must cover every canonical module")
 	}
-	if _, err = planSchComposition(*result); err != nil {
-		return fail("composition validation: %v", err)
+	if !localOnly {
+		if _, err = planSchComposition(*result); err != nil {
+			return fail("composition validation: %v", err)
+		}
 	}
-	return result, nil
+	return &libLayoutComputation{composition: result, zones: zones}, nil
 }

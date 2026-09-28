@@ -53,6 +53,13 @@ easyeda sch sheet-geometry --project <project> --json
 仍拒绝异网端点/T 接触、共线重叠及穿越符号/位号/引脚出口。预算仍有限，不能与
 `optimization` 同用。结果可能明显变宽变高，需检查阅读效果；直接渲染时不传 sheet，
 纸张设置由用户在最终需要打印时选择。此离线选项不会修改宿主纸张，也不豁免现场回读。
+源文件若是 `lib-layout` 的 connectivity/measurements/layoutModules 格式，改用
+`layout-plan --lib --unbounded` 直接读取；输出仍是可无 sheet 渲染的多区局部结果，
+不需要手工转换或扩大输入中的纸张尺寸。保留原输入和报告，现场 Apply 另行校验。
+用户明确同意同名标签连接、无需器件间实体导线时，使用 `layout-plan --net-labels`
+（原 Lib 输入加 `--lib`，普通多区加 `--zones`）。每件独立命名后按包络分行摆放，
+不设纸张上限；不能和 `--unbounded` 或 optimization 同用。连接/归属/NC 不改，
+direct/attachment 的绘图直连要求由这个显式选择替代；默认工作流仍要求真实直连。
 纸张默认 `--flow z`：输入功能顺序从左到右、同行顶齐，下一行按该行最高框推进；
 不补短框下空洞，不回填旧页。同页集合按最早成员聚拢、成员顺序不变，整体试放或换页。
 旧自由装箱需显式 `--flow compact`，不能为减少页数悄悄改变用户要求的 Z 型阅读流。

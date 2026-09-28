@@ -521,6 +521,18 @@ sheet planner 和各页 render 输入。samePageAs 必须引用另一现有 zone
 无解证明，但失败必须带明确终止类型且不能输出半成品。
 
 普通器件集合不需要建 Lib：使用 `sch layout-plan --from input.json --out geometry.json`。
+用户明确接受标签连接时，可选 `--net-labels`（JSON `layoutMode:"net-labels"`）：
+每件独立放置网络标记与短引线，再按完整可见包络分行排列，无纸张尺寸上限。
+它保留电气网络与所有权，显式替代 direct/attachment 的实体导线路径要求；输出
+`layoutMode` 和报告均记录选择，不能把多标签岛说成保留了实体直连。引用错误、
+异网 attachment、NC、位号/符号/标记碰撞仍拒绝。不能和 optimization 同用；
+密集引脚仍可能耗尽命名预算。不自动降级到该模式。原 Lib 输入使用 `--lib --net-labels`。
+已有 `lib-layout` 冻结输入可直接使用 `sch layout-plan --lib --unbounded --from input.json
+--out zones-geometry.json --report report.json`，无需手工改写测量和网络。`--lib` 与
+`--zones` 互斥；按 canonical module 原样生成多区局部结果，保留库/引脚一致性校验、
+核心/外围归属、各模块的网络策略与 attachment。报告源哈希对应原始 Lib 输入。
+此入口只完成区内布局，不做源 sheet 的装箱；成功结果可直接无 sheet 渲染。
+原 `lib-layout` 仍生成已通过纸张组合校验的 compose source，不能将两种输出混用。
 可选 `layoutMode:"unbounded"` 或 `--unbounded`（含 `--zones`）使用展开式通道布局，
 不设区域宽高和纸张上限：保留实测姿态，核心归零、器件分列，每网分配水平通道，
 同一区所有同网引脚通过真实导线连接，命名标记置于通道末端。允许导线内部 X 相交，

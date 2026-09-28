@@ -1,0 +1,1326 @@
+{
+  "schemaVersion": 1,
+  "connectivity": {
+    "schemaVersion": "1.4",
+    "projectId": "00000000000000000000000000000000",
+    "documentId": "2222222222222222",
+    "components": [
+      {
+        "id": "cmp-U3",
+        "ref": "U3",
+        "role": "TPS61022; EN and MODE both controlled",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 100,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "38b3202ecbf646649410af48070973ad",
+          "name": "TPS61022RWUR"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "GND"
+          },
+          {
+            "number": "2",
+            "name": "SW"
+          },
+          {
+            "number": "3",
+            "name": "VOUT"
+          },
+          {
+            "number": "4",
+            "name": "FB"
+          },
+          {
+            "number": "5",
+            "name": "EN"
+          },
+          {
+            "number": "6",
+            "name": "MODE"
+          },
+          {
+            "number": "7",
+            "name": "VIN"
+          }
+        ]
+      },
+      {
+        "id": "cmp-L3",
+        "ref": "L3",
+        "role": "1uH/12A Irms/15A Isat",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 250,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "be5ecc59df9b4f0eaf29cbd28bb217bc",
+          "name": "MWSA0603S-1R0MT"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C21",
+        "ref": "C21",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 400,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C22",
+        "ref": "C22",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 550,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C23",
+        "ref": "C23",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 700,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C24",
+        "ref": "C24",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 850,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C25",
+        "ref": "C25",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 1000,
+          "y": 650,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C26",
+        "ref": "C26",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 100,
+          "y": 570,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C27",
+        "ref": "C27",
+        "role": "capacitor",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 250,
+          "y": 570,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "0de9d28bbcd34ca3bf2a4d78faaa50bb",
+          "name": "CL31A226KAHNNNE"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-R16",
+        "ref": "R16",
+        "role": "750k boost FB upper",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 400,
+          "y": 570,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "092e0df336774018b6dc818cd610382d",
+          "name": "0603WAF7503T5E"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-R17",
+        "ref": "R17",
+        "role": "100k 0.1% FB lower",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 550,
+          "y": 570,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "3b5957712d6943698e6319ba927b09a8",
+          "name": "RT0603BRD07100KL"
+        },
+        "pins": [
+          {
+            "number": "2",
+            "name": "2"
+          },
+          {
+            "number": "1",
+            "name": "1"
+          }
+        ]
+      },
+      {
+        "id": "cmp-C28",
+        "ref": "C28",
+        "role": "100pF feedforward",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 700,
+          "y": 570,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "c52f6dce9a2242039357ababc1e5f2aa",
+          "name": "CL10C101JB8NNNC"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      },
+      {
+        "id": "cmp-R18",
+        "ref": "R18",
+        "role": "2.2k boost output bleeder / lock reset",
+        "pageId": "2222222222222222",
+        "placement": {
+          "x": 850,
+          "y": 570,
+          "rotation": 0,
+          "mirror": false
+        },
+        "device": {
+          "libraryUuid": "0819f05c4eef4c71ace90d822a990e87",
+          "deviceUuid": "98df714a70bd4b05a6b4009c95d1c8aa",
+          "name": "0603WAF2201T5E"
+        },
+        "pins": [
+          {
+            "number": "1",
+            "name": "1"
+          },
+          {
+            "number": "2",
+            "name": "2"
+          }
+        ]
+      }
+    ],
+    "nets": [
+      {
+        "id": "BAT_5V",
+        "name": "BAT_5V",
+        "scope": "global",
+        "role": "power"
+      },
+      {
+        "id": "BAT_RAW",
+        "name": "BAT_RAW",
+        "scope": "global",
+        "role": "power"
+      },
+      {
+        "id": "BOOST_EN",
+        "name": "BOOST_EN",
+        "scope": "local",
+        "role": "signal"
+      },
+      {
+        "id": "BOOST_FB",
+        "name": "BOOST_FB",
+        "scope": "local",
+        "role": "signal"
+      },
+      {
+        "id": "BOOST_SW",
+        "name": "BOOST_SW",
+        "scope": "local",
+        "role": "signal"
+      },
+      {
+        "id": "GND",
+        "name": "GND",
+        "scope": "global",
+        "role": "ground"
+      }
+    ],
+    "connections": [
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "1",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "2",
+        "netId": "BOOST_SW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "3",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "4",
+        "netId": "BOOST_FB",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "5",
+        "netId": "BOOST_EN",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "6",
+        "netId": "BOOST_EN",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-U3",
+        "pinNumber": "7",
+        "netId": "BAT_RAW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-L3",
+        "pinNumber": "1",
+        "netId": "BAT_RAW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-L3",
+        "pinNumber": "2",
+        "netId": "BOOST_SW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C21",
+        "pinNumber": "1",
+        "netId": "BAT_RAW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C21",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C22",
+        "pinNumber": "1",
+        "netId": "BAT_RAW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C22",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C23",
+        "pinNumber": "1",
+        "netId": "BAT_RAW",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C23",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C24",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C24",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C25",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C25",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C26",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C26",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C27",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C27",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-R16",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-R16",
+        "pinNumber": "2",
+        "netId": "BOOST_FB",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-R17",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-R17",
+        "pinNumber": "1",
+        "netId": "BOOST_FB",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C28",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-C28",
+        "pinNumber": "2",
+        "netId": "BOOST_FB",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-R18",
+        "pinNumber": "1",
+        "netId": "BAT_5V",
+        "kind": "netlist"
+      },
+      {
+        "componentId": "cmp-R18",
+        "pinNumber": "2",
+        "netId": "GND",
+        "kind": "netlist"
+      }
+    ],
+    "modules": [
+      {
+        "id": "battery-boost",
+        "name": "BATTERY 5.1V BOOST / PWM",
+        "coreComponents": [
+          "cmp-U3"
+        ],
+        "peripheralComponents": [
+          "cmp-L3",
+          "cmp-C21",
+          "cmp-C22",
+          "cmp-C23",
+          "cmp-C24",
+          "cmp-C25",
+          "cmp-C26",
+          "cmp-C27",
+          "cmp-R16",
+          "cmp-R17",
+          "cmp-C28",
+          "cmp-R18"
+        ]
+      }
+    ]
+  },
+  "sheet": {
+    "minX": 0,
+    "minY": 0,
+    "maxX": 1170,
+    "maxY": 825
+  },
+  "sheetBorder": {
+    "minX": 10,
+    "minY": 10,
+    "maxX": 1160,
+    "maxY": 815
+  },
+  "keepouts": [
+    {
+      "minX": 460,
+      "minY": 10,
+      "maxX": 1160,
+      "maxY": 190
+    }
+  ],
+  "measurements": [
+    {
+      "designator": "U3",
+      "value": "={Manufacturer Part}",
+      "x": 550,
+      "y": 500,
+      "rotation": 0,
+      "mirror": false,
+      "bbox": {
+        "maxX": 585.5,
+        "maxY": 525.5,
+        "minX": 514.5,
+        "minY": 474.5
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "GND",
+          "net": "GND",
+          "x": 505,
+          "y": 515,
+          "rotation": 180
+        },
+        {
+          "number": "2",
+          "name": "SW",
+          "net": "BOOST_SW",
+          "x": 505,
+          "y": 500,
+          "rotation": 180
+        },
+        {
+          "number": "3",
+          "name": "VOUT",
+          "net": "BAT_5V",
+          "x": 505,
+          "y": 485,
+          "rotation": 180
+        },
+        {
+          "number": "4",
+          "name": "FB",
+          "net": "BOOST_FB",
+          "x": 595,
+          "y": 485,
+          "rotation": 0
+        },
+        {
+          "number": "5",
+          "name": "EN",
+          "net": "BOOST_EN",
+          "x": 595,
+          "y": 495,
+          "rotation": 0
+        },
+        {
+          "number": "6",
+          "name": "MODE",
+          "net": "BOOST_EN",
+          "x": 595,
+          "y": 505,
+          "rotation": 0
+        },
+        {
+          "number": "7",
+          "name": "VIN",
+          "net": "BAT_RAW",
+          "x": 595,
+          "y": 515,
+          "rotation": 0
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 515,
+          "minY": 525,
+          "maxX": 523.9482421875,
+          "maxY": 533
+        }
+      ]
+    },
+    {
+      "designator": "L3",
+      "value": "={Value}",
+      "x": 700,
+      "y": 500,
+      "rotation": 0,
+      "mirror": false,
+      "bbox": {
+        "maxX": 717.16408,
+        "maxY": 504.8329,
+        "minX": 682.61789,
+        "minY": 499.55467999999996
+      },
+      "pins": [
+        {
+          "number": "2",
+          "name": "2",
+          "net": "BOOST_SW",
+          "x": 720,
+          "y": 500,
+          "rotation": 0
+        },
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_RAW",
+          "x": 680,
+          "y": 500,
+          "rotation": 180
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 685,
+          "minY": 505,
+          "maxX": 692.7861328125,
+          "maxY": 513
+        }
+      ]
+    },
+    {
+      "designator": "C21",
+      "value": "={Value}",
+      "x": 850,
+      "y": 500,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 858.5,
+        "maxY": 505.4999999999999,
+        "minX": 841.5,
+        "minY": 494.4999999999999
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_RAW",
+          "x": 850,
+          "y": 514.9999999999999,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 850,
+          "y": 484.9999999999999,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 865,
+          "minY": 495,
+          "maxX": 877.84130859375,
+          "maxY": 503
+        }
+      ]
+    },
+    {
+      "designator": "C22",
+      "value": "={Value}",
+      "x": 1000,
+      "y": 500,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1008.5,
+        "maxY": 505.4999999999999,
+        "minX": 991.5,
+        "minY": 494.4999999999999
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_RAW",
+          "x": 1000,
+          "y": 514.9999999999999,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 1000,
+          "y": 484.9999999999999,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1015,
+          "minY": 495,
+          "maxX": 1027.84130859375,
+          "maxY": 503
+        }
+      ]
+    },
+    {
+      "designator": "C23",
+      "value": "={Value}",
+      "x": 1150,
+      "y": 500,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1158.5,
+        "maxY": 505.4999999999999,
+        "minX": 1141.5,
+        "minY": 494.4999999999999
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_RAW",
+          "x": 1150,
+          "y": 514.9999999999999,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 1150,
+          "y": 484.9999999999999,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1165,
+          "minY": 495,
+          "maxX": 1177.84130859375,
+          "maxY": 503
+        }
+      ]
+    },
+    {
+      "designator": "C24",
+      "value": "={Value}",
+      "x": 1300,
+      "y": 500,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1308.5,
+        "maxY": 505.4999999999999,
+        "minX": 1291.5,
+        "minY": 494.4999999999999
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 1300,
+          "y": 514.9999999999999,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 1300,
+          "y": 484.9999999999999,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1315,
+          "minY": 495,
+          "maxX": 1327.84130859375,
+          "maxY": 503
+        }
+      ]
+    },
+    {
+      "designator": "C25",
+      "value": "={Value}",
+      "x": 1450,
+      "y": 500,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1458.5,
+        "maxY": 505.4999999999999,
+        "minX": 1441.5,
+        "minY": 494.4999999999999
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 1450,
+          "y": 514.9999999999999,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 1450,
+          "y": 484.9999999999999,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1465,
+          "minY": 495,
+          "maxX": 1477.84130859375,
+          "maxY": 503
+        }
+      ]
+    },
+    {
+      "designator": "C26",
+      "value": "={Value}",
+      "x": 550,
+      "y": 420,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 558.5,
+        "maxY": 425.5,
+        "minX": 541.5,
+        "minY": 414.5
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 550,
+          "y": 435,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 550,
+          "y": 405,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 565,
+          "minY": 415,
+          "maxX": 577.84130859375,
+          "maxY": 423
+        }
+      ]
+    },
+    {
+      "designator": "C27",
+      "value": "={Value}",
+      "x": 700,
+      "y": 420,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 708.5,
+        "maxY": 425.5,
+        "minX": 691.5,
+        "minY": 414.5
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 700,
+          "y": 435,
+          "rotation": 90
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 700,
+          "y": 405,
+          "rotation": 270
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 715,
+          "minY": 415,
+          "maxX": 727.84130859375,
+          "maxY": 423
+        }
+      ]
+    },
+    {
+      "designator": "R16",
+      "value": "={Value}",
+      "x": 850,
+      "y": 420,
+      "rotation": 0,
+      "mirror": false,
+      "bbox": {
+        "maxX": 860.5,
+        "maxY": 424.5,
+        "minX": 839.5,
+        "minY": 415.5
+      },
+      "pins": [
+        {
+          "number": "2",
+          "name": "2",
+          "net": "BOOST_FB",
+          "x": 870,
+          "y": 420,
+          "rotation": 0
+        },
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 830,
+          "y": 420,
+          "rotation": 180
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 840,
+          "minY": 425,
+          "maxX": 852.84130859375,
+          "maxY": 433
+        }
+      ]
+    },
+    {
+      "designator": "R17",
+      "value": "={Value}",
+      "x": 1000,
+      "y": 420,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1004.5,
+        "maxY": 430.4999999999999,
+        "minX": 995.5,
+        "minY": 409.4999999999999
+      },
+      "pins": [
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 1000,
+          "y": 399.9999999999999,
+          "rotation": 270
+        },
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BOOST_FB",
+          "x": 1000,
+          "y": 439.9999999999999,
+          "rotation": 90
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1010,
+          "minY": 420,
+          "maxX": 1022.84130859375,
+          "maxY": 428
+        }
+      ]
+    },
+    {
+      "designator": "C28",
+      "value": "={Value}",
+      "x": 1150,
+      "y": 420,
+      "rotation": 0,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1155.5,
+        "maxY": 428.5,
+        "minX": 1144.5,
+        "minY": 411.5
+      },
+      "pins": [
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 1135,
+          "y": 420,
+          "rotation": 180
+        },
+        {
+          "number": "2",
+          "name": "2",
+          "net": "BOOST_FB",
+          "x": 1165,
+          "y": 420,
+          "rotation": 0
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1145,
+          "minY": 430,
+          "maxX": 1157.84130859375,
+          "maxY": 438
+        }
+      ]
+    },
+    {
+      "designator": "R18",
+      "value": "={Value}",
+      "x": 1300,
+      "y": 420,
+      "rotation": 270,
+      "mirror": false,
+      "bbox": {
+        "maxX": 1304.5,
+        "maxY": 430.4999999999999,
+        "minX": 1295.5,
+        "minY": 409.4999999999999
+      },
+      "pins": [
+        {
+          "number": "2",
+          "name": "2",
+          "net": "GND",
+          "x": 1300,
+          "y": 399.9999999999999,
+          "rotation": 270
+        },
+        {
+          "number": "1",
+          "name": "1",
+          "net": "BAT_5V",
+          "x": 1300,
+          "y": 439.9999999999999,
+          "rotation": 90
+        }
+      ],
+      "textBboxes": [
+        {
+          "minX": 1310,
+          "minY": 420,
+          "maxX": 1322.84130859375,
+          "maxY": 428
+        }
+      ]
+    }
+  ],
+  "layoutModules": [
+    {
+      "id": "battery-boost",
+      "title": "BATTERY 5.1V BOOST / PWM",
+      "coreComponentId": "cmp-U3",
+      "netPolicies": {
+        "GND": "local_ground",
+        "BOOST_SW": "direct",
+        "BAT_5V": "local_power",
+        "BOOST_FB": "direct",
+        "BOOST_EN": "direct",
+        "BAT_RAW": "local_power"
+      },
+      "peripherals": [
+        {
+          "componentId": "cmp-L3",
+          "pinNumber": "2",
+          "attachTo": {
+            "componentId": "cmp-U3",
+            "pinNumber": "2"
+          }
+        },
+        {
+          "componentId": "cmp-C21",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-U3",
+            "pinNumber": "7"
+          }
+        },
+        {
+          "componentId": "cmp-C22",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-C21",
+            "pinNumber": "1"
+          }
+        },
+        {
+          "componentId": "cmp-C23",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-C22",
+            "pinNumber": "1"
+          }
+        },
+        {
+          "componentId": "cmp-C24",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-U3",
+            "pinNumber": "3"
+          }
+        },
+        {
+          "componentId": "cmp-C25",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-C24",
+            "pinNumber": "1"
+          }
+        },
+        {
+          "componentId": "cmp-C26",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-C25",
+            "pinNumber": "1"
+          }
+        },
+        {
+          "componentId": "cmp-C27",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-C26",
+            "pinNumber": "1"
+          }
+        },
+        {
+          "componentId": "cmp-R16",
+          "pinNumber": "2",
+          "attachTo": {
+            "componentId": "cmp-U3",
+            "pinNumber": "4"
+          }
+        },
+        {
+          "componentId": "cmp-R17",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-R16",
+            "pinNumber": "2"
+          }
+        },
+        {
+          "componentId": "cmp-C28",
+          "pinNumber": "2",
+          "attachTo": {
+            "componentId": "cmp-R16",
+            "pinNumber": "2"
+          }
+        },
+        {
+          "componentId": "cmp-R18",
+          "pinNumber": "1",
+          "attachTo": {
+            "componentId": "cmp-C27",
+            "pinNumber": "1"
+          }
+        }
+      ]
+    }
+  ],
+  "maxCandidates": 3000
+}

@@ -7,11 +7,11 @@ import (
 )
 
 func validateSchematicLayoutMode(mode string, optimization *SchematicLayoutOptimization) error {
-	if mode != "" && mode != "search" && mode != "unbounded" {
-		return fmt.Errorf("layoutMode must be search or unbounded")
+	if mode != "" && mode != "search" && mode != "unbounded" && mode != "net-labels" {
+		return fmt.Errorf("layoutMode must be search, unbounded or net-labels")
 	}
-	if mode == "unbounded" && optimization != nil {
-		return fmt.Errorf("unbounded layout preserves measured poses; omit optimization")
+	if (mode == "unbounded" || mode == "net-labels") && optimization != nil {
+		return fmt.Errorf("%s layout preserves measured poses; omit optimization", mode)
 	}
 	return nil
 }
@@ -22,6 +22,13 @@ func validateSchematicLayoutMode(mode string, optimization *SchematicLayoutOptim
 // This is deliberately a readability/area tradeoff, not an always-solvable mode:
 // measured pin exits and labels can still make the supplied pose impossible.
 func solveSchematicUnbounded(input SchematicLayoutInput, measured map[string]powerLayoutPlacement, members []string, budget *int) (*SchematicLayoutResult, error) {
+	if err := validateSchematicExpandedAttachments(input, measured, members); err != nil {
+		return nil, err
+	}
+	return buildSchematicUnbounded(input, measured, members, budget)
+}
+
+func validateSchematicExpandedAttachments(input SchematicLayoutInput, measured map[string]powerLayoutPlacement, members []string) error {
 	// Expanded placement must not turn a malformed explicit attachment into a
 	// silently ignored positioning hint. Use the same pin/net rules as search.
 	for _, hint := range input.Attachments {
@@ -32,9 +39,13 @@ func solveSchematicUnbounded(input SchematicLayoutInput, measured map[string]pow
 			}
 		}
 		if _, err := libAttachmentPairs(hint.ComponentID, measured[hint.ComponentID], hint, measured, others, input.NetPolicies); err != nil {
-			return nil, err
+			return err
 		}
 	}
+	return nil
+}
+
+func buildSchematicUnbounded(input SchematicLayoutInput, measured map[string]powerLayoutPlacement, members []string, budget *int) (*SchematicLayoutResult, error) {
 	spend := func() error {
 		if *budget <= 0 {
 			return errLibLayoutBudget
@@ -164,7 +175,8 @@ func solveSchematicUnbounded(input SchematicLayoutInput, measured map[string]pow
 	// Normalize and preserve T nodes while combining collinear same-net pieces.
 	p.Wires = libAppendRoute(nil, p.Wires)
 	for i, c := range p.Placements {
-		p.Placements[i] = plTranslate(c, -coreX, -coreY)
+		original := measured[order[i]]
+		p.Placements[i] = plTranslate(original, c.X-coreX-original.X, c.Y-coreY-original.Y)
 	}
 	for i := range p.Wires {
 		for j := range p.Wires[i].Points {

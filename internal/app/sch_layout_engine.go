@@ -78,6 +78,7 @@ type SchematicLayoutInput struct {
 }
 type SchematicLayoutResult struct {
 	SchemaVersion      int                               `json:"schemaVersion"`
+	LayoutMode         string                            `json:"layoutMode,omitempty"`
 	ComponentIDs       map[string]string                 `json:"componentIds"`
 	PinStates          map[string]map[string]string      `json:"pinStates"`
 	Placements         []SchematicPlacement              `json:"placements"`
@@ -215,7 +216,9 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 	}
 	var result *SchematicLayoutResult
 	var feasibility *SchematicFeasibilityReport
-	if input.LayoutMode == "unbounded" {
+	if input.LayoutMode == "net-labels" {
+		result, err = solveSchematicNetLabels(input, measured, members, budget)
+	} else if input.LayoutMode == "unbounded" {
 		result, err = solveSchematicUnbounded(input, measured, members, budget)
 	} else {
 		result, feasibility, err = runSchematicLayoutFeasibility(input, measured, allowed, budget,
@@ -228,6 +231,7 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 	}
 	result.FeasibilityReport = feasibility
 	result.SchemaVersion = 1
+	result.LayoutMode = input.LayoutMode
 	result.ComponentIDs = refs
 	result.PinStates = map[string]map[string]string{}
 	for _, c := range input.Components {
@@ -246,8 +250,10 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		result.CandidatesUsed = before - *budget
 		result.Routing = routing.snapshot()
 	}
-	if err := validateSchematicLayoutPeripheralDirect(result, input.CoreComponentID, peripheralNetRoles); err != nil {
-		return nil, err
+	if input.LayoutMode != "net-labels" {
+		if err := validateSchematicLayoutPeripheralDirect(result, input.CoreComponentID, peripheralNetRoles); err != nil {
+			return nil, err
+		}
 	}
 	if err := annotateSchematicMarkerAnchors(result, input.MarkerAnchors, ""); err != nil {
 		return nil, err
