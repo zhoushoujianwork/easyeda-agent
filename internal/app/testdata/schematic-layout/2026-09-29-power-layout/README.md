@@ -10,8 +10,8 @@ These are offline `easyeda sch lib-layout` inputs extracted from a two-page vehi
 Reproduce without an EDA window, using easyeda-agent v1.8.0:
 
 ```sh
-easyeda sch lib-layout --from docs/reviews/fixtures/2026-09-29-power-layout/input.json --out /tmp/buck-composition.json
-easyeda sch lib-layout --from docs/reviews/fixtures/2026-09-29-power-layout/boost-input.json --out /tmp/boost-composition.json
+easyeda sch lib-layout --from internal/app/testdata/schematic-layout/2026-09-29-power-layout/input.json --out /tmp/buck-composition.json
+easyeda sch lib-layout --from internal/app/testdata/schematic-layout/2026-09-29-power-layout/boost-input.json --out /tmp/boost-composition.json
 ```
 
 Both inputs set `maxCandidates: 3000`. The buck exits 1 after 3,000 candidates, 20 backtracks and 3 relocation attempts, with `cmp-R6` placement `candidate-budget` as the last conflict. The boost exits 1 after 3,000 candidates and 12 backtracks with `candidate search budget exhausted`. Raising the isolated buck input to 80,000 did not return within three minutes; that run was stopped, so it is a latency observation, not a completed failure. The earlier closed issue #262 covered a different 51-part/10-zone regression.

@@ -351,8 +351,7 @@ v1 (`route-short` / `pour`) is mechanically correct but coarse. Planned quality 
   non-orthogonal(自由角度走线)/ track-over-pad(走线压焊盘=短路)/ silkscreen-flipped(丝印正反/放反)/
   overlapping- & single-layer-via / 2-pin width-mismatch / duplicate-segment. Copper rules reconstructed
   Go-side from placed copper; the silkscreen rule reads `pcb.silk.list` (text layer+mirror). See the
-  `pcb check` bullet in **Read / inspect**. Absorbs the official DFM tool's geometry checks
-  (`docs/reviews/2026-07-marketplace-coverage.md`, HIGH item).
+  `pcb check` bullet in **Read / inspect** for the supported geometry checks.
 - ✅ **布局质量多维打分 (#167, done)** — `pcb layout-score` 九维 + 归因、`pcb floorplan` 有序功能带、
   `pcb dump` 离线 fixture、`easyeda spec validate/show` S0 契约化。见上方 **Layout adjustment** 三条。
   论点:**能自动逼近的前提是先能量化打分 —— 你没法优化一个你测不出来的东西**,所以建设顺序是先

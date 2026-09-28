@@ -57,7 +57,7 @@ func requestTimeout(req *protocol.Request) time.Duration {
 // nonReentrant lists actions the daemon refuses to run concurrently per window.
 // A DRC re-check piles a second full-canvas recompute onto the webview while
 // the first is still grinding (worst on a background window, where it NEVER
-// finishes — docs/reviews/2026-07-esp32mini-findings.md A4); retries therefore make the hang worse,
+// finishes); retries therefore make the hang worse,
 // not better. The guard turns that into an immediate, explainable rejection.
 //
 // ── Does the connector's FIFO queue make this redundant? NO — keep it. ─────

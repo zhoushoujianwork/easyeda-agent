@@ -37,7 +37,7 @@ develop + regression-test the connector against a LIVE editor, hands-free:
    a GitHub issue labeled `ready-for-agent`, let ClawFlow implement + open a PR,
    then **you merge and live-verify** (the operator can't do runtime acceptance —
    see the advisory-loop section at the bottom). The rolling gap/roadmap ledger is
-   [2026-07 历史探针记录](reviews/2026-07-esp32mini-findings.md).
+   [2026-07 历史探针记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-esp32mini-findings.md).
 
 ## TL;DR loop
 
@@ -300,7 +300,7 @@ empty return after actually creating a visible wire `Name` attribute. dev.19+
 verifies a unique new attribute, its coordinates/visibility and parent wire
 network, rather than assuming an empty return means no write. Both direct
 labels and `connect_pin` passed save/reload checks. See the
-[B06 evidence](reviews/2026-09-24-v1.6.0-dev19-B06-repair.md); this does not
+[B06 evidence](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-24-v1.6.0-dev19-B06-repair.md); this does not
 change the historical V3 compatibility boundary or authorize GUI engineering.
 
 ## Advisory loop: what the implement operator can and cannot do

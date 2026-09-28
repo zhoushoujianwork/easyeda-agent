@@ -110,7 +110,7 @@ HPWL 是网络端点包围盒的半周长，只是线长估计；RUDY 是根据�
 2026-09-24 的路线避让审查确认这套职责可形成闭环，同时发现固定排网顺序及初始旋转
 淘汰会漏解。已补有预算的排网次序回溯和移动后的整体旋转邻域，并以固定布局两网、双组
 递归让位/外部端点重算场景核对。具体红绿过程和能力边界见
-[运行记录](reviews/2026-09-24-pcb-route-avoidance.md)。这证明有限模型中的避让能力，不把
+[固定路由回归](../pkg/pcbsolve/testdata/fixed-route-order/README.md)与[跨组间距回归](../pkg/pcbsolve/testdata/multi-group-clearance/README.md)。这证明有限模型中的避让能力，不把
 同层路径枚举、真实带铜模块 Apply 或整板现场验收宣称为完成。
 
 ### 1. 先冻结问题、基线和目标

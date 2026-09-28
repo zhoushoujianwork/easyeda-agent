@@ -56,7 +56,7 @@ make local-daemon-restart LOCAL_EASYEDA="$(command -v easyeda)"
 
 仅在用户明确要求更新连接器、目标是用户已打开的 Web EDA 时使用。此处的浏览器操作
 只管理扩展，不在 GUI 中创建、保存、修复或验证电路。2026-09-24 的
-[实际轮换记录](reviews/2026-09-24-v1.6.0-dev17-connector-rotation.md)已用此流程将
+[实际轮换记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-24-v1.6.0-dev17-connector-rotation.md)已用此流程将
 `dev.15 → dev.16 → dev.17`，最终 `dev.17` 正式 `web reload` 通过。
 
 1. `easyeda health` 确认目标窗口的工程/文档和旧连接器版本；核对新 `.eext` 的 manifest

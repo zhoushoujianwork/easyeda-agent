@@ -6152,8 +6152,7 @@ export async function getComponentOrThrow(primitiveId: string): Promise<SchCompo
  * symbol, exposed as a typed action so the operation no longer needs `debug.exec_js`.
  *
  * WHY re-create (not a plain modify): `sch_PrimitiveComponent.modify` cannot change
- * the symbol/footprint reference of an already-placed instance (see
- * docs/reviews/2026-07-marketplace-coverage.md). The reference lives on the
+ * the symbol/footprint reference of an already-placed instance. The reference lives on the
  * DEVICE-library record, so we:
  *   1. resolve the device's real library UUID (imported devices carry an empty one),
  *   2. `lib_Device.modify` the device association to the new footprint/symbol,

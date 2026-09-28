@@ -1,5 +1,8 @@
 # PCB 位号对齐：实现与证据
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-pcb-silk-align-fix-detail.md)。
+
 主结论见[用户记录](2026-09-27-pcb-silk-align-fix.md)。这里保留实现和验证边界。
 
 ## 原失败与独立红灯复核
@@ -80,33 +83,11 @@ v4统一身份/显隐/可读性检查，initial、归一前fresh、每项位置�
 离线例覆盖旧三对/J2有限几何、负奖励、自身body、上下侧/通孔、缺测、无位、目标缺失、
 返回空/anchor失配、实际bbox碰撞、旋转fresh测量、镜像不兑现和跨入口停止依赖。
 
-## 提交后开发包与运行态升级
+## 采用版本与升级边界
 
-修复提交 `83a98b287accf4f2c00d936063fb1f396ea27e30` 已推送 dev。最终包11文件清单
-`349d7c36fb46ba74b24993f88c867de4730ccb4e36983618e347e75ccf128318`；darwin-arm64 CLI
-`8ee05e310b82ceb57453e91099c50fa7cd81fb6f9ba69495685571fea2285bf3`，bundle
-`cb9090857e9f6cfd6ff6864892b23d64a4780869237d2b24127e730ef1443355`。
-独立采用581项核验通过、346份输入哈希复验，15源文件与v4逐字相同，五平台VCS绑定clean提交，
-201个公开Skill文件对应同源。提交前后Go二进制非逐字等同；采用依据来源与绑定构建，不宣称机器码等价。
-120文件独立清单 `385f30bceca8bfed0c8718e185bec2a46e40e55a60e4894cce925ac1a59913b2`，
-报告 `959c7be7d84db5ee43e78095f17345af38aa546ca6fb559f70a4eaad4b8258ee`。
-
-逐页升级前saved:true后，安装本地CLI/Skill，仅更新已安装同UUID连接器并保持原权限；
-新注册窗口 `0d63a71d-f32b-489a-8984-09ca1da2646c` 的CLI/daemon/connector为dev.14、Web4.1.60，
-目标PCB身份一致，local check为READY。root对完整三页与51组件/203焊盘、full board、native对账：
-三页非属性全部相同，属性按parent/key核对仅623/388/258个primitiveId重铸；PCB组件result逐字同，
-board仅capturedAt差异；122原生section非DOCHEAD行逐字同，122个header client token及section顺序变化保留，
-其他7个ZIP条目逐字相同。未执行设计几何修复，旧位号相交仍是现场复测的开始状态。
-
-升级冻结262文件清单 `fdafb56b77686bf41d24317ba1c1f3dbb32c392418fed7a83579102ef32bbbd7`，
-目录 `artifacts/release-v1.8.0-dev14-upgrade-20260927/`，active daemon日志不入冻结；独立升级复核已完成。
-成功安装后的文字stdout误按JSON解析、首次新注册context尚空、离线字段大小写期望错误均保留；
-没有重复安装、额外刷新或设计写入重放。根已将窗口独占交回原执行员，从fresh状态验证位号修复。
-
-独立升级4,886项有效断言及594输入最终哈希复验通过，137条审计原字节闭合；
-38文件清单 `90f9aef1f8b2d4249799b2e7b99fe101fb32f708831c6fa25efcdcf82ae010b9`，
-报告 `456db6c75b79ee1ec0efde96c0a8ac53d64db6635c7f6ba1be54e2cfb9825ed9`。
-根重算全部38文件大小和SHA一致；只签升级保全，不补签位号现场或整板设计。
+采用提交 `83a98b2`、`1.7.1-dev.14` 的 v4 候选及提交后包经过有限独立复核；
+升级后的基线保全通过。它只证明版本与数据保持，现场位号和局部移动另以下文实测为准。
+安装步骤、临时进程身份和中间哈希见本页顶部固定版本原文。
 
 ## 实际 51 位号有限复测
 

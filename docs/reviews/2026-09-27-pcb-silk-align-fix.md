@@ -1,5 +1,8 @@
 # PCB 位号对齐修复
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-pcb-silk-align-fix.md)。
+
 2026-09-27，位号排列误报 `clean` 已修复。原失败在保存重载后仍有三对文字相交，
 J2 位号还落在自身完整渲染范围内；新版本对实际 51 位号的保存重载及独立复核通过，
 [#271](https://github.com/zhoushoujianwork/easyeda-agent/issues/271) 按该实测范围关闭，旧失败保留。

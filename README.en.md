@@ -369,7 +369,7 @@ Capabilities are exposed through CLI subcommands (`easyeda <domain> <verb>`). Va
 
 ## Not Yet Supported / Platform Walls
 
-Current capability status is maintained in [`docs/FEATURES.md`](docs/FEATURES.md) and the [CLI reference](docs/cli/README.md). The [2026-07 marketplace survey](docs/reviews/2026-07-marketplace-coverage.md) is a historical snapshot; it does not establish current support or an implementation commitment. Some remaining limitations:
+Current capability status is maintained in [`docs/FEATURES.md`](docs/FEATURES.md) and the [CLI reference](docs/cli/README.md). The [2026-07 marketplace survey](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-marketplace-coverage.md) is a historical snapshot; it does not establish current support or an implementation commitment. Some remaining limitations:
 
 - **Maze-tier autorouting** (dense / any-distance / push-shove) — the daemon does *short, clear* heuristic routing only. Full routing is external **Freerouting** (the DSN round-trip building blocks exist); a turnkey integration is **deferred** (needs a Java runtime; waiting on the official EasyEDA autorouter maturing past `@alpha`).
 - **Interactive routing UX** — the interactive *menu* (push-shove drag-routing, live length-tuning, remove-loops) has **no `eda.*` API**. But the *outputs* — diff-pair geometry, fanout-with-vias, serpentine length-match — are writable via `pcb_PrimitiveLine/Via.create`, so they're **feasible as our own heuristics** (absorb-list, not walled); only the drag UX is UI-only.
@@ -379,7 +379,7 @@ Current capability status is maintained in [`docs/FEATURES.md`](docs/FEATURES.md
 - **Incremental `import_changes`** — a no-op for API-added parts (platform limit); place the whole circuit before the first import, or use `pcb add-component`.
 - **Silkscreen density** — `silk-align` avoids label collisions where there's open space; a layout packed tighter than the labels can't be fully de-conflicted (it reports `unresolvedCollisions`) — loosen the placement.
 
-See [`docs/reviews/2026-07-marketplace-coverage.md`](docs/reviews/2026-07-marketplace-coverage.md) for the historical marketplace coverage matrix, [`docs/FEATURES.md`](docs/FEATURES.md) for the action inventory, and [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md) for the `eda.*` API coverage map.
+See [historical marketplace coverage](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-marketplace-coverage.md) for the historical marketplace coverage matrix, [`docs/FEATURES.md`](docs/FEATURES.md) for the action inventory, and [`docs/ecosystem-survey.md`](docs/ecosystem-survey.md) for the `eda.*` API coverage map.
 
 ## Design Position
 

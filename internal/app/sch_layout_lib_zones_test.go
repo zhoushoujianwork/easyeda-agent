@@ -12,7 +12,7 @@ import (
 func TestPowerIssue273LocalLayoutPreservesCanonicalEvidence(t *testing.T) {
 	for _, name := range []string{"input", "boost-input"} {
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("../../docs/reviews/fixtures/2026-09-29-power-layout", name+".json"))
+			raw, err := os.ReadFile(filepath.Join("testdata/schematic-layout/2026-09-29-power-layout", name+".json"))
 			if err != nil {
 				t.Fatal(err)
 			}

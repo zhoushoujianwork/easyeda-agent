@@ -81,7 +81,7 @@ LG-03/07/10 的合成场景，现场顺序仍按新鲜实测证据推进。
 ## 本轮执行记录（2026-09-24）
 
 LG-01/02 的合成场景完成离线复现；详见
-[运行记录](reviews/2026-09-24-pcb-group-move.md)。当前验证维度分别为：
+[参数化样例与验证边界](../.agents/skills/easyeda-agent/references/examples/pcb-group-move/README.md)。当前验证维度分别为：
 
 | 维度 | 本轮结果 |
 |---|---|
@@ -115,4 +115,4 @@ LG-01/02 的合成场景完成离线复现；详见
 整板/局部 SVG 与报告同源，显示真实模型 pads、路径宽度/净距、移动前位置、移动原因和
 请求机械禁放区；独立 `render --board --candidate` 缺请求时不能恢复仅在需求中的禁区。
 加 `--from request.json` 即可来源对账并显示同一约束。
-完整记录与验证结果见 [路线避让运行记录](reviews/2026-09-24-pcb-route-avoidance.md)。
+完整记录与验证结果见 [固定路由回归](../pkg/pcbsolve/testdata/fixed-route-order/README.md)与[跨组间距回归](../pkg/pcbsolve/testdata/multi-group-clearance/README.md)。

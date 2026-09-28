@@ -1,5 +1,8 @@
 # 2026-09-27 完整 CLI 用例：布局失败与修复复测
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-cli-layout-regression.md)。
+
 本轮从 ESP32 客户第一节原始需求开始，在 `1.7.1-dev.11` 上完成选型与单件测量，
 生成 51 件、195 个符号引脚、33 网、10 功能区的源数据。原理图布局尚未生成完整合法候选，
 因此 A01 失败，未执行完整设计 Apply、PCB 转换或最终验收。此前接受的三个基础问题不涉及此次新失败。
@@ -10,13 +13,13 @@
 
 ## 可复现输入
 
-[十个独立功能区输入](fixtures/2026-09-27-cli-layout/README.md)由同一次真实几何测量生成，
+[十个独立功能区输入](../../internal/app/testdata/schematic-layout/2026-09-27-cli-layout/README.md)由同一次真实几何测量生成，
 包含原始尺寸、最终位号 bbox、引脚、明确连接/NC、归属与网策略；未复制历史完成态布局。
 这些输入不访问 EDA，无需打开工程：
 
 ```bash
 easyeda sch layout-plan --zones \
-  --from docs/reviews/fixtures/2026-09-27-cli-layout/usb-input.json \
+  --from internal/app/testdata/schematic-layout/2026-09-27-cli-layout/usb-input.json \
   --out /tmp/cli-usb-layout.json --report /tmp/cli-usb-report.json
 ```
 
