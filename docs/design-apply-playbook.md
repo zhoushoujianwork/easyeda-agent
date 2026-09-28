@@ -69,6 +69,7 @@ easyeda sch apply steps.json --from 12 --to 30
 |---|---|
 | `id` / `name` | 稳定步骤 ID / 可选说明；未给 ID 时使用步骤序号。 |
 | `capture` | 将结果中的值存为变量，例如 `{"C1_PID":"$.primitiveId"}`。后续用 `${C1_PID}` 引用。 |
+| `literalPayloadKeys` | 仅 `action` 步骤可用；列出顶层 `payload` 中应逐字传送的键，例如 `expectedPagePrimitives`。这些值不做 `${...}` 变量替换，用于保护包含用户原始属性的完整快照；缺失或重复键在 preflight 被拒绝。 |
 | `assert` | 对结果断言；字段缺失或不满足条件即失败。 |
 | `timeoutSec` / `retry` / `continueOnError` | 覆盖默认执行策略；变更动作失败不自动重试。 |
 | `confirm` | 确认门控，`--yes` 放行；清除/删除等动作默认需要确认。 |
@@ -77,7 +78,7 @@ easyeda sch apply steps.json --from 12 --to 30
 
 `capture/assert` 路径相对于响应的 `result`，支持 `.key` 和 `[index]`，不支持筛选表达式。
 判定式支持数值比较、`==字符串`、`exists`、`true/false` 和 `len==N/len>=N/len<=N` 等长度比较。
-所有字符串值支持 `${变量}`；没有条件分支或循环，生成侧须先展开步骤。
+除显式 `literalPayloadKeys` 外，字符串值支持 `${变量}`；没有条件分支或循环，生成侧须先展开步骤。
 
 ## `expectSchematic`：完整回读约束
 

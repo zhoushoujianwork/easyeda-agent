@@ -28,6 +28,7 @@ modules: [
 | `components[].device` | `libraryUuid/deviceUuid` 必须来自已解析的器件库身份。放置实例 ID 不能当库 UUID 重放。 |
 | `connectivity.modules` | 用 `coreComponents/peripheralComponents` 引用器件 ID；与几何模块成员逐项对应，每件只归属一个模块。 |
 | `sheet` | 目标页实际纸张 bbox；Apply 前再次核对。坐标单位为 0.01 inch，y 向上。 |
+| `paperless` | 可选 `true`，仅用于 typed 回读确认目标页 0 个 sheet 的情况。省略 `sheet/sheetBorder/titleBlock`，保留空 `keepouts:[]`；输出中的 `sheet` 只是从全部模块内容派生的虚拟校验包络。模块依次排为一行，仍检查真实导线和跨网接触；不能与 `--layout-page` 同用。 |
 | `sheetBorder` | 可选的实际图纸内边框 bbox，四个坐标须显式提供有限数值，不能缺省或为 null，且必须位于 `sheet` 内。模块虚线笔画与该边框至少保留 10 raw 净距；缺少整项时只沿纸张 bbox 排版，输出 `sheet-bbox-fallback`，不代表红框净距已经验证。 |
 | `keepouts` | 纸内禁止占用的区域，例如图签。记录其来源和可见状态；空数组表示确实没有禁放区域。 |
 | `modules` | 数组顺序就是功能阅读顺序，不按旧页面或旧 XY 排序。 |
@@ -46,6 +47,12 @@ modules: [
 功能名称或含下划线的非标准位号在写入前被拒绝，应按官方库前缀修复并将功能名保存在 `role`。
 组合器不添加模块前缀、不重排正常编号。位号修复由 `sch designators` 独立处理。器件和 Lib 成员按
 声明顺序传递；`group create --if-absent` 按精确位号集合判幂等，换序不重写已有登记。
+
+无图框且完全未接线的既有页面使用 `--replace --preserve-instances`：完整快照证明
+0 导线、0 标记、所有引脚均未赋网且没有 NC 后，队列跳过清页，保留每件原生实例，
+移动并写入 NC/导线/标记。已有图元走原有受保护路径，不把部分接线冒充空白页。
+这条路径的电气、bridge 与 DRC 门仍执行；严格纸张边界门因没有图框而不执行。
+保存重载后需以同一 composition 再编译对账，不能只看 dry-run 或离线候选。
 
 端子直出在框计算之前完成：从 10 raw 起按 5 raw 增长，选最短合法直线，最长
 300 raw。标记本体和文字保留 5 raw 净距；检查全部器件、引脚、已有线段和标记。

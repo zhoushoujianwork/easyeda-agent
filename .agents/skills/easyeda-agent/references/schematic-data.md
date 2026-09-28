@@ -645,6 +645,7 @@ easyeda sch compose --from composition.json --out plan.json
 | 字段 | 格式 |
 |---|---|
 | `sheet` | `{minX,minY,maxX,maxY}`，目标纸张实际 bbox。坐标单位 raw = 0.01 inch，y 向上。 |
+| `paperless` | 可选 `true`：目标页已经通过 typed 回读确认为 0 个 sheet 时使用；此时不提供 `sheet/sheetBorder/titleBlock`，`keepouts` 必须为空。Compose 以模块完整内容派生虚拟校验包络并保持每区真实导线，写入队列再次要求现场 0 个 sheet。`--layout-page` 不适用。 |
 | `sheetBorder` | 可选同格式 bbox，实际图纸内边框；模块虚线笔画在其内最少留 10 raw，考虑半线宽后向内取 5 raw 网格。缺少时输出 `sheet-bbox-fallback`，不能据此声称已验证红框净距。 |
 | `keepouts` | bbox 数组，例如图签；从 `sch sheet-geometry --json` 取得，保留其来源与警告。需要精确内框/图签时先导出本页官方 SVG，再用 `sch sheet-geometry --from-svg <全页.svg> --json`（[来源与限制](schematic-layout-conventions.md#11-图纸边界与标题栏-keep-out-sheet--title-block-keep-out)）。空数组表示已确认没有禁放区。 |
 | `titleBlock` | 可选的**本页**图签字段映射。旧字符串值（如 `{"Drawed":"设计者"}`）仅更新文本；对象值支持非空字符串 `value` 和可选布尔 `showTitle` / `showValue`。例如 `{"Name":{"value":"电源与接口","showTitle":false,"showValue":false},"Drawed":{"value":"设计者","showTitle":false,"showValue":true}}`。字段名先从目标页 `sch titleblock-get` 回读；源、计划和受保护队列保留同一显隐声明，strict gate 前通过 `sch titleblock --data` 写入并回读。省略显隐只在执行时已知该布尔状态时保持原值；写 `value` 前任一显隐未知或缺失须在源中显式补该布尔值，不能以 `null` 或字符串布尔代替；拒绝空更新、未知对象项、`@` 派生项及图纸结构项。字段属性显隐不等于图签整体显示；保留表格并用官方整页导出验证正文和附加属性。没有此字段的旧源不修改图签。 |
