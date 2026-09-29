@@ -27,21 +27,23 @@ type schCompositionModule struct {
 	Terminals    []schCompositionTerminal `json:"terminals,omitempty"`
 }
 type schCompositionSource struct {
-	SchemaVersion  int                      `json:"schemaVersion"`
-	Connectivity   connectivity.Document    `json:"connectivity"`
-	ConnectionMode string                   `json:"connectionMode,omitempty"`
-	Paperless      bool                     `json:"paperless,omitempty"`
-	Sheet          layoutBBox               `json:"sheet"`
-	SheetBorder    *layoutBBox              `json:"sheetBorder,omitempty"`
-	Keepouts       []layoutBBox             `json:"keepouts"`
-	TitleBlock     schCompositionTitleBlock `json:"titleBlock,omitempty"`
-	Modules        []schCompositionModule   `json:"modules"`
+	SchemaVersion      int                      `json:"schemaVersion"`
+	Connectivity       connectivity.Document    `json:"connectivity"`
+	ConnectionMode     string                   `json:"connectionMode,omitempty"`
+	Paperless          bool                     `json:"paperless,omitempty"`
+	PaperlessRowBreaks []int                    `json:"paperlessRowBreaks,omitempty"`
+	Sheet              layoutBBox               `json:"sheet"`
+	SheetBorder        *layoutBBox              `json:"sheetBorder,omitempty"`
+	Keepouts           []layoutBBox             `json:"keepouts"`
+	TitleBlock         schCompositionTitleBlock `json:"titleBlock,omitempty"`
+	Modules            []schCompositionModule   `json:"modules"`
 }
 type schCompositionPlan struct {
 	SchemaVersion           int                      `json:"schemaVersion"`
 	Connectivity            connectivity.Document    `json:"connectivity"`
 	ConnectionMode          string                   `json:"connectionMode,omitempty"`
 	Paperless               bool                     `json:"paperless,omitempty"`
+	PaperlessRowBreaks      []int                    `json:"paperlessRowBreaks,omitempty"`
 	Sheet                   layoutBBox               `json:"sheet"`
 	SheetBorder             *layoutBBox              `json:"sheetBorder,omitempty"`
 	PlacementBoundarySource string                   `json:"placementBoundarySource"`
@@ -219,8 +221,11 @@ It never reruns placement or chooses variants. A complete selected page without
 variants and explicit source sheetBorder/keepouts are required.
 For a page whose physical sheet primitive was deliberately removed, set
 paperless:true in the composition source, omit sheet/sheetBorder/titleBlock and
-use an explicit empty keepouts array. Modules are packed in one content-sized
-row; the plan's sheet field is a virtual validation envelope, not EDA paper.
+use an explicit empty keepouts array. Modules default to one content-sized row.
+Optional paperlessRowBreaks:[4] starts a second top-aligned row at module index 4
+(zero-based). Breaks must increase and stay inside the module list. Complete
+modules move as rigid units; the derived sheet field is a virtual validation
+envelope, not EDA paper.
 The target must have zero physical sheets. A fully unwired bound page can retain
 its native part instances while adding NC, wires and markers without clearing.
 Its Apply gate checks geometry, nets, bridges and DRC but cannot run the strict
@@ -354,6 +359,12 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 	} else if !plBoxValid(src.Sheet) {
 		return nil, fmt.Errorf("composition requires a measured sheet unless paperless:true is explicit")
 	}
+	if !src.Paperless && len(src.PaperlessRowBreaks) != 0 {
+		return nil, fmt.Errorf("paperlessRowBreaks requires paperless:true")
+	}
+	if err := validateSchPaperlessRowBreaks(src.PaperlessRowBreaks, len(src.Modules)); err != nil {
+		return nil, err
+	}
 	if err := d.Validate(); err != nil {
 		return nil, err
 	}
@@ -408,7 +419,7 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 			members[m.ID][id] = true
 		}
 	}
-	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, ConnectionMode: src.ConnectionMode, Paperless: src.Paperless, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, TitleBlock: src.TitleBlock, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
+	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, ConnectionMode: src.ConnectionMode, Paperless: src.Paperless, PaperlessRowBreaks: src.PaperlessRowBreaks, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, TitleBlock: src.TitleBlock, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
 	if page != nil {
 		resolved, _ := resolveSchematicRenderSpacing(*page)
 		usable = sheetPreviewUsable(*resolved.Sheet)
@@ -525,11 +536,13 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 		rows = schCompositionPreplacedRows(*page)
 	} else {
 		if src.Paperless {
-			result.Sheet = schCompositionContentDerivedBounds(result.Layout.Frames)
+			result.Sheet = schCompositionContentDerivedBoundsRows(result.Layout.Frames, src.PaperlessRowBreaks)
 			usable = result.Sheet
 			result.UsableBounds = usable
+			rows, err = planSchPaperlessRows(result.Layout.Frames, usable, src.PaperlessRowBreaks)
+		} else {
+			rows, err = planSchModuleRows(result.Layout.Frames, usable, 0, schModuleGap)
 		}
-		rows, err = planSchModuleRows(result.Layout.Frames, usable, 0, schModuleGap)
 	}
 	if err != nil {
 		return nil, err

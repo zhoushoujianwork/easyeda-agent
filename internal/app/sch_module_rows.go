@@ -57,18 +57,81 @@ func planSchModuleRows(frames []schFrameSpec, sheet layoutBBox, margin, gap floa
 }
 
 // A paperless composition uses a derived validation envelope only. Its width
-// comes from every complete module frame, so this does not impose a paper limit
+// comes from complete module frames, so this does not impose a paper limit
 // or silently turn the drawing back into an A-size sheet.
 func schCompositionContentDerivedBounds(frames []schFrameSpec) layoutBBox {
-	width, height := 0.0, 0.0
-	for i, frame := range frames {
-		if i > 0 {
-			width += schModuleGap
+	return schCompositionContentDerivedBoundsRows(frames, nil)
+}
+
+// A break gives the index of the first module in the next row. The caller
+// chooses the reading order; this function never rotates or resizes a module.
+func validateSchPaperlessRowBreaks(breaks []int, count int) error {
+	previous := 0
+	for _, at := range breaks {
+		if at <= previous || at >= count {
+			return fmt.Errorf("paperlessRowBreaks must be strictly increasing indices between 1 and %d", count-1)
 		}
-		width += plCeil(frame.Rect.MaxX - frame.Rect.MinX)
-		height = max(height, plCeil(frame.Rect.MaxY-frame.Rect.MinY))
+		previous = at
 	}
+	return nil
+}
+
+func schCompositionContentDerivedBoundsRows(frames []schFrameSpec, breaks []int) layoutBBox {
+	width, height := 0.0, 0.0
+	rowWidth, rowHeight, breakIndex := 0.0, 0.0, 0
+	for i, frame := range frames {
+		if breakIndex < len(breaks) && i == breaks[breakIndex] {
+			width = max(width, rowWidth)
+			height += rowHeight + schModuleGap
+			rowWidth, rowHeight = 0, 0
+			breakIndex++
+		}
+		if rowWidth > 0 {
+			rowWidth += schModuleGap
+		}
+		rowWidth += plCeil(frame.Rect.MaxX - frame.Rect.MinX)
+		rowHeight = max(rowHeight, plCeil(frame.Rect.MaxY-frame.Rect.MinY))
+	}
+	width = max(width, rowWidth)
+	height += rowHeight
 	return layoutBBox{MinX: 0, MinY: 0, MaxX: width, MaxY: height}
+}
+
+func planSchPaperlessRows(frames []schFrameSpec, bounds layoutBBox, breaks []int) ([]schModuleRowPlacement, error) {
+	if len(frames) == 0 || !plBoxValid(bounds) {
+		return nil, fmt.Errorf("paperless rows require valid frames and content bounds")
+	}
+	if err := validateSchPaperlessRowBreaks(breaks, len(frames)); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	out := make([]schModuleRowPlacement, 0, len(frames))
+	x, top, row, rowHeight, breakIndex := bounds.MinX, bounds.MaxY, 0, 0.0, 0
+	for i, f := range frames {
+		if !plBoxValid(f.Rect) || f.ID == "" || seen[f.ID] {
+			return nil, fmt.Errorf("invalid/duplicate module frame %q", f.ID)
+		}
+		seen[f.ID] = true
+		if breakIndex < len(breaks) && i == breaks[breakIndex] {
+			x = bounds.MinX
+			top -= rowHeight + schModuleGap
+			rowHeight = 0
+			row++
+			breakIndex++
+		}
+		width := plCeil(f.Rect.MaxX - f.Rect.MinX)
+		height := plCeil(f.Rect.MaxY - f.Rect.MinY)
+		if x+width > bounds.MaxX || top-height < bounds.MinY {
+			return nil, fmt.Errorf("module %s exceeds derived paperless bounds", f.ID)
+		}
+		dx, dy := x-f.Rect.MinX, top-f.Rect.MaxY
+		f = translateSchFrame(f, dx, dy)
+		f.Rect = layoutBBox{MinX: x, MinY: top - height, MaxX: x + width, MaxY: top}
+		out = append(out, schModuleRowPlacement{Frame: f, Row: row, DX: dx, DY: dy})
+		rowHeight = max(rowHeight, height)
+		x += width + schModuleGap
+	}
+	return out, nil
 }
 
 func translatePowerLayout(p *powerLayoutPlan, dx, dy float64) {

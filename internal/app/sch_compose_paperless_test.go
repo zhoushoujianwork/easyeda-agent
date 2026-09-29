@@ -27,6 +27,54 @@ func TestComposePaperlessDerivesBoundsAndRejectsMixedPaper(t *testing.T) {
 	}
 }
 
+func TestComposePaperlessExplicitRowsPreserveModuleGeometry(t *testing.T) {
+	src := composeFixture(3)
+	src.Paperless, src.Sheet = true, layoutBBox{}
+	baseline, err := planSchComposition(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.PaperlessRowBreaks = []int{1}
+	compact, err := planSchComposition(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compact.Rows != 2 || compact.Sheet != schCompositionContentDerivedBoundsRows(baseline.Layout.Frames, []int{1}) {
+		t.Fatalf("wrong row count or derived bounds: rows=%d sheet=%+v", compact.Rows, compact.Sheet)
+	}
+	if len(compact.Layout.Placements) != len(baseline.Layout.Placements) || len(compact.Layout.Wires) != len(baseline.Layout.Wires) || len(compact.Layout.Flags) != len(baseline.Layout.Flags) {
+		t.Fatal("row compaction changed circuit objects")
+	}
+	for i, frame := range compact.Layout.Frames {
+		if !boxInside(frame.Rect, compact.Sheet) {
+			t.Fatalf("frame %s outside derived bounds", frame.ID)
+		}
+		if i > 0 && i == 1 && frame.Rect.MaxY >= compact.Layout.Frames[0].Rect.MinY {
+			t.Fatal("explicit break did not advance to next row")
+		}
+	}
+	src.PaperlessRowBreaks = []int{1, 2}
+	threeRows, err := planSchComposition(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if threeRows.Rows != 3 {
+		t.Fatalf("multiple explicit breaks must produce three rows: %+v", threeRows)
+	}
+	for _, invalid := range [][]int{{0}, {3}, {2, 1}, {1, 1}} {
+		src.PaperlessRowBreaks = invalid
+		if _, err := planSchComposition(src); err == nil {
+			t.Fatalf("invalid break %v accepted", invalid)
+		}
+	}
+	src.Paperless = false
+	src.Sheet = layoutBBox{MinX: 0, MinY: 0, MaxX: 500, MaxY: 500}
+	src.PaperlessRowBreaks = []int{1}
+	if _, err := planSchComposition(src); err == nil || !strings.Contains(err.Error(), "requires paperless") {
+		t.Fatalf("physical sheet accepted paperless row breaks: %v", err)
+	}
+}
+
 func TestComposePaperlessApplyRequiresZeroPhysicalSheets(t *testing.T) {
 	src := composeFixture(2)
 	src.Paperless = true

@@ -28,7 +28,8 @@ modules: [
 | `components[].device` | `libraryUuid/deviceUuid` 必须来自已解析的器件库身份。放置实例 ID 不能当库 UUID 重放。 |
 | `connectivity.modules` | 用 `coreComponents/peripheralComponents` 引用器件 ID；与几何模块成员逐项对应，每件只归属一个模块。 |
 | `sheet` | 目标页实际纸张 bbox；Apply 前再次核对。坐标单位为 0.01 inch，y 向上。 |
-| `paperless` | 可选 `true`，仅用于 typed 回读确认目标页 0 个 sheet 的情况。省略 `sheet/sheetBorder/titleBlock`，保留空 `keepouts:[]`；输出中的 `sheet` 只是从全部模块内容派生的虚拟校验包络。模块依次排为一行，仍检查真实导线和跨网接触；不能与 `--layout-page` 同用。 |
+| `paperless` | 可选 `true`，仅用于 typed 回读确认目标页 0 个 sheet 的情况。省略 `sheet/sheetBorder/titleBlock`，保留空 `keepouts:[]`；输出中的 `sheet` 只是从全部模块内容派生的虚拟校验包络。默认依次排成一行，仍检查真实导线和跨网接触；不能与 `--layout-page` 同用。 |
+| `paperlessRowBreaks` | 仅在 `paperless:true` 时可用；例如 `[4]` 表示第 5 个模块开始第二行。索引从 0 起，必须严格递增且在模块列表内部。整块平移、同行顶齐，行间距 10 raw；不改变模块内部导线、标记或器件姿态。 |
 | `sheetBorder` | 可选的实际图纸内边框 bbox，四个坐标须显式提供有限数值，不能缺省或为 null，且必须位于 `sheet` 内。模块虚线笔画与该边框至少保留 10 raw 净距；缺少整项时只沿纸张 bbox 排版，输出 `sheet-bbox-fallback`，不代表红框净距已经验证。 |
 | `keepouts` | 纸内禁止占用的区域，例如图签。记录其来源和可见状态；空数组表示确实没有禁放区域。 |
 | `modules` | 数组顺序就是功能阅读顺序，不按旧页面或旧 XY 排序。 |
