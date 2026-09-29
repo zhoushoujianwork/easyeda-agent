@@ -24,7 +24,7 @@ type schDesignatorBaseline struct {
 	IDs     map[string]string         // primitive ID -> canonical component ID
 }
 
-func parseSchDesignatorBaseline(raw []byte) (schDesignatorBaseline, error) {
+func parseSchDesignatorBaseline(raw []byte, allowUnwired ...bool) (schDesignatorBaseline, error) {
 	// Runtime actionResult.Seq is a compound internal struct; wire envelopes
 	// contain a numeric seq. Decode only the public evidence needed here.
 	var envelope struct {
@@ -40,6 +40,7 @@ func parseSchDesignatorBaseline(raw []byte) (schDesignatorBaseline, error) {
 		return out, fmt.Errorf("successful sch list envelope with schematic project/document context required")
 	}
 	out.Context, out.Result = *envelope.Context, envelope.Result
+	verifiedUnwired := len(allowUnwired) > 0 && allowUnwired[0] && schComposeFullyUnwired(envelope.Result)
 	out.Parts, out.IDs = map[string]map[string]any{}, map[string]string{}
 	summary, ok := envelope.Result["connectivitySummary"].(map[string]any)
 	if !ok || summary["scope"] != "activePage" {
@@ -98,7 +99,7 @@ func parseSchDesignatorBaseline(raw []byte) (schDesignatorBaseline, error) {
 			return out, fmt.Errorf("duplicate component binding %s", id)
 		}
 		canonical[id] = true
-		if stringVal(c["uniqueId"]) == "" {
+		if _, ok := c["uniqueId"].(string); !ok || (stringVal(c["uniqueId"]) == "" && !verifiedUnwired) {
 			return out, fmt.Errorf("%s: uniqueId unavailable", pid)
 		}
 		for _, key := range []string{"x", "y", "rotation"} {
@@ -119,7 +120,7 @@ func parseSchDesignatorBaseline(raw []byte) (schDesignatorBaseline, error) {
 		// Pin geometry being proven is not pin→NET being proven: a muted netlist
 		// export leaves every pin's `net` null while pinsAvailable stays true, and this
 		// plan must not bind a designator off a null that only means "could not read".
-		if c["netlistAvailable"] != true || c["netlistError"] != nil {
+		if !verifiedUnwired && (c["netlistAvailable"] != true || c["netlistError"] != nil) {
 			return out, fmt.Errorf("%s: pin→net attribution unavailable (netlist export failed, so pin nets are null rather than absent)", pid)
 		}
 		pins, ok := c["pins"].([]any)
@@ -131,7 +132,7 @@ func parseSchDesignatorBaseline(raw []byte) (schDesignatorBaseline, error) {
 			if !ok {
 				return out, fmt.Errorf("%s: invalid pin", pid)
 			}
-			if _, ok := p["net"].(string); !ok {
+			if _, ok := p["net"].(string); !ok && !(verifiedUnwired && p["net"] == nil) {
 				return out, fmt.Errorf("%s.%s: net evidence unavailable", pid, schDesignatorPinNumber(p))
 			}
 			if _, ok := p["noConnected"].(bool); !ok {

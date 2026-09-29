@@ -27,18 +27,20 @@ type schCompositionModule struct {
 	Terminals    []schCompositionTerminal `json:"terminals,omitempty"`
 }
 type schCompositionSource struct {
-	SchemaVersion int                      `json:"schemaVersion"`
-	Connectivity  connectivity.Document    `json:"connectivity"`
-	Paperless     bool                     `json:"paperless,omitempty"`
-	Sheet         layoutBBox               `json:"sheet"`
-	SheetBorder   *layoutBBox              `json:"sheetBorder,omitempty"`
-	Keepouts      []layoutBBox             `json:"keepouts"`
-	TitleBlock    schCompositionTitleBlock `json:"titleBlock,omitempty"`
-	Modules       []schCompositionModule   `json:"modules"`
+	SchemaVersion  int                      `json:"schemaVersion"`
+	Connectivity   connectivity.Document    `json:"connectivity"`
+	ConnectionMode string                   `json:"connectionMode,omitempty"`
+	Paperless      bool                     `json:"paperless,omitempty"`
+	Sheet          layoutBBox               `json:"sheet"`
+	SheetBorder    *layoutBBox              `json:"sheetBorder,omitempty"`
+	Keepouts       []layoutBBox             `json:"keepouts"`
+	TitleBlock     schCompositionTitleBlock `json:"titleBlock,omitempty"`
+	Modules        []schCompositionModule   `json:"modules"`
 }
 type schCompositionPlan struct {
 	SchemaVersion           int                      `json:"schemaVersion"`
 	Connectivity            connectivity.Document    `json:"connectivity"`
+	ConnectionMode          string                   `json:"connectionMode,omitempty"`
 	Paperless               bool                     `json:"paperless,omitempty"`
 	Sheet                   layoutBBox               `json:"sheet"`
 	SheetBorder             *layoutBBox              `json:"sheetBorder,omitempty"`
@@ -197,6 +199,9 @@ open pins retain electrical warnings; missing evidence is still refused.
 Every declared peripheral must reach a declared core through real wire-tree
 connections within its module (series peripheral chains are allowed). Same-name
 labels or another component elsewhere do not satisfy this complete-design gate.
+Explicit connectionMode:"net-labels" instead requires every connected physical
+pin to reach a same-name marker through a real lead. It retains module ownership,
+NC and exact drawing checks; omitted mode keeps the physical direct gate.
 Generated final Apply assertions retain ownership and recheck fresh wire/pin data.
 No editor calls are made by this command.
 --playbook requires --before (fresh target components.list snapshot with hydrated
@@ -337,6 +342,11 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 	if src.SchemaVersion != 1 || len(src.Modules) == 0 || d.ProjectID == "" || d.DocumentID == "" {
 		return nil, fmt.Errorf("composition requires schemaVersion:1, modules and target projectId/documentId")
 	}
+	switch src.ConnectionMode {
+	case "", "direct", "net-labels":
+	default:
+		return nil, fmt.Errorf("connectionMode must be direct or net-labels")
+	}
 	if src.Paperless {
 		if page != nil || plBoxValid(src.Sheet) || src.SheetBorder != nil || len(src.Keepouts) != 0 || len(src.TitleBlock) != 0 {
 			return nil, fmt.Errorf("paperless composition requires no sheet, border, keepout, title block or layout-page")
@@ -398,7 +408,7 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 			members[m.ID][id] = true
 		}
 	}
-	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, Paperless: src.Paperless, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, TitleBlock: src.TitleBlock, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
+	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, ConnectionMode: src.ConnectionMode, Paperless: src.Paperless, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, TitleBlock: src.TitleBlock, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
 	if page != nil {
 		resolved, _ := resolveSchematicRenderSpacing(*page)
 		usable = sheetPreviewUsable(*resolved.Sheet)
@@ -479,7 +489,11 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 		if err := validateSchCompositionNets(&p); err != nil {
 			return nil, fmt.Errorf("module %s: %w", m.ID, err)
 		}
-		if err := validateSchCompositionPeripheralDirect(&p, d, m.ID); err != nil {
+		if src.ConnectionMode == "net-labels" {
+			if err := validateSchCompositionPeripheralLabels(&p, d, m.ID); err != nil {
+				return nil, err
+			}
+		} else if err := validateSchCompositionPeripheralDirect(&p, d, m.ID); err != nil {
 			return nil, err
 		}
 		obstacles, err := compositionMarkerGeometry(&p)
@@ -684,7 +698,7 @@ func schCompositionExpectation(p *schCompositionPlan, final bool) *schematicStat
 	}
 	if final {
 		e.Drawing = &schematicDrawingExpectation{Wires: p.Layout.Wires, Flags: p.Layout.Flags}
-		e.Ownership = &schematicOwnershipExpectation{ComponentIDs: map[string]string{}, Modules: p.Connectivity.Modules, NetRoles: schematicCanonicalNetRoles(p.Connectivity)}
+		e.Ownership = &schematicOwnershipExpectation{ComponentIDs: map[string]string{}, Modules: p.Connectivity.Modules, NetRoles: schematicCanonicalNetRoles(p.Connectivity), ConnectionMode: p.ConnectionMode}
 		for _, c := range p.Connectivity.Components {
 			e.Ownership.ComponentIDs[c.Ref] = c.ID
 		}
@@ -859,7 +873,7 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 				part := schematicPartExpectation{Device: beforeDevices[c.Designator], BBox: c.BBox, PrimitiveID: c.PrimitiveID, X: c.X, Y: c.Y, Rotation: c.Rotation, Mirror: c.Mirror, Pins: map[string]schematicPinExpectation{}}
 				for _, q := range c.Pins {
 					q := q
-					if q.X == nil || q.Y == nil || q.Net == nil || q.Number == "" {
+					if q.X == nil || q.Y == nil || (q.Net == nil && !unwiredSource) || q.Number == "" {
 						return nil, fmt.Errorf("before %s.%s lacks complete pin geometry/net", c.Designator, q.Number)
 					}
 					if _, exists := part.Pins[q.Number]; exists {

@@ -107,6 +107,28 @@ func TestComposePeripheralDirectRejectsCompleteButLabelOnlyDrawing(t *testing.T)
 	}
 }
 
+func TestComposeExplicitNetLabelsKeepsNamedLeadsAndOwnership(t *testing.T) {
+	src := composeOriginalRefsFixture([]string{"U1", "R1"})
+	src.Connectivity.Modules[0].CoreComponents = []string{src.Connectivity.Components[0].ID}
+	src.Connectivity.Modules[0].PeripheralComponents = []string{src.Connectivity.Components[1].ID}
+	src.ConnectionMode = "net-labels"
+	plan, err := planSchComposition(src)
+	if err != nil || plan.ConnectionMode != "net-labels" {
+		t.Fatalf("explicit labelled composition rejected: %v", err)
+	}
+	if want := schCompositionExpectation(plan, true).Ownership.ConnectionMode; want != "net-labels" {
+		t.Fatalf("Apply guard lost connection mode: %q", want)
+	}
+	src.Modules[0].Flags = src.Modules[0].Flags[:len(src.Modules[0].Flags)-1]
+	if _, err := planSchComposition(src); err == nil || !strings.Contains(err.Error(), "named wire tree") {
+		t.Fatalf("missing label lead passed: %v", err)
+	}
+	src.ConnectionMode = "other"
+	if _, err := planSchComposition(src); err == nil || !strings.Contains(err.Error(), "connectionMode") {
+		t.Fatalf("unknown connection mode passed: %v", err)
+	}
+}
+
 func TestPeripheralDirectRailAttachmentDoesNotExcuseSplitEnablePins(t *testing.T) {
 	layout, modules := peripheralDirectFixture()
 	// The entire cluster is physically attached to U1 on +3V3, but every EN

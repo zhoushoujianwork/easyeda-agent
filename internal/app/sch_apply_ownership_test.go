@@ -56,6 +56,33 @@ func TestApplyOwnershipUsesFreshPhysicalWiresNotSameNamedPins(t *testing.T) {
 	}
 }
 
+func TestApplyExplicitNetLabelsRequiresFreshNamedLeads(t *testing.T) {
+	e, live := applyOwnershipFixture(t)
+	e.Ownership.ConnectionMode = "net-labels"
+	e.Drawing.Wires = nil
+	live["wires"] = live["wires"].([]any)[2:] // Keep only the three real marker leads.
+	if err := e.validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.check(live, nil); err != nil {
+		t.Fatalf("complete named islands were rejected: %v", err)
+	}
+	wires := live["wires"].([]any)
+	live["wires"] = wires[1:]
+	if err := e.Ownership.check(live); err == nil || !strings.Contains(err.Error(), "no real lead") {
+		t.Fatalf("pin with no named lead passed: %v", err)
+	}
+	live["wires"] = wires
+	live["components"] = live["components"].([]any)[:len(live["components"].([]any))-1]
+	if err := e.check(live, nil); err == nil {
+		t.Fatal("missing marker primitive passed the complete drawing guard")
+	}
+	e.Ownership.ConnectionMode = ""
+	if err := e.validate(); err == nil || !strings.Contains(err.Error(), "peripheral-direct-missing") {
+		t.Fatalf("stripping explicit mode escaped the direct-connection guard: %v", err)
+	}
+}
+
 func TestApplyOwnershipRoundTripAndRemovalFailsPreflight(t *testing.T) {
 	e, _ := applyOwnershipFixture(t)
 	raw, err := json.Marshal(e)

@@ -119,7 +119,10 @@ func TestPreserveInstancesCanWireFullyUnwiredPageOnly(t *testing.T) {
 	}
 	result["components"], result["count"], result["wires"] = parts, len(parts), []any{}
 	result["connectivitySummary"] = map[string]any{"scope": "activePage", "wires": 0, "buses": 0, "netflags": 0, "netports": 0, "netlabels": 0, "shortSymbols": 0}
+	composeFixturePageInventory(result)
 	if !schComposeFullyUnwired(result) {
+		_, protectionErr := schComposeProtectedPage(result)
+		t.Logf("zero=%v protected=%v drawing=%v", schComposeZeroDrawing(result), protectionErr, (&schematicDrawingExpectation{}).check(result))
 		t.Fatal("complete empty drawing was not recognized")
 	}
 	pb, err := schCompositionPlaybook(p, composeApplyBytes(t, env), true, true)
@@ -141,6 +144,74 @@ func TestPreserveInstancesCanWireFullyUnwiredPageOnly(t *testing.T) {
 	}
 	if _, err := schCompositionPlaybook(p, composeApplyBytes(t, env), true, true); err == nil {
 		t.Fatal("mixed/unknown source pin net accepted")
+	}
+}
+
+func TestPreserveInstancesEmptyNetlistExportIsOnlyAllowedForProvenEmptyPage(t *testing.T) {
+	p, env := preserveComposeFixture(t)
+	result := env["result"].(map[string]any)
+	parts := []any{}
+	for _, item := range result["components"].([]any) {
+		part := item.(map[string]any)
+		if part["componentType"] == "netflag" {
+			continue
+		}
+		if part["componentType"] == "part" {
+			part["netlistAvailable"] = false
+			part["netlistError"] = "netlist export returned no file"
+			for _, item := range part["pins"].([]any) {
+				pin := item.(map[string]any)
+				pin["net"], pin["noConnected"] = nil, false
+			}
+		}
+		parts = append(parts, part)
+	}
+	result["components"], result["count"], result["wires"] = parts, len(parts), []any{}
+	result["pinNetsAvailable"] = false
+	result["connectivitySummary"] = map[string]any{"scope": "activePage", "wires": 0, "buses": 0, "netflags": 0, "netports": 0, "netlabels": 0, "shortSymbols": 0}
+	composeFixturePageInventory(result)
+	if !schComposeFullyUnwired(result) {
+		_, protectionErr := schComposeProtectedPage(result)
+		t.Logf("zero=%v protected=%v drawing=%v", schComposeZeroDrawing(result), protectionErr, (&schematicDrawingExpectation{}).check(result))
+		t.Fatal("complete empty page with null pin nets was rejected")
+	}
+	before := composeApplyBytes(t, env)
+	if _, err := parseSchDesignatorBaseline(before); err == nil {
+		t.Fatal("strict designator baseline accepted unavailable netlist")
+	}
+	if _, err := schCompositionPlaybook(p, before, true, true); err != nil {
+		t.Fatal(err)
+	}
+	checks := []struct {
+		name   string
+		change func()
+	}{
+		{"nc", func() { preserveFirstPart(env)["pins"].([]any)[0].(map[string]any)["noConnected"] = true }},
+		{"net", func() { preserveFirstPart(env)["pins"].([]any)[0].(map[string]any)["net"] = "GND" }},
+		{"missing pins", func() { preserveFirstPart(env)["pinsAvailable"] = false }},
+		{"wire", func() { result["wires"] = []any{map[string]any{"primitiveId": "w", "net": "", "x0": 0.0, "y0": 0.0, "x1": 10.0, "y1": 0.0}} }},
+		{"unlisted graphic", func() { result["pagePrimitives"].(map[string]any)["rectangles"] = []any{map[string]any{"primitiveId": "r"}} }},
+	}
+	for _, tc := range checks {
+		t.Run(tc.name, func(t *testing.T) {
+			var copy map[string]any
+			if err := json.Unmarshal(before, &copy); err != nil {
+				t.Fatal(err)
+			}
+			env = copy
+			result = env["result"].(map[string]any)
+			tc.change()
+			if schComposeFullyUnwired(result) {
+				t.Fatal("incomplete or connected source accepted")
+			}
+			altered, err := json.Marshal(env)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := schCompositionPlaybook(p, altered, true, true); err == nil {
+				t.Fatal("unsafe source accepted for protected apply")
+			}
+		})
 	}
 }
 

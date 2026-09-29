@@ -16,9 +16,12 @@ export function preservedInstance(record: Record<string, unknown>, pose = false)
   if (!(key in record) || record[key] === undefined) throw new Error(`instance ${String(record.primitiveId)} field ${key} unavailable`);
   out[key] = record[key];
  }
- for (const key of ['primitiveId', 'designator', 'uniqueId']) {
+ for (const key of ['primitiveId', 'designator']) {
   if (typeof out[key] !== 'string' || !String(out[key]).trim()) throw new Error(`instance ${key} must be nonempty`);
  }
+ // Some official V4 library parts have a native empty uniqueId. Preserve that
+ // exact value; primitiveId and the full instance record still bind the part.
+ if (typeof out.uniqueId !== 'string') throw new Error('instance uniqueId must be a string');
  for (const key of ['name', 'subPartName', 'manufacturer', 'manufacturerId', 'supplier', 'supplierId']) {
   if (out[key] !== null && typeof out[key] !== 'string') throw new Error(`instance ${key} must be string or explicit null`);
  }

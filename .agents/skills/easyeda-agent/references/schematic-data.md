@@ -642,6 +642,21 @@ easyeda sch compose --from composition.json --out plan.json
 `compose` 输入顶层使用 `schemaVersion:1`，内含上述 `connectivity`（版本仍是字符串 `"1.4"`）、
 实测 `sheet`、`keepouts`、本页图签文本和按阅读顺序排列的几何 `modules`。
 
+用户明确选择同名网络标签连接时，源文件须写 `connectionMode:"net-labels"`，并使用
+`layout-plan --net-labels` 产生的局部几何。此模式允许同一模块的专属外围位于不同实体
+导线岛，但**每个已赋网物理引脚仍须通过真实短引线到达同名标记**；模块归属、NC、
+几何和逐脚网名继续检查。省略该字段保留实体直连门禁；不得因 Compose 报
+`peripheral-direct-missing` 而临时给现有直连源加此字段。受保护队列将选择模式写入
+完整图面断言，并从新鲜现场导线与标记回读确认命名线岛。已有接线的无图框页目前
+没有受保护的清理重建路径；此模式应先写入独立的空白无图框页，不直接覆盖旧页。
+
+V4 完全未接线页可能无法导出网表，此时 `sch list` 的 `pinNetsAvailable:false`、逐脚
+`net:null` 不能直接解释为开放引脚。仅当完整页面图元清单证明 0 导线、0 标签、0 其他
+图形，所有物理引脚可读且 `noConnected:false` 时，保留实例的 Compose 才允许从此状态
+开始接线；任何已有图元、NC 或缺测仍拒绝。部分官方库实例的原生 `uniqueId` 为空串，
+须原样保留，并用图元 ID、器件身份及全部实例字段在写入后回读核对。保存重载后宿主可能
+为这些实例分配 `uniqueId`，重算队列必须使用重载后的新鲜快照。
+
 | 字段 | 格式 |
 |---|---|
 | `sheet` | `{minX,minY,maxX,maxY}`，目标纸张实际 bbox。坐标单位 raw = 0.01 inch，y 向上。 |

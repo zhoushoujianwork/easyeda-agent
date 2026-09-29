@@ -10,9 +10,10 @@ import (
 // Authored ownership survives JSON queue serialization and is checked against
 // actual geometry at the complete-design checkpoint, never the placement prefix.
 type schematicOwnershipExpectation struct {
-	ComponentIDs map[string]string     `json:"componentIds"`
-	Modules      []connectivity.Module `json:"modules"`
-	NetRoles     map[string]string     `json:"netRoles"`
+	ComponentIDs   map[string]string     `json:"componentIds"`
+	Modules        []connectivity.Module `json:"modules"`
+	NetRoles       map[string]string     `json:"netRoles"`
+	ConnectionMode string                `json:"connectionMode,omitempty"`
 }
 
 func (e *schematicStateExpectation) validateOwnership() error {
@@ -44,13 +45,29 @@ func (e *schematicStateExpectation) validateOwnership() error {
 		}
 		layout.Placements = append(layout.Placements, part)
 	}
-	return ValidateSchematicPeripheralDirect(layout, e.Ownership.Modules, e.Ownership.NetRoles)
+	switch e.Ownership.ConnectionMode {
+	case "", "direct":
+		return ValidateSchematicPeripheralDirect(layout, e.Ownership.Modules, e.Ownership.NetRoles)
+	case "net-labels":
+		if err := validateSchCompositionNets(&powerLayoutPlan{Placements: layout.Placements, Wires: layout.Wires, Flags: layout.Flags}); err != nil {
+			return fmt.Errorf("peripheral-label-incomplete: %w", err)
+		}
+		return validateSchematicLabelledOwnership(layout, e.Ownership.Modules)
+	default:
+		return fmt.Errorf("connectionMode must be direct or net-labels")
+	}
 }
 
 func (e *schematicOwnershipExpectation) check(result any) error {
-	layout, err := schematicObservedOwnershipLayout(result, e.ComponentIDs)
+	if e.ConnectionMode != "" && e.ConnectionMode != "direct" && e.ConnectionMode != "net-labels" {
+		return fmt.Errorf("connectionMode must be direct or net-labels")
+	}
+	layout, err := schematicObservedOwnershipLayout(result, e.ComponentIDs, e.ConnectionMode == "net-labels")
 	if err != nil {
 		return fmt.Errorf("peripheral-direct-incomplete: %w", err)
+	}
+	if e.ConnectionMode == "net-labels" {
+		return validateSchematicLabelledOwnership(layout, e.Modules)
 	}
 	return ValidateSchematicPeripheralDirect(layout, e.Modules, e.NetRoles)
 }
@@ -58,7 +75,7 @@ func (e *schematicOwnershipExpectation) check(result any) error {
 // Reconstruct wire roots from the fresh response. Target flags never manufacture
 // observed marker leads; only actual returned line segments participate. Wire
 // names are resolved from fresh touching pin/marker evidence, not from the plan.
-func schematicObservedOwnershipLayout(result any, ids map[string]string) (*SchematicLayoutResult, error) {
+func schematicObservedOwnershipLayout(result any, ids map[string]string, requireNamedMarkers ...bool) (*SchematicLayoutResult, error) {
 	raw, err := json.Marshal(result)
 	if err != nil {
 		return nil, err
@@ -119,6 +136,8 @@ func schematicObservedOwnershipLayout(result any, ids map[string]string) (*Schem
 		}
 	}
 	names := map[int]string{}
+	markerNames := map[int]string{}
+	requireMarkers := len(requireNamedMarkers) > 0 && requireNamedMarkers[0]
 	nameRoot := func(index int, net string) error {
 		if net == "" {
 			return nil
@@ -141,14 +160,31 @@ func schematicObservedOwnershipLayout(result any, ids map[string]string) (*Schem
 		return nil
 	}
 	for _, c := range live.Components {
-		if c.Kind == "netport" || c.Kind == "netflag" {
-			if c.X == nil || c.Y == nil || c.Net == "" {
-				return nil, fmt.Errorf("fresh marker geometry/net is incomplete")
-			}
-			if err := touch(*c.X, *c.Y, c.Net); err != nil {
-				return nil, err
+		if c.Kind != "netport" && c.Kind != "netflag" {
+			continue
+		}
+		if c.X == nil || c.Y == nil || c.Net == "" {
+			return nil, fmt.Errorf("fresh marker geometry/net is incomplete")
+		}
+		marked := false
+		for i, w := range layout.Wires {
+			if plOnSegment([2]float64{*c.X, *c.Y}, w.Points[0], w.Points[1]) {
+				r := root(i)
+				if markerNames[r] != "" && markerNames[r] != c.Net {
+					return nil, fmt.Errorf("fresh marker tree shorts nets %s/%s", markerNames[r], c.Net)
+				}
+				markerNames[r] = c.Net
+				marked = true
 			}
 		}
+		if requireMarkers && !marked {
+			return nil, fmt.Errorf("fresh marker %s has no real lead", c.Net)
+		}
+		if err := touch(*c.X, *c.Y, c.Net); err != nil {
+			return nil, err
+		}
+	}
+	for _, c := range live.Components {
 		if c.Kind != "part" {
 			continue
 		}
@@ -161,6 +197,17 @@ func schematicObservedOwnershipLayout(result any, ids map[string]string) (*Schem
 				return nil, fmt.Errorf("fresh pin %s.%s has incomplete geometry/net/NC", c.Ref, q.Number)
 			}
 			part.Pins = append(part.Pins, SchematicPin{Number: q.Number, Net: *q.Net, X: *q.X, Y: *q.Y})
+			if requireMarkers && *q.Net != "" {
+				named := false
+				for i, w := range layout.Wires {
+					if plOnSegment([2]float64{*q.X, *q.Y}, w.Points[0], w.Points[1]) && markerNames[root(i)] == *q.Net {
+						named = true
+					}
+				}
+				if !named {
+					return nil, fmt.Errorf("fresh pin %s.%s does not reach a same-name marker through a real lead", c.Ref, q.Number)
+				}
+			}
 			if err := touch(*q.X, *q.Y, *q.Net); err != nil {
 				return nil, err
 			}

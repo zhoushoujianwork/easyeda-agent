@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 
 	"github.com/zhoushoujianwork/easyeda-agent/internal/connectivity"
 )
@@ -38,8 +37,8 @@ func validateSchPreservedInstance(instance map[string]any) error {
 			return fmt.Errorf("missing %s", key)
 		}
 	}
-	if id, ok := instance["uniqueId"].(string); !ok || strings.TrimSpace(id) == "" {
-		return fmt.Errorf("nonempty native uniqueId required")
+	if _, ok := instance["uniqueId"].(string); !ok {
+		return fmt.Errorf("native uniqueId string required (an explicit empty native value is preserved)")
 	}
 	for _, key := range []string{"name", "subPartName", "manufacturer", "manufacturerId", "supplier", "supplierId"} {
 		if instance[key] != nil {
@@ -108,7 +107,7 @@ type schPreservedParts struct {
 // Preserve mode is a layout/route change only, not a device or connectivity
 // replacement. It must prove complete same-page identity before any queue exists.
 func prepareSchPreservedParts(p *schCompositionPlan, before []byte, allowUnwired bool) (*schPreservedParts, error) {
-	baseline, err := parseSchDesignatorBaseline(before)
+	baseline, err := parseSchDesignatorBaseline(before, allowUnwired)
 	if err != nil {
 		return nil, err
 	}
@@ -153,10 +152,12 @@ func prepareSchPreservedParts(p *schCompositionPlan, before []byte, allowUnwired
 			return nil, fmt.Errorf("%s: %w", c.Ref, err)
 		}
 		uid := instance["uniqueId"].(string)
-		if unique[uid] {
+		if uid != "" && unique[uid] {
 			return nil, fmt.Errorf("duplicate native uniqueId %s", uid)
 		}
-		unique[uid] = true
+		if uid != "" {
+			unique[uid] = true
+		}
 		props := instance["otherProperty"].(map[string]any)
 		if props[connectivity.ComponentIDProperty] != c.ID {
 			return nil, fmt.Errorf("%s explicit stable ID binding required", c.Ref)
@@ -198,37 +199,38 @@ func prepareSchPreservedParts(p *schCompositionPlan, before []byte, allowUnwired
 // and every pin explicitly open; a partial netlist or one existing net/NC
 // falls back to the exact-preservation contract above.
 func schComposeFullyUnwired(result map[string]any) bool {
+	if !schComposeZeroDrawing(result) {
+		return false
+	}
+	if _, err := schComposeProtectedPage(result); err != nil {
+		return false
+	}
 	if err := (&schematicDrawingExpectation{}).check(result); err != nil {
 		return false
 	}
-	summary, ok := result["connectivitySummary"].(map[string]any)
-	if !ok || summary["scope"] != "activePage" {
-		return false
-	}
-	for _, key := range []string{"wires", "buses", "netflags", "netports", "netlabels", "shortSymbols"} {
-		if value, known := finiteFloat(summary[key]); !known || value != 0 {
-			return false
-		}
-	}
 	parts, ok := result["components"].([]any)
-	if !ok || result["pinNetsAvailable"] != true || result["wiresAvailable"] != true {
+	if !ok || result["wiresAvailable"] != true {
 		return false
 	}
+	netsAvailable := result["pinNetsAvailable"] == true
 	for _, item := range parts {
 		part, ok := item.(map[string]any)
 		if !ok {
 			return false
 		}
 		if part["componentType"] != "part" {
-			continue
+			if part["componentType"] == "sheet" {
+				continue
+			}
+			return false
 		}
 		pins, ok := part["pins"].([]any)
-		if !ok || part["pinsAvailable"] != true {
+		if !ok || len(pins) == 0 || part["pinsAvailable"] != true || part["netAmbiguous"] == true {
 			return false
 		}
 		for _, item := range pins {
 			pin, ok := item.(map[string]any)
-			if !ok || pin["net"] != "" || pin["noConnected"] != false {
+			if !ok || pin["noConnected"] != false || (netsAvailable && pin["net"] != "") || (!netsAvailable && pin["net"] != nil) {
 				return false
 			}
 		}

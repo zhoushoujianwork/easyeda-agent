@@ -172,6 +172,59 @@ func validateSchCompositionPeripheralDirect(p *powerLayoutPlan, d connectivity.D
 	return ValidateSchematicPeripheralDirect(layout, modules, schematicCanonicalNetRoles(d))
 }
 
+// Label mode is an explicit design choice: ownership remains exhaustive, but
+// physical islands may join through same-name markers. The named-lead check is
+// separate from membership so the fresh reader can prove marker coverage from
+// actual primitives instead of accepting source flags as observed evidence.
+func validateSchematicLabelledOwnership(layout *SchematicLayoutResult, modules []connectivity.Module) error {
+	if layout == nil || len(layout.Placements) == 0 || len(modules) == 0 {
+		return fmt.Errorf("peripheral-ownership-incomplete: layout and explicit core/peripheral ownership required")
+	}
+	refs := map[string]string{}
+	for _, c := range layout.Placements {
+		id := layout.ComponentIDs[c.Designator]
+		if id == "" || refs[id] != "" {
+			return fmt.Errorf("peripheral-ownership-incomplete: missing/duplicate identity for %s", c.Designator)
+		}
+		refs[id] = c.Designator
+	}
+	owners := map[string]string{}
+	moduleIDs := map[string]bool{}
+	for _, m := range modules {
+		if m.ID == "" || moduleIDs[m.ID] || len(m.CoreComponents) == 0 {
+			return fmt.Errorf("peripheral-ownership-incomplete: module %s needs unique identity and an explicit core", m.ID)
+		}
+		moduleIDs[m.ID] = true
+		for _, id := range append(append([]string{}, m.CoreComponents...), m.PeripheralComponents...) {
+			if refs[id] == "" || owners[id] != "" {
+				return fmt.Errorf("peripheral-ownership-incomplete: module %s has unknown/multiply owned component %s", m.ID, id)
+			}
+			owners[id] = m.ID
+		}
+	}
+	if len(owners) != len(refs) {
+		return fmt.Errorf("peripheral-ownership-incomplete: every component needs explicit core/peripheral ownership")
+	}
+	return nil
+}
+
+func validateSchCompositionPeripheralLabels(p *powerLayoutPlan, d connectivity.Document, moduleID string) error {
+	if err := validateSchCompositionNets(p); err != nil {
+		return fmt.Errorf("peripheral-label-incomplete: %w", err)
+	}
+	layout := &SchematicLayoutResult{ComponentIDs: map[string]string{}, Placements: p.Placements, Wires: p.Wires, Flags: p.Flags}
+	for _, c := range d.Components {
+		layout.ComponentIDs[c.Ref] = c.ID
+	}
+	var modules []connectivity.Module
+	for _, m := range d.Modules {
+		if moduleID == "" || m.ID == moduleID {
+			modules = append(modules, m)
+		}
+	}
+	return validateSchematicLabelledOwnership(layout, modules)
+}
+
 func validateSchematicLayoutPeripheralDirect(layout *SchematicLayoutResult, coreID string, roles map[string]string) error {
 	m := connectivity.Module{ID: "layout", CoreComponents: []string{coreID}}
 	for _, c := range layout.Placements {

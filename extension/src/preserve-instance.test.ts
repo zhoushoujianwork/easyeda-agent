@@ -64,6 +64,17 @@ test('preserved instance captures literal scalar attributes without normalizatio
  for (const value of [null, [], { nested: {} }]) assert.throws(() => preservedInstance({ ...fixture(), otherProperty: value }));
 });
 
+test('preserveInstance accepts and retains an explicit empty native uniqueId', async t => {
+ const fx = install(t);
+ fx.part.uniqueId = '';
+ const original = preservedInstance(fx.part);
+ const result: any = await schematicComponentModify({ primitiveId: 'p1', patch: { x: 30, y: 40 }, preserveInstance: true });
+ assert.equal(result.result.instancePreserved, true);
+ assert.equal(fx.patches[0].uniqueId, '');
+ assert.equal(exactJSON(preservedInstance(fx.part)), exactJSON(original));
+ assert.equal(fx.part.x, 30);
+});
+
 test('geometry-only preserveInstance writes and verifies original native fields atomically', async t => {
  const fx = install(t), original = preservedInstance(fx.part);
  const result: any = await schematicComponentModify({ primitiveId: 'p1', patch: { x: 30, y: 40, rotation: 90, mirror: true }, preserveInstance: true });

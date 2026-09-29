@@ -9,7 +9,7 @@ import (
 // The scene comparison protects geometry/network values; this inventory also
 // binds every deletable object's identity before the first write.
 func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
-	if result["wiresAvailable"] != true || result["pinNetsAvailable"] != true {
+	if result["wiresAvailable"] != true || (result["pinNetsAvailable"] != true && !schComposeZeroDrawing(result)) {
 		return nil, fmt.Errorf("before snapshot lacks complete wire or pin-net evidence")
 	}
 	page, ok := result["pagePrimitives"].(map[string]any)
@@ -100,15 +100,44 @@ func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("before snapshot connectivitySummary.%s unavailable", field)
 		}
 	}
-	if summary["wires"] != float64(len(sets["wires"])) || summary["buses"] != float64(len(sets["buses"])) {
+	wiresCount, _ := finiteFloat(summary["wires"])
+	busesCount, _ := finiteFloat(summary["buses"])
+	if wiresCount != float64(len(sets["wires"])) || busesCount != float64(len(sets["buses"])) {
 		return nil, fmt.Errorf("before snapshot connectivity summary differs from page primitive inventory")
 	}
 	for field, kind := range map[string]string{"netflags": "netflag", "netports": "netport", "netlabels": "netlabel", "shortSymbols": "short_symbol"} {
-		if summary[field] != float64(componentCounts[kind]) {
+		count, _ := finiteFloat(summary[field])
+		if count != float64(componentCounts[kind]) {
 			return nil, fmt.Errorf("before snapshot connectivitySummary.%s differs from component inventory", field)
 		}
 	}
 	return page, nil
+}
+
+// An empty native drawing cannot be exported as a netlist by some hosts. This
+// proves only the absence of drawing objects, not the state of any pin; the
+// caller must separately inspect every physical pin and its NC bit.
+func schComposeZeroDrawing(result map[string]any) bool {
+	summary, ok := result["connectivitySummary"].(map[string]any)
+	if !ok || summary["scope"] != "activePage" {
+		return false
+	}
+	for _, key := range []string{"wires", "buses", "netflags", "netports", "netlabels", "shortSymbols"} {
+		if value, known := finiteFloat(summary[key]); !known || value != 0 {
+			return false
+		}
+	}
+	page, ok := result["pagePrimitives"].(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"wires", "buses", "arcs", "circles", "rectangles", "polygons", "texts", "objects"} {
+		items, ok := page[key].([]any)
+		if !ok || len(items) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func schComposeOrdinaryClearable(page map[string]any) error {
