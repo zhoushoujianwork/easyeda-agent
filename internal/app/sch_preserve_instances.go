@@ -107,7 +107,7 @@ type schPreservedParts struct {
 
 // Preserve mode is a layout/route change only, not a device or connectivity
 // replacement. It must prove complete same-page identity before any queue exists.
-func prepareSchPreservedParts(p *schCompositionPlan, before []byte) (*schPreservedParts, error) {
+func prepareSchPreservedParts(p *schCompositionPlan, before []byte, allowUnwired bool) (*schPreservedParts, error) {
 	baseline, err := parseSchDesignatorBaseline(before)
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func prepareSchPreservedParts(p *schCompositionPlan, before []byte) (*schPreserv
 				return nil, fmt.Errorf("%s unknown/duplicate physical pin %s", c.Ref, number)
 			}
 			seen[number] = true
-			if name, known := q["pinName"].(string); !known || name != expected.Name || q["noConnected"] != expected.NoConnected || q["net"] != desired[id][number] {
+			if name, known := q["pinName"].(string); !known || name != expected.Name || (!allowUnwired && (q["noConnected"] != expected.NoConnected || q["net"] != desired[id][number])) {
 				return nil, fmt.Errorf("%s.%s source name/net/NC differs from target; preserve-instances cannot change circuit", c.Ref, number)
 			}
 		}
@@ -191,6 +191,49 @@ func prepareSchPreservedParts(p *schCompositionPlan, before []byte) (*schPreserv
 	sort.Strings(out.IDs)
 	out.Scene, err = schDesignatorScene(baseline.Result)
 	return out, err
+}
+
+// An unwired page may be laid out and wired while retaining its native part
+// instances. This exception requires a complete active-page zero-drawing read
+// and every pin explicitly open; a partial netlist or one existing net/NC
+// falls back to the exact-preservation contract above.
+func schComposeFullyUnwired(result map[string]any) bool {
+	if err := (&schematicDrawingExpectation{}).check(result); err != nil {
+		return false
+	}
+	summary, ok := result["connectivitySummary"].(map[string]any)
+	if !ok || summary["scope"] != "activePage" {
+		return false
+	}
+	for _, key := range []string{"wires", "buses", "netflags", "netports", "netlabels", "shortSymbols"} {
+		if value, known := finiteFloat(summary[key]); !known || value != 0 {
+			return false
+		}
+	}
+	parts, ok := result["components"].([]any)
+	if !ok || result["pinNetsAvailable"] != true || result["wiresAvailable"] != true {
+		return false
+	}
+	for _, item := range parts {
+		part, ok := item.(map[string]any)
+		if !ok {
+			return false
+		}
+		if part["componentType"] != "part" {
+			continue
+		}
+		pins, ok := part["pins"].([]any)
+		if !ok || part["pinsAvailable"] != true {
+			return false
+		}
+		for _, item := range pins {
+			pin, ok := item.(map[string]any)
+			if !ok || pin["net"] != "" || pin["noConnected"] != false {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (p *schPreservedParts) protect(e *schematicStateExpectation) {

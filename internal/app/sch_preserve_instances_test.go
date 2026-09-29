@@ -91,8 +91,56 @@ func TestPreserveInstancesQueueNeverRecreatesAndGuardsEveryPhase(t *testing.T) {
 		}
 	}
 	_, clear := composeStep(t, pb, "reset-drawing-preserving-instances")
-	if clear.Flags["preserve-parts"] != true || clear.Flags["part-ids"] == "" {
+	if clear.Action != "schematic.page.clear" || clear.Payload["preserveParts"] != true || len(clear.Payload["preservePartIds"].([]string)) != len(p.Connectivity.Components) || clear.Payload["expectedPagePrimitives"] == "" || len(clear.LiteralPayloadKeys) != 1 || clear.LiteralPayloadKeys[0] != "expectedPagePrimitives" || clear.Assert["$.instancesPreserved"] != "==true" {
 		t.Fatal("clear has no explicit protected set")
+	}
+	substituted, err := substPayloadVars(clear.Payload, clear.LiteralPayloadKeys, map[string]string{"literal": "would-corrupt-source"})
+	if err != nil || !strings.Contains(substituted["expectedPagePrimitives"].(string), "${literal}") {
+		t.Fatalf("native snapshot was treated as a variable template: %v", err)
+	}
+}
+
+func TestPreserveInstancesCanWireFullyUnwiredPageOnly(t *testing.T) {
+	p, env := preserveComposeFixture(t)
+	result := env["result"].(map[string]any)
+	parts := []any{}
+	for _, item := range result["components"].([]any) {
+		part := item.(map[string]any)
+		if part["componentType"] == "netflag" {
+			continue
+		}
+		if part["componentType"] == "part" {
+			for _, item := range part["pins"].([]any) {
+				pin := item.(map[string]any)
+				pin["net"], pin["noConnected"] = "", false
+			}
+		}
+		parts = append(parts, part)
+	}
+	result["components"], result["count"], result["wires"] = parts, len(parts), []any{}
+	result["connectivitySummary"] = map[string]any{"scope": "activePage", "wires": 0, "buses": 0, "netflags": 0, "netports": 0, "netlabels": 0, "shortSymbols": 0}
+	if !schComposeFullyUnwired(result) {
+		t.Fatal("complete empty drawing was not recognized")
+	}
+	pb, err := schCompositionPlaybook(p, composeApplyBytes(t, env), true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	composeStep(t, pb, "verify-fully-unwired-before-move")
+	for _, step := range pb.Steps {
+		if step.Action == "schematic.page.clear" || step.Run == "sch clear" {
+			t.Fatal("fully unwired source must not be cleared")
+		}
+	}
+	composeStep(t, pb, "move-preserved-000")
+	composeStep(t, pb, "verify-all-pins-nets-nc")
+	first := parts[1].(map[string]any)["pins"].([]any)[0].(map[string]any)
+	first["net"] = "foreign-net"
+	if schComposeFullyUnwired(result) {
+		t.Fatal("partially wired page accepted as fresh unwired source")
+	}
+	if _, err := schCompositionPlaybook(p, composeApplyBytes(t, env), true, true); err == nil {
+		t.Fatal("mixed/unknown source pin net accepted")
 	}
 }
 

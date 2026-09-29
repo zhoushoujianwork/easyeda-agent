@@ -64,6 +64,9 @@ type playbookStep struct {
 
 	Action  string         `json:"action,omitempty"`
 	Payload map[string]any `json:"payload,omitempty"`
+	// These top-level payload values are native evidence bytes, not ${var}
+	// templates. The key names are still validated during preflight.
+	LiteralPayloadKeys []string `json:"literalPayloadKeys,omitempty"`
 
 	Run   string         `json:"run,omitempty"`
 	Flags map[string]any `json:"flags,omitempty"`
@@ -361,6 +364,20 @@ func preflight(pb *playbook, vars map[string]string) []string {
 				errs = append(errs, fmt.Sprintf("step %s: unknown action %q", ref, s.Action))
 			}
 		}
+		if len(s.LiteralPayloadKeys) > 0 && s.Action == "" {
+			errs = append(errs, fmt.Sprintf("step %s: literalPayloadKeys requires action", ref))
+		}
+		seenLiteral := map[string]bool{}
+		for _, key := range s.LiteralPayloadKeys {
+			if key == "" || seenLiteral[key] || s.Payload == nil {
+				errs = append(errs, fmt.Sprintf("step %s: invalid literal payload key %q", ref, key))
+				continue
+			}
+			if _, ok := s.Payload[key]; !ok {
+				errs = append(errs, fmt.Sprintf("step %s: missing literal payload key %q", ref, key))
+			}
+			seenLiteral[key] = true
+		}
 		if s.OnFail != "" && s.OnFail != "stop" && s.OnFail != "continue" && s.OnFail != "prompt" {
 			errs = append(errs, fmt.Sprintf("step %s: invalid onFail %q", ref, s.OnFail))
 		}
@@ -394,7 +411,19 @@ func unresolvedVars(s *playbookStep, known map[string]bool) []string {
 			return str
 		})
 	}
-	walk(s.Payload)
+	if len(s.LiteralPayloadKeys) == 0 {
+		walk(s.Payload)
+	} else {
+		literal := map[string]bool{}
+		for _, key := range s.LiteralPayloadKeys {
+			literal[key] = true
+		}
+		for key, value := range s.Payload {
+			if !literal[key] {
+				walk(value)
+			}
+		}
+	}
 	walk(s.Flags)
 	if s.ExpectSchematic != nil {
 		walk(s.ExpectSchematic.substitutionValue())
@@ -1044,15 +1073,11 @@ func (r *applyRunner) executeOnce(s *playbookStep, timeout time.Duration) (any, 
 		}
 		return r.runAction("system.notify", map[string]any{"message": msg, "type": "info"}, timeout)
 	case s.Action != "":
-		payload, err := substVars(s.Payload, r.vars)
+		payload, err := substPayloadVars(s.Payload, s.LiteralPayloadKeys, r.vars)
 		if err != nil {
 			return nil, err
 		}
-		var pm map[string]any
-		if payload != nil {
-			pm, _ = payload.(map[string]any)
-		}
-		return r.runAction(s.Action, pm, timeout)
+		return r.runAction(s.Action, payload, timeout)
 	case s.Run != "":
 		flags, err := substVars(s.Flags, r.vars)
 		if err != nil {
@@ -1073,6 +1098,26 @@ func (r *applyRunner) executeOnce(s *playbookStep, timeout time.Duration) (any, 
 		return r.runSubcommand(s.Run, fm, args)
 	}
 	return nil, errors.New("empty step")
+}
+
+func substPayloadVars(payload map[string]any, literalKeys []string, vars map[string]string) (map[string]any, error) {
+	literal := map[string]bool{}
+	for _, key := range literalKeys {
+		literal[key] = true
+	}
+	out := make(map[string]any, len(payload))
+	for key, value := range payload {
+		if literal[key] {
+			out[key] = value
+			continue
+		}
+		v, err := substVars(value, vars)
+		if err != nil {
+			return nil, err
+		}
+		out[key] = v
+	}
+	return out, nil
 }
 
 // runAction POSTs a typed action and returns its decoded `result`.

@@ -29,6 +29,7 @@ type schCompositionModule struct {
 type schCompositionSource struct {
 	SchemaVersion int                      `json:"schemaVersion"`
 	Connectivity  connectivity.Document    `json:"connectivity"`
+	Paperless     bool                     `json:"paperless,omitempty"`
 	Sheet         layoutBBox               `json:"sheet"`
 	SheetBorder   *layoutBBox              `json:"sheetBorder,omitempty"`
 	Keepouts      []layoutBBox             `json:"keepouts"`
@@ -38,6 +39,7 @@ type schCompositionSource struct {
 type schCompositionPlan struct {
 	SchemaVersion           int                      `json:"schemaVersion"`
 	Connectivity            connectivity.Document    `json:"connectivity"`
+	Paperless               bool                     `json:"paperless,omitempty"`
 	Sheet                   layoutBBox               `json:"sheet"`
 	SheetBorder             *layoutBBox              `json:"sheetBorder,omitempty"`
 	PlacementBoundarySource string                   `json:"placementBoundarySource"`
@@ -210,6 +212,14 @@ the source modules, canonical membership/pin intent and exact paper evidence, th
 preserves the supplied frames, titles, spacing and Z positions by rigid translation.
 It never reruns placement or chooses variants. A complete selected page without
 variants and explicit source sheetBorder/keepouts are required.
+For a page whose physical sheet primitive was deliberately removed, set
+paperless:true in the composition source, omit sheet/sheetBorder/titleBlock and
+use an explicit empty keepouts array. Modules are packed in one content-sized
+row; the plan's sheet field is a virtual validation envelope, not EDA paper.
+The target must have zero physical sheets. A fully unwired bound page can retain
+its native part instances while adding NC, wires and markers without clearing.
+Its Apply gate checks geometry, nets, bridges and DRC but cannot run the strict
+paper-boundary stage; save/reload and compare the complete plan afterward.
 No automatic pagination, symbol scaling or source-page deletion is performed.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if from == "" {
 			return fmt.Errorf("--from is required")
@@ -288,7 +298,7 @@ No automatic pagination, symbol scaling or source-page deletion is performed.`, 
 			}
 		}
 		fmt.Fprintf(stderr, "compose: %d modules, %d parts, %d rows, maximum row height %g; page margin/gap %g/%g raw; boundary %s\n", len(plan.Layout.Frames), len(plan.Layout.Placements), plan.Rows, plan.RowHeight, plan.PageMargin, plan.ModuleGap, plan.PlacementBoundarySource)
-		if plan.SheetBorder == nil {
+		if plan.SheetBorder == nil && !plan.Paperless {
 			fmt.Fprintln(stderr, "compose: inner drawing border not supplied; clearance is relative to the sheet bbox only")
 		}
 		return nil
@@ -324,19 +334,31 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 		}
 	}
 	d := src.Connectivity
-	if src.SchemaVersion != 1 || len(src.Modules) == 0 || !plBoxValid(src.Sheet) || d.ProjectID == "" || d.DocumentID == "" {
-		return nil, fmt.Errorf("composition requires schemaVersion:1, modules, sheet and target projectId/documentId")
+	if src.SchemaVersion != 1 || len(src.Modules) == 0 || d.ProjectID == "" || d.DocumentID == "" {
+		return nil, fmt.Errorf("composition requires schemaVersion:1, modules and target projectId/documentId")
+	}
+	if src.Paperless {
+		if page != nil || plBoxValid(src.Sheet) || src.SheetBorder != nil || len(src.Keepouts) != 0 || len(src.TitleBlock) != 0 {
+			return nil, fmt.Errorf("paperless composition requires no sheet, border, keepout, title block or layout-page")
+		}
+	} else if !plBoxValid(src.Sheet) {
+		return nil, fmt.Errorf("composition requires a measured sheet unless paperless:true is explicit")
 	}
 	if err := d.Validate(); err != nil {
 		return nil, err
 	}
-	usable, boundarySource, err := schCompositionUsableBounds(src.Sheet, src.SheetBorder)
-	if err != nil {
-		return nil, err
-	}
-	for _, k := range src.Keepouts {
-		if !plBoxValid(k) || !boxInside(k, src.Sheet) {
-			return nil, fmt.Errorf("invalid keepout")
+	var usable layoutBBox
+	boundarySource := "content-derived-no-sheet"
+	var err error
+	if !src.Paperless {
+		usable, boundarySource, err = schCompositionUsableBounds(src.Sheet, src.SheetBorder)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range src.Keepouts {
+			if !plBoxValid(k) || !boxInside(k, src.Sheet) {
+				return nil, fmt.Errorf("invalid keepout")
+			}
 		}
 	}
 	byRef := map[string]connectivity.Component{}
@@ -376,7 +398,7 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 			members[m.ID][id] = true
 		}
 	}
-	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, TitleBlock: src.TitleBlock, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
+	result := &schCompositionPlan{SchemaVersion: 1, Connectivity: d, Paperless: src.Paperless, Sheet: src.Sheet, SheetBorder: src.SheetBorder, PlacementBoundarySource: boundarySource, UsableBounds: usable, Keepouts: src.Keepouts, TitleBlock: src.TitleBlock, PageMargin: schModulePageMargin, ModuleGap: schModuleGap, Layout: powerLayoutPlan{SchemaVersion: 1, DocumentID: d.DocumentID, ExpectedPinNets: pinNet}}
 	if page != nil {
 		resolved, _ := resolveSchematicRenderSpacing(*page)
 		usable = sheetPreviewUsable(*resolved.Sheet)
@@ -488,6 +510,11 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 	if page != nil {
 		rows = schCompositionPreplacedRows(*page)
 	} else {
+		if src.Paperless {
+			result.Sheet = schCompositionContentDerivedBounds(result.Layout.Frames)
+			usable = result.Sheet
+			result.UsableBounds = usable
+		}
 		rows, err = planSchModuleRows(result.Layout.Frames, usable, 0, schModuleGap)
 	}
 	if err != nil {
@@ -520,7 +547,7 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 	// Translated official coordinates can retain arithmetic tails. Normalize
 	// only the newly compiled drawing, never the caller's measurement/baseline.
 	normalizeSchCompositionGeometry(&result.Layout)
-	if err = validatePowerLayout(&result.Layout, src.Sheet); err != nil {
+	if err = validatePowerLayout(&result.Layout, result.Sheet); err != nil {
 		return nil, err
 	}
 	for i, c := range result.Connectivity.Components {
@@ -715,10 +742,11 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 	if env.Result == nil {
 		return nil, fmt.Errorf("missing before snapshot result")
 	}
+	unwiredSource := schComposeFullyUnwired(env.Result)
 	var preserved *schPreservedParts
 	if preserve {
 		var err error
-		preserved, err = prepareSchPreservedParts(p, before)
+		preserved, err = prepareSchPreservedParts(p, before, unwiredSource)
 		if err != nil {
 			return nil, fmt.Errorf("preserve-instances: %w", err)
 		}
@@ -728,18 +756,19 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 	if err := json.Unmarshal(raw, &src); err != nil {
 		return nil, err
 	}
-	// Require the same measured sheet as the planner, not a guessed A4 extent.
+	// A paperless plan has only a content-derived validation envelope; it must
+	// never be matched against or silently add a physical sheet primitive.
 	sheets := 0
 	for _, c := range src.Components {
 		if c.ComponentType == "sheet" {
-			if c.BBox == nil || *c.BBox != p.Sheet {
+			if p.Paperless || c.BBox == nil || *c.BBox != p.Sheet {
 				return nil, fmt.Errorf("target sheet geometry differs from composition")
 			}
 			sheets++
 		}
 	}
-	if sheets != 1 {
-		return nil, fmt.Errorf("exactly one measured target sheet required")
+	if (!p.Paperless && sheets != 1) || (p.Paperless && sheets != 0) {
+		return nil, fmt.Errorf("target sheet count differs from composition")
 	}
 	// A baseline may contain different devices (explicit --replace handles
 	// them), but every existing device must be identified before reuse/reset.
@@ -768,6 +797,9 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 	}
 	matchError := final.check(env.Result, nil)
 	matches := matchError == nil
+	if p.Paperless && !matches && (preserved == nil || !unwiredSource) {
+		return nil, fmt.Errorf("paperless Apply currently requires a matching page or a fully unwired bound part set with --preserve-instances; no protected paperless clear path is available")
+	}
 	if !matches && !replace {
 		return nil, fmt.Errorf("target differs from the planned circuit; use --replace with its fresh snapshot to compile a guarded rebuild: %w", matchError)
 	}
@@ -792,7 +824,11 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 	if !matches && !reuseUnwired && preserved == nil && schSameBoundInstanceSet(p, env.Result) {
 		return nil, fmt.Errorf("same bound instances would be deleted by --replace; use --replace --preserve-instances to retain native IDs and attributes")
 	}
-	pb := &playbook{Version: 1, RequireFullExecution: true, Meta: playbookMeta{Name: "Single-sheet Lib composition", Project: p.Connectivity.ProjectID, Doc: p.Connectivity.DocumentID}, Defaults: stepPolicy{Retry: &zero, TimeoutSec: &timeout, ContinueOnError: &stop}}
+	name := "Single-sheet Lib composition"
+	if p.Paperless {
+		name = "Paperless Lib composition"
+	}
+	pb := &playbook{Version: 1, RequireFullExecution: true, Meta: playbookMeta{Name: name, Project: p.Connectivity.ProjectID, Doc: p.Connectivity.DocumentID}, Defaults: stepPolicy{Retry: &zero, TimeoutSec: &timeout, ContinueOnError: &stop}}
 	read := map[string]any{"includePins": true, "includeBBox": true, "includeDeviceIdentity": true, "includeWires": true, "includeConnectivitySummary": true}
 	if matches {
 		all := *final
@@ -844,7 +880,7 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 		if err := baseline.check(env.Result, nil); err != nil {
 			return nil, fmt.Errorf("incomplete before snapshot: %w", err)
 		}
-		if reuseUnwired {
+		if reuseUnwired || (preserved != nil && unwiredSource) {
 			baseline.Drawing = &schematicDrawingExpectation{}
 		}
 		all := *baseline
@@ -869,21 +905,29 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 		}
 
 		if preserved != nil {
-			ids := strings.Join(preserved.IDs, ",")
-			protected, _ := json.Marshal(pagePrimitives)
-			pb.Steps = append(pb.Steps, playbookStep{ID: "reset-drawing-preserving-instances", Run: "sch clear", Flags: map[string]any{"preserve-parts": true, "part-ids": ids, "expect-page-primitives-b64": base64.StdEncoding.EncodeToString(protected)}})
-			pb.Steps = append(pb.Steps, playbookStep{ID: "verify-no-residual-primitives", Run: "sch clear", Flags: map[string]any{"preserve-parts": true, "part-ids": ids, "dry-run": true, "expect-empty": true}})
-			cleared := cloneSchExpectation(baseline)
-			cleared.SourceScene = nil
-			cleared.Drawing = &schematicDrawingExpectation{}
-			for ref, part := range cleared.Parts {
-				for number, q := range part.Pins {
-					q.Net = nil
-					part.Pins[number] = q
+			if unwiredSource {
+				// An already empty drawing needs no destructive clear. This is
+				// also the safe path on a page with no physical sheet primitive.
+				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-fully-unwired-before-move", Action: "schematic.components.list", Payload: read, ExpectSchematic: baseline})
+			} else {
+				ids := strings.Join(preserved.IDs, ",")
+				protected, _ := json.Marshal(pagePrimitives)
+				// The protected inventory can be megabytes on a normal drawing.
+				// Send it as a typed payload instead of an OS command-line argument.
+				pb.Steps = append(pb.Steps, playbookStep{ID: "reset-drawing-preserving-instances", Action: "schematic.page.clear", Payload: map[string]any{"preserveSheet": true, "preserveParts": true, "preservePartIds": preserved.IDs, "expectedPagePrimitives": string(protected)}, LiteralPayloadKeys: []string{"expectedPagePrimitives"}, Assert: map[string]string{"$.preserveParts": "==true", "$.instancesPreserved": "==true", "$.remaining": "==0"}})
+				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-no-residual-primitives", Run: "sch clear", Flags: map[string]any{"preserve-parts": true, "part-ids": ids, "dry-run": true, "expect-empty": true}})
+				cleared := cloneSchExpectation(baseline)
+				cleared.SourceScene = nil
+				cleared.Drawing = &schematicDrawingExpectation{}
+				for ref, part := range cleared.Parts {
+					for number, q := range part.Pins {
+						q.Net = nil
+						part.Pins[number] = q
+					}
+					cleared.Parts[ref] = part
 				}
-				cleared.Parts[ref] = part
+				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-preserved-parts-after-clear", Action: "schematic.components.list", Payload: read, ExpectSchematic: cleared})
 			}
-			pb.Steps = append(pb.Steps, playbookStep{ID: "verify-preserved-parts-after-clear", Action: "schematic.components.list", Payload: read, ExpectSchematic: cleared})
 			for i, c := range p.Layout.Placements {
 				pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("move-preserved-%03d", i), Action: "schematic.component.modify", Payload: map[string]any{"primitiveId": preserved.Parts[c.Designator]["primitiveId"], "patch": preserved.posePatch(c), "preserveInstance": true}, Assert: map[string]string{"$.instancePreserved": "==true"}})
 			}
@@ -961,7 +1005,15 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 		}
 		pb.Steps = append(pb.Steps, playbookStep{ID: "apply-page-titleblock", Run: "sch titleblock", Flags: map[string]any{"data": string(data)}})
 	}
-	pb.Steps = append(pb.Steps, playbookStep{ID: "verify-all-pins-nets-nc", Action: "schematic.components.list", Payload: read, ExpectSchematic: final}, playbookStep{ID: "electrical-check", Action: "schematic.check", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: "wire-tree-check", Action: "schematic.bridgeCheck", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: "strict-schematic-gate", Run: "sch gate", Flags: map[string]any{"strict": true, "json": true}}, playbookStep{ID: "save-composition", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
+	gateID := "strict-schematic-gate"
+	gateFlags := map[string]any{"strict": true, "json": true}
+	if p.Paperless {
+		// The strict layout stage explicitly rejects pages without a sheet.
+		// Keep every electrical gate and use the ordinary layout collision gate.
+		gateID = "paperless-schematic-gate"
+		gateFlags = map[string]any{"json": true}
+	}
+	pb.Steps = append(pb.Steps, playbookStep{ID: "verify-all-pins-nets-nc", Action: "schematic.components.list", Payload: read, ExpectSchematic: final}, playbookStep{ID: "electrical-check", Action: "schematic.check", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: "wire-tree-check", Action: "schematic.bridgeCheck", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: gateID, Run: "sch gate", Flags: gateFlags}, playbookStep{ID: "save-composition", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
 	if preserved != nil {
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-saved-instance-preservation", Action: "schematic.components.list", Payload: read, ExpectSchematic: final})
 	}

@@ -56,6 +56,21 @@ func planSchModuleRows(frames []schFrameSpec, sheet layoutBBox, margin, gap floa
 	return out, nil
 }
 
+// A paperless composition uses a derived validation envelope only. Its width
+// comes from every complete module frame, so this does not impose a paper limit
+// or silently turn the drawing back into an A-size sheet.
+func schCompositionContentDerivedBounds(frames []schFrameSpec) layoutBBox {
+	width, height := 0.0, 0.0
+	for i, frame := range frames {
+		if i > 0 {
+			width += schModuleGap
+		}
+		width += plCeil(frame.Rect.MaxX - frame.Rect.MinX)
+		height = max(height, plCeil(frame.Rect.MaxY-frame.Rect.MinY))
+	}
+	return layoutBBox{MinX: 0, MinY: 0, MaxX: width, MaxY: height}
+}
+
 func translatePowerLayout(p *powerLayoutPlan, dx, dy float64) {
 	for i, c := range p.Placements {
 		p.Placements[i] = plTranslate(c, dx, dy)

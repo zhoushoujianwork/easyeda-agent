@@ -55,7 +55,16 @@ easyeda sch sheet-geometry --project <project> --json
 纸张设置由用户在最终需要打印时选择。此离线选项不会修改宿主纸张，也不豁免现场回读。
 源文件若是 `lib-layout` 的 connectivity/measurements/layoutModules 格式，改用
 `layout-plan --lib --unbounded` 直接读取；输出仍是可无 sheet 渲染的多区局部结果，
-不需要手工转换或扩大输入中的纸张尺寸。保留原输入和报告，现场 Apply 另行校验。
+不需要手工转换或扩大输入中的纸张尺寸。保留原输入和报告。
+删除图框的目标页可将成功的每区 `id/title/layout.placements/layout.wires/layout.flags`
+与原始完整 `connectivity` 组成 composition，显式写 `paperless:true` 和 `keepouts:[]`，
+不写 `sheet/sheetBorder/titleBlock`。用 `sch compose --before fresh.json --replace
+--preserve-instances --playbook queue.json` 生成受保护队列；仅原始输入和计算结果完整匹配时
+执行。此入口为 1.8.1 后的开发态扩展，须先以当前 `sch compose --help` 确认安装态支持。
+计划中的 `sheet` 是按完整内容自动推得的校验包络，不是 EDA 纸张；现场必须为 0 个
+sheet。完全未接线、无 NC 的绑定器件会跳过清页，逐个保留原实例并接线；有既存图元时
+不能走这条空白页路径。无图框页不运行严格纸张边界关，但仍须逐页执行几何、电气、
+bridge、DRC、保存重载和完整 Compose 对账。不得将离线成功或 dry-run 当作现场验收。
 用户明确同意同名标签连接、无需器件间实体导线时，使用 `layout-plan --net-labels`
 （原 Lib 输入加 `--lib`，普通多区加 `--zones`）。每件独立命名后按包络分行摆放，
 不设纸张上限；不能和 `--unbounded` 或 optimization 同用。连接/归属/NC 不改，
