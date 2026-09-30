@@ -916,7 +916,7 @@ func AllActions() []ActionSpec {
 		},
 		{
 			Name: "pcb.image.create", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
-			Description: "Embed a PNG/JPEG/SVG reference picture on DOCUMENT layer 13 using pcb_PrimitiveObject (data URI, not manufacturing geometry). Explicit physical dimensions in mil. Returns fresh geometry and partial status; Web persistence/rendering unverified.",
+			Description: "Embed a PNG/JPEG/SVG reference picture on DOCUMENT layer 13 using pcb_PrimitiveObject (data URI, not manufacturing geometry). Explicit physical dimensions in mil. Returns fresh geometry and partial status. PNG/JPEG/SVG rendering and save/reload live-verified on Web 4.1.60 / connector 1.8.2; mirror flips the rotated image around the anchor vertical axis.",
 			Inputs:      []string{"dataBase64", "fileName", "x (mil)", "y (mil)", "width (mil)", "height (mil)", "layer optional (13 only)", "rotation optional", "mirror optional"}, Outputs: []string{"primitiveId", "layer", "x", "y", "width", "height", "rotation", "mirror", "fileName", "bbox", "verified", "partial", "notApplied"},
 			VerifyWith: []string{"pcb.image.list"},
 		},

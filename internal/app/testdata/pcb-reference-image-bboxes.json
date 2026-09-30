@@ -1,0 +1,36 @@
+{
+  "source": "Typed pcb.image.modify and fresh pcb.image.list on EasyEDA Pro Web 4.1.60; image size 500x300 mil, anchor (3400,2500) mil. Rotation 90 + mirror true also persisted through save/reload. IDs and project identity omitted.",
+  "units": "mil; y-UP; mirror after rotation around vertical anchor axis",
+  "cases": [
+    {
+      "rotation": 90,
+      "mirror": true,
+      "bbox": {
+        "maxX": 3400,
+        "maxY": 3000,
+        "minX": 3100,
+        "minY": 2500
+      }
+    },
+    {
+      "rotation": 90,
+      "mirror": false,
+      "bbox": {
+        "maxX": 3700,
+        "maxY": 3000,
+        "minX": 3400,
+        "minY": 2500
+      }
+    },
+    {
+      "rotation": 0,
+      "mirror": true,
+      "bbox": {
+        "maxX": 3400,
+        "maxY": 2500,
+        "minX": 2900,
+        "minY": 2200
+      }
+    }
+  ]
+}

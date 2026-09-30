@@ -121,9 +121,36 @@ func TestPcbImageCreateWiresDocumentPayload(t *testing.T) {
 
 func TestPcbImageRotatedBBox(t *testing.T) {
 	bbox := pcbImageBBox(10, -20, 200, 100, 90, true)
-	for key, want := range map[string]float64{"minX": 10, "maxX": 110, "minY": -20, "maxY": 180} {
+	for key, want := range map[string]float64{"minX": -90, "maxX": 10, "minY": -20, "maxY": 180} {
 		if math.Abs(bbox[key]-want) > 1e-6 {
 			t.Fatalf("bbox=%v", bbox)
+		}
+	}
+}
+
+// Regression fixture from typed Web 4.1.60 calls: preserve the real anchor
+// semantics rather than inferring a mirror transform from an offline diagram.
+func TestPcbImageBBoxWebFixture(t *testing.T) {
+	data, err := os.ReadFile("testdata/pcb-reference-image-bboxes.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Cases []struct {
+			Rotation float64
+			Mirror   bool
+			BBox     map[string]float64
+		}
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range fixture.Cases {
+		bbox := pcbImageBBox(3400, 2500, 500, 300, c.Rotation, c.Mirror)
+		for key, want := range c.BBox {
+			if math.Abs(bbox[key]-want) > 1e-6 {
+				t.Fatalf("rotation=%g mirror=%v bbox=%v want=%v", c.Rotation, c.Mirror, bbox, c.BBox)
+			}
 		}
 	}
 }

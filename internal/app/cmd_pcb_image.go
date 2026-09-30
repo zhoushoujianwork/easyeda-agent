@@ -25,7 +25,9 @@ func newPcbImageCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *c
 	create := &cobra.Command{Use: "create", Short: "Import PNG/JPEG/SVG as a document-layer reference picture", Args: cobra.NoArgs,
 		Long: `Import an embedded reference picture, preserving colors and transparency.
 --layer must be 13 (DOCUMENT). It does not create copper or manufacturing silk.
---x/--y is the top-left corner in mil, y-UP. --width/--height are physical
+--x/--y is the source top-left anchor in mil, y-UP. Mirroring reflects the
+rotated image across the vertical axis through that anchor; at rotation 0,
+a mirrored picture extends left to x-width. --width/--height are physical
 sizes in mil; at least one is required. One dimension preserves aspect;
 both resize independently. --rotation is in degrees; --mirror is horizontal.
 --dry-run validates the local source and reports the transformed target bbox
@@ -189,10 +191,13 @@ func pcbImageBBox(x, y, w, h, r float64, mirror bool) map[string]float64 {
 	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, p := range [][2]float64{{0, 0}, {w, 0}, {w, -h}, {0, -h}} {
 		px, py := p[0], p[1]
+		// Web 4.1.60 mirrors the rotated rectangle about the anchor's vertical
+		// axis, not about the artwork center or in unrotated source space.
+		dx := px*math.Cos(angle) - py*math.Sin(angle)
 		if mirror {
-			px = w - px
+			dx = -dx
 		}
-		tx, ty := x+px*math.Cos(angle)-py*math.Sin(angle), y+px*math.Sin(angle)+py*math.Cos(angle)
+		tx, ty := x+dx, y+px*math.Sin(angle)+py*math.Cos(angle)
 		minX = math.Min(minX, tx)
 		maxX = math.Max(maxX, tx)
 		minY = math.Min(minY, ty)
