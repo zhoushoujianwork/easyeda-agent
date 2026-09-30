@@ -1,5 +1,9 @@
 # CLI Status
 
+2026-10-01: [v1.9.0](releases/release-1.9.md) 已发布，图片导入按用户批准的有限范围
+完成现场回读与独立复核。PCB 图片位于 DOCUMENT 13；完整设计 E2E 和制造丝印转换未认证。
+以下保留此前基础与设计验收记录的实际版本及边界。
+
 更新于 **2026-09-27**。本页维护当前可用范围和后续进度；历史参数、失败和证据留在对应报告。
 本次测试运行态为 CLI/daemon `v1.7.1-dev.14`、connector `1.7.1-dev.14`，Web EasyEDA Pro 4.1.60。
 正式版 [v1.8.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.8.0) 已按 CLI 修复范围发布；

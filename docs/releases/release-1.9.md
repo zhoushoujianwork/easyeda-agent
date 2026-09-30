@@ -1,7 +1,13 @@
 # v1.9.0 reference pictures and CLI improvements
 
-Publication is approved. Independent limited-scope review, release-build and offline
-release-smoke passed; remote publication and asset checks are the remaining steps.
+Published on 2026-10-01: [GitHub v1.9.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.9.0).
+The annotated tag freezes commit `feadb52bae1721acec52fbaf6de123e239bd4e08`.
+Independent limited-scope review, release-build and offline release-smoke passed.
+All 11 remote assets matched local names, sizes and SHA-256; the Release is non-draft.
+SkillHub workflow [36755633129](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/36755633129)
+submitted skillId 173258 successfully; platform review status was not returned.
+ClawHub confirmed `easyeda-agent@1.9.0` publication (k97a2evwrtw4t6zxkm376s83kn8fd13n).
+The JLC extension marketplace still requires manual submission and is not claimed updated.
 
 This release adds schematic and PCB reference-picture import and management, fixes mirrored
 PCB preview bounds, and includes protected paperless composition improvements and updated
