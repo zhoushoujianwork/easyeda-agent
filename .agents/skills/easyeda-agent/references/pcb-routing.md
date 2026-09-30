@@ -460,7 +460,9 @@ emits it as a `BoardCutout`). `pcb slot --rect … | --ref ANT1 --margin 20` mil
 hole — antenna isolation / mechanical opening. No net. It's a `pcb_PrimitiveFill` on
 layer 12, so list/delete via `pcb fill list --layer 12` / `pcb fill delete`.
 
-**M3 安装孔 — `pcb mount-holes`** (issue #102). Places corner mounting holes
+**M3 安装孔 — `pcb mount-holes`** (issue #102). 这是**纯板材挖槽**命令，不会导入嘉立创常用库的
+螺丝孔器件或选择其型号。先按[螺丝孔与安装孔选型](pcb-layout.md#螺丝孔与安装孔先选现有库器件)
+核对现有实例及库候选；仅在明确需要无器件身份的开孔时走此路径。Places corner mounting holes
 **automatically and collision-checked** — never hand-place M3 holes at guessed
 coordinates (#102: a blind hole landed on C1). Reads the real board outline
 (errors without one — run `pcb outline-fit` first), computes each corner center

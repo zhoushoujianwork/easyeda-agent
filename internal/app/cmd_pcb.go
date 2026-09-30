@@ -3908,11 +3908,16 @@ x0,y0,x1,y1, or --ref <designator> (+ --margin to expand). Inspect / remove with
 		var dryRun bool
 		c := &cobra.Command{
 			Use:   "mount-holes",
-			Short: "Place M3 mounting holes at the board-outline corners (collision-checked cutouts)",
-			Long: `Place mounting holes at the board-outline corners — the "四角 M3 孔" requirement,
-automated (issue #102). Reads the real board outline (pcb.outline.get — errors if
-none is set; run 'pcb outline-fit' first), computes each requested corner center
-at --inset from both edges, and mills a near-circular cutout there: a MULTI-layer
+			Short: "Mill M3 corner clearance cutouts (no library component is imported)",
+			Long: `Mill M3 clearance cutouts at the board-outline corners — the "四角 M3 孔" requirement
+when a bare board opening is intended. This does not search, select, or import a
+JLC/EasyEDA screw or mounting-hole library component. Check existing components
+and library models first when the design calls for a component-backed hole.
+
+The corner placement is automated (issue #102). It reads the real board outline
+(pcb.outline.get); if none is set, run 'pcb outline-fit' first. It computes each
+requested corner center at --inset from both edges and mills a near-circular
+cutout there: a MULTI-layer
 (12) fill, the same primitive 'pcb slot' creates (manufacturing emits a
 BoardCutout), so 'pcb place-constrained' avoids it as a Tier-1 obstacle and
 'pcb check' keeps copper off the milled edge.

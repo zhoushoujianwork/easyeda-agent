@@ -422,6 +422,30 @@ scripts, but their stored state is diagnostic history and does not authorize rou
 Size the outline to enclose the component extent (`pcb.components.list --includeBBox`)
 with margin, then verify `allInside` from the response.
 
+### 螺丝孔与安装孔：先选现有库器件
+
+需要螺丝孔时，先区分**带器件身份的螺丝孔/安装孔**与**只在板材上挖孔**。
+嘉立创常用库有多种型号；不能因为样例用了 M3，就把所有需求固定成 Ø3.2mm 挖槽。
+260919 样例的 BOM 将 SCREW1–SCREW4 记为 `M3`、来源「常用库」，其现场验证的是
+**已有 PCB 实例的放置和保存回读**，不是从库搜索并新导入该型号的验证。
+
+1. 从 BOM、结构图或装配要求确定螺丝规格、通孔直径、是否需要金属化/接地铜环、螺丝头或垫圈净空，
+   以及装配时是否作为器件管理；尺寸和坐标基准不明时先保留未决项。
+2. 先用 `pcb list --include-bbox --include-pads` 查现有实例；型号匹配则复用并按机械坐标布局、锁定。
+   缺少实例时，用 `lib libraries` 核对可见库；可确认目标库 UUID 时用
+   `lib search --query <规格/名称> --library <库UUID>`，否则先不加 `--library` 搜索候选。
+   对选中候选用 `lib device get --uuid <设备UUID> --library <库UUID>` 及
+   `lib footprint get --uuid <封装UUID> --library <封装库UUID>` 核对身份与实际孔/焊盘几何。
+   搜索排名、名称或样例里的「常用库」字样不能替代型号与几何核对；不要猜 UUID。
+3. 以现有 typed 器件导入/放置路径执行，并回读器件身份、位号、孔/焊盘、位置、锁定状态及机械净空；
+   再保存、重载、重新读取。当前样例未验证**从常用库新导入独立机械件**的完整链路；
+   若当前宿主的 typed 路径不能完成或核验该链路，标 `unsupported` 并先补接口/自动化验证，
+   不转为手画或 GUI 放置。
+
+只有设计明确要求**无库器件身份的板材开孔**时，才使用
+[`pcb mount-holes`](pcb-routing.md#m3-安装孔--pcb-mount-holes) 或 `pcb slot` 的挖槽路径；
+它不会选择螺丝型号、导入器件或建立 BOM 关联，也不能在已有库安装孔上重复开孔。
+
 ## Auto-layout — execute per the conventions
 
 Follow the priority hierarchy in
