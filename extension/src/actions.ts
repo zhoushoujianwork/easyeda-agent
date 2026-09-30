@@ -2481,7 +2481,11 @@ export async function verifySchPrimitiveDeletion(
 		const kind = SCH_PAGE_PRIMITIVE_KINDS.find(k => k.key === key);
 		try {
 			await assertSchDeletionContext(context);
-			const live = kind ? await kind.getAll() : await eda.sch_PrimitiveComponent.getAll();
+			// 'objects' (reference images, #272) is the sch_PrimitiveObject class,
+			// not one of SCH_PAGE_PRIMITIVE_KINDS — see the matching branch in
+			// deleteSchGroup.
+			const live = key === 'objects' ? await eda.sch_PrimitiveObject.getAll()
+				: kind ? await kind.getAll() : await eda.sch_PrimitiveComponent.getAll();
 			const alive = new Set(checkedSchPrimitiveIds(live));
 			await assertSchDeletionContext(context);
 			survived[key] = ids.filter(id => alive.has(id));
@@ -2500,6 +2504,14 @@ async function deleteSchGroup(key: string, ids: Array<string>, context?: SchDele
 	for (let i = 0; i < ids.length; i += SCH_DELETE_BATCH) {
 		if (context) await waitForSchematicReady(context, 5000, context.readiness);
 		const batch = ids.slice(i, i + SCH_DELETE_BATCH);
+		// 'objects' (reference images, #272) is not in SCH_PAGE_PRIMITIVE_KINDS —
+		// it's the SAME sch_PrimitiveObject class deleteSchPagePrimitives already
+		// targets, so route it there directly rather than falling through to the
+		// wrong sch_PrimitiveComponent.delete default below.
+		if (key === 'objects') {
+			if (!await deleteSchPagePrimitives(batch)) await eda.sch_PrimitiveObject.delete(batch);
+			continue;
+		}
 		if (!kind) {
 			await eda.sch_PrimitiveComponent.delete(batch);
 			continue;
@@ -2837,6 +2849,14 @@ const schematicPrimitivesDelete: Handler = async (payload) => {
 		}
 		catch (err) { enumerationWarnings.push(warnText(`enumerate ${kind.key}`, err)); }
 	}
+	// Reference images (#272) are sch_PrimitiveObject, a class outside
+	// SCH_PAGE_PRIMITIVE_KINDS — index them under 'objects' so schematic.image.*
+	// ids are deletable through this generic path (deleteSchGroup/
+	// verifySchPrimitiveDeletion special-case the same key).
+	try {
+		for (const id of checkedSchPrimitiveIds(await eda.sch_PrimitiveObject.getAll())) index.set(id, 'objects');
+	}
+	catch (err) { enumerationWarnings.push(warnText('enumerate objects', err)); }
 
 	// Resolve targets: explicit ids, or the current selection.
 	await assertSchDeletionContext(deleteContext);
@@ -2963,6 +2983,187 @@ const schematicWireCreate: Handler = async (payload) => {
 			primitiveId: wire.getState_PrimitiveId(),
 			net: wire.getState_Net(),
 			line: wire.getState_Line(),
+		},
+	};
+};
+
+// ─── Schematic reference images (#272) — eda.sch_PrimitiveObject ───────────
+// A NON-ELECTRICAL embedded-object primitive (二进制内嵌对象): a module photo,
+// dimension drawing, or pinout diagram placed beside the circuit for visual
+// cross-checking. It carries no net/pin and is never touched by
+// schematic.read's netlist walk. This class was already read (schematic.read's
+// objects[]) and deleted (schematic.page.clear's preserveParts sweep /
+// schematic.primitives.delete's generic routing) before this issue — only
+// create/list/modify were missing.
+//
+// 8 MiB pre-base64 mirrors MAX_SYMBOL_SOURCE_BYTES / MAX_PROJECT_SOURCE_BYTES:
+// comfortably under the daemon's 32 MiB WS frame limit after base64 inflation.
+const MAX_SCH_IMAGE_SOURCE_BYTES = 8 << 20;
+
+// MIME is inferred strictly from the fileName extension — never sniffed from
+// content — so an unsupported format fails loudly instead of being silently
+// mis-tagged (a PNG served as image/jpeg still renders in most hosts, which
+// would hide a real bug in the imported file).
+const SCH_IMAGE_MIME_BY_EXT: Record<string, string> = {
+	png: 'image/png',
+	jpg: 'image/jpeg',
+	jpeg: 'image/jpeg',
+	svg: 'image/svg+xml',
+};
+
+function schImageMimeFromFileName(fileName: string): string {
+	const dot = fileName.lastIndexOf('.');
+	const ext = dot >= 0 ? fileName.slice(dot + 1).toLowerCase() : '';
+	const mime = SCH_IMAGE_MIME_BY_EXT[ext];
+	if (!mime) {
+		throw new ActionError(
+			ErrorCodes.PRECONDITION_REFUSED,
+			`Unsupported reference-image extension ".${ext || fileName}" — supported: ${Object.keys(SCH_IMAGE_MIME_BY_EXT).join(', ')}.`,
+		);
+	}
+	return mime;
+}
+
+function schImageStateRecord(object: SchPrimitiveLike): Record<string, unknown> {
+	const o = object as unknown as {
+		getState_PrimitiveId: () => string;
+		getState_StartX?: () => number;
+		getState_StartY?: () => number;
+		getState_Width?: () => number;
+		getState_Height?: () => number;
+		getState_Rotation?: () => number;
+		getState_Mirror?: () => boolean;
+		getState_FileName?: () => string;
+	};
+	return {
+		primitiveId: o.getState_PrimitiveId(),
+		x: o.getState_StartX?.() ?? null,
+		y: o.getState_StartY?.() ?? null,
+		width: o.getState_Width?.() ?? null,
+		height: o.getState_Height?.() ?? null,
+		rotation: o.getState_Rotation?.() ?? 0,
+		mirror: !!o.getState_Mirror?.(),
+		fileName: o.getState_FileName?.() ?? '',
+	};
+}
+
+const schematicImageCreate: Handler = async (payload) => {
+	const dataBase64 = requireString(payload, 'dataBase64');
+	const fileName = requireString(payload, 'fileName');
+	const x = requireNumber(payload, 'x');
+	const y = requireNumber(payload, 'y');
+	const width = optionalNumber(payload, 'width');
+	const height = optionalNumber(payload, 'height');
+	const rotation = optionalNumber(payload, 'rotation') ?? 0;
+	const mirror = optionalBoolean(payload, 'mirror') === true;
+
+	const mimeType = schImageMimeFromFileName(fileName);
+
+	let file: File;
+	try {
+		const bytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
+		if (bytes.length === 0) {
+			throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Reference image data is empty.');
+		}
+		if (bytes.length > MAX_SCH_IMAGE_SOURCE_BYTES) {
+			throw new ActionError(
+				ErrorCodes.PRECONDITION_REFUSED,
+				`Reference image is ${bytes.length} bytes, exceeding the ${MAX_SCH_IMAGE_SOURCE_BYTES}-byte limit.`,
+			);
+		}
+		file = new File([bytes], fileName, { type: mimeType });
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to decode the reference image (expected base64 in dataBase64).');
+	}
+
+	let object;
+	try {
+		object = await eda.sch_PrimitiveObject.create(file, x, y, width, height, rotation, mirror, fileName);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to create reference image.');
+	}
+	if (!object) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'sch_PrimitiveObject.create returned no primitive.');
+	}
+	const id = object.getState_PrimitiveId();
+	let bbox;
+	try { bbox = await eda.sch_Primitive.getPrimitivesBBox([id]); }
+	catch { /* bbox optional */ }
+	return { result: { ...schImageStateRecord(object), bbox } };
+};
+
+const schematicImageList: Handler = async () => {
+	let objects;
+	try {
+		objects = await eda.sch_PrimitiveObject.getAll();
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to enumerate reference images.');
+	}
+	if (!Array.isArray(objects)) {
+		throw new Error('Page embedded-object inventory unavailable.');
+	}
+	const images: Array<Record<string, unknown>> = [];
+	for (const object of objects) {
+		const id = object.getState_PrimitiveId();
+		let bbox = null;
+		try { bbox = await eda.sch_Primitive.getPrimitivesBBox([id]); }
+		catch { /* bbox optional */ }
+		images.push({ ...schImageStateRecord(object), bbox });
+	}
+	images.sort((a, b) => String(a.primitiveId).localeCompare(String(b.primitiveId)));
+	return { result: { images, count: images.length, scope: 'activePage' } };
+};
+
+const SCH_IMAGE_MODIFY_KEYS = ['x', 'y', 'width', 'height', 'rotation', 'mirror'] as const;
+const SCH_IMAGE_MODIFY_PROPERTY_KEY: Record<string, string> = {
+	x: 'startX', y: 'startY', width: 'width', height: 'height', rotation: 'rotation', mirror: 'mirror',
+};
+
+const schematicImageModify: Handler = async (payload) => {
+	const primitiveId = requireString(payload, 'primitiveId');
+	const requested: Record<string, unknown> = {};
+	for (const key of SCH_IMAGE_MODIFY_KEYS) {
+		if (payload[key] !== undefined && payload[key] !== null) requested[key] = payload[key];
+	}
+	if (Object.keys(requested).length === 0) {
+		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Nothing to modify — provide x/y/width/height/rotation/mirror.');
+	}
+
+	const property: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(requested)) property[SCH_IMAGE_MODIFY_PROPERTY_KEY[key]] = value;
+
+	let modified;
+	try {
+		modified = await eda.sch_PrimitiveObject.modify(primitiveId, property as Parameters<typeof eda.sch_PrimitiveObject.modify>[1]);
+	}
+	catch (err) {
+		throw edaError(err, 'Failed to modify reference image.');
+	}
+	if (!modified) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to modify reference image "${primitiveId}".`);
+	}
+
+	let fresh: SchPrimitiveLike | undefined;
+	try {
+		const got = await eda.sch_PrimitiveObject.get(primitiveId);
+		fresh = Array.isArray(got) ? got[0] : got;
+	}
+	catch { /* verify best-effort below */ }
+	if (!fresh) {
+		return { result: { primitiveId, ...schImageStateRecord(modified), partial: true, verified: false, notApplied: ['readback'] }, warnings: ['Reference image modify returned no fresh readback; applied fields could not be verified.'] };
+	}
+
+	const actual = schImageStateRecord(fresh);
+	const notApplied = Object.keys(requested).filter(key => exactJSON(actual[key]) !== exactJSON(requested[key]));
+	return {
+		result: {
+			...actual,
+			applied: Object.keys(requested).filter(key => !notApplied.includes(key)),
+			...(notApplied.length ? { partial: true, notApplied } : {}),
 		},
 	};
 };
@@ -14439,6 +14640,9 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.component.modify': schematicComponentModify,
 	'schematic.component.delete': schematicComponentDelete,
 	'schematic.wire.create': schematicWireCreate,
+	'schematic.image.create': schematicImageCreate,
+	'schematic.image.list': schematicImageList,
+	'schematic.image.modify': schematicImageModify,
 	'schematic.group.move': schematicGroupMove,
 	'schematic.netflag.create': schematicNetflagCreate,
 	'schematic.pin.set_no_connect': schematicPinSetNoConnect,

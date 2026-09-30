@@ -37,6 +37,34 @@ easyeda sch sheet-geometry --project <project> --doc <page-uuid> --json
   关联键，二者均不能当库 UUID。无法解析 device identity、pins 或网络时先补数据，不能猜测。
 - 临时 JSON、计划和回读结果放入项目已忽略的临时目录。保留原始快照，在副本中设计目标。
 
+## 非电气参考图片（#272，2026-09-30 真机验证）
+
+`sch image create/list/modify` 把 PNG/JPEG/SVG 作为**非电气参考图**嵌入原理图（实物照片、
+尺寸图、引脚示意图），用 `eda.sch_PrimitiveObject`。这类图元不带网络、不带引脚，创建/修改
+不会改变任何器件、导线或网络——真机在 ceshi 工程验证：创建/修改/删除前后 `sch read` 的
+`componentCount`/`netCount`/`floatingPinCount` 完全不变，`sch export-image` 截图确认三张
+参考图（PNG 含透明背景、JPEG 带 mirror+rotation、SVG 带 rotation）都渲染在电路旁、
+不与任何导线接触。删除走既有 `sch prim-delete --ids <id>`，没有单独的 `sch image delete`。
+
+坐标是**原理图 raw 单位（0.01 inch，y-UP）**，不是 PCB 的 mil，别把 PCB 侧
+`pcb silk-import-svg` 的单位习惯带过来。`(x,y)` **已现场实测确认是左上角**（真机：
+`--x 0 --y 0` 创建的图元，回读 bbox 是 `{minX:0,maxX:W,minY:-H,maxY:0}`——落点在
+`maxY`，图片向下展开），与 PCB 侧 `pcb silk-import-svg` 的 top-left 约定一致。
+
+**尺寸缺陷（已在 CLI 侧修复）**：省略 `--width`/`--height` 时，宿主**不会**保留源文件
+的真实尺寸——真机实测：200×120 的 PNG、150×100 的 JPEG、100×60 的 SVG，三种不同宽高比
+省略尺寸后全部落地成同一个固定的 ~50×40 raw 占位框，完全不按比例。`sch image create`
+现在会在 CLI 侧解码源文件真实像素尺寸（PNG/JPEG 用 `image.DecodeConfig`，SVG 用
+width/height 或 viewBox 属性）并显式传给宿主，只给一个尺寸时另一个按源比例推算，确保
+“省略即保留原始尺寸”真正成立；1 raw 单位 = 1 源像素（或 1 SVG user unit）已现场验证。
+无法确定源尺寸的 SVG（无 width/height 也无 viewBox）会直接拒绝，不猜测。
+
+`sch image list` 只回读几何字段，不回传原始 content/binaryData。`sch prim-delete`
+按 id 通用删除路径此前**没有把 `sch_PrimitiveObject` 纳入索引**，传参考图片的
+primitiveId 进去会 100% 报 `notFound`（真机实测发现，已修复：`schematic.primitives.delete`
+现在把这类图元索引为 `objects`，与 `sch clear --preserve-parts` 已验证过的删除路径共用
+同一个 `sch_PrimitiveObject.delete` 出口）。
+
 ## 器件与典型电路
 
 先查 [standard-parts.json](standard-parts.json) 和 `easyeda blocks show <id>`。

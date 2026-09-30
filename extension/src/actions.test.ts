@@ -2614,6 +2614,70 @@ test('prim-delete: a fully successful delete carries no partial flag', async () 
 	}
 });
 
+// Regression for a live-verified defect (2026-09-30): schematic.image.* ids
+// (sch_PrimitiveObject, #272) were never indexed by schematicPrimitivesDelete
+// — `sch prim-delete --ids <imageId>` came back 100% notFound on a real
+// EasyEDA window even though the image genuinely existed and schematic.image.
+// list could see it. The fix routes 'objects' through deleteSchGroup /
+// verifySchPrimitiveDeletion the same way sch_PrimitiveObject.delete already
+// works for sch.clear's preserveParts sweep.
+test('prim-delete: schematic reference images (sch_PrimitiveObject) are deletable by id', async t => {
+	const g = globalThis as any;
+	const alive = new Set(['img-1', 'img-2']);
+	const prim = (id: string) => ({ getState_PrimitiveId: () => id }) as any;
+	const fx = {
+		...edaWithUndeletableText([], []),
+		sch_PrimitiveObject: {
+			getAll: async () => [...alive].map(prim),
+			delete: async (ids: string[]) => { ids.forEach(id => alive.delete(id)); return true; },
+		},
+	};
+	g.eda = fx; t.after(() => { delete g.eda; });
+
+	const res: any = await runAction('schematic.primitives.delete', { primitiveIds: ['img-1', 'img-2'] });
+	assert.equal(res.result.total, 2, 'both images must be reported deleted, not notFound');
+	assert.equal(res.result.deleted.objects, 2);
+	assert.deepEqual(res.result.deletedIds.objects.slice().sort(), ['img-1', 'img-2']);
+	assert.equal(res.result.notFound, undefined);
+	assert.deepEqual([...alive], []);
+});
+
+// A mixed batch (a reference image alongside an ordinary wire) must route
+// each id to its correct class. deleteSchPagePrimitives (the generic
+// sch_PrimitiveObject class) is tried FIRST for every page-primitive kind —
+// existing behavior, not specific to images — so this fixture's generic
+// delete must remove ids from BOTH tracked sets, matching how the real
+// platform's sch_PrimitiveObject.delete removes any primitive type by id.
+test('prim-delete: a mixed batch of an image and a wire deletes both by their own class', async t => {
+	const g = globalThis as any;
+	const images = new Set(['img-1']);
+	const wires = new Set(['w1']);
+	const prim = (id: string) => ({ getState_PrimitiveId: () => id }) as any;
+	g.eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
+		sch_PrimitiveComponent: { getAll: async () => [], delete: async () => true },
+		sch_PrimitiveText: { getAll: async () => [], delete: async () => true },
+		sch_PrimitiveWire: { getAll: async () => [...wires].map(prim), delete: async (ids: string[]) => { ids.forEach(id => wires.delete(id)); return true; } },
+		sch_PrimitiveBus: { getAll: async () => [], delete: async () => true },
+		sch_PrimitiveArc: { getAll: async () => [], delete: async () => true },
+		sch_PrimitiveCircle: { getAll: async () => [], delete: async () => true },
+		sch_PrimitiveRectangle: { getAll: async () => [], delete: async () => true },
+		sch_PrimitivePolygon: { getAll: async () => [], delete: async () => true },
+		sch_PrimitiveObject: {
+			getAll: async () => [...images].map(prim),
+			delete: async (ids: string[]) => { ids.forEach(id => { images.delete(id); wires.delete(id); }); return true; },
+		},
+		sch_SelectControl: { getAllSelectedPrimitives_PrimitiveId: async () => [] },
+	} as any;
+	t.after(() => { delete g.eda; });
+
+	const res: any = await runAction('schematic.primitives.delete', { primitiveIds: ['img-1', 'w1'] });
+	assert.equal(res.result.deleted.objects, 1);
+	assert.equal(res.result.deleted.wires, 1);
+	assert.equal(res.result.total, 2);
+	assert.equal(res.result.notFound, undefined);
+});
+
 for (const invalid of ['throw', 'undefined', 'null', 'object', 'invalid-id', 'duplicate-id']) {
 	test(`prim-delete: ${invalid} readback is unknown, never deleted or survived`, async t => {
 		const fx = edaWithUndeletableText([], []);
@@ -4184,4 +4248,182 @@ test('prim-delete rechecks readiness before batch two and refuses another transa
 	g.eda = fx; t.after(() => { delete g.eda; });
 	await assert.rejects(() => runAction('schematic.primitives.delete', { primitiveIds: ids }), /non-sync/);
 	assert.equal(calls, 1); assert.deepEqual([...alive], ['p50']);
+});
+
+// ─── schematic.image.* (#272) — reference images via sch_PrimitiveObject ───
+
+function schImagePrimitive(props: {
+	id: string; x?: number; y?: number; width?: number; height?: number;
+	rotation?: number; mirror?: boolean; fileName?: string;
+}): any {
+	return {
+		getState_PrimitiveId: () => props.id,
+		getState_StartX: () => props.x ?? 0,
+		getState_StartY: () => props.y ?? 0,
+		getState_Width: () => props.width ?? 0,
+		getState_Height: () => props.height ?? 0,
+		getState_Rotation: () => props.rotation ?? 0,
+		getState_Mirror: () => props.mirror ?? false,
+		getState_FileName: () => props.fileName ?? '',
+	};
+}
+
+test('schematic.image.create decodes base64, infers PNG mime from extension, and returns geometry + bbox', async t => {
+	const g = globalThis as any;
+	let createdFile: File | undefined;
+	let createArgs: any[] = [];
+	g.eda = {
+		sch_PrimitiveObject: {
+			create: async (...args: any[]) => {
+				createArgs = args;
+				createdFile = args[0];
+				return schImagePrimitive({ id: 'img-1', x: 100, y: -50, width: 400, height: 300, fileName: 'module.png' });
+			},
+		},
+		sch_Primitive: { getPrimitivesBBox: async () => ({ minX: 100, minY: -350, maxX: 500, maxY: -50 }) },
+	};
+	t.after(() => { delete g.eda; });
+
+	const dataBase64 = Buffer.from('fake-png-bytes').toString('base64');
+	const res: any = await runAction('schematic.image.create', {
+		dataBase64, fileName: 'module.png', x: 100, y: -50, width: 400,
+	});
+
+	assert.equal(res.result.primitiveId, 'img-1');
+	assert.equal(res.result.fileName, 'module.png');
+	assert.equal(res.result.x, 100);
+	assert.equal(res.result.y, -50);
+	assert.deepEqual(res.result.bbox, { minX: 100, minY: -350, maxX: 500, maxY: -50 });
+	assert.ok(createdFile instanceof File, 'expected a File to be passed to sch_PrimitiveObject.create');
+	assert.equal(createdFile!.type, 'image/png');
+	assert.equal(createdFile!.name, 'module.png');
+	// create(content, startX, startY, width, height, rotation, mirror, fileName)
+	assert.equal(createArgs[1], 100);
+	assert.equal(createArgs[2], -50);
+	assert.equal(createArgs[3], 400);
+});
+
+test('schematic.image.create infers JPEG mime for .jpg/.jpeg and SVG mime for .svg', async t => {
+	const g = globalThis as any;
+	const seenTypes: string[] = [];
+	g.eda = {
+		sch_PrimitiveObject: {
+			create: async (content: File) => { seenTypes.push(content.type); return schImagePrimitive({ id: 'img-x' }); },
+		},
+		sch_Primitive: { getPrimitivesBBox: async () => undefined },
+	};
+	t.after(() => { delete g.eda; });
+
+	const dataBase64 = Buffer.from('x').toString('base64');
+	await runAction('schematic.image.create', { dataBase64, fileName: 'photo.jpg', x: 0, y: 0 });
+	await runAction('schematic.image.create', { dataBase64, fileName: 'photo.jpeg', x: 0, y: 0 });
+	await runAction('schematic.image.create', { dataBase64, fileName: 'pinout.svg', x: 0, y: 0 });
+
+	assert.deepEqual(seenTypes, ['image/jpeg', 'image/jpeg', 'image/svg+xml']);
+});
+
+test('schematic.image.create rejects an unsupported extension before touching eda', async t => {
+	const g = globalThis as any;
+	let called = false;
+	g.eda = { sch_PrimitiveObject: { create: async () => { called = true; return schImagePrimitive({ id: 'x' }); } } };
+	t.after(() => { delete g.eda; });
+
+	const dataBase64 = Buffer.from('x').toString('base64');
+	await assert.rejects(
+		() => runAction('schematic.image.create', { dataBase64, fileName: 'artwork.bmp', x: 0, y: 0 }),
+		(err: any) => err.code === 'PRECONDITION_REFUSED' && /Unsupported reference-image extension/.test(err.message),
+	);
+	assert.equal(called, false, 'create must not be called for a rejected extension');
+});
+
+test('schematic.image.create rejects a payload over the 8 MiB limit', async t => {
+	const g = globalThis as any;
+	let called = false;
+	g.eda = { sch_PrimitiveObject: { create: async () => { called = true; return schImagePrimitive({ id: 'x' }); } } };
+	t.after(() => { delete g.eda; });
+
+	const big = Buffer.alloc((8 << 20) + 1, 1);
+	await assert.rejects(
+		() => runAction('schematic.image.create', { dataBase64: big.toString('base64'), fileName: 'big.png', x: 0, y: 0 }),
+		(err: any) => err.code === 'PRECONDITION_REFUSED' && /exceeding the .* limit/.test(err.message),
+	);
+	assert.equal(called, false, 'create must not be called when the size limit is exceeded');
+});
+
+test('schematic.image.create rejects empty image data', async t => {
+	const g = globalThis as any;
+	g.eda = { sch_PrimitiveObject: { create: async () => schImagePrimitive({ id: 'x' }) } };
+	t.after(() => { delete g.eda; });
+
+	await assert.rejects(
+		() => runAction('schematic.image.create', { dataBase64: '', fileName: 'x.png', x: 0, y: 0 }),
+		(err: any) => err.code === 'MISSING_PAYLOAD_FIELD',
+	);
+});
+
+test('schematic.image.list returns geometry only, never the raw content field', async t => {
+	const g = globalThis as any;
+	g.eda = {
+		sch_PrimitiveObject: {
+			getAll: async () => [
+				schImagePrimitive({ id: 'img-2', x: 10, y: 20, fileName: 'b.svg' }),
+				schImagePrimitive({ id: 'img-1', x: 0, y: 0, fileName: 'a.png' }),
+			],
+		},
+		sch_Primitive: { getPrimitivesBBox: async () => ({ minX: 0, minY: 0, maxX: 1, maxY: 1 }) },
+	};
+	t.after(() => { delete g.eda; });
+
+	const res: any = await runAction('schematic.image.list', {});
+	assert.equal(res.result.count, 2);
+	assert.equal(res.result.scope, 'activePage');
+	// sorted by primitiveId
+	assert.deepEqual(res.result.images.map((i: any) => i.primitiveId), ['img-1', 'img-2']);
+	for (const image of res.result.images) {
+		assert.ok(!('content' in image), 'list must never surface raw content/binaryData');
+		assert.ok(!('binaryData' in image));
+	}
+});
+
+test('schematic.image.modify applies a partial patch and reports notApplied for what did not stick', async t => {
+	const g = globalThis as any;
+	let stored = schImagePrimitive({ id: 'img-3', x: 0, y: 0, rotation: 0, mirror: false, fileName: 'a.png' });
+	g.eda = {
+		sch_PrimitiveObject: {
+			modify: async (_id: string, patch: any) => {
+				// Simulate the platform silently dropping the mirror flag.
+				stored = schImagePrimitive({
+					id: 'img-3',
+					x: patch.startX ?? 0,
+					y: patch.startY ?? 0,
+					rotation: patch.rotation ?? 0,
+					mirror: false,
+					fileName: 'a.png',
+				});
+				return stored;
+			},
+			get: async () => stored,
+		},
+	};
+	t.after(() => { delete g.eda; });
+
+	const res: any = await runAction('schematic.image.modify', { primitiveId: 'img-3', x: 500, rotation: 90, mirror: true });
+	assert.equal(res.result.partial, true);
+	assert.deepEqual(res.result.notApplied, ['mirror']);
+	assert.ok(res.result.applied.includes('x'));
+	assert.ok(res.result.applied.includes('rotation'));
+	assert.equal(res.result.x, 500);
+});
+
+test('schematic.image.modify with nothing to change is refused before calling eda', async t => {
+	const g = globalThis as any;
+	let called = false;
+	g.eda = { sch_PrimitiveObject: { modify: async () => { called = true; return schImagePrimitive({ id: 'x' }); } } };
+	t.after(() => { delete g.eda; });
+
+	await assert.rejects(
+		() => runAction('schematic.image.modify', { primitiveId: 'img-4' }),
+		(err: any) => err.code === 'MISSING_PAYLOAD_FIELD',
+	);
+	assert.equal(called, false);
 });

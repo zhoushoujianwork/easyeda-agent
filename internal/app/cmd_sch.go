@@ -2133,6 +2133,8 @@ the selection). Without --ids it exports the whole active page.`,
 	sch.AddCommand(newSchStatusCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchNetsCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchPowerLayoutCmd(stdout, stderr))
+	// 非电气参考图片(#272):照片/尺寸图/引脚示意图,不产生连接,不进入网表。
+	sch.AddCommand(newSchImageCmd(cfg, &window, stdout, stderr))
 
 	return sch
 }
