@@ -3168,6 +3168,120 @@ const schematicImageModify: Handler = async (payload) => {
 	};
 };
 
+// PCB document-layer reference pictures (#272). Embedded objects are distinct
+// from pcb_PrimitiveImage manufacturing polygons; never move them to copper/silk.
+function pcbReferenceAPI() {
+	const api = eda.pcb_PrimitiveObject;
+	if (!api || typeof api.create !== 'function' || typeof api.get !== 'function' || typeof api.getAll !== 'function') {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'unsupported: PCB embedded reference-object API unavailable.');
+	}
+	return api;
+}
+
+function pcbReferenceState(o: IPCB_PrimitiveObject): Record<string, unknown> {
+	return { primitiveId: o.getState_PrimitiveId(), layer: o.getState_Layer(),
+		x: o.getState_TopLeftX(), y: o.getState_TopLeftY(), width: o.getState_Width(), height: o.getState_Height(),
+		rotation: o.getState_Rotation(), mirror: o.getState_Mirror(), fileName: o.getState_FileName() };
+}
+
+async function pcbReferenceRead(o: IPCB_PrimitiveObject): Promise<Record<string, unknown>> {
+	let bbox = null;
+	try { bbox = await eda.pcb_Primitive.getPrimitivesBBox([o.getState_PrimitiveId()]) ?? null; } catch { /* report unavailable */ }
+	return { ...pcbReferenceState(o), bbox };
+}
+
+function pcbReferenceGeometry(payload: Record<string, unknown>, required: boolean) {
+	const requested: Record<string, unknown> = {};
+	for (const key of ['x', 'y', 'width', 'height', 'rotation']) {
+		if (payload[key] === undefined && !(required && ['x','y','width','height'].includes(key))) continue;
+		const value = requireNumber(payload, key);
+		if (!Number.isFinite(value) || (['width','height'].includes(key) && value <= 0)) {
+			throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Invalid reference picture ${key}.`);
+		}
+		requested[key] = value;
+	}
+	if (payload.mirror !== undefined) {
+		if (typeof payload.mirror !== 'boolean') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'mirror must be boolean.');
+		requested.mirror = payload.mirror;
+	}
+	return requested;
+}
+
+async function pcbReferenceTarget(id: string) {
+	const o = await pcbReferenceAPI().get(id);
+	if (!o || o.getState_PrimitiveId() !== id) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Reference picture ${id} not found or ID readback mismatched.`);
+	if (o.getState_Layer() !== 13) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Reference picture ${id} is not on DOCUMENT layer 13; no mutation performed.`);
+	return o;
+}
+
+async function pcbReferenceVerify(id: string, expected: Record<string, unknown>) {
+	let fresh;
+	try { fresh = await pcbReferenceAPI().get(id); } catch { /* preserve created ID and report partial */ }
+	if (!fresh || fresh.getState_PrimitiveId() !== id) return { primitiveId: id, verified: false, partial: true, notApplied: ['readback'] };
+	const actual = await pcbReferenceRead(fresh);
+	const record: Record<string, unknown> = actual;
+	const notApplied = Object.keys(expected).filter(key => {
+		const a = record[key], b = expected[key];
+		return typeof a === 'number' && typeof b === 'number' ? !Number.isFinite(a) || Math.abs(a-b) > 1e-6 : a !== b;
+	});
+	if (!actual.bbox) notApplied.push('bbox');
+	return { ...actual, verified: notApplied.length === 0, ...(notApplied.length ? { partial: true, notApplied } : {}) };
+}
+
+const pcbImageCreate: Handler = async payload => {
+	const fileName = requireString(payload, 'fileName');
+	const mime = schImageMimeFromFileName(fileName);
+	const data = requireString(payload, 'dataBase64');
+	if (data.length > Math.ceil(MAX_SCH_IMAGE_SOURCE_BYTES / 3) * 4) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Reference image exceeds the 8 MiB limit.');
+	const geometry = pcbReferenceGeometry(payload, true);
+	if (payload.layer !== undefined && payload.layer !== 13) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Reference pictures require DOCUMENT layer 13.');
+	let decoded;
+	try { decoded = atob(data); } catch { throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Invalid reference image base64.'); }
+	if (!decoded.length || decoded.length > MAX_SCH_IMAGE_SOURCE_BYTES) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Reference image must contain 1 to 8388608 bytes.');
+	const o = await pcbReferenceAPI().create(13, geometry.x as number, geometry.y as number,
+		`data:${mime};base64,${data}`, geometry.width as number, geometry.height as number,
+		geometry.rotation as number | undefined, geometry.mirror as boolean | undefined, fileName);
+	if (!o) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'pcb_PrimitiveObject.create returned no primitive; inspect inventory before retrying.');
+	const id = o.getState_PrimitiveId();
+	return { result: await pcbReferenceVerify(id, { ...geometry, layer: 13, fileName }) };
+};
+
+const pcbImageList: Handler = async payload => {
+	const api = pcbReferenceAPI();
+	const id = payload.primitiveId === undefined ? undefined : requireString(payload, 'primitiveId');
+	const object = id ? await api.get(id) : undefined;
+	if (object && object.getState_PrimitiveId() !== id) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Reference-object ID readback mismatched.');
+	const objects = id ? (object ? [object] : []) : await api.getAll();
+	if (!Array.isArray(objects)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Embedded reference-object inventory unavailable.');
+	const images = [];
+	for (const o of objects) images.push(await pcbReferenceRead(o));
+	images.sort((a,b) => String(a.primitiveId).localeCompare(String(b.primitiveId)));
+	return { result: { images, count: images.length } };
+};
+
+const pcbImageModify: Handler = async payload => {
+	const id = requireString(payload, 'primitiveId');
+	const requested = pcbReferenceGeometry(payload, false);
+	for (const key of Object.keys(payload)) if (!['primitiveId','x','y','width','height','rotation','mirror'].includes(key)) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Unsupported reference-image modify field ${key}.`);
+	if (!Object.keys(requested).length) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'No reference-image geometry to modify.');
+	await pcbReferenceTarget(id);
+	const property: Record<string, unknown> = { ...requested, ...(requested.x !== undefined ? {topLeftX: requested.x} : {}), ...(requested.y !== undefined ? {topLeftY: requested.y} : {}) };
+	delete property.x; delete property.y;
+	const o = await pcbReferenceAPI().modify(id, property as Parameters<typeof eda.pcb_PrimitiveObject.modify>[1]);
+	if (!o) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Modify returned no primitive for ${id}; read back before retrying.`);
+	return { result: await pcbReferenceVerify(id, { ...requested, layer: 13 }) };
+};
+
+const pcbImageDelete: Handler = async payload => {
+	const id = requireString(payload, 'primitiveId');
+	await pcbReferenceTarget(id);
+	const deleted = await pcbReferenceAPI().delete(id);
+	let fresh; let readable = false;
+	try { fresh = await pcbReferenceAPI().getAll(); readable = Array.isArray(fresh); } catch { /* unavailable is not proof of absence */ }
+	const verified = deleted === true && readable && !fresh!.some(o => o.getState_PrimitiveId() === id);
+	return { result: { primitiveId: id, deleted, verified, ...(!verified ? {partial: true} : {}) } };
+};
+
 // ─── Group move (virtual grouping — no native EasyEDA "组合" API exists) ────
 // Investigated 2026-07-07: EasyEDA Pro's UI has a real "组合"(Combination) field
 // on the component property panel (and a matching left-panel tree tab), but it
@@ -14696,6 +14810,10 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.silk.list': pcbSilkList,
 	'pcb.silk.add': pcbSilkAdd,
 	'pcb.silk.import_svg': pcbSilkImportSvg,
+	'pcb.image.create': pcbImageCreate,
+	'pcb.image.list': pcbImageList,
+	'pcb.image.modify': pcbImageModify,
+	'pcb.image.delete': pcbImageDelete,
 	'pcb.silk.set': pcbSilkSet,
 	'pcb.silk.netnames': pcbSilkNetnames,
 	'pcb.silk.label_pads': pcbSilkLabelPads,

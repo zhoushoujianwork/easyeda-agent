@@ -4427,3 +4427,85 @@ test('schematic.image.modify with nothing to change is refused before calling ed
 	);
 	assert.equal(called, false);
 });
+
+// #272 PCB embedded reference images: layer safety, data URI and fresh proof.
+function pcbReferenceMock(layer = 13, overrides: Record<string, unknown> = {}): any {
+	const state: any = {primitiveId:'reference-1',layer,x:10,y:-20,width:200,height:100,rotation:0,mirror:false,fileName:'photo.png',...overrides};
+	return Object.fromEntries(Object.entries({PrimitiveId:'primitiveId',Layer:'layer',TopLeftX:'x',TopLeftY:'y',Width:'width',Height:'height',Rotation:'rotation',Mirror:'mirror',FileName:'fileName',BinaryData:'binaryData'}).map(([getter,key])=>[`getState_${getter}`,()=>state[key]]));
+}
+
+function installPcbReferenceMock(t: any, layer = 13) {
+	const g = globalThis as any;
+	let current: any = pcbReferenceMock(layer);
+	const calls: any[] = [];
+	g.eda = {pcb_PrimitiveObject: {
+		create: async (...args: any[]) => {calls.push(['create',...args]); return current;},
+		get: async () => current,
+		getAll: async () => current ? [current] : [],
+		modify: async (id: string,property: any) => {calls.push(['modify',id,property]);return current;},
+		delete: async (id: string) => {calls.push(['delete',id]);current=undefined;return true;},
+	},pcb_Primitive:{getPrimitivesBBox:async()=>({minX:10,minY:-120,maxX:210,maxY:-20})}};
+	t.after(()=>{delete g.eda;});
+	return {calls,g,set:(value:any)=>{current=value;}};
+}
+
+const pcbReferenceInput = {dataBase64:Buffer.from('png-source').toString('base64'),fileName:'photo.png',x:10,y:-20,width:200,height:100};
+
+test('pcb.image.create sends DOCUMENT layer and a MIME data URI, then checks fresh geometry',async t=>{
+	const {calls}=installPcbReferenceMock(t);
+	const res: any=await runAction('pcb.image.create',pcbReferenceInput);
+	assert.equal(calls[0][1],13);
+	assert.equal(calls[0][4],`data:image/png;base64,${pcbReferenceInput.dataBase64}`);
+	assert.equal(res.result.verified,true);
+	assert.equal(res.result.layer,13);
+	assert.ok(res.result.bbox);
+});
+
+test('pcb.image.create rejects manufacturing layers, invalid sizes and encoding before any write',async t=>{
+	const {calls}=installPcbReferenceMock(t);
+	for (const patch of [{layer:3},{layer:1},{width:0},{height:-1},{x:NaN},{mirror:'true'},{dataBase64:'@@@'},{fileName:'x.bmp'}]) {
+		await assert.rejects(()=>runAction('pcb.image.create',{...pcbReferenceInput,...patch}));
+	}
+	assert.equal(calls.length,0);
+});
+
+test('pcb.image.create retains ID and reports partial if fresh readback is unavailable or differs',async t=>{
+	const {g}=installPcbReferenceMock(t);
+	g.eda.pcb_PrimitiveObject.get=async()=>undefined;
+	let res:any=await runAction('pcb.image.create',pcbReferenceInput);
+	assert.equal(res.result.primitiveId,'reference-1');assert.equal(res.result.partial,true);assert.equal(res.result.verified,false);
+	g.eda.pcb_PrimitiveObject.get=async()=>pcbReferenceMock(3);
+	res=await runAction('pcb.image.create',pcbReferenceInput);
+	assert.ok(res.result.notApplied.includes('layer'));
+});
+
+test('pcb.image.list exposes actual layers and never returns binary data',async t=>{
+	installPcbReferenceMock(t,3);
+	const res:any=await runAction('pcb.image.list',{});
+	assert.equal(res.result.images[0].layer,3);assert.equal(res.result.count,1);
+	assert.equal('binaryData' in res.result.images[0],false);
+});
+
+test('pcb.image.modify maps top-left keys and reports ignored host fields',async t=>{
+	const {calls}=installPcbReferenceMock(t);
+	const res:any=await runAction('pcb.image.modify',{primitiveId:'reference-1',x:30,mirror:true});
+	assert.deepEqual(calls[0],['modify','reference-1',{topLeftX:30,mirror:true}]);
+	assert.equal(res.result.partial,true);assert.deepEqual(res.result.notApplied,['x','mirror']);
+});
+
+test('pcb.image.modify/delete refuse pre-existing silk embedded objects',async t=>{
+	const {calls}=installPcbReferenceMock(t,3);
+	await assert.rejects(()=>runAction('pcb.image.modify',{primitiveId:'reference-1',x:30}));
+	await assert.rejects(()=>runAction('pcb.image.delete',{primitiveId:'reference-1'}));
+	assert.equal(calls.length,0);
+});
+
+test('pcb.image.delete verifies fresh absence; missing inventory cannot prove deletion',async t=>{
+	const {g}=installPcbReferenceMock(t);
+	let res:any=await runAction('pcb.image.delete',{primitiveId:'reference-1'});
+	assert.equal(res.result.verified,true);
+	g.eda.pcb_PrimitiveObject.get=async()=>pcbReferenceMock();
+	g.eda.pcb_PrimitiveObject.getAll=async()=>{throw Error('unreadable');};
+	res=await runAction('pcb.image.delete',{primitiveId:'reference-1'});
+	assert.equal(res.result.verified,false);assert.equal(res.result.partial,true);
+});

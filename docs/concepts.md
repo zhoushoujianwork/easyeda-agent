@@ -50,6 +50,20 @@ Skill 目录。源码位置不改变发布包内的 `easyeda-agent/` 根目录�
 整板 Layout 完成。PCB 组合移动的待办与执行顺序见
 [开发验证清单](pcb-layout-validation.md)，可迁移步骤随公开 Skill 的样例发布。
 
+## PCB reference pictures and manufacturing artwork
+
+An **embedded reference picture** (参考图片) preserves the source artwork through
+`pcb_PrimitiveObject` on DOCUMENT layer 13, for photos and mechanical references.
+It has a physical size in mil, a top-left anchor and an embedded binary asset;
+it is not a net, copper shape, or proof of manufacturing geometry.
+
+**Manufacturing silk artwork** (制造丝印图形) uses `pcb_PrimitiveImage` polygon
+contours on top/bottom silk layers 3/4. Converting a bitmap into those contours
+is a separate operation; embedding a picture does not complete that conversion.
+These object classes have separate inventories and deletion APIs. API availability
+and offline tests do not prove Web rendering or save/reload persistence.
+Usage and verification: [public PCB Skill](../.agents/skills/easyeda-agent/references/pcb-layout.md).
+
 ## 本地设计比较与 Lib 内部计算
 
 ### eprj3 文件生成与校验边界

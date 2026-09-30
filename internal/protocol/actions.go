@@ -915,6 +915,29 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.snapshot"},
 		},
 		{
+			Name: "pcb.image.create", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Embed a PNG/JPEG/SVG reference picture on DOCUMENT layer 13 using pcb_PrimitiveObject (data URI, not manufacturing geometry). Explicit physical dimensions in mil. Returns fresh geometry and partial status; Web persistence/rendering unverified.",
+			Inputs:      []string{"dataBase64", "fileName", "x (mil)", "y (mil)", "width (mil)", "height (mil)", "layer optional (13 only)", "rotation optional", "mirror optional"}, Outputs: []string{"primitiveId", "layer", "x", "y", "width", "height", "rotation", "mirror", "fileName", "bbox", "verified", "partial", "notApplied"},
+			VerifyWith: []string{"pcb.image.list"},
+		},
+		{
+			Name: "pcb.image.list", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: false,
+			Description: "Read embedded PCB objects by ID or all, including actual layers and bbox, without binary content. Does not enumerate polygon images.",
+			Inputs:      []string{"primitiveId optional"}, Outputs: []string{"images", "count"},
+		},
+		{
+			Name: "pcb.image.modify", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Modify geometry of a DOCUMENT-layer embedded reference picture; fresh readback reports partial writes. Refuses silk/copper objects.",
+			Inputs:      []string{"primitiveId", "x optional", "y optional", "width optional", "height optional", "rotation optional", "mirror optional"}, Outputs: []string{"primitiveId", "layer", "x", "y", "width", "height", "rotation", "mirror", "bbox", "verified", "partial", "notApplied"},
+			VerifyWith: []string{"pcb.image.list"},
+		},
+		{
+			Name: "pcb.image.delete", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Delete only the specified DOCUMENT-layer embedded object and verify absence; refuses other layers.",
+			Inputs:      []string{"primitiveId"}, Outputs: []string{"primitiveId", "deleted", "verified", "partial"},
+			VerifyWith: []string{"pcb.image.list"},
+		},
+		{
 			Name:        "pcb.silk.import_svg",
 			Domain:      DomainPcb,
 			Phase:       2,
