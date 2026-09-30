@@ -1,5 +1,8 @@
 # PCB 多边形焊盘投影详细记录
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-pcb-polygon-projection-fix-detail.md)。
+
 面向用户结论见[主记录](2026-09-27-pcb-polygon-projection-fix.md)。
 
 ## 来源与失败
@@ -54,80 +57,12 @@ POLYGON 递归复制轮廓并按同一 anchor/delta/offset 变换所有 L 和 AR
 `880f3caf8d588908b58cae3008799bcd32a185d92136507a6f1b2c8261b71185`；
 首候选输入 SHA 仅对应已冻结副本，不再据当前可变 dist/source 读取首候选。独立修订复核仍待完成。
 
-## 最终离线复核与运行态升级
+## 升级与叠层验证边界
 
-修订 v2 独立 224 项有界复验通过，报告
-`911b4ee7658c66a5a5b1a0b2d177b73cd35e1243c74082bd98a2aa71bfd6cf00`，
-38 文件清单 `ec13cfde8e33c3f8b499736342764d2382ecabf9e20b9f461c16f239ab6d91b2`。
-提交并推送 `faac8be` 后完整包重建，来源代码/fixture/Skill 不变；Go VCS 与 ZIP 时间变化
-另存新输入。旧两批 27 输入均原字节复制保留。最终 adopted 独立 487 项通过：
-报告 `5fb5838b485299d58d66751577e7ce5d7391141b41d405065eb239b68a47f579`，
-19 文件清单 `bb540539ab15cf50482b77261441a564fde958af986685e0badd9687cbb1a142`。
-上述三份独立清单均经根任务重新核对全部大小和哈希。
-
-最终 dev.13 eext `f23672534ac3dd01001cfda936864b857e3322cdbb5426d1d223c9f7a04f33ab`，
-bundle `fe5dff2cf78edbe1093a1eb514bb7d7caaed3c95965ee1bf805a62bc98810b65`，
-CLI/daemon/PATH 与完整包相同：
-`ac0c830deca61785612f97f591c22bcc7e944d9707360d74dc560821ff862c1b`。
-Go VCS 为 `faac8be`、modified=false。早先两个未安装包和不同哈希保留，不混用。
-
-升级材料 `artifacts/release-v1.8.0-dev13-upgrade-20260927/` 冻结 173 文件，
-清单 `a8fb7b8382018f13e68182dec6a91e763d56c1961387108ee475bdfdb16e0fab`。
-4 页逐页显式 saved:true，已有 connector UUID/权限/旧版本/bundle 与独立本地旧包相符。
-使用提交的 extension-only hot-reload 脚本；新的窗口
-`ec89ce47-091f-44f8-84ee-4ea323961c24` 上报精确 dev.13、Web 4.1.60 和目标 PCB。
-local check READY，51 件/203 pad 的完整 typed result 升级前后相同，board 除 capturedAt 相同，
-仍为 2 层、无板框/铜；板框不可用的 partial 原文保留，不误称完整设计已通过。
-
-三页全局属性库存 1797/1093/568（含 pin-owned），其中 runtime ID 重铸 623/388/258。
-三张 sheet 的 @Create Time、P1 的 @Create Date getter Value 共 4 项变化；
-同值在组件 otherProperty 与 pagePrimitives 组件中重复为 8 个字段差分，均保留。
-其余属性按 Parent+Key 全字段一致，其余非属性字段一致；不声称整份 raw 回包相等。
-原生 122 sections 的全部非 DOCHEAD 行逐字相同，7 个其他 ZIP 条目逐字相同；
-122 DOCHEAD 的会话元数据和 section 排序变化保留，不推断 getter 的 SDK 根因。
-升级前备份与导入批备份的 8 个 ZIP 条目也逐字相同。
-
-root 先缺 --window 导出被写前拒绝，fresh 精确窗口后成功；PCB 比较 helper 两次误读
-capture/stdout wrapper、随后漏算 51 个 CLI bbox center，均明确修核。
-第一次升级 proof 先错误要求所有属性、继而非属性全等，实际存在上述明确 sheet metadata
-差分；改为输出全部差分、定位父属和原生内容后建立事实，原 raw 与 supervision notes 保留。
-这些是 root 编排/核验错误，不包装成产品修复。升级独立复核已由只读 Agent 完成；
-现场窗口现由原始需求执行员独占，重做候选并验证实际 POLYGON、四层布局/L1。
-#270 仍 open，待现场保存重载验证；全局布线仍等待两轮布局与用户确认，v1.8.0 尚未发布。
-
-## 升级独立结论与首次叠层 partial
-
-独立升级复核 4689 项有效断言、657 件输入末次哈希重验通过，无阻塞 finding。
-报告 `f97f2b2d46981011e5a20dee8881751087dab563559bde161fd7c70c97241e0c`，
-32 文件 manifest `6bc66eb27e383ac2fa72c19f03a3a772292c5cf736a0e496c5896068fa8ef1e8`，
-根任务逐文件大小/哈希核对通过。122 DOCHEAD 的唯一字段差分为 client，3 section 换位；
-不签全部 raw 相同。独立核验器误将铜 availability 元数据也要求为空，原 exit1 保留，
-修为逐铜集合空且 availability 可用后通过；未放松几何库存。
-
-`a02-dev13-layout-20260927/` 冻结 244 文件，manifest
-`d4c6a71cca2d0ce8e1d24989c49e7e5fcdece8e69636568cf08778fbdfff756e`，根任务全部核对通过。
-唯一设计 mutation req87 为 `stackup set --layers 4 --plane 15 --signal 16`：
-setCount/countVerified 为 true；内层15 requested PLANE、written:false、actual SIGNAL，
-partial:true/verified:false/CLI exit1。编排即时停止，未创建板框、孔、器件布局或铜。
-随后显式 saved:true，完整 51 件/203 pad、铜/丝印/config 不变。
-native 97 原始差异保留，94 仅 ticket，实际 payload 为两个内层 use/show 和 DOCHEAD；
-PCB thumbnail 改变，其余6个其他 ZIP 项相同，三页原生 section 不变。
-本 partial 批未 reload，018/020/022 raw envelope 与021 dump stderr 仍报告 staleRisk；
-这里只签即时 typed 观察及原生归档的有限保全，不借 save 或 fresh 文案补签权威重载数据。
-
-这是将最终类型提前请求的编排错误，与公开 Skill 的 vias→SIGNAL 有网铜→PLANE→rebuild
-顺序不符；不能因此断言 written:false 的唯一 SDK 根因。续批先真实 reload，确认4层及
-完整件/pad/copper/native 后，用两内层 SIGNAL 中间态规划布局；最终 GND PLANE 要求保留。
-布局确认后正确顺序仍失败，应登记未满足需求，不以 SIGNAL 成品代签。
-续批执行员已报告保存重载保持4层；其完整布局/L1/投影现场材料仍待冻结与独立复核。
-根任务一次误读 review manifest 文件名产生 FileNotFoundError，正确读取 manifest.json 后
-32+244 文件核对通过，无 EDA 调用或写入，核验说明另存 progress-root 材料。
-
-叠层 partial 批独立 470 项证据断言通过，仅签当时停止写入与限定保全，原请求仍 partial/failed。
-21 件复核文件 manifest `de88e744076fbbd409950aa5600c2d386f63fb9b368f887c7b663719902b79a2`，
-报告 `579341f584ac9a87785b163e1a53aca7d85aad40d7d24733ed0b80d2a83dfd1d`，根任务全部核对通过。
-独立首轮漏算 CLI 新增 bbox center 的两项失败保留；v2逐件计算后457项及13组raw audit配对通过。
-本结论不把 staleRisk 或缺 reload 改为通过，续批真实重载证据另验。
+修订 v2 和采用提交的离线复核通过；运行态升级的基线保全已独立核对。
+首次叠层提前设置 PLANE 返回 partial/failed，原因未确定；后续四层 SIGNAL 仅为
+布局中间态，不能代替最终 GND PLANE 或整板验收。该批停止与保全通过不补签原请求。
+逐次安装、原始差分和独立复核清单由本页顶部的固定版本原文追溯。
 
 ## USB 已保存里程碑与有限关闭
 

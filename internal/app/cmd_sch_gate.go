@@ -13,7 +13,7 @@ import (
 
 // ── sch gate: the S5 校验门, one command ──────────────────────────────────
 //
-// 收敛动机(docs/reviews/2026-08-sch-surface-audit.md):原理图有 4 个独立检查命令
+// 收敛动机：原理图有 4 个独立检查命令
 // (layout-lint / check / bridge-check / drc),agent 每次都要自己决定跑哪几个、
 // 什么顺序、哪个的非零退出算数 —— 这个决策没有数据判据,只有散文描述,**猜错就是
 // 不稳定**。audit log 实测 agent 在检查器失败后分别改调过 components.list / save /

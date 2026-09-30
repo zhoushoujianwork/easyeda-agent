@@ -26,7 +26,7 @@
 | 判断是否需要发布新版本 | [下一版本发布评估](releases/next-release.md) | 修复范围、版本建议和待补验收 |
 | 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [v1.8.0 发布准备](releases/release-1.8.md)、[仓库发布授权规则](../AGENTS.md) |
 | 日常测试收尾、从需求到成品 | [最小点灯板原始需求](test-case-esp32-blink.md)第一节 | [执行详细稿](test-case-esp32-blink-detail.md)、[验收标准](e2e-automation-acceptance.md)、[仓库规则](../AGENTS.md)；四层开发板为扩展回归 |
-| 查历史检查结论 | [历史证据索引](reviews/README.md) 与对应报告 | 回到该记录的版本、输入、原始证据和未覆盖项 |
+| 复现缺陷、查验证边界 | [布局回归输入](../internal/app/testdata/schematic-layout/README.md)、[发布证据](releases/evidence/README.md) | 必要旧引用见[历史证据索引](reviews/README.md)，过程记录查 Git 历史 |
 
 ## 信息只有一个维护位置
 
@@ -34,22 +34,26 @@
 |---|---|---|
 | 仓库协作、分支和发布约束 | 根目录 [AGENTS.md](../AGENTS.md) | `CLAUDE.md` 软链接，不复制正文 |
 | 仓库查询和维护流程 | `.agents/skills/easyeda-repo-*/` | `.claude` 和用户级安装链接共享源目录 |
-| CLI 当前可用范围、检查进度与跟进总览 | [cli-STATUS.md](cli-STATUS.md) | 首页、CLI 索引和测试文档引用；问题细节留在已知问题与 issue，原始证据留在 reviews |
+| CLI 当前可用范围、检查进度与跟进总览 | [cli-STATUS.md](cli-STATUS.md) | 首页、CLI 索引和测试文档引用；问题细节留在已知问题与 issue |
 | 下一版本的修复范围、版本建议与发布准备 | [releases/next-release.md](releases/next-release.md) | Status 与导航引用；正式发布后将该轮结论纳入对应版本说明 |
 | 设计工作流、命令、操作知识 | `.agents/skills/easyeda-agent/` | README / 文档索引仅链接；发布包内引用自包含 |
 | 新概念、架构理由与能力边界 | 本目录对应主题页 | 在 Skill 的相关决策点引用已纳入包内的操作知识 |
 | 可重用设计输入、参数和步骤 | 公开 Skill 的 `references/examples/` | 通过样例索引发现，保留状态与证据 |
-| 某次检查、复现、失败与局限 | `docs/reviews/` 或对应历史报告 | 当前能力页引用结论，不复制整份日志 |
-| 个人运行状态和原始私有材料 | 仓库外或本地忽略目录 | 只回填脱敏且可迁移的结论 |
+| 缺陷的最小复现输入与断言 | 对应代码的 `testdata/` 和自动测试 | README 写来源、运行方式及验证边界；issue 链接测试 |
+| 正式发布的验收结论与必要证据 | `docs/releases/evidence/<version>/` | 按版本和清单保留，不改写既有结果 |
+| 单次执行日志、个人运行状态和原始私有材料 | 仓库外或本地忽略的 `artifacts/` | 只回填脱敏且可迁移的结论，不另建运行报告 |
 
-新增文档先判断它属于操作知识、设计理由还是一次性证据；更新已有主题通常比再写一份综合
+新增文档先判断它是否服务于当前用法、长期设计或自动复现；一次性证据默认留在本地。
+具体入库标准见 [AGENTS.md](../AGENTS.md#开源资料入库)。更新已有主题通常比再写一份综合
 指南更容易保持一致。增加入口时补本索引；公开 Skill 内链接仍须通过 `make skill-check`，
 不能依赖只在源码仓库存在的文件。
 
 ## 历史资料与清理
 
-`reviews/` 保存带日期或版本的实测、回归与失败证据，`releases/` 保存版本说明。
-这些材料说明当时发生过什么；当前命令与架构分别以 CLI 索引、概念表、架构和公开 Skill 为准。
+`reviews/` 仅兼容发布材料仍引用的历史结论；`releases/` 保存版本说明和正式验收材料。
+重复执行记录已退出当前目录，原文可由该目录索引的固定提交追溯；可运行的布局输入迁入
+`internal/app/testdata/schematic-layout/`。不维护另一套逐次运行归档。
+历史材料说明当时发生过什么；当前命令与架构分别以 CLI 索引、概念表、架构和公开 Skill 为准。
 旧 Phase 1/2 规划、2026-08 路线图、三层布局蓝图、命令收敛提案及未立项外壳占位已移除；
 仍有价值的审计数据、gate 现场结果和移动安全经验已归入对应证据页或现行命令说明。
 需要追溯被删的旧想法时使用 Git 历史，不在当前导航中保留失效操作指南。

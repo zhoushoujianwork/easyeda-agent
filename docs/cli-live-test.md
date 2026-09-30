@@ -54,7 +54,7 @@ python3 scripts/cli-live-smoke.py --expected-version vX.Y.Z-dev.N \
 
 ## 证据入口
 
-- [dev.9 完整基础批次](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)：按 B00–B10 查执行与独立复核。
+- [dev.9 完整基础批次](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)：按 B00–B10 查执行与独立复核。
 - [dev.11 铺铜定向复测](reviews/2026-09-26-v1.7.1-dev11-pour-live.md)：查错值检测、清理恢复及未覆盖分支。
 - [历史证据索引](reviews/README.md)：查此前通过、失败和修复过程。
 

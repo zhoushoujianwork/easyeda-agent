@@ -179,7 +179,7 @@ S0 阶段就该定一张唯一网名表，之后每次落块显式 `--bind` 到�
 = **铁律 10**；门禁机械强制、拒绝消息自带下一步 = **铁律 14**；
 「逐页 `sch gate` 一次跑四关，别单跑 `sch check`」= **②流程停点表的第 ② 个停点**。
 
-完整的问题台账见 [`docs/reviews/e2e-round-2026-08-25-findings.md`](docs/reviews/e2e-round-2026-08-25-findings.md)。
+完整的问题台账见 [该轮历史问题台账](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/e2e-round-2026-08-25-findings.md)。
 
 ## 7. 收尾
 
@@ -233,7 +233,7 @@ easyeda audit cost --ledger           # 跨批次对比
 `sch group-move --ids 报电气自检失败却不回滚，留下悬空脚`。
 能机械复现、不需要真机 DRC 验收的，可以再打 `ready-for-agent` 交自动化处理
 （需要连着 EasyEDA 才能验收的**不要**打这个标签——见
-[`docs/reviews/e2e-round-2026-08-25-findings.md`](docs/reviews/e2e-round-2026-08-25-findings.md) 的写法示例）。
+[该轮历史问题台账](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/e2e-round-2026-08-25-findings.md) 的写法示例）。
 
 ```bash
 gh issue create --repo zhoushoujianwork/easyeda-agent \

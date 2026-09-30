@@ -13,10 +13,10 @@
 | 修复组 | 最终行为与证据 |
 |---|---|
 | 多窗口预检 | 按目标窗口核对版本与工程，其他旧连接不再误拦目标；见[预检修复记录](../reviews/2026-09-26-advanced-cli.md)。 |
-| 导出后的原理图删除 | 等待宿主同步就绪，再核对删除结果；[已复现路径定向通过](../reviews/2026-09-26-sch-delete-fix.md)，未泛化为所有删除故障已解决。 |
-| 后台重连与上下文身份 | 修复沙箱时钟、注册等待和旧 context 覆盖；[dev.7 重连实测通过](../reviews/2026-09-26-cli-reconnect-fix.md)。 |
-| 同文档连接互踢 | 保留不同连接身份，避免错误替换；[dev.9 实测通过](../reviews/2026-09-26-window-identity-fix.md)。 |
-| 页面改名失败漏报 | 官方拒绝或回读不符时正确失败退出；[失败传播已验证](../reviews/2026-09-26-page-rename-fix.md)，实际改名仍受 #55 影响。 |
+| 导出后的原理图删除 | 等待宿主同步就绪，再核对删除结果；[已复现路径定向通过](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-sch-delete-fix.md)，未泛化为所有删除故障已解决。 |
+| 后台重连与上下文身份 | 修复沙箱时钟、注册等待和旧 context 覆盖；[dev.7 重连实测通过](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-cli-reconnect-fix.md)。 |
+| 同文档连接互踢 | 保留不同连接身份，避免错误替换；[dev.9 实测通过](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-window-identity-fix.md)。 |
+| 页面改名失败漏报 | 官方拒绝或回读不符时正确失败退出；[失败传播已验证](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-page-rename-fix.md)，实际改名仍受 #55 影响。 |
 | 铺铜与 Apply 失败传播 | 校验 fresh 边界，参数不符时停止依赖写入，阻止重试/继续选项绕过失败；[dev.11 错值检测已验证](../reviews/2026-09-26-v1.7.1-dev11-pour-live.md)，实际字段及成功创建仍待验证。 |
 
 另有 `sch sheet-geometry --from-svg`：从官方 SVG 导出提取精确纸张与标题栏几何，属于新增能力，

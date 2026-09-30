@@ -166,7 +166,7 @@ eda.sch_ManufactureData.getNetlistFile()   // 制造网表 File → .text() → 
   - 已在官方 issue 跟进:[easyeda/pro-api-sdk#27](https://github.com/easyeda/pro-api-sdk/issues/27)。在官方支持
     `includeVerboseError=true` 稳定返回结构化明细、或提供 DRC 面板读取 API 之前,生产流程暂以我们的
     `sch check` 作为逐条 warning/定位/自动修复依据,`sch_Drc.check` 只作为 boolean SDK 门禁。
-- **PCB 侧 = 有逐条明细(已活板确认,见 [`pcb-feature-discovery.md`](reviews/2026-06-pcb-api-discovery.md))**:
+- **PCB 侧 = 有逐条明细(已活板确认,见 [`pcb-feature-discovery.md`](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-06-pcb-api-discovery.md))**:
   `pcb_Drc.check` 在 3.2.148 真板上返回**嵌套明细** `{count, list:[{errorObjType, errorType,
   explanation:{errData:{net, obj1, ...}}, globalIndex}]}`(我们 `pcb drc` CLI 已在用)——远强于原理图侧。
   `pcb_Event.addRealTimeDrcResultEventListener` 是额外的实时逐条途径。
@@ -196,7 +196,7 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 > **进度(2026-07-10)**:**走线美化已吸收**——`pcb beautify`(拐角圆弧化 + 差分/等长同心圆弧 +
 > DRC 二分修复 + 重铺覆铜,`--dry-run` 预览)。源自社区扩展 **Easy_EDA_PCB_Beautify**(m-RNA,
 > Apache-2.0,非官方 eext),纯几何 verbatim 移植进 `extension/src/beautify/`,署名见仓库 `NOTICE`;
-> 完整评估见 [2026-07 市场覆盖快照](reviews/2026-07-marketplace-coverage.md) 吸收清单 #1c。顺带接入两个新 DRC
+> 完整评估见 [2026-07 市场覆盖快照](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-marketplace-coverage.md) 吸收清单 #1c。顺带接入两个新 DRC
 > API:`pcb_Drc.getAllDifferentialPairs` / `getAllEqualLengthNetGroups`。
 
 | # | 吸收什么 | API | 落到哪 | 难度 |

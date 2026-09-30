@@ -1,5 +1,8 @@
 # PCB 多边形焊盘投影修复
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-pcb-polygon-projection-fix.md)。
+
 **`faac8be` dev.13 修复已通过离线、包/升级和实际四个J1多边形焊盘平移保存重载的独立复核，#270有限关闭。**
 旧候选的焊盘中心移动而绝对轮廓留在原坐标，拒绝记录保留。新6件USB队列完成执行，
 四个实际单环L路径与候选逐值相同，范围外45件不变，18731项有限独立证据断言通过。

@@ -29,7 +29,7 @@
 
 ## 日常可用范围
 
-以下依据 [dev.9 基础检查](reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)及
+以下依据 [dev.9 基础检查](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)及
 [dev.11 定向复测](reviews/2026-09-26-v1.7.1-dev11-pour-live.md)。适用于实测的个人测试工程和 Web 4.1.60。
 
 | 功能 | 使用判断与边界 |

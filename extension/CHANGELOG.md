@@ -855,7 +855,7 @@ setTimeout 的守卫(FIFO 的放弃闸 22s、每次平台调用的 `withTimeout`
 ### Known issues — 随版本如实公布
 
 一次广度优先的端到端(esp32Mini 固定用例)记了 19 条挂账,完整台账见仓库
-`docs/reviews/e2e-round-2026-08-25-findings.md`。**升级前值得先知道的三条**:
+[历史记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/e2e-round-2026-08-25-findings.md)。**升级前值得先知道的三条**:
 
 - **`sch group-move --ids` 报「电气自检失败」却不回滚**:位移照样落地,留下悬空脚 +
   悬空树。看到那个 `✗` **不要当作没发生**,先 `sch bridge-check` 复核画布。
@@ -2415,7 +2415,7 @@ P8 铺铜/出 Gerber 之前)。
 - `references/design-flow.md` 新增 **P7.9 走线美化档**(dry-run 先行 + 上游告警清单:
   焊盘-走线连接需人工复核、RF/高速网排除全局美化、出 Gerber 前预览);
   `references/pcb.md` 加 `pcb beautify` 命令条目;`docs/ecosystem-survey.md` /
-  `docs/reviews/2026-07-marketplace-coverage.md` absorb-list 标记已吸收(#1c)。
+  [历史记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-marketplace-coverage.md) absorb-list 标记已吸收(#1c)。
 - **署名**:新增仓库根 `NOTICE`,记录 Apache-2.0 第三方来源、原作者 m-RNA、逐文件
   映射与相对上游的改动;几何文件头保留出处注释。
 
@@ -2724,7 +2724,7 @@ UX fix. (Consolidates the dev-loop releases 0.6.1–0.6.7 below.)
 ### Docs
 - README split into a Chinese homepage (`README.md`) + English (`README.en.md`); new demo
   recording storyboard `docs/demo-storyboard-esp32-mini.md`; FEATURES action count 85→88;
-  official-marketplace coverage survey (`docs/reviews/2026-07-marketplace-coverage.md`).
+  official-marketplace coverage survey ([历史记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-marketplace-coverage.md)).
 
 ## [0.6.7] - 2026-07-02
 ### Fixed

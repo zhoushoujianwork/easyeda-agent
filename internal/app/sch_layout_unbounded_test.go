@@ -12,7 +12,7 @@ import (
 func TestUnboundedMeasuredZones(t *testing.T) {
 	for _, name := range []string{"usb", "mux", "uart", "boot", "mcu", "input", "slew", "buck", "detect", "led"} {
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("../../docs/reviews/fixtures/2026-09-27-cli-layout", name+"-input.json"))
+			raw, err := os.ReadFile(filepath.Join("testdata/schematic-layout/2026-09-27-cli-layout", name+"-input.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -79,7 +79,7 @@ func TestUnboundedMeasuredZones(t *testing.T) {
 func TestUnboundedFormerlyExhaustedPages(t *testing.T) {
 	for _, name := range []string{"P1-20k", "P2-20k"} {
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("../../docs/reviews/fixtures/2026-09-29-unbounded-layout", name+".json"))
+			raw, err := os.ReadFile(filepath.Join("testdata/schematic-layout/2026-09-29-unbounded-layout", name+".json"))
 			if err != nil {
 				t.Fatal(err)
 			}

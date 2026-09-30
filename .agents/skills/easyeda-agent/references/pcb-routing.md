@@ -145,6 +145,14 @@ EasyEDA 原生自动布线或已配置的外部路由器，完成后都按网回
   T junction 仍可使用。圆弧以有误差上界的中心线离散参与检查，无法在预算内可靠规范化时
   同样返回 unknown，避免借不同 primitive ID 在同一物理铜上回走。直接 via-on-pad 重叠不算连接（平台实测需有 track/arc stub），避免制造假
   连通。该命令适合每组关键网布完后的局部核查；保存重开后的最终批次仍应重跑。
+
+  **方法论：什么时候必须用 ordered-path-proof，不能只看同网/中心距。** 去耦电容"先经过
+  电容再到芯片"、跨接电阻/端接网络"先经过某焊盘再到端子"这类要求是**拓扑顺序**要求，不是
+  "电容/电阻在附近"或"两者同网"就算数——同网成员关系只证明电气连通，不证明布线**按声明的
+  顺序**经过中间焊盘；中心距只是空间上近，不代表铜路径真的绕过去了。这类要求必须用
+  `pcb net-path --from <src> --through <mid> --to <dst>` 做 ordered-path-proof（260919
+  考试指导记录的真实纠偏案例：旧 CAN 布线计划只验证了跨接电阻和近端 ESD 的连接性，没有
+  证明两条主路径确实按顺序经过跨接电阻的焊盘）。方法论已泛化，不含具体坐标或位号。
 - `pcb check` 的 `dangling-end` 也复用 pad shape/rotation：同网 track 端部或其铜宽实际接触
   pad 铜才算 anchor。旧 connector 只有 `width/height` 时使用保守 ellipse/cardinal 或内切圆，
   不用完整 AABB；JSON/human report 的 `limitations` 会说明 legacy/unknown pad 数量。这样
@@ -452,7 +460,9 @@ emits it as a `BoardCutout`). `pcb slot --rect … | --ref ANT1 --margin 20` mil
 hole — antenna isolation / mechanical opening. No net. It's a `pcb_PrimitiveFill` on
 layer 12, so list/delete via `pcb fill list --layer 12` / `pcb fill delete`.
 
-**M3 安装孔 — `pcb mount-holes`** (issue #102). Places corner mounting holes
+**M3 安装孔 — `pcb mount-holes`** (issue #102). 这是**纯板材挖槽**命令，不会导入嘉立创常用库的
+螺丝孔器件或选择其型号。先按[螺丝孔与安装孔选型](pcb-layout.md#螺丝孔与安装孔先选现有库器件)
+核对现有实例及库候选；仅在明确需要无器件身份的开孔时走此路径。Places corner mounting holes
 **automatically and collision-checked** — never hand-place M3 holes at guessed
 coordinates (#102: a blind hole landed on C1). Reads the real board outline
 (errors without one — run `pcb outline-fit` first), computes each corner center

@@ -1,5 +1,8 @@
 # #273 电源布局：展开通道与网络标签的离线复测
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-29-issue-273-net-labels.md)。
+
 ## 结论与范围
 
 [#273](https://github.com/zhoushoujianwork/easyeda-agent/issues/273) 的 20 件降压、13 件升压
@@ -17,7 +20,7 @@
 
 输入取自用户提供的提交
 [`a9a06ed511873683d3e30f63d95b3098fafa5db8`](https://github.com/zhoushoujianwork/easyeda-agent/tree/a9a06ed511873683d3e30f63d95b3098fafa5db8/docs/reviews/fixtures/2026-09-29-power-layout)，
-三份文件原样纳入[回归 fixture](fixtures/2026-09-29-power-layout/README.md)，SHA-256
+两份 JSON 原样纳入[回归 fixture](../../internal/app/testdata/schematic-layout/2026-09-29-power-layout/README.md)，SHA-256
 与该 README 一致。两份输入均保留 `maxCandidates:3000` 和原 1170×825 raw 纸张。
 `layout-plan --lib` 复用 canonical/测量校验与适配器，仅输出多区局部几何，不做纸张
 装箱，也不伪造更大的实测纸张；原 `lib-layout` 输出契约保持不变。
@@ -41,7 +44,7 @@
 
 ```sh
 easyeda sch layout-plan --lib --net-labels \
-  --from docs/reviews/fixtures/2026-09-29-power-layout/input.json \
+  --from internal/app/testdata/schematic-layout/2026-09-29-power-layout/input.json \
   --out /tmp/buck-labels.json --report /tmp/buck-labels-report.json
 easyeda sch layout-render --from /tmp/buck-labels.json --out /tmp/buck-labels.svg
 ```

@@ -1,12 +1,15 @@
 # 高级 CLI 续测：2026-09-26
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-advanced-cli.md)。
+
 最新完整基础续测使用 `1.7.1-dev.9`：9 项独立通过；B04 改名仍失败，B08 发现
 区域/铺铜边界宽度未兑现。全部临时设计对象已精确清理并保存重载，规则和叠层恢复原值；
-当前状态见 [dev.9 逐项报告](2026-09-26-v1.7.1-dev9-basic-cli.md)。
+当前状态见 [dev.9 逐项报告](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev9-basic-cli.md)。
 **高级 A00 仍 blocked，A01–A06 未运行**。下文保留最初 dev.21 测量和后续修复经过，
 不将历史基础通过项计入 dev.9。
 
-当前运行包已升级为 dev.11；[铺铜失败漏报修复](2026-09-26-pour-readback-fix.md)已通过
+当前运行包已升级为 dev.11；[铺铜失败漏报修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-pour-readback-fix.md)已通过
 离线验证，定向现场正确拒绝线宽和优先级错值，测试对象已清理并恢复基线。
 成功创建路径未现场通过，dev.11 完整基础门禁未运行，不能据此进入高级验收。
 
@@ -19,7 +22,7 @@
 本轮已完成同版基础证据复核、目标工程只读预检和离线回归，修复了多窗口导致的预检误拦。
 **高级现场 A00–A06 未通过**。按用户“复用＋A”续测后，删除器件重复出现真实残留，
 已停止依赖该基础能力的高级现场用例，测试夹具已清理并保存重载回空白基线。
-命令、证据和边界见[详细记录](2026-09-26-advanced-cli-detail.md)。
+命令、证据和边界见[详细记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-advanced-cli-detail.md)。
 
 本轮测量时 CLI、daemon、目标连接器为 `1.6.0-dev.21`，Web EDA 为 `4.1.60`。
 不是 `1.7.0` 现场复测；源码工作树的正式版本标识不改变已安装运行包的身份。
@@ -56,9 +59,9 @@ PCB 布局仍须两轮回读检查并展示预览，由用户确认后进入整�
 继续测量时 C8 再次失败，说明问题不局限于 ESP32 模组。不能靠逐件重开页面刷过验收。
 CLI 已修正相关错误恢复提示；再次清理只恢复夹具，不补签原调用或高级验收。
 后续已定位同步事务竞争并完成定向修复：dev.3 共 40 轮、最终 dev.4 共 6 轮及保存重载通过，
-详见[删除修复记录](2026-09-26-sch-delete-fix.md)。dev.4 基础复跑的 B00/B01 已通过，B02 目标重连受阻，见[本批基础记录](2026-09-26-v1.7.1-dev4-basic-cli.md)。
-重连修复后 dev.7 B00–B03 已独立通过，但 B04 改名失败，见[本批基础记录](2026-09-26-v1.7.1-dev7-basic-cli.md)。
-dev.8 已[验证失败传播修复并恢复测试基线](2026-09-26-page-rename-fix.md)，宿主改名仍失败。
+详见[删除修复记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-sch-delete-fix.md)。dev.4 基础复跑的 B00/B01 已通过，B02 目标重连受阻，见[本批基础记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev4-basic-cli.md)。
+重连修复后 dev.7 B00–B03 已独立通过，但 B04 改名失败，见[本批基础记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev7-basic-cli.md)。
+dev.8 已[验证失败传播修复并恢复测试基线](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-page-rename-fix.md)，宿主改名仍失败。
 同包全部基础门禁通过前继续保留 A00 blocked、A01–A06 not-run；不沿用 dev.21 的基础通过结论。
 
 第一轮准备只保存原工程文档和读取既有测试夹具；后续现场操作独立记录在 `run02/`。

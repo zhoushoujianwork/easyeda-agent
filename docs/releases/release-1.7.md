@@ -11,7 +11,7 @@
 - 高级 CLI A00–A06 按用户决定留到下一版本，本轮全部 `not-run`。历史求解及严格 DRC 缺口继续保留。
 - #256、#257、#258 继续跟踪；警告不会把失败变成功，部分写入或显式验证失败仍非零退出。
 
-[逐项现场报告](../reviews/2026-09-25-v1.6.0-dev21-basic-cli.md) ·
+[逐项现场报告](evidence/v1.7.0/test-report.md) ·
 [发布测试报告](evidence/v1.7.0/test-report.md) ·
 [基准](evidence/v1.7.0/baseline.md) · [用例](evidence/v1.7.0/test-cases.md)
 

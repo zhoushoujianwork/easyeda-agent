@@ -1,5 +1,8 @@
 # PCB 导入确认修复候选
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-pcb-import-confirm-fix.md)。
+
 **完整用例已恢复现场续测；开发包 1.7.1-dev.12 已修复可复现的重复点击路径，已升级到目标窗口，单次新导入保存重载对账及有限独立复核通过。**
 三页原理图保持完整；重复导入的 101 个实例已精确删除并保存重载。当前没有四层布局或布线结果，v1.8.0 尚未发布。
 
@@ -15,7 +18,7 @@ CLI 和 Apply 不允许用 verify、重试、continue 或 prompt 补签并继续
 全量 Go 4108 项通过、0 失败、1 跳过；连接器 638 项通过、0 失败；typecheck、Skill 检查和构建通过。
 新包 ZIP/UUID/版本、编译产物与源核对通过，SHA-256
 `1bdff918840db41390ceb34146e540f80d9e7eacc3ebb3f5f7cae5d1aaae48f2`。
-修复提交 `698980e` 已推送 dev；独立候选复核通过，仅签离线修复。运行态升级及 fresh 基线核对通过，单次新导入为 51 件唯一身份，195 源脚/203 实际焊盘及 33 网保存重载对账完成，独立复核已通过。失败原件、清理差分及用例缺口见[详细记录](2026-09-27-pcb-import-confirm-fix-detail.md)。
+修复提交 `698980e` 已推送 dev；独立候选复核通过，仅签离线修复。运行态升级及 fresh 基线核对通过，单次新导入为 51 件唯一身份，195 源脚/203 实际焊盘及 33 网保存重载对账完成，独立复核已通过。失败原件、清理差分及用例缺口见[详细记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-pcb-import-confirm-fix-detail.md)。
 
 本地完整包重新打包后的 SHA-256 为 `a836acc5d7990073bb67966deb658b80bd06a5a594e2243255be94da7098eab3`，
 可执行 bundle 与前一包完全相同；前一包已冻结，不混用 ZIP 哈希。

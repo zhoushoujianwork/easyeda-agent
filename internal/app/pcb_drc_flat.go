@@ -6,7 +6,7 @@ package app
 // The raw `pcb.drc.check` result mirrors the UI panel: groups nested by error
 // type then net/object-type, with the actual violation leaves at the bottom
 // ({errorType, explanation, pos, objs, …}). Two traps this flattener owns so
-// callers stop hand-rolling python for them (docs/reviews/2026-07-esp32mini-findings.md B/P0 + A5):
+// callers stop hand-rolling python for them:
 //
 //   - leaf pos {x,y} is in mil/10 — every coordinate is multiplied by 10 here
 //     so the output aligns with `pcb list` / `pcb layout-lint` mil coordinates
@@ -30,7 +30,7 @@ import (
 // drcTimeoutHint decorates a `pcb drc` dispatch error: when the round-trip
 // timed out, it appends the one fix that actually works — bring EasyEDA to the
 // foreground — because a background/occluded window never finishes the DRC
-// canvas recompute (docs/reviews/2026-07-esp32mini-findings.md A4) and blind retries only pile more
+// canvas recompute and blind retries only pile more
 // recompute tasks onto the webview. Non-timeout errors pass through untouched.
 func drcTimeoutHint(err error, stderr io.Writer) error {
 	if err == nil {

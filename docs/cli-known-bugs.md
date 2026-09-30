@@ -102,15 +102,15 @@ stderr warning，包含 bug 编号、影响及回读方法；stdout 的原始 JS
 
 | 路径 | 已验证的修复 | 仍需区分的边界 |
 |---|---|---|
-| 导出后删除残留 | [有界只读就绪检查与删除三态](reviews/2026-09-26-sch-delete-fix.md)，dev.4 定向回归及保存重载通过 | 仅覆盖已复现触发路径，不代表所有复合清理已验证；此前失败候选保留在报告中。 |
-| 后台重连 | [沙箱时钟、注册等待与 context 身份修复](reviews/2026-09-26-cli-reconnect-fix.md)，dev.7 B02 通过 | 连接恢复不证明页面写入或设计正确。 |
-| 同文档连接互踢 | [连接身份修复](reviews/2026-09-26-window-identity-fix.md)，dev.9 复测通过 | 更换连接不能修复或补签 #55。 |
-| 页面改名失败漏报 | [dev.8 定向失败传播验证](reviews/2026-09-26-page-rename-fix.md) | 实际改名仍失败，见 #55 与 [dev.9 B04](reviews/2026-09-26-v1.7.1-dev9-B04.md)。 |
-| 铺铜参数不符漏报与 Apply 继续写入 | [边界回读及失败传播修复](reviews/2026-09-26-pour-readback-fix.md)，[dev.11 错值检测与清理复测](reviews/2026-09-26-v1.7.1-dev11-pour-live.md) | #260、#261 的实际字段未修复，正向成功路径未通过；`rebuildAttempted:false` 不保证无铜，失败库存带 staleRisk，不能据此验收铜持久化。 |
+| 导出后删除残留 | [有界只读就绪检查与删除三态](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-sch-delete-fix.md)，dev.4 定向回归及保存重载通过 | 仅覆盖已复现触发路径，不代表所有复合清理已验证；此前失败候选保留在报告中。 |
+| 后台重连 | [沙箱时钟、注册等待与 context 身份修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-cli-reconnect-fix.md)，dev.7 B02 通过 | 连接恢复不证明页面写入或设计正确。 |
+| 同文档连接互踢 | [连接身份修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-window-identity-fix.md)，dev.9 复测通过 | 更换连接不能修复或补签 #55。 |
+| 页面改名失败漏报 | [dev.8 定向失败传播验证](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-page-rename-fix.md) | 实际改名仍失败，见 #55 与 [dev.9 B04](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev9-B04.md)。 |
+| 铺铜参数不符漏报与 Apply 继续写入 | [边界回读及失败传播修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-pour-readback-fix.md)，[dev.11 错值检测与清理复测](reviews/2026-09-26-v1.7.1-dev11-pour-live.md) | #260、#261 的实际字段未修复，正向成功路径未通过；`rebuildAttempted:false` 不保证无铜，失败库存带 staleRisk，不能据此验收铜持久化。 |
 
 ## 观察项与覆盖缺口
 
 R8 首次回读 uniqueId 从空变为 gge1 暂记观察项，赋值时机未知；第二次完整器件记录一致。
-尚未证明这是产品 bug，详见[刷新报告](reviews/2026-09-25-v1.6.0-dev20-reload-repair.md)。
+尚未证明这是产品 bug，详见[刷新报告](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-25-v1.6.0-dev20-reload-repair.md)。
 真实团队创建等属于覆盖缺口，也不混作产品 bug。历史某次成功不关闭间歇问题；
 各 issue 的采集要求和关闭条件继续适用。

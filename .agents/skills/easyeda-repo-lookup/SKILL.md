@@ -18,7 +18,7 @@ description: "只读查询 easyeda-agent 仓库的工具能力、实现、参数
 | CLI、daemon、typed action 实现 | `cmd/easyeda/`、`internal/app/`、`internal/daemon/`、`internal/protocol/` |
 | 官方 API 适配和宿主差异 | `extension/src/`、`docs/ecosystem-survey.md` |
 | PCB 布局算法、最优性、开源 MCP/Skill 与二层验证计划 | `docs/pcb-layout-solver-research.md`；区分源码调研、待执行实验和现场证据 |
-| 已发生的验证与问题 | `docs/reviews/`、相关测试和样例证据；检查日期和版本 |
+| 验证与问题 | 对应代码的 `testdata/`、自动测试、issue 与发布证据；`docs/reviews/` 仅保留必要历史引用，检查日期和版本 |
 
 用 `rg` 先查准确命令、action、器件型号或问题词，再扩大范围。回答注明 checkout 的分支、
 commit、来源路径和验证边界。冲突时区分当前契约、当前实现与历史报告，不能将规划写成已支持，

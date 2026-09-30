@@ -50,7 +50,7 @@ BOM               13 行全带 LCSC C 号,直接可下单
    [pro-api-sdk#31](https://github.com/easyeda/pro-api-sdk/issues/31)(track↔via 连通性)、
    [#32](https://github.com/easyeda/pro-api-sdk/issues/32)(PLANE anti-pad)、
    [#33](https://github.com/easyeda/pro-api-sdk/issues/33)(pad number 读回)。
-   当时发现的缺口与复测记录见 [2026-07 探针记录](reviews/2026-07-esp32mini-findings.md)。
+   当时发现的缺口与复测记录见 [2026-07 探针记录](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-07-esp32mini-findings.md)。
 
 ## 自己跑一遍
 

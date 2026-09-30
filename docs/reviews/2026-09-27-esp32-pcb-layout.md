@@ -1,5 +1,8 @@
 # ESP32 完整例子的 PCB 布局复核
 
+> 历史结论，仅为发布材料兼容保留；当前能力见 [CLI Status](../cli-STATUS.md)。
+> 逐步运行记录与原始标识见[固定版本原文](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-esp32-pcb-layout.md)。
+
 当前未布线布局已完成连续两轮自检，第二轮保存、真实重载、新回读和整板预览完成，
 两轮之间没有修改设计，独立布局复核通过。尚未取得用户对当前布局的确认；完整例子和发布仍未通过。
 
@@ -14,5 +17,5 @@ LED、电源端子极性、GPIO 引脚、USB/UART、BOOT/RESET 共 14 个用途�
 当前可以展示第 2 轮整板预览，请用户确认该保存版本，再继续布线和完整验收。
 这遵守公开 Skill 的[布局确认要求](../../.agents/skills/easyeda-agent/references/pcb-layout.md#layout-完成局部电源铜与用户确认)。
 
-[回读、差异与证据](2026-09-27-esp32-pcb-layout-detail.md) ·
+[回读、差异与证据](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-27-esp32-pcb-layout-detail.md) ·
 [CLI Status](../cli-STATUS.md) · [发布进度](../releases/release-1.8.md)

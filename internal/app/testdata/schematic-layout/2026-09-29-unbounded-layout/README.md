@@ -9,14 +9,14 @@ NC、功能归属与求解参数；不含工程 UUID、宿主图元 ID、库凭�
 - `P2-20k.json`：15 件、2 区；spacing=10，maxCandidates=20000。
 
 开始状态为未求解的实测源输入。旧默认搜索均耗尽候选；新模式在命令行显式选择，
-fixture 本身不嵌入模式或坐标答案，方便同源对照：
+fixture 本身不嵌入模式或坐标答案，方便同源对照。以下命令从仓库根目录执行：
 
 ```sh
-easyeda sch layout-plan --zones --unbounded --from P1-20k.json --out P1-layout.json --report P1-report.json
-easyeda sch layout-render --from P1-layout.json --out P1.svg
+easyeda sch layout-plan --zones --unbounded --from internal/app/testdata/schematic-layout/2026-09-29-unbounded-layout/P1-20k.json --out /tmp/P1-layout.json --report /tmp/P1-report.json
+easyeda sch layout-render --from /tmp/P1-layout.json --out /tmp/P1.svg
 ```
 
 P2 同理。预算错误仍非零退出，不产生或覆盖旧布局；错误引脚/异网 attachment、被文字
 堵住的实测引脚出口仍须修源数据或采集，不能靠取消空间上限绕过。
 验证状态：offline-verified；没有对新模式执行现场 Apply、保存重载或宿主交叉点回读。
-详情与原始字节哈希见[实验报告](../../2026-09-29-schematic-layout-relaxation.md)。
+详情与原始字节哈希见[实验报告](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-29-schematic-layout-relaxation.md)。
