@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.0] - 2026-10-01
+
+- Add schematic PNG/JPEG/SVG reference-image import and ID-based geometry management; fix image deletion and explicit intrinsic sizing.
+- Add PCB document-layer (13) reference pictures with physical sizing, dry-run, fresh geometry readback and exact ID-based modification/deletion. Transparent PNG, JPEG and SVG rendering and save/reload were verified on Web 4.1.60.
+- Fix mirrored PCB image dry-run bounds to match the host anchor transform; retain live readback cases as an automated regression fixture.
+- Add protected paperless schematic composition, explicit module rows and net-label composition support. Prior two-page paperless persistence evidence is limited; arbitrary existing drawings and all composition variants are not certified.
+- Update public Skill guidance for PCB rules and library mounting-hole parts. Users must update the connector to obtain the new image actions.
+- User-approved acceptance scope: verified image functionality and this version's CLI changes, using version-bound limited evidence and independent review. Full design E2E and bitmap-to-manufacturing-silk contours/DFM remain deferred; #272 stays open. Historical failures and known limitations are preserved.
+
 ## [1.8.1] - 2026-09-29
 
 - 新增 `sch layout-plan --net-labels`：在用户明确接受标签连接时，各器件用短引线和同名网络标记连接，按完整包络分行布局；保留网表、引脚、NC、器件姿态与功能归属。
