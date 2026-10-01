@@ -63,6 +63,39 @@ PDF 或封装与当前库器件不一致，停止自动绘图并重新核对器�
 NT 电流参数套给 MT。本轮按完整型号另核 C279948 并补测 L1，公开条目为 `ind.2u2_swpa4030_nt`；
 旧 MT 身份保留且参数缺口明确标记。换容差还须重算最小电感量与纹波，不是只改 BOM 文本。
 
+## Common-library devices (常用库)
+
+The editor's Common Library is a configured set of device shortcuts with grouped models;
+it is not the result set of `lib search`. A name in that panel, an empty search, or a
+successful `lib libraries` response does not establish the selected model's library identity.
+The official [schematic guide](https://prodocs.easyeda.com/en/schematic/side-panel-left-commonly-library/)
+describes model groups; the [PCB guide](https://prodocs.easyeda.com/en/pcb/side-panel-left-commonly-library/)
+also allows their use without a schematic.
+
+**M3 verification boundary:** Web EasyEDA Pro 4.1.60 with connector 1.8.2 returned an
+M3 rectifier diode (C2993494) first for `lib search --query M3`; `螺丝孔` returned a
+USB-C connector, and `安装孔` returned no candidates. `M3螺丝孔` and `m3螺丝` searches
+failed with the host error `Cannot read properties of undefined (reading 'lists')`.
+These are lookup failures, not proof that Common Library lacks screw holes. The current
+typed library inventory does not enumerate Common Library groups or their selected variants.
+Group discovery remains `planned`; new M3 placement and persistence remain `incomplete`.
+
+The official 3.2.149 distribution's bundled `lceda-std.elib` contains M2/M3/M4 screw
+devices bound to the `螺丝孔` symbol. Their source geometry is `offline-verified` only.
+The M3 record has a 126mil round hole (3.2004mm) whose center is offset (-2.5,+2.5)mil
+from the footprint origin; do not assume the instance anchor is the hole center.
+Its device UUID `659127e4dead4bc0abbb368bcde868b6` was not found by the current Web
+`lib device get`, and its footprint read failed. Do not promote that bundled identity
+to `standard-parts.json`, replay it into Web V4, or infer plating from the name.
+
+To resume, obtain the selected model's current device and footprint identities from a
+readable current source, then verify them with `lib device get` / `lib footprint get`.
+Only then test typed placement in a disposable document, check the actual hole, copper,
+anchor, designator and BOM flags, and save → reload → fresh readback. A blocked source
+or missing typed interface leaves this chain incomplete; a different named device or
+a board cutout cannot count as the Common Library M3 test. Mechanical placement follows
+[the screw-hole workflow](pcb-layout.md#螺丝孔与安装孔先选现有库器件).
+
 ## Data sources (live, no API key, browser User-Agent)
 
 | Source | Endpoint | Gives |

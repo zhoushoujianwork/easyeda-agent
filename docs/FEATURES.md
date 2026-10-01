@@ -213,7 +213,7 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 
 | Action | What |
 |---|---|
-| `schematic.library.search` | Free-text search of the EasyEDA device library (`eda.lib_Device.search`); returns `libraryUuid` + `uuid` ready for `schematic.component.place`, plus name/value/footprint/lcsc/description. Replaces ad-hoc `debug.exec_js` lookups. **See the search caveat under Roadmap.** |
+| `schematic.library.search` | Free-text search of the EasyEDA device library (`eda.lib_Device.search`); returns `libraryUuid` + `uuid` ready for `schematic.component.place`, plus name/value/footprint/lcsc/description. Replaces ad-hoc `debug.exec_js` lookups. Common Library grouped-model discovery remains planned; its M3 placement chain is incomplete on the tested Web host. See the [Common Library boundary](../.agents/skills/easyeda-agent/references/part-selection.md#common-library-devices-常用库) and the search caveat under Roadmap. |
 
 ### Verify (3 actions)
 
