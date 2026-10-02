@@ -56,6 +56,39 @@ func newLibCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		},
 	})
 
+	// ── lib common list ───────────────────────────────────────────────────
+	{
+		common := &cobra.Command{Use: "common", Short: "Read the editor's Common Library shortcut catalogue (常用库)"}
+		var category, group, query string
+		list := &cobra.Command{
+			Use: "list", Short: "List System Common Library categories, model groups and configured device references",
+			Long: `Read the public Web editor's System Common Library catalogue. This is the
+left-side Common Library (常用库), separate from LCSC free-text search.
+Configured UUIDs are not verified assets: resolve the explicit model with lib
+device get before placing it. Personal settings and the panel's currently
+selected model are not read. Missing source/schema or HTTP refusal is an error;
+the command never substitutes LCSC search or an old bundled catalogue.`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda lib common list --window <id> --category "安装器件"
+  easyeda lib common list --window <id> --category "安装器件" --query M3
+  easyeda lib device get --window <id> --library <libraryUuid> --uuid <deviceUuid>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				payload := map[string]any{}
+				for key, value := range map[string]string{"category": category, "group": group, "query": query} {
+					if cmd.Flags().Changed(key) {
+						payload[key] = value
+					}
+				}
+				return dispatch(cfg, "library.common.list", window, payload, stdout, stderr)
+			},
+		}
+		list.Flags().StringVar(&category, "category", "", "exact category name, e.g. 安装器件")
+		list.Flags().StringVar(&group, "group", "", "exact model group name (empty matches ungrouped devices)")
+		list.Flags().StringVar(&query, "query", "", "filter catalogue model names/comments/groups by substring")
+		common.AddCommand(list)
+		lib.AddCommand(common)
+	}
+
 	// ── lib search ────────────────────────────────────────────────────────
 	// schematic.library.search
 	{

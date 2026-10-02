@@ -213,7 +213,8 @@ Workspace → Project → **Board** → schematic + PCB. Map to `eda.dmt_Board.*
 
 | Action | What |
 |---|---|
-| `schematic.library.search` | Free-text search of the EasyEDA device library (`eda.lib_Device.search`); returns `libraryUuid` + `uuid` ready for `schematic.component.place`, plus name/value/footprint/lcsc/description. Replaces ad-hoc `debug.exec_js` lookups. Common Library grouped-model discovery remains planned; its M3 placement chain is incomplete on the tested Web host. See the [Common Library boundary](../.agents/skills/easyeda-agent/references/part-selection.md#common-library-devices-常用库) and the search caveat under Roadmap. |
+| `schematic.library.search` | Free-text search of the EasyEDA device library (`eda.lib_Device.search`); returns `libraryUuid` + `uuid` ready for `schematic.component.place`, plus name/value/footprint/lcsc/description. This is separate from the Common Library catalogue; its search failures do not validate Common Library usage. See the search caveat under Roadmap. |
+| `library.common.list` | `lib common list`: read-only public Web System Common Library catalogue via `sys_ClientUrl.request`; exact category/group and model-name query filters. Preserves configured library/device references without selecting or verifying a model. Source adapter is offline-verified; current Web source and M3 placement/save/reload are incomplete. Personal shortcuts and current panel selection are unsupported. See the [Common Library boundary](../.agents/skills/easyeda-agent/references/part-selection.md#common-library-devices-常用库). |
 
 ### Verify (3 actions)
 

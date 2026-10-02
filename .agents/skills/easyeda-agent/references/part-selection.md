@@ -76,16 +76,43 @@ also allows their use without a schematic.
 M3 rectifier diode (C2993494) first for `lib search --query M3`; `螺丝孔` returned a
 USB-C connector, and `安装孔` returned no candidates. `M3螺丝孔` and `m3螺丝` searches
 failed with the host error `Cannot read properties of undefined (reading 'lists')`.
-These are lookup failures, not proof that Common Library lacks screw holes. The current
-typed library inventory does not enumerate Common Library groups or their selected variants.
-Group discovery remains `planned`; new M3 placement and persistence remain `incomplete`.
+These are failures of the ordinary search path, not a test of Common Library usage.
+They do not show that Common Library lacks screw holes or that its devices cannot be placed.
+
+Use the separate read-only System catalogue adapter:
+
+```bash
+easyeda lib common list --window <window-id> --category "安装器件"
+easyeda lib common list --window <window-id> --category "安装器件" --query M3
+easyeda lib device get --window <window-id> --library <libraryUuid> --uuid <deviceUuid>
+```
+
+`lib common list` fetches only the editor's public `/api/system/preference` source through
+the official `sys_ClientUrl.request` API. It preserves category/group/model references,
+including `devicePath`, and never falls back to LCSC search or another site's catalogue.
+The source schema is based on the official bundled editor; HTTP refusal, missing catalogue,
+or unsupported schema is an error, not an empty library. This source adapter is
+`offline-verified`; compatibility with the current Web source is still `incomplete`.
+It requires a connector containing `library.common.list`; `UNKNOWN_ACTION` means that the
+running connector needs updating. Personal shortcuts and the panel's current selected model
+remain `unsupported`; listing order does not select a model.
+
+Returned `deviceUuid`/`symbolUuid`/`footprintUuid` values are configured references with
+`identityVerified:false`. Resolve the chosen device with `lib device get`, inspect its actual
+symbol/footprint binding, then use existing typed placement. Do not substitute the catalogue
+thumbnail, a same-name search hit, or a stale bundled UUID for that readback.
+If configured model names are absent, `--query` refuses rather than report false absence;
+list the category without `--query` and resolve each explicit device reference.
+The Common Library M3 placement and save/reload chain remains `incomplete`.
 
 The official 3.2.149 distribution's bundled `lceda-std.elib` contains M2/M3/M4 screw
 devices bound to the `螺丝孔` symbol. Their source geometry is `offline-verified` only.
 The M3 record has a 126mil round hole (3.2004mm) whose center is offset (-2.5,+2.5)mil
 from the footprint origin; do not assume the instance anchor is the hole center.
 Its device UUID `659127e4dead4bc0abbb368bcde868b6` was not found by the current Web
-`lib device get`, and its footprint read failed. Do not promote that bundled identity
+`lib device get` using the default System-library lookup, and that default footprint read
+failed. This does not test a current Common Library model's explicit source path.
+Do not promote that bundled identity
 to `standard-parts.json`, replay it into Web V4, or infer plating from the name.
 
 To resume, obtain the selected model's current device and footprint identities from a

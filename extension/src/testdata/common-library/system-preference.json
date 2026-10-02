@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "result": {
+    "commSystemSetting": {
+      "BASE_LIBRARY": [
+        {
+          "name": "电阻",
+          "data": [
+            {
+              "category": "电阻", "group": "RES-SMD",
+              "device": "f61af53b8d604d888b6dd9daa1a301b0", "deviceName": "Res_0603",
+              "symbol": "88c6cc8b21f742efb5610e877942b0f4", "symbolName": "R_0603_EU",
+              "footprint": "50b4943912284dab97752312e589e9e2", "footprintName": "R0603",
+              "sch": "true", "pcb": "true", "sortIndex": 0
+            },
+            {
+              "category": "电阻", "group": "RES-SMD",
+              "device": "21bc68b800584b529da59dcd08ddec02", "deviceName": "Res_0201",
+              "symbol": "337f98afd0264cae93d16cc3bf65754a", "symbolName": "电阻",
+              "footprint": "06a23c486b334e92b418046d48fbfed7", "footprintName": "R0201",
+              "sch": "true", "pcb": "true", "sortIndex": 1
+            }
+          ]
+        },
+        { "name": "Other" }
+      ]
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { projectOpen, projectExport } from './project-transfer';
+import { listSystemCommonLibrary } from './common-library';
 import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
 /**
  * Typed-action dispatch. Each action maps to exactly one (occasionally a small
@@ -14774,6 +14775,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.library.search': schematicLibrarySearch,
 	'schematic.library.get_by_lcsc': schematicLibraryGetByLcscIds,
 	'library.list': libraryList,
+	'library.common.list': listSystemCommonLibrary,
 	'library.footprint.create': libraryFootprintCreate,
 	'library.footprint.get': libraryFootprintGet,
 	'library.footprint.copy': libraryFootprintCopy,

@@ -463,6 +463,16 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"libraries", "personalLibraryUuid", "projectLibraryUuid", "systemLibraryUuid"},
 		},
 		{
+			Name:        "library.common.list",
+			Domain:      DomainLibrary,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Read the public Web System Common Library shortcut catalogue, preserving category/group/model references. Uses sys_ClientUrl.request for the editor's system preference source; never falls back to LCSC search. Configured UUIDs need library.device.get verification before placement. Does not read Personal settings or the panel's selected model.",
+			Inputs:      []string{"category optional (exact)", "group optional (exact)", "query optional (model name/comment/group substring)"},
+			Outputs:     []string{"scope", "count", "catalogueCount", "devices[].category", "devices[].group", "devices[].deviceUuid", "devices[].libraryUuid", "devices[].identityVerified", "selectedModelAvailable", "source"},
+			VerifyWith:  []string{"library.device.get", "library.footprint.get"},
+		},
+		{
 			Name:        "library.footprint.create",
 			Domain:      DomainLibrary,
 			Phase:       1,

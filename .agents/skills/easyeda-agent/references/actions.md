@@ -147,6 +147,11 @@ CLI 完整读取单次 action 的 HTTP 响应，最多 32 MiB；health 清单另
 
 ## 器件库与自建资产
 
+用户指定左侧「常用库」时，先用 `lib common list --category "安装器件"` 读取对应分组，
+再 `lib device get` 核对明确型号；这条目录路径独立于立创搜索。
+当前 Web 目录与 M3 放置链路的现场验证尚未完成，见
+[常用库器件](part-selection.md#common-library-devices-常用库)。
+
 优先标准器件或 `lib by-lcsc` 的精确 C 号匹配。搜索结果须核对型号与封装，不能默认取第一条。
 `sch resolve-lcsc` 只在型号和封装精确匹配时写回，unresolved 必须继续处理。
 

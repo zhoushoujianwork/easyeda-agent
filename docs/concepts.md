@@ -50,6 +50,19 @@ Skill 目录。源码位置不改变发布包内的 `easyeda-agent/` 根目录�
 整板 Layout 完成。PCB 组合移动的待办与执行顺序见
 [开发验证清单](pcb-layout-validation.md)，可迁移步骤随公开 Skill 的样例发布。
 
+## Common Library and device identity
+
+The **Common Library** (常用库) is the editor's configured shortcut catalogue:
+categories contain model groups, and each model references a device in a library.
+Its **System** tab is distinct from a free-text LCSC/system-library search.
+The catalogue's device/symbol/footprint UUIDs are references, not verified assets;
+the selected model in the panel is also separate from the catalogue's ordering.
+Read the explicit model through the official library APIs before placement.
+The read-only `lib common list` adapter enumerates the public System catalogue;
+it does not read Personal settings or the panel's current selection. Command,
+source compatibility and live verification boundaries are maintained in the
+[Common Library reference](../.agents/skills/easyeda-agent/references/part-selection.md#common-library-devices-常用库).
+
 ## PCB reference pictures and manufacturing artwork
 
 An **embedded reference picture** (参考图片) preserves the source artwork through
