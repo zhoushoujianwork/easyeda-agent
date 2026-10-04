@@ -17,6 +17,10 @@ Cobra 子命令暴露(`--help` 自描述),机器可读真值是 `easyeda actions
 
 ## 通用约定(全域一致)
 
+文档源码研究入口：`doc source get/roundtrip`，读取 Beta 文档源码并进行受保护的原样回写
+探针；不是通用源码修改或工程导入。命令与验证边界见公开 Skill 的
+[文档源码探针](../../.agents/skills/easyeda-agent/references/document-source.md)。
+
 - **路由**:`--project <名>`(推荐,窗口重连不失效)或 `--window <id>`(同项目多窗口时必须);`--doc <页>` 钉住目标页防错页落子。
 - **判对错看数据不看截图**:`list / check / drc / layout-lint / layout-score` 是判据;截图会 stale。
 - **变更即校验**:mutate 前 inspect,mutate 后跑对应 lint/check；输出具体对象和差异，由 Agent 修正。

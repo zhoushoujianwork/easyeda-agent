@@ -15,6 +15,7 @@ import {
 	ABANDONED_ID_RING,
 	ActionQueue,
 	isBypassAction,
+	mustHoldAfterAbandon,
 	type QueueOutcome,
 } from './action-queue';
 import { sweepDeadlines } from './deadlines';
@@ -138,6 +139,41 @@ test('截止时间用请求自带的 timeoutMs —— 长操作不被误杀,短�
 	});
 	assert.equal(short.status, 'abandoned');
 	assert.equal(short.stamp.seqAbandoned, 1);
+});
+
+test('保留模式:abandoned 只结束响应,late resolve/reject 前不执行后续写入', async () => {
+	for (const rejects of [false, true]) {
+		const q = testQueue();
+		const stuck = deferred<number>();
+		let laterWriteRan = false;
+		const first = q.submit({ id: 'source-setter', timeoutMs: 3_600_000, holdAfterAbandon: true, run: () => stuck.promise });
+		const next = q.submit({ id: 'later-write', run: async () => { laterWriteRan = true; return 2; } });
+		await sleep(5);
+		sweepDeadlines(Date.now() + 3_600_001);
+		const response = await first;
+		assert.equal(response.status, 'abandoned');
+		assert.equal(response.stamp.seq, 0);
+		assert.equal(response.stamp.seqAbandoned, 1);
+		await sleep(5);
+		assert.equal(laterWriteRan, false);
+		assert.equal(q.pending(), 1);
+		const diagnostic = await q.submit({ id: 'current', bypass: true, run: async () => 'alive' });
+		assert.equal(diagnostic.status, 'ok');
+		assert.equal(diagnostic.stamp.unordered, true);
+		if (rejects) stuck.reject(Error('late setter failure')); else stuck.resolve(1);
+		const completed = await next;
+		assert.equal(completed.status, 'ok');
+		assert.equal(laterWriteRan, true);
+		assert.equal(completed.stamp.seq, 1, 'abandoned late completion is not a new ordered result');
+		assert.equal(completed.stamp.seqAbandoned, 1);
+	}
+});
+
+test('整份源码 roundtrip 必须保留 FIFO,现有单对象动作仍使用原放弃策略', () => {
+	assert.equal(mustHoldAfterAbandon('document.source.roundtrip'), true);
+	for (const action of ['document.current', 'document.source.get', 'schematic.component.place', 'pcb.drc.check']) {
+		assert.equal(mustHoldAfterAbandon(action), false);
+	}
 });
 
 test('放弃闸不依赖 setTimeout —— 只靠 worker tick 的 sweepDeadlines 也必须到点', async () => {

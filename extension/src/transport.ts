@@ -30,7 +30,7 @@
  * still reach it through the `daemonPorts` escape hatch below.
  */
 
-import { ActionQueue, isBypassAction } from './action-queue';
+import { ActionQueue, isBypassAction, mustHoldAfterAbandon } from './action-queue';
 import { armDeadline, sweepDeadlines, type DeadlineHandle } from './deadlines';
 import { buildContextFrame, readEasyEdaVersion } from './eda-context';
 import { runAction } from './actions';
@@ -1099,6 +1099,7 @@ async function handleRequest(request: RequestFrame): Promise<void> {
 		id: request.id,
 		timeoutMs: request.timeoutMs,
 		bypass: isBypassAction(request.action),
+		holdAfterAbandon: mustHoldAfterAbandon(request.action),
 		run: () => runAction(request.action, request.payload),
 	});
 
@@ -1134,8 +1135,10 @@ async function handleRequest(request: RequestFrame): Promise<void> {
 				ok: false,
 				error: {
 					code: ErrorCodes.ACTION_ABANDONED,
-					message: `action "${request.action}" was abandoned after ${outcome.waitedMs}ms so the queue could keep flowing`,
-					detail: 'the handler is still running; its effect may land later — treat any conclusion about this write as unproven (seqAbandoned was incremented)',
+					message: `action "${request.action}" response was abandoned after ${outcome.waitedMs}ms`,
+					detail: mustHoldAfterAbandon(request.action)
+						? 'the handler is still running; FIFO remains blocked until it actually settles. Use only document.current diagnostic reads; do not retry this write (seqAbandoned was incremented)'
+						: 'the handler is still running; its effect may land later — treat any conclusion about this write as unproven (seqAbandoned was incremented)',
 				},
 			};
 			break;

@@ -251,7 +251,7 @@ document afterward and reports it as "activeRestored", so the ★ does not drift
 	}
 	reloadCmd.Flags().BoolVar(&jsonOut, "json", false, "emit JSON instead of a line")
 
-	doc.AddCommand(lsCmd, switchCmd, openCmd, reloadCmd)
+	doc.AddCommand(lsCmd, switchCmd, openCmd, reloadCmd, newDocSourceCmd(cfg, &window, stdout))
 	return doc
 }
 

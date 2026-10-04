@@ -22,7 +22,7 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 
-type Frame = { type: string; id?: string; seq?: number; seqAbandoned?: number; unordered?: boolean };
+type Frame = { type: string; id?: string; seq?: number; seqAbandoned?: number; unordered?: boolean; ok?: boolean; error?: { code: string; detail?: string } };
 
 const sent: Frame[] = [];
 let capturedOnMessage: ((event: { data: string }) => void) | null = null;
@@ -47,6 +47,7 @@ let capturedOnMessage: ((event: { data: string }) => void) | null = null;
 };
 
 const events: string[] = [];
+let releaseRoundtrip: (() => void) | undefined;
 // TS→CJS 后 transport 里是 `actions_1.runAction(...)` 的属性查找,所以替换
 // exports 就能把真实 handler 换成可控时序的假实现,而 transport 本身是真的。
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -55,6 +56,9 @@ actions.runAction = async (action: string): Promise<{ result: Record<string, unk
 	events.push(`enter ${action}`);
 	if (action === 'slow.write') {
 		await new Promise((r) => setTimeout(r, 150));
+	}
+	if (action === 'document.source.roundtrip') {
+		await new Promise<void>(resolve => { releaseRoundtrip = resolve; });
 	}
 	events.push(`exit ${action}`);
 	return { result: { action } };
@@ -115,4 +119,42 @@ test('transport:同 tick 到达的动作按到达顺序串行,响应带顺序证
 	}
 
 	transport.stop(false);
+});
+
+test('transport:源码 roundtrip 超时响应后仍阻塞后续写入,旁路诊断继续工作', async () => {
+	capturedOnMessage = null;
+	transport.reconnect();
+	for (let i = 0; i < 100 && !capturedOnMessage; i++) await sleep(20);
+	assert.ok(capturedOnMessage);
+	const onMessage = capturedOnMessage as (event: { data: string }) => void;
+	onMessage({ data: JSON.stringify({ type: 'handshake', service: 'easyeda-agent' }) });
+	await sleep(50);
+	sent.length = 0;
+	events.length = 0;
+	try {
+		onMessage({ data: JSON.stringify({ type: 'request', id: 'source-held', action: 'document.source.roundtrip', timeoutMs: 1 }) });
+		onMessage({ data: JSON.stringify({ type: 'request', id: 'later-write', action: 'fast.write', timeoutMs: 20000 }) });
+		await sleep(2150); // transport retains the normal 2 s abandonment grace.
+		const abandoned = sent.find(frame => frame.id === 'source-held');
+		assert.equal(abandoned?.error?.code, 'ACTION_ABANDONED');
+		assert.match(abandoned?.error?.detail ?? '', /FIFO remains blocked/);
+		assert.equal(abandoned?.seqAbandoned, 1);
+		assert.equal(events.includes('enter fast.write'), false, 'transport must wire the retained-FIFO policy');
+		assert.equal(sent.some(frame => frame.id === 'later-write'), false);
+		onMessage({ data: JSON.stringify({ type: 'request', id: 'held-diagnostic', action: 'document.current', timeoutMs: 20000 }) });
+		await sleep(30);
+		assert.equal(sent.find(frame => frame.id === 'held-diagnostic')?.unordered, true);
+		assert.ok(releaseRoundtrip);
+		releaseRoundtrip();
+		await sleep(30);
+		assert.ok(events.indexOf('enter fast.write') > events.indexOf('exit document.source.roundtrip'));
+		const next = sent.find(frame => frame.id === 'later-write');
+		assert.equal(next?.ok, true);
+		assert.equal(next?.seq, (abandoned?.seq ?? 0) + 1, 'late abandoned completion must not increment seq');
+		assert.equal(next?.seqAbandoned, 1);
+	} finally {
+		releaseRoundtrip?.();
+		releaseRoundtrip = undefined;
+		transport.stop(false);
+	}
 });

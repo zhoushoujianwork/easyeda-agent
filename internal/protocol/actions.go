@@ -115,6 +115,19 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"document uuid", "document type", "tab id"},
 		},
 		{
+			Name: "document.source.get", Domain: DomainDocument, Phase: 1, NeedsWindow: true,
+			Description: "Read the official Beta document source for an exact project/document. Only schematic and PCB documents; identity is checked before and after. Returns raw source, not an eprj3 project or validated design.",
+			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)"},
+			Outputs:     []string{"schemaVersion", "target", "availability", "source"},
+		},
+		{
+			Name: "document.source.roundtrip", Domain: DomainDocument, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Experimental same-source Beta setter probe. Requires an exact identity-bound snapshot and fresh byte-equivalent source; writes only the freshly read unchanged source once. Does not accept replacement design content, retry, rollback, certify persistence, or import eprj3. dryRun only reads and checks.",
+			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)", "snapshot (schemaVersion/projectUuid/documentUuid/documentType/source)", "dryRun optional"},
+			Outputs:     []string{"target", "beforeSource", "afterSource", "writeAttempted", "written", "verified", "partial", "incomplete"},
+			VerifyWith:  []string{"document.source.get", "schematic.save / pcb.save", "document.close/open", "fresh object and connectivity readback"},
+		},
+		{
 			Name:        "document.open",
 			Domain:      DomainDocument,
 			Phase:       1,

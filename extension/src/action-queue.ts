@@ -40,6 +40,8 @@
  *
  * 被放弃的 handler 仍在后台跑 —— 我们只是不再等它,**它的效果可能稍后才落地**。
  * 这就是为什么 `seqAbandoned` 一旦变化,关于那段时间任何写的结论都不成立。
+ * 整份文档源码 roundtrip 例外:响应可放弃,但 FIFO 保持阻塞直到 handler 真正
+ * settle,避免不可取消的迟到 setter 覆盖后续工程写入。document.current 旁路可观测。
  *
  * ── 放弃闸的时基必须是 worker tick,不能是 setTimeout(2026-08-24 真机定案) ──
  *
@@ -105,6 +107,11 @@ export interface QueueTask<T> {
 	timeoutMs?: number;
 	/** true = 走旁路,不进 FIFO,不动 seq(见 transport.ts 的旁路名单)。 */
 	bypass?: boolean;
+	/**
+	 * 超时仍返回 abandoned 诊断,但在 handler 真正 settle 前保留 FIFO。
+	 * 整份文档源码 setter 不可取消;超时后放行别的写会与迟到 setter 竞态。
+	 */
+	holdAfterAbandon?: boolean;
 	run: () => Promise<T>;
 }
 
@@ -124,7 +131,7 @@ export class ActionQueue {
 	private readonly abandonedIds: string[] = [];
 	/** 已入队但还没轮到的任务数(队首一旦开跑就不再计入)。 */
 	private depth = 0;
-	/** 显式的 promise 链:队首 settle(或被放弃)之前,下一个绝不开跑。 */
+	/** 显式 promise 链:保留模式在响应放弃后仍等 handler settle。 */
 	private tail: Promise<void> = Promise.resolve();
 
 	private readonly maxDepth: number;
@@ -216,13 +223,19 @@ export class ActionQueue {
 			// 我们不再等它,但它**还在跑**:效果可能稍后才落地。这就是
 			// seqAbandoned 的全部意义 —— 它一变,那段时间的顺序证据就作废。
 			// 绝不给它补 seq:一个被放弃的动作没有可定位的完成时刻。
-			running.then(() => undefined, () => undefined); // 防未处理拒绝
 			this.abandoned += 1;
 			this.abandonedIds.push(task.id);
 			while (this.abandonedIds.length > ABANDONED_ID_RING) {
 				this.abandonedIds.shift();
 			}
 			resolve({ status: 'abandoned', waitedMs: Date.now() - startedAt, stamp: this.stamp(false) });
+			if (task.holdAfterAbandon) {
+				// The diagnostic response has settled, but the FIFO tail has not.
+				// No later ordered read/write can race an uncancellable late setter.
+				await running;
+			} else {
+				running.then(() => undefined, () => undefined); // 防未处理拒绝
+			}
 			return;
 		}
 
@@ -283,4 +296,9 @@ export const BYPASS_ACTIONS: ReadonlySet<string> = new Set<string>([
  */
 export function isBypassAction(action: string): boolean {
 	return BYPASS_ACTIONS.has(action);
+}
+
+/** Whole-document writes retain FIFO even after their response budget expires. */
+export function mustHoldAfterAbandon(action: string): boolean {
+	return action === 'document.source.roundtrip';
 }

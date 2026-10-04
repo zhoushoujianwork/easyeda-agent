@@ -1,4 +1,5 @@
 import { projectOpen, projectExport } from './project-transfer';
+import { documentSourceGet, documentSourceRoundtrip } from './document-source';
 import { listSystemCommonLibrary } from './common-library';
 import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
 /**
@@ -14732,6 +14733,8 @@ const HANDLERS: Record<string, Handler> = {
 	'project.open': projectOpen,
 	'project.export': projectExport,
 	'document.current': documentCurrent,
+	'document.source.get': documentSourceGet,
+	'document.source.roundtrip': documentSourceRoundtrip,
 	'document.open': documentOpen,
 	'document.close': documentClose,
 	'view.fit': viewFit,

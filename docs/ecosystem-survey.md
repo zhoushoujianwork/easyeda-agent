@@ -694,6 +694,19 @@ Schema 记录跳过验证；DOCHEAD 分支设置文档类型后立即 `continue`
 判断：这是重要的官方离线生成基础设施，能降低对实时编辑器的依赖；其当前价值集中在格式、
 模板和序列化，尚不能替代我们的数据驱动设计、几何/连接检查与真实回读。
 
+### 12.6 Web 适配验证边界
+
+当前目标宿主是 Web EDA。官方 folder `.eprj3` 的双向同步适用于客户端半离线/全离线模式；
+不能从文件生成成功推导出 Web 工程导入可用。另一个候选接入点是官方 Beta
+`sys_FileManager.getDocumentSource()/setDocumentSource(source)`，类型定义声明 getter 返回
+`string | undefined`、setter 返回 `boolean`，但在线宿主可用性和保存重载语义仍需要实际验证。
+
+先通过受保护的[原样源码探针](../.agents/skills/easyeda-agent/references/document-source.md)验证
+接口，保留 getter 原文而不解析重写。原生文本容器包含内嵌库与主文档，不能把只生成 MAIN
+记录当作完整源码；文档头、ticket 与未知记录也不能随意归一化。当前已补 CLI/连接器离线
+守卫及迟到 setter 队列测试；因无已连接 Web 窗口，源码读取、回写、保存重载及对象/网络
+对账均尚未执行。该探针不是文件 Apply、eprj3 导入或完整设计 E2E 的验收。
+
 ## 来源
 
 - [EasyEDA 官方 GitHub 组织](https://github.com/easyeda) — 全部 eext-* 扩展开源

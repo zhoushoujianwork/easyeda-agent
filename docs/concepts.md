@@ -91,6 +91,12 @@ Usage and verification: [public PCB Skill](../.agents/skills/easyeda-agent/refer
 证明本项目已支持它，也不改变现行 Web EDA / typed action 的现场操作约束。调研见
 [官方 eprj3 Skill](ecosystem-survey.md#12-官方-eprj3-skill离线工程生成路线2026-09-21源码与离线实测)。
 
+Web 文档源码探针先区分两件事：`getDocumentSource` 读取宿主原始文本；同源 roundtrip
+只把与 fresh 快照逐字相等的文本交回 `setDocumentSource`，不接受新的设计内容。后者仅用于
+验证 Beta 接口的可达性与原样回读；它不证明 eprj3 导入、批量记录生成、语义等价或持久化。
+保存重载和对象/网络对账仍单独执行。入口及停止条件见公开 Skill 的
+[文档源码探针](../.agents/skills/easyeda-agent/references/document-source.md)。
+
 ### PCB 参数化配置
 
 `pcb config` 是当前 PCB 设计规则的参数化入口。它从新鲜官方规则快照计算局部修改，保留

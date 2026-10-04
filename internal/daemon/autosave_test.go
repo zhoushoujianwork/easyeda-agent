@@ -96,6 +96,29 @@ func TestMutatesActionMap(t *testing.T) {
 	}
 }
 
+func TestDocumentSourceProbeDoesNotAutosave(t *testing.T) {
+	// Persistence is a separate explicit probe step, including for a real
+	// same-source setter. Future action routing must not silently save it.
+	s := &Server{autosave: newAutosaver(time.Hour, func(_, _ string) { t.Error("unexpected source autosave") })}
+	defer s.autosave.stop()
+	for _, req := range []*protocol.Request{
+		{Envelope: protocol.Envelope{WindowID: "w"}, Action: "document.source.get"},
+		{Envelope: protocol.Envelope{WindowID: "w"}, Action: "document.source.roundtrip", Payload: map[string]any{"dryRun": true}},
+		{Envelope: protocol.Envelope{WindowID: "w"}, Action: "document.source.roundtrip", Payload: map[string]any{"dryRun": false}},
+	} {
+		s.maybeAutosave(req)
+	}
+	if len(s.autosave.timers) != 0 {
+		t.Fatal("source probe armed autosave")
+	}
+	if requestMutates(&protocol.Request{Action: "document.source.roundtrip", Payload: map[string]any{"dryRun": true}}) {
+		t.Fatal("source preview was marked as a mutation")
+	}
+	if !requestMutates(&protocol.Request{Action: "document.source.roundtrip"}) {
+		t.Fatal("source write lost mutation classification")
+	}
+}
+
 // TestMaybeAutosave_DryRunDoesNotArm pins issue #112b on the autosave side: a
 // `--dry-run` preview writes nothing, so there is nothing to save — arming the
 // debounce would fire a pointless save (and, on pcb.page.clear, one that looks

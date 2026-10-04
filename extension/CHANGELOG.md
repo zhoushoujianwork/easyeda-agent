@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1-dev.1] - 2026-10-04
+
+- Add experimental exact-target `document.source.get/roundtrip` actions and `doc source` CLI commands for the official Beta source APIs. Roundtrip submits only the unchanged fresh host source, once, with no design replacement or automatic retry.
+- Preserve source bytes, SHA-256 snapshots and complete failure evidence; reject ambiguous targets, stale snapshots, missing API methods, oversized input and incomplete readback. Dry-run does not write or arm autosave.
+- Keep source roundtrip isolated in the connector FIFO after a timeout until the original handler settles, preventing a late whole-document setter from overtaking later edits.
+- Offline tests cover probe guards and queue isolation. Web execution, save/reload, object/connectivity equality and eprj3 import remain unverified; this is a local development candidate, not a release.
+
 ## [1.9.0] - 2026-10-01
 
 - Add schematic PNG/JPEG/SVG reference-image import and ID-based geometry management; fix image deletion and explicit intrinsic sizing.
