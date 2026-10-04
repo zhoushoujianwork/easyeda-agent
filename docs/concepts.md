@@ -92,8 +92,12 @@ Usage and verification: [public PCB Skill](../.agents/skills/easyeda-agent/refer
 [官方 eprj3 Skill](ecosystem-survey.md#12-官方-eprj3-skill离线工程生成路线2026-09-21源码与离线实测)。
 
 Web 文档源码探针先区分两件事：`getDocumentSource` 读取宿主原始文本；同源 roundtrip
-只把与 fresh 快照逐字相等的文本交回 `setDocumentSource`，不接受新的设计内容。后者仅用于
-验证 Beta 接口的可达性与原样回读；它不证明 eprj3 导入、批量记录生成、语义等价或持久化。
+只把本次 fresh 读取的完整原文交回 `setDocumentSource`，不接受新的设计内容。默认 `exact`
+要求快照、写前和写后逐字相等。Web 4.1.60 的 SCH_PAGE getter 实测会改变 DOCHEAD 中的
+client/updateTime/version；显式实验规则 `dochead-volatile-v1` 仅投影这三个值，要求已观测
+的窄首行语法及其余全部字节相等。**序列化易变字段**指这三项 getter 输出变化，不代表
+设计正文变化；原文相等与声明规则相等必须分开报告，不隐去原始哈希或扩大到未知字段。
+后者仅用于验证 Beta 接口的可达性与原样回读；它不证明 eprj3 导入、批量记录生成、语义等价或持久化。
 保存重载和对象/网络对账仍单独执行。入口及停止条件见公开 Skill 的
 [文档源码探针](../.agents/skills/easyeda-agent/references/document-source.md)。
 

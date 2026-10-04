@@ -122,9 +122,9 @@ func AllActions() []ActionSpec {
 		},
 		{
 			Name: "document.source.roundtrip", Domain: DomainDocument, Phase: 1, NeedsWindow: true, Mutates: true,
-			Description: "Experimental same-source Beta setter probe. Requires an exact identity-bound snapshot and fresh byte-equivalent source; writes only the freshly read unchanged source once. Does not accept replacement design content, retry, rollback, certify persistence, or import eprj3. dryRun only reads and checks.",
-			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)", "snapshot (schemaVersion/projectUuid/documentUuid/documentType/source)", "dryRun optional"},
-			Outputs:     []string{"target", "beforeSource", "afterSource", "writeAttempted", "written", "verified", "partial", "incomplete"},
+			Description: "Experimental same-source Beta setter probe. Requires an identity-bound snapshot and source equality under an explicit comparison rule (exact by default); writes only the freshly read unchanged source once. dochead-volatile-v1 permits only three observed SCH_PAGE header value tokens to vary and reports raw equality separately. Does not accept replacement design content, retry, rollback, certify persistence, or import eprj3. dryRun only reads and checks.",
+			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)", "snapshot (schemaVersion/projectUuid/documentUuid/documentType/source)", "dryRun optional", "comparison optional (exact or dochead-volatile-v1)"},
+			Outputs:     []string{"target", "comparison", "beforeSource", "afterSource", "rawBeforeEqualsSnapshot", "rawAfterEqualsBefore", "snapshotVolatile/beforeVolatile/afterVolatile (experimental rule only)", "writeAttempted", "written", "verified", "partial", "incomplete"},
 			VerifyWith:  []string{"document.source.get", "schematic.save / pcb.save", "document.close/open", "fresh object and connectivity readback"},
 		},
 		{

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.9.1-dev.2] - 2026-10-04
+
+- Keep exact source comparison as the default; add an explicit `dochead-volatile-v1` probe rule for the observed Web 4.1.60 SCH_PAGE serialization header. Only client/updateTime/version value tokens may vary, with strict grammar and unchanged remaining bytes.
+- Preserve raw equality, original hashes and header values separately from comparison-rule equality. The setter still receives the complete fresh host string once; new design content and persistence claims remain excluded.
+- Web dev.1 confirmed source reads and strict rejection before writing: repeated SCH/empty PCB getters regenerated the three DOCHEAD values while their bodies stayed identical. Web dev.2 verified one nonempty SCH same-source setter and immediate object/connectivity equality; save/reload preserved body, connectivity, DRC counts and PNG. Raw source and all attribute identities are not strictly persistent (header metadata, sheet update time and derived IDs vary); arbitrary design Apply/eprj3 import and PCB writes remain unverified. This is a local candidate, not a release.
+
 ## [1.9.1-dev.1] - 2026-10-04
 
 - Add experimental exact-target `document.source.get/roundtrip` actions and `doc source` CLI commands for the official Beta source APIs. Roundtrip submits only the unchanged fresh host source, once, with no design replacement or automatic retry.

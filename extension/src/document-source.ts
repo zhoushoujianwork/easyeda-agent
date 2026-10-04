@@ -6,7 +6,10 @@ import { describeThrown, requireString } from './util';
 
 type Payload = Record<string, unknown>;
 type DocumentType = 'schematic' | 'pcb';
+type Comparison = 'exact' | 'dochead-volatile-v1';
 interface Target { projectUuid: string; documentUuid: string; documentType: DocumentType }
+interface VolatileFields { client: string; updateTime: number; version: string }
+interface SourceComparison { projection: string; volatile?: VolatileFields }
 interface SourceManager {
 	getDocumentSource?: () => Promise<unknown>;
 	setDocumentSource?: (source: string) => Promise<unknown>;
@@ -92,6 +95,34 @@ function snapshotOf(payload: Payload, requested: Pick<Target, 'projectUuid' | 'd
 	catch (err) { refuse(`Invalid snapshot source: ${describeThrown(err)}`); }
 	return { ...requested, documentType: snapshot.documentType, source };
 }
+function comparisonOf(payload: Payload): Comparison {
+	if (payload.comparison === undefined) return 'exact';
+	if (payload.comparison !== 'exact' && payload.comparison !== 'dochead-volatile-v1') {
+		refuse('comparison must be exact or dochead-volatile-v1.');
+	}
+	return payload.comparison;
+}
+/** This is a byte-preserving projection of one observed header grammar, not
+ * JSON normalization or an editable document parser. Only three value tokens
+ * are replaced for comparison; the complete fresh source is still written. */
+function compareSource(source: string, target: Target, comparison: Comparison): SourceComparison {
+	if (comparison === 'exact') return { projection: source };
+	if (target.documentType !== 'schematic') refuse('dochead-volatile-v1 supports only schematic documents.');
+	const header = /^(\{"type":"DOCHEAD"\}\|\|\{"docType":"SCH_PAGE","client":")([0-9a-f]{16})(","uuid":")([0-9a-f]{16})(","updateTime":)([0-9]{13})(,"version":")([0-9]{13})(","editVersion":"[0-9]+\.[0-9]+\.[0-9]+"\}\|)(\r?\n)/.exec(source);
+	if (!header) refuse('Document source does not match the narrow dochead-volatile-v1 header byte grammar.');
+	if (header[4] !== target.documentUuid) refuse('DOCHEAD uuid does not match the explicit document target.');
+	const updateTime = Number(header[6]);
+	if (header[6] !== String(updateTime) || header[8] !== String(updateTime)) {
+		refuse('DOCHEAD version must equal the 13-digit updateTime integer.');
+	}
+	const body = source.slice(header[0].length);
+	if (body.includes('DOCHEAD')) refuse('Additional DOCHEAD text in the document body is unsupported.');
+	return {
+		projection: header[1] + '<client>' + header[3] + header[4] + header[5] + '<updateTime>' +
+			header[7] + '<version>' + header[9] + header[10] + body,
+		volatile: { client: header[2], updateTime, version: header[8] },
+	};
+}
 
 /** Read the exact active document source. No import, save, or view change. */
 export async function documentSourceGet(payload: Payload): Promise<ActionResult> {
@@ -106,12 +137,14 @@ export async function documentSourceGet(payload: Payload): Promise<ActionResult>
 }
 
 /** Only re-submit the freshly read host string, once. The caller's snapshot is
- * a compare-and-swap guard, never a candidate source to write. */
+ * a comparison guard, never a candidate source to write; the host has no CAS. */
 export async function documentSourceRoundtrip(payload: Payload): Promise<ActionResult> {
-	fields(payload, ['projectUuid', 'documentUuid', 'snapshot', 'dryRun'], 'document source roundtrip');
+	fields(payload, ['projectUuid', 'documentUuid', 'snapshot', 'dryRun', 'comparison'], 'document source roundtrip');
 	if (payload.dryRun !== undefined && typeof payload.dryRun !== 'boolean') refuse('dryRun must be a boolean.');
+	const comparison = comparisonOf(payload);
 	const requested = targetRequest(payload);
 	const snapshot = snapshotOf(payload, requested);
+	const snapshotComparison = compareSource(snapshot.source, snapshot, comparison);
 	const target = await contextFor(requested, snapshot.documentType);
 	const { manager, availability } = sourceManager();
 	const readable = requireGetter(manager);
@@ -120,9 +153,14 @@ export async function documentSourceRoundtrip(payload: Payload): Promise<ActionR
 	}
 	const beforeSource = await freshSource(readable);
 	await contextFor(requested, target.documentType);
-	if (beforeSource !== snapshot.source) refuse('Fresh document source differs from the snapshot; no source was written.');
-	const base = { schemaVersion: SCHEMA_VERSION, target, availability, beforeSource };
+	const beforeComparison = compareSource(beforeSource, target, comparison);
+	if (beforeComparison.projection !== snapshotComparison.projection) refuse('Fresh document source differs from the snapshot under the declared comparison; no source was written.');
+	const base = { schemaVersion: SCHEMA_VERSION, target, availability, beforeSource, comparison,
+		rawBeforeEqualsSnapshot: beforeSource === snapshot.source,
+		...(comparison === 'dochead-volatile-v1' ? { snapshotVolatile: snapshotComparison.volatile, beforeVolatile: beforeComparison.volatile } : {}) };
 	if (payload.dryRun === true) return { result: { ...base, dryRun: true, afterSource: beforeSource,
+		rawAfterEqualsBefore: true,
+		...(comparison === 'dochead-volatile-v1' ? { afterVolatile: beforeComparison.volatile } : {}),
 		writeAttempted: false, written: false, verified: true, partial: false, incomplete: false }, context: target };
 	// Recheck the target immediately before the one setter call. Do not add an
 	// automatic retry, rollback, save, or timeout race around this write.
@@ -137,14 +175,18 @@ export async function documentSourceRoundtrip(payload: Payload): Promise<ActionR
 	let afterSource: string | null = null;
 	let readbackError: string | undefined;
 	let identityAfter: Target | undefined;
+	let afterComparison: SourceComparison | undefined;
 	try {
 		// Never read the source of a different document after a host transition.
 		await contextFor(requested, target.documentType);
 		afterSource = await freshSource(readable);
 		identityAfter = await contextFor(requested, target.documentType);
+		afterComparison = compareSource(afterSource, target, comparison);
 	} catch (err) { readbackError = describeThrown(err); }
-	const verified = written === true && !readbackError && afterSource === beforeSource;
+	const verified = written === true && !readbackError && afterComparison?.projection === beforeComparison.projection;
 	return { result: { ...base, dryRun: false, afterSource, identityAfter, writeAttempted: true, written,
+		rawAfterEqualsBefore: afterSource === beforeSource,
+		...(comparison === 'dochead-volatile-v1' ? { afterVolatile: afterComparison?.volatile ?? null } : {}),
 		writeError, readbackError, verified, partial: !verified, incomplete: !verified },
 		// An explicit empty context avoids the dispatcher's unbounded fallback
 		// when the post-write identity read itself failed. Never label the old

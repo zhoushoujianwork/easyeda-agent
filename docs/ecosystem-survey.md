@@ -699,13 +699,28 @@ Schema 记录跳过验证；DOCHEAD 分支设置文档类型后立即 `continue`
 当前目标宿主是 Web EDA。官方 folder `.eprj3` 的双向同步适用于客户端半离线/全离线模式；
 不能从文件生成成功推导出 Web 工程导入可用。另一个候选接入点是官方 Beta
 `sys_FileManager.getDocumentSource()/setDocumentSource(source)`，类型定义声明 getter 返回
-`string | undefined`、setter 返回 `boolean`，但在线宿主可用性和保存重载语义仍需要实际验证。
+`string | undefined`、setter 返回 `boolean`；在线宿主可用性和保存重载语义须分别实测。
 
 先通过受保护的[原样源码探针](../.agents/skills/easyeda-agent/references/document-source.md)验证
-接口，保留 getter 原文而不解析重写。原生文本容器包含内嵌库与主文档，不能把只生成 MAIN
-记录当作完整源码；文档头、ticket 与未知记录也不能随意归一化。当前已补 CLI/连接器离线
-守卫及迟到 setter 队列测试；因无已连接 Web 窗口，源码读取、回写、保存重载及对象/网络
-对账均尚未执行。该探针不是文件 Apply、eprj3 导入或完整设计 E2E 的验收。
+接口，保留 getter 原文而不解析重写。工程文本容器与 getter 返回的单页源码是不同边界：
+Web 4.1.60 实测 SCH_PAGE 源码只有当前页记录，没有内嵌 SYMBOL/DEVICE/FOOTPRINT 容器；
+不能据此假设任意新页面源码可脱离宿主库直接导入。样例 source 中 Y=-410，官方图元回读
+Y=+410，文件坐标也不能直接当 API 坐标使用。
+
+2026-10-04 的专用 Web 工程验证已确认 SCH 与空 PCB getter 可读，运行时 getter/setter 均存在。
+非空原理图样例包含一个电阻、两条导线和两个端口；重复读取时正文逐字相等，DOCHEAD 的
+client/updateTime/version 三值重新生成。原文 SHA 不稳定，默认 exact dry-run 因此在写前
+拒绝；只读前后全部对象与真实 pin/net 连接保持一致。该结果不能写成 setter 已通过。
+显式 `dochead-volatile-v1` 仅用于已观测 SCH_PAGE 窄语法的三个值投影，保留其他全部字节，
+默认 exact 规则和迟到 setter 队列隔离保持。`1.9.1-dev.2` 的非空单次 setter 实测返回 true，
+即时全部对象/连接与正文保持；save → typed reload 后正文、连接、DRC 计数及导出 PNG
+保持。但原文 SHA 仍不同，图框更新时间及派生属性 ID 也发生变化，严格全量持久化相等
+未通过；首次样例重载的默认字段物化单独保留，不扩大规则名单。详见探针的有限结论。
+空 PCB 读取不证明非空 PCB 保持。该探针不是文件 Apply、eprj3 导入或完整设计 E2E 的验收。
+
+路线判断：Web 源码接口值得作为现有 canonical/参数化数据的候选输出后端继续研究，
+但当前证据不足以用官方 folder eprj3 替换 Web typed 主链。下一步须验证独立新内容的固定
+转换、库引用、SCH/PCB 一致性、幂等与保存重载，不能从同源 setter 成功直接推广。
 
 ## 来源
 

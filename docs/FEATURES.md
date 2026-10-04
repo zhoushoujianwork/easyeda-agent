@@ -11,7 +11,7 @@
 
 ## 当前基线
 
-- Web 文档源码研究：`doc source get/roundtrip` 读取官方 Beta 源码，并只允许与保存快照逐字一致的 fresh 源码原样回写一次。精确工程/文档、文件哈希、dry-run、回包完整性和迟到 setter 隔离均有离线回归；当前 `health.windows` 为空，Web 接口、持久化和对象/网络对账尚未现场验证。不能据此宣称 eprj3 导入或批量设计可用。[探针范围](../.agents/skills/easyeda-agent/references/document-source.md)。
+- Web 文档源码研究：`doc source get/roundtrip` 只回写 fresh 宿主原文一次，默认 exact 比较；显式 `dochead-volatile-v1` 仅允许已实测 SCH_PAGE 首行的三个值变化。Web 4.1.60 非空原理图已验证 getter、dry-run、过期快照拒绝、单次 setter 及即时对象/连接保持。保存重载后正文、连接、DRC 计数和图像保持，但原文及全部属性身份严格相等未通过；PCB 只验证空页 getter。任意新内容 Apply、eprj3 导入和整板 E2E 未验证。[探针范围与持久化差异](../.agents/skills/easyeda-agent/references/document-source.md)。
 
 - PCB 配置 CLI：`pcb config get/clearance/track/via/bind/net-color`，覆盖考试中的安全间距、线宽规则（含复制新建 PWR）、过孔尺寸、现有网络类绑定和网络 RGB 颜色；支持单位换算、dry-run、保留其余配置及严格写后回读。2026-09-20 已在 Web 3.2.203 的考试 PCB `PCB1_1` 完成实际写入、保存、重载、幂等重放和完整恢复，规则、网络及 69 个组件最终与基线一致。固定 ESP32 回归已验证配置与四层/铜面持久化，但整板 DRC 因启发式走线穿越天线禁区/机械槽、连接错误及内层 PLANE 类型重载回退而未通过，不能记作完整 E2E；网格/吸附等全局偏好仍 unsupported。
 

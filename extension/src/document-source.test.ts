@@ -8,6 +8,20 @@ import { ActionError, ErrorCodes } from './protocol';
 
 const source = '{"type":"DOCHEAD"}||{"docType":"SCH_PAGE","uuid":"document-1"}|\r\n{"type":"TEXT"}||{"text":"原样保留"}|\r\n';
 const target = { projectUuid: 'project-1', documentUuid: 'document-1' };
+const volatileTarget = { ...target, documentUuid: '23b3c6f2a75c3d5b' };
+const volatileBody = '{"type":"COMPONENT","id":"c1","ticket":2}||{"x":585,"y":410,"rotation":0,"attributes":{"Designator":"R1","Value":"10kΩ"}}|\n' +
+	'{"type":"WIRE","id":"w1","ticket":3}||{"points":[565,410,545,410],"net":"PROBE_IN"}|\n' +
+	'{"type":"NETPORT","id":"p1","ticket":4}||{"x":545,"y":410,"name":"PROBE_IN"}';
+function volatileSource(options: { client?: string; updateTime?: string; version?: string; uuid?: string; editVersion?: string; body?: string; eol?: string } = {}) {
+	const updateTime = options.updateTime ?? '1791126900000';
+	return '{"type":"DOCHEAD"}||{"docType":"SCH_PAGE","client":"' + (options.client ?? '0123456789abcdef') +
+		'","uuid":"' + (options.uuid ?? volatileTarget.documentUuid) + '","updateTime":' + updateTime +
+		',"version":"' + (options.version ?? updateTime) + '","editVersion":"' + (options.editVersion ?? '4.1.60') + '"}|' +
+		(options.eol ?? '\n') + (options.body ?? volatileBody);
+}
+function volatileSnapshot(text = volatileSource(), documentType: 'schematic' | 'pcb' = 'schematic') {
+	return { schemaVersion: 1, ...volatileTarget, documentType, source: text };
+}
 function snapshot(documentType: 'schematic' | 'pcb' = 'schematic', text = source) {
 	return { schemaVersion: 1, ...target, documentType, source: text };
 }
@@ -66,6 +80,12 @@ test('same-source roundtrip writes the fresh host string once and verifies both 
 			assert.equal(host.sourceReads(), 2);
 			assert.equal(result.beforeSource, source);
 			assert.equal(result.afterSource, source);
+			assert.equal(result.comparison, 'exact');
+			assert.equal(result.rawBeforeEqualsSnapshot, true);
+			assert.equal(result.rawAfterEqualsBefore, true);
+			assert.equal('snapshotVolatile' in result, false);
+			assert.equal('beforeVolatile' in result, false);
+			assert.equal('afterVolatile' in result, false);
 			assert.equal(result.writeAttempted, true);
 			assert.equal(result.written, true);
 			assert.equal(result.dryRun, false);
@@ -85,6 +105,9 @@ test('dry run performs the same target/source guards and never writes', async ()
 		assert.equal(result.written, false);
 		assert.equal(result.beforeSource, source);
 		assert.equal(result.afterSource, source);
+		assert.equal(result.comparison, 'exact');
+		assert.equal(result.rawBeforeEqualsSnapshot, true);
+		assert.equal(result.rawAfterEqualsBefore, true);
 		assert.equal(host.sourceReads(), 1);
 		assert.deepEqual(host.writes, []);
 		await assert.rejects(documentSourceRoundtrip({ ...target, snapshot: snapshot('schematic', source + '\n'), dryRun: true }), /differs from the snapshot/);
@@ -151,6 +174,206 @@ test('fresh source mismatch is refused and caller text is never sent to the sett
 	try {
 		await assert.rejects(documentSourceRoundtrip({ ...target, snapshot: snapshot() }), /differs from the snapshot/);
 		assert.deepEqual(host.writes, []);
+	} finally { host.restore(); }
+});
+
+test('unknown comparison modes are refused before any source read or write', async () => {
+	const host = installHost();
+	try {
+		for (const comparison of ['', 'EXACT', 'dochead-volatile-v2', null, true, {}]) {
+			await assert.rejects(documentSourceRoundtrip({ ...target, snapshot: snapshot(), comparison }), /comparison must be/);
+		}
+		assert.equal(host.sourceReads(), 0);
+		assert.deepEqual(host.writes, []);
+	} finally { host.restore(); }
+});
+
+test('default exact comparison refuses volatile-only header changes before writing', async () => {
+	const before = volatileSource({ client: 'fedcba9876543210', updateTime: '1791126900001' });
+	const host = installHost({ get: async () => before, context: () => volatileTarget });
+	try {
+		for (const explicit of [false, true]) {
+			await assert.rejects(documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(),
+				...(explicit ? { comparison: 'exact' } : {}) }), /differs from the snapshot/);
+		}
+		assert.deepEqual(host.writes, []);
+	} finally { host.restore(); }
+});
+
+test('volatile dry run declares raw inequality, records all three values, and never writes', async () => {
+	for (const eol of ['\n', '\r\n']) {
+		const captured = volatileSource({ eol });
+		const before = volatileSource({ client: 'fedcba9876543210', updateTime: '1791126900001', eol });
+		const host = installHost({ get: async () => before, context: () => volatileTarget });
+		try {
+			const result = (await documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(captured),
+				comparison: 'dochead-volatile-v1', dryRun: true })).result!;
+			assert.equal(result.comparison, 'dochead-volatile-v1');
+			assert.equal(result.rawBeforeEqualsSnapshot, false);
+			assert.equal(result.rawAfterEqualsBefore, true);
+			assert.deepEqual(result.snapshotVolatile, { client: '0123456789abcdef', updateTime: 1791126900000, version: '1791126900000' });
+			assert.deepEqual(result.beforeVolatile, { client: 'fedcba9876543210', updateTime: 1791126900001, version: '1791126900001' });
+			assert.deepEqual(result.afterVolatile, result.beforeVolatile);
+			assert.equal(result.beforeSource, before);
+			assert.equal(result.afterSource, before);
+			assert.equal(result.writeAttempted, false);
+			assert.equal(result.written, false);
+			assert.equal(result.verified, true);
+			assert.equal(result.partial, false);
+			assert.equal(result.incomplete, false);
+			assert.deepEqual(host.writes, []);
+		} finally { host.restore(); }
+	}
+});
+
+test('volatile roundtrip writes only the complete fresh source once and compares only the three header values', async () => {
+	const captured = volatileSource();
+	const before = volatileSource({ client: 'fedcba9876543210', updateTime: '1791126900001' });
+	const after = volatileSource({ client: 'abcdef0123456789', updateTime: '1791126900002' });
+	let reads = 0;
+	const host = installHost({ get: async () => ++reads === 1 ? before : after, context: () => volatileTarget });
+	try {
+		const result = (await documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(captured), comparison: 'dochead-volatile-v1' })).result!;
+		assert.deepEqual(host.writes, [before], 'neither snapshot nor comparison projection may be sent to the setter');
+		assert.equal(host.sourceReads(), 2);
+		assert.equal(result.beforeSource, before);
+		assert.equal(result.afterSource, after);
+		assert.equal(result.rawBeforeEqualsSnapshot, false);
+		assert.equal(result.rawAfterEqualsBefore, false);
+		assert.deepEqual(result.afterVolatile, { client: 'abcdef0123456789', updateTime: 1791126900002, version: '1791126900002' });
+		assert.equal(result.written, true);
+		assert.equal(result.verified, true);
+		assert.equal(result.partial, false);
+		assert.equal(result.incomplete, false);
+	} finally { host.restore(); }
+});
+
+test('volatile mode requires the exact observed header grammar, values, and target before writing', async () => {
+	const valid = volatileSource();
+	const invalid = [
+		volatileSource({ client: '' }),
+		valid.replace('"client":"0123456789abcdef"', '"client":{"value":"0123456789abcdef"}'),
+		volatileSource({ client: '0123456789ABCDEf' }),
+		volatileSource({ client: '0123456789abcde' }),
+		volatileSource({ client: '0123456789abcdef0' }),
+		volatileSource({ updateTime: '179112690000' }),
+		volatileSource({ updateTime: '17911269000000' }),
+		volatileSource({ updateTime: '1791126900000.0' }),
+		volatileSource({ updateTime: '"1791126900000"' }),
+		volatileSource({ updateTime: '-1791126900000' }),
+		volatileSource({ updateTime: '0791126900000' }),
+		volatileSource({ version: '1791126900001' }),
+		volatileSource({ version: '179112690000' }),
+		valid.replace('"version":"1791126900000"', '"version":1791126900000'),
+		volatileSource({ uuid: '23b3c6f2a75c3d5c' }),
+		volatileSource({ uuid: '23B3C6F2A75C3D5B' }),
+		valid.replace('"SCH_PAGE"', '"PCB"'),
+		valid.replace('"editVersion":"4.1.60"', '"unknown":true,"editVersion":"4.1.60"'),
+		valid.replace('"client":"0123456789abcdef"', '"client":"0123456789abcdef","client":"0123456789abcdef"'),
+		valid.replace('"updateTime":1791126900000', '"\\u0075pdateTime":1791126900000,"updateTime":1791126900000'),
+		valid.replace('"docType":"SCH_PAGE","client":"0123456789abcdef"', '"client":"0123456789abcdef","docType":"SCH_PAGE"'),
+		valid.replace('"docType":"SCH_PAGE"', '"docType": "SCH_PAGE"'),
+		valid.replace('"editVersion":"4.1.60"', '"editVersion":"4.1"'),
+		volatileSource({ eol: '\r' }),
+		valid.replace('}|\n', '}\n'),
+		'\uFEFF' + valid,
+		volatileSource({ body: volatileBody + '\n{"type":"DOCHEAD"}||{}|' }),
+		volatileSource({ body: volatileBody + '\n{"type":"TEXT"}||{"text":"DOCHEAD"}|' }),
+	];
+	for (const bad of invalid) {
+		for (const badSnapshot of [true, false]) {
+			const host = installHost({ get: async () => badSnapshot ? valid : bad, context: () => volatileTarget });
+			try {
+				await assert.rejects(documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(badSnapshot ? bad : valid),
+					comparison: 'dochead-volatile-v1' }), hasCode(ErrorCodes.PRECONDITION_REFUSED));
+				assert.deepEqual(host.writes, []);
+			} finally { host.restore(); }
+		}
+	}
+	const host = installHost({ type: 3, get: async () => valid, context: () => volatileTarget });
+	try {
+		await assert.rejects(documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(valid, 'pcb'),
+			comparison: 'dochead-volatile-v1' }), /only schematic/);
+		assert.equal(host.sourceReads(), 0);
+		assert.deepEqual(host.writes, []);
+	} finally { host.restore(); }
+});
+
+test('volatile projection preserves every other header and body byte including final delimiter and record order', async () => {
+	const captured = volatileSource();
+	const mutations = [
+		volatileSource({ editVersion: '4.1.61' }),
+		volatileSource({ eol: '\r\n' }),
+		volatileSource({ body: volatileBody.replace('"x":585', '"x":586') }),
+		volatileSource({ body: volatileBody.replace('"Value":"10kΩ"', '"Value":"20kΩ"') }),
+		volatileSource({ body: volatileBody.replace('[565,410,545,410]', '[565,410,540,410]') }),
+		volatileSource({ body: volatileBody.replace('"id":"w1"', '"id":"w2"') }),
+		volatileSource({ body: volatileBody.replace('"ticket":3', '"ticket":4') }),
+		volatileSource({ body: volatileBody.split('\n').reverse().join('\n') }),
+		volatileSource({ body: volatileBody.replace('}||{"points"', '}|{"points"') }),
+		volatileSource({ body: volatileBody + '|' }),
+		volatileSource({ body: volatileBody + '\n' }),
+	];
+	for (const changed of mutations) {
+		const host = installHost({ get: async () => changed, context: () => volatileTarget });
+		try {
+			await assert.rejects(documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(captured),
+				comparison: 'dochead-volatile-v1', dryRun: true }), /differs from the snapshot/);
+			assert.deepEqual(host.writes, []);
+		} finally { host.restore(); }
+	}
+});
+
+test('volatile post-write body or malformed header changes remain incomplete with raw evidence and no retry', async () => {
+	const before = volatileSource();
+	for (const after of [
+		volatileSource({ body: volatileBody.replace('"x":585', '"x":586') }),
+		before.replace('"client":"0123456789abcdef"', '"client":"invalid"'),
+		volatileSource({ body: volatileBody + '\nDOCHEAD' }),
+	]) {
+		let reads = 0;
+		const host = installHost({ get: async () => ++reads === 1 ? before : after, context: () => volatileTarget });
+		try {
+			const result = (await documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(before),
+				comparison: 'dochead-volatile-v1' })).result!;
+			assert.equal(result.beforeSource, before);
+			assert.equal(result.afterSource, after);
+			assert.equal(result.rawAfterEqualsBefore, false);
+			assert.equal(result.verified, false);
+			assert.equal(result.partial, true);
+			assert.equal(result.incomplete, true);
+			assert.deepEqual(host.writes, [before]);
+			if (after.includes('invalid') || after.endsWith('DOCHEAD')) {
+				assert.equal(result.afterVolatile, null);
+				assert.match(String(result.readbackError), /DOCHEAD|header byte grammar/);
+			}
+		} finally { host.restore(); }
+	}
+});
+
+test('volatile mode still requires setter true and reports unreadable after values as unknown', async () => {
+	const before = volatileSource();
+	for (const set of [async () => false, async () => undefined, async () => { throw Error('host rejected'); }]) {
+		const host = installHost({ get: async () => before, set, context: () => volatileTarget });
+		try {
+			const result = (await documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(before), comparison: 'dochead-volatile-v1' })).result!;
+			assert.equal(result.rawBeforeEqualsSnapshot, true);
+			assert.equal(result.rawAfterEqualsBefore, true);
+			assert.equal(result.verified, false);
+			assert.equal(result.incomplete, true);
+			assert.deepEqual(host.writes, [before]);
+		} finally { host.restore(); }
+	}
+	let reads = 0;
+	const host = installHost({ get: async () => ++reads === 1 ? before : undefined, context: () => volatileTarget });
+	try {
+		const result = (await documentSourceRoundtrip({ ...volatileTarget, snapshot: volatileSnapshot(before), comparison: 'dochead-volatile-v1' })).result!;
+		assert.equal(result.rawAfterEqualsBefore, false);
+		assert.equal(result.afterSource, null);
+		assert.equal(result.afterVolatile, null);
+		assert.equal(result.verified, false);
+		assert.equal(result.incomplete, true);
+		assert.deepEqual(host.writes, [before]);
 	} finally { host.restore(); }
 });
 
