@@ -1,6 +1,6 @@
 # npm pack 语义：只影响通过 npm/pnpm 打包安装（如 `dsh plugin add github:...`）
 # 的内容范围；不影响 git、Go 工具链、本地 file:/link: 安装（symlink 全量可见）。
-# 保留：package.json / cordis.patch.yml / mcp/ / .agents/skills/easyeda-agent/ / README* / LICENSE*
+# 分发范围以 package.json 的 files 白名单为准；此处仅补充排除构建产物。
 .agents/memory/
 .agents/worktrees/
 .agents/settings.local.json

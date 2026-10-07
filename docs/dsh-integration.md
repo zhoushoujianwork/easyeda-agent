@@ -37,10 +37,20 @@ profile 的活跃 bundle 层，注入两个行：
 `process.getBuiltinModule('node:url')` 访问内置模块，兼容本包最低 Node 20.17，
 不依赖 loader 是否提供 `require`。已有安装需更新 bundle 并重启 DSH。
 
+根包显式提供 `main: ./index.js`，兼容 DSH 安装器的插件入口检查
+（[#274](https://github.com/zhoushoujianwork/easyeda-agent/issues/274)）。该 CommonJS
+入口只导出空的 Cordis `apply`，不启动 MCP、不重复注册 Skill；实际功能由 bundle patch
+注入。入口源码直接随 Git/npm 打包，无需 `prepare` 构建。MCP SDK 运行依赖也在根包声明，
+Git 安装不需要另行进入 `mcp/` 安装依赖；包的 `files` 清单限定入口、patch、MCP 源码与
+公开 Skill，避免把 Go/connector 源码和本地运行资料带入插件包。
+
+遇到该报错时应安装包含修复的 Git ref；旧 release tag 内容保持不变。尚未集成到所用
+ref 时，不要仅靠重复安装同一 tag 或在用户安装目录中手工创建 `index.js`。
+
 **已验证（2026-08-14）**：`dsh plugin add file:...` 到 headless profile → 自动
 提升为 bundle 层 → headless 会话实测模型可见全部 11 个 `mcp__easyeda__*` 工具
-+ `easyeda-agent` skill。`.npmignore` 已排除 bin/dist 等构建产物，`github:`
-  安装只会打包 package.json / cordis.patch.yml / mcp/ / .agents/skills/easyeda-agent/ 等。
++ `easyeda-agent` skill。这是当时的本地 `file:` 安装结果，不覆盖后续 DSH 版本的
+Git 分发入口检查；当前包内容以根 `package.json` 的 `files` 清单为准。
 
 **版本同步**：根 `package.json` 的 `version` 应与 release tag 对齐（`make release`
 目前不自动改它，发版前手动同步一次即可）。
@@ -121,6 +131,18 @@ node --test scripts/tests/test_dsh_bundle.mjs
 中文/空格/URL 转义；并在当前系统的临时 profile 中按解析路径启动 Node、读取 Skill。
 Windows 路径转换可以在 Mac 上用 Node 的 Windows 转换模式验证，但不等同于
 Windows DSH 实际启动。CI 的 macOS/Linux/Windows 原生安装矩阵均运行此测试。
+
+分发回归从真实 npm tarball 安装到仓库外的临时 profile，校验入口、patch 与 Skill，
+再通过安装包自己的 SDK 启动真实 stdio MCP，完成握手、工具枚举与离线 action 发现：
+
+```bash
+npm ci --ignore-scripts
+npm run test:dsh
+```
+
+临时安装使用 npm 离线缓存（由前面的 `npm ci` 填充），不借用 checkout 的
+`mcp/node_modules`。协议测试使用最小 CLI 目录 fixture，不连接 daemon 或编辑器；
+因此证明包可解析、依赖齐全和 MCP 可启动，不代替 DSH Web 或真实 EDA 的现场验收。
 
 **路径修复已在 macOS 验证**：使用本机 DSH loader 1.0.2 解析实际 bundle YAML，
 在含中文、空格、`#`、`%` 的临时 profile 中定位包目录，启动仓库真实 stdio MCP，

@@ -115,6 +115,11 @@ bundle 使用 Node 内置 `fileURLToPath` 同时解析 MCP server 与 Skill 目�
 盘符、UNC、中文和空格；不要手工拼盘符或把 URL 的 `pathname` 当成本机文件路径。
 Node 版本遵循 bundle 的要求（至少 20.17）。
 
+DSH Git 安装时报 `entry file missing: index.js` 时，使用包含入口修复的 Git ref
+重新安装 bundle；旧 tag 的包内容不会随分支修复改变。bundle 的入口仅供插件安装器
+解析，MCP 与 Skill 仍由 `cordis.patch.yml` 加载。根包同时声明 MCP SDK 运行依赖，
+无需在安装目录中手工补文件或另装 `mcp/` 子包。
+
 安装/升级失败须保留非零退出码，不能只依据最后一行提示判定成功。普通 Skill 更新
 应替换完整发布目录，清理已删除的旧参考；`--preserve` 是混合本地内容，保留旧版本标记，
 不能宣称全部文件已升级。daemon 启动时只同步自身版本的 Skill，版本升级由显式
