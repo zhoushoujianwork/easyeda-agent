@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.1] - 2026-10-08
+
+- Fix DSH Git plugin installation failing with `entry file missing: index.js` (#274) by shipping an explicit, side-effect-free package entry.
+- Declare the MCP SDK at the bundle root so Git installations can start the bundled stdio MCP without separately installing the nested adapter package.
+- Restrict plugin packaging to the public entry, bundle patch, MCP sources and Agent Skill; exclude local logs and unrelated repository content.
+- Add real tarball installation, MCP initialization and offline discovery regression coverage to the macOS/Linux/Windows native CI matrix. Dependency installation uses the registry when npm metadata is absent from a clean cache.
+- Synchronize the DSH bundle, CLI/daemon, connector asset and Skill release versions to 1.9.1. Connector runtime logic and action contracts are unchanged; existing 1.9.x connectors remain compatible.
+- This patch covers DSH distribution and startup. It does not expand the existing EDA design acceptance scope or certify Windows DSH Web UI behavior.
+
 ## [1.9.0] - 2026-10-01
 
 - Add schematic PNG/JPEG/SVG reference-image import and ID-based geometry management; fix image deletion and explicit intrinsic sizing.
