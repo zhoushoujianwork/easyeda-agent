@@ -40,7 +40,10 @@ test('packed DSH bundle installs outside the checkout and starts its actual MCP'
   mkdirSync(profile, { recursive: true });
   writeFileSync(path.join(profile, 'package.json'), JSON.stringify({ name: 'dsh-packaging-fixture', private: true }));
   // Install the tarball, never a file: directory dependency or a copied SDK.
-  await npm(['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false',
+  // A fresh npm ci cache contains locked tarballs, not the registry metadata
+  // needed to resolve a consumer's dependencies. Allow the normal registry
+  // lookup rather than silently depending on a developer's warm metadata cache.
+  await npm(['install', '--prefer-offline', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false',
     path.join(temporary, packed[0].filename)], profile);
   const profileRequire = createRequire(path.join(profile, 'package.json'));
   const bundleManifest = profileRequire.resolve('easyeda-agent-dsh/package.json');
