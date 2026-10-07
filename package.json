@@ -4,6 +4,17 @@
   "private": true,
   "description": "EasyEDA Pro (JLC EDA) automation for DeepSeek Harness: MCP bridge + agent skill bundle",
   "license": "MIT",
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "mcp/package.json",
+    "mcp/src/",
+    ".agents/skills/easyeda-agent/"
+  ],
+  "scripts": {
+    "test:dsh": "node --test scripts/tests/test_dsh_bundle.mjs scripts/tests/test_dsh_packaging.mjs"
+  },
   "engines": {
     "node": ">=20.17.0"
   },
@@ -11,5 +22,8 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0"
   }
 }
