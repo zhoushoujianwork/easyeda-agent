@@ -140,8 +140,9 @@ npm ci --ignore-scripts
 npm run test:dsh
 ```
 
-临时安装使用 npm 离线缓存（由前面的 `npm ci` 填充），不借用 checkout 的
-`mcp/node_modules`。协议测试使用最小 CLI 目录 fixture，不连接 daemon 或编辑器；
+临时安装优先使用 npm 缓存，缺少包或 registry 元数据时正常联网解析依赖，不借用
+checkout 的 `mcp/node_modules`。`npm ci` 只保证锁定 tarball 已下载，不保证新消费者安装
+所需的 registry 元数据已缓存。协议测试使用最小 CLI 目录 fixture，不连接 daemon 或编辑器；
 因此证明包可解析、依赖齐全和 MCP 可启动，不代替 DSH Web 或真实 EDA 的现场验收。
 
 **路径修复已在 macOS 验证**：使用本机 DSH loader 1.0.2 解析实际 bundle YAML，
