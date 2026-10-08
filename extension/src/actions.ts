@@ -1,4 +1,5 @@
 import { projectOpen, projectExport } from './project-transfer';
+import { pcbSilkImportBitmap } from './pcb-bitmap-silk';
 import { documentSourceGet, documentSourceRoundtrip } from './document-source';
 import { listSystemCommonLibrary } from './common-library';
 import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
@@ -3054,9 +3055,15 @@ const schematicImageCreate: Handler = async (payload) => {
 	const fileName = requireString(payload, 'fileName');
 	const x = requireNumber(payload, 'x');
 	const y = requireNumber(payload, 'y');
-	const width = optionalNumber(payload, 'width');
-	const height = optionalNumber(payload, 'height');
-	const rotation = optionalNumber(payload, 'rotation') ?? 0;
+	const width = requireNumber(payload, 'width');
+	const height = requireNumber(payload, 'height');
+	const rotation = payload.rotation === undefined ? 0 : requireNumber(payload, 'rotation');
+	if (![x, y, width, height, rotation].every(Number.isFinite) || width <= 0 || height <= 0) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Reference image coordinates/rotation must be finite and width/height must be positive finite numbers.');
+	}
+	if (payload.mirror !== undefined && typeof payload.mirror !== 'boolean') {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Reference image mirror must be boolean.');
+	}
 	const mirror = optionalBoolean(payload, 'mirror') === true;
 
 	const mimeType = schImageMimeFromFileName(fileName);
@@ -3080,6 +3087,9 @@ const schematicImageCreate: Handler = async (payload) => {
 		throw edaError(err, 'Failed to decode the reference image (expected base64 in dataBase64).');
 	}
 
+	if (typeof eda === 'undefined' || typeof eda.sch_PrimitiveObject?.create !== 'function') {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'unsupported: schematic embedded reference-object create API unavailable.');
+	}
 	let object;
 	try {
 		object = await eda.sch_PrimitiveObject.create(file, x, y, width, height, rotation, mirror, fileName);
@@ -14815,6 +14825,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.silk.list': pcbSilkList,
 	'pcb.silk.add': pcbSilkAdd,
 	'pcb.silk.import_svg': pcbSilkImportSvg,
+	'pcb.silk.import_bitmap': pcbSilkImportBitmap,
 	'pcb.image.create': pcbImageCreate,
 	'pcb.image.list': pcbImageList,
 	'pcb.image.modify': pcbImageModify,

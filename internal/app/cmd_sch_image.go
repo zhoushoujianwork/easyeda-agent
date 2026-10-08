@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg" // register JPEG decoder for reference-image intrinsic sizing
 	_ "image/png"  // register PNG decoder for reference-image intrinsic sizing
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+const maxSchImageSourceBytes = 8 << 20
+const maxSchImagePixels = 16_000_000
 
 // newSchImageCmd wires `easyeda sch image create/list/modify` — the CLI path
 // for issue #272's schematic reference images (non-electrical PNG/JPEG/SVG
@@ -77,7 +81,10 @@ Supported extensions: .png, .jpg, .jpeg, .svg — anything else is refused
 before any file is read.
 
 --dry-run reads and validates the local file (size limit, extension,
-resolved width/height) without contacting the connector.`,
+complete PNG/JPEG decoding or SVG root and source dimensions, resolved
+positive finite width/height) without contacting the connector. Sources are
+limited to 8 MiB and raster images to 16 million pixels. Coordinates and
+rotation must be finite; an explicitly supplied dimension must be positive.`,
 		Example: `  easyeda sch image create --file ./module-photo.png --x 2000 --y -1000
   easyeda sch image create --file ./pinout.svg --x 0 --y 0 --width 800 --dry-run
   easyeda sch image create --file "接口示意图.jpg" --x 500 --y -500 --rotation 90`,
@@ -88,12 +95,15 @@ resolved width/height) without contacting the connector.`,
 			if dryRun {
 				defer setDispatchDryRun(true)()
 			}
-			data, err := os.ReadFile(file)
-			if err != nil {
-				return fmt.Errorf("read --file: %w", err)
+			if !schImageFinite(x, y, rotation) {
+				return fmt.Errorf("x/y/rotation must be finite numbers")
 			}
 			if err := validateSchImageExt(file); err != nil {
 				return err
+			}
+			data, err := readSchImageSource(file)
+			if err != nil {
+				return fmt.Errorf("read --file: %w", err)
 			}
 			fileName := filepath.Base(file)
 
@@ -241,12 +251,75 @@ already changed for whatever DID apply).`,
 // network round-trip — mirrors the connector's own MIME check so the CLI
 // gives the same clear error without a wasted request.
 func validateSchImageExt(file string) error {
-	switch filepath.Ext(file) {
-	case ".png", ".jpg", ".jpeg", ".svg", ".PNG", ".JPG", ".JPEG", ".SVG":
+	switch strings.ToLower(filepath.Ext(file)) {
+	case ".png", ".jpg", ".jpeg", ".svg":
 		return nil
 	default:
 		return fmt.Errorf("unsupported reference-image extension %q — supported: .png, .jpg, .jpeg, .svg", filepath.Ext(file))
 	}
+}
+
+// Bound local reads as well as the dispatched payload; a changing file must
+// not bypass the preflight size limit or force an unbounded allocation.
+func readSchImageSource(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxSchImageSourceBytes {
+		return nil, fmt.Errorf("reference image must be a regular file containing 1 to %d bytes", maxSchImageSourceBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxSchImageSourceBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 || len(data) > maxSchImageSourceBytes {
+		return nil, fmt.Errorf("reference image must contain 1 to %d bytes", maxSchImageSourceBytes)
+	}
+	return data, nil
+}
+
+func schImageFinite(values ...float64) bool {
+	for _, value := range values {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+// Validate the source even with two explicit target dimensions. DecodeConfig
+// alone accepts a valid header followed by truncated/corrupt pixel data.
+func validateSchImageSource(data []byte, fileName string) (float64, float64, error) {
+	if err := validateSchImageExt(fileName); err != nil {
+		return 0, 0, err
+	}
+	if len(data) == 0 || len(data) > maxSchImageSourceBytes {
+		return 0, 0, fmt.Errorf("reference image must contain 1 to %d bytes", maxSchImageSourceBytes)
+	}
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == ".svg" {
+		return svgIntrinsicSize(data)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return 0, 0, fmt.Errorf("decode raster image header: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > maxSchImagePixels/cfg.Height {
+		return 0, 0, fmt.Errorf("reference image exceeds 16 million pixels or has invalid dimensions")
+	}
+	if (ext == ".png" && format != "png") || (ext != ".png" && format != "jpeg") {
+		return 0, 0, fmt.Errorf("image content does not match extension")
+	}
+	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+		return 0, 0, fmt.Errorf("decode raster image: %w", err)
+	}
+	return float64(cfg.Width), float64(cfg.Height), nil
 }
 
 // resolveSchImageDims fills in whichever of width/height the caller omitted,
@@ -267,24 +340,29 @@ func validateSchImageExt(file string) error {
 // width/height was explicitly given, the other is derived to preserve the
 // source's aspect ratio.
 func resolveSchImageDims(data []byte, fileName string, width float64, widthSet bool, height float64, heightSet bool) (float64, float64, error) {
-	if widthSet && heightSet {
-		return width, height, nil
+	if widthSet && (!schImageFinite(width) || width <= 0) || heightSet && (!schImageFinite(height) || height <= 0) {
+		return 0, 0, fmt.Errorf("explicit width/height must be positive finite numbers")
 	}
-	srcW, srcH, err := schImageIntrinsicSize(data, fileName)
+	srcW, srcH, err := validateSchImageSource(data, fileName)
 	if err != nil {
 		return 0, 0, err
 	}
-	if srcW <= 0 || srcH <= 0 {
+	if !schImageFinite(srcW, srcH) || srcW <= 0 || srcH <= 0 {
 		return 0, 0, fmt.Errorf("source image has non-positive intrinsic size (%gx%g)", srcW, srcH)
 	}
 	switch {
+	case widthSet && heightSet:
 	case widthSet:
-		return width, width * srcH / srcW, nil
+		height = width * (srcH / srcW)
 	case heightSet:
-		return height * srcW / srcH, height, nil
+		width = height * (srcW / srcH)
 	default:
-		return srcW, srcH, nil
+		width, height = srcW, srcH
 	}
+	if !schImageFinite(width, height) || width <= 0 || height <= 0 {
+		return 0, 0, fmt.Errorf("resolved width/height must be positive finite numbers")
+	}
+	return width, height, nil
 }
 
 // schImageIntrinsicSize decodes the real pixel size of a PNG/JPEG, or the
@@ -305,6 +383,7 @@ func schImageIntrinsicSize(data []byte, fileName string) (float64, float64, erro
 // declared size — width/height (numbers, ignoring a unit suffix like "mm")
 // or, failing that, the viewBox's third/fourth numbers.
 type svgSizeAttrs struct {
+	XMLName xml.Name
 	Width   string `xml:"width,attr"`
 	Height  string `xml:"height,attr"`
 	ViewBox string `xml:"viewBox,attr"`
@@ -312,29 +391,41 @@ type svgSizeAttrs struct {
 
 func svgIntrinsicSize(data []byte) (float64, float64, error) {
 	dec := xml.NewDecoder(bytes.NewReader(data))
-	dec.Strict = false
 	for {
 		tok, err := dec.Token()
 		if err != nil {
 			return 0, 0, fmt.Errorf("no root <svg> element found: %w", err)
 		}
+		if chars, ok := tok.(xml.CharData); ok && strings.TrimSpace(string(chars)) != "" {
+			return 0, 0, fmt.Errorf("expected SVG root")
+		}
 		se, ok := tok.(xml.StartElement)
-		if !ok || se.Name.Local != "svg" {
+		if !ok {
 			continue
+		}
+		if se.Name.Local != "svg" || se.Name.Space != "" && se.Name.Space != "http://www.w3.org/2000/svg" {
+			return 0, 0, fmt.Errorf("expected SVG root")
 		}
 		var attrs svgSizeAttrs
 		if err := dec.DecodeElement(&attrs, &se); err != nil {
-			// DecodeElement having consumed the token stream is fine even on
-			// error here — the attrs struct is still populated from se.Attr.
-			for _, a := range se.Attr {
-				switch a.Name.Local {
-				case "width":
-					attrs.Width = a.Value
-				case "height":
-					attrs.Height = a.Value
-				case "viewBox":
-					attrs.ViewBox = a.Value
+			return 0, 0, fmt.Errorf("decode SVG: %w", err)
+		}
+		for {
+			tail, err := dec.Token()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return 0, 0, fmt.Errorf("decode SVG: %w", err)
+			}
+			switch tail := tail.(type) {
+			case xml.CharData:
+				if strings.TrimSpace(string(tail)) != "" {
+					return 0, 0, fmt.Errorf("unexpected content after SVG root")
 				}
+			case xml.Comment:
+			default:
+				return 0, 0, fmt.Errorf("unexpected content after SVG root")
 			}
 		}
 		if w, h, ok := parseSvgNumericSize(attrs.Width, attrs.Height); ok {
@@ -350,23 +441,26 @@ func svgIntrinsicSize(data []byte) (float64, float64, error) {
 func parseSvgNumericSize(w, h string) (float64, float64, bool) {
 	wv, wErr := strconv.ParseFloat(stripSvgUnit(w), 64)
 	hv, hErr := strconv.ParseFloat(stripSvgUnit(h), 64)
-	if wErr != nil || hErr != nil || wv <= 0 || hv <= 0 {
+	if wErr != nil || hErr != nil || !schImageFinite(wv, hv) || wv <= 0 || hv <= 0 {
 		return 0, 0, false
 	}
 	return wv, hv, true
 }
 
 func parseSvgViewBoxSize(vb string) (float64, float64, bool) {
-	fields := strings.Fields(vb)
+	fields := strings.Fields(strings.ReplaceAll(vb, ",", " "))
 	if len(fields) != 4 {
 		return 0, 0, false
 	}
-	w, wErr := strconv.ParseFloat(fields[2], 64)
-	h, hErr := strconv.ParseFloat(fields[3], 64)
-	if wErr != nil || hErr != nil || w <= 0 || h <= 0 {
-		return 0, 0, false
+	values := [4]float64{}
+	for i, field := range fields {
+		value, err := strconv.ParseFloat(field, 64)
+		if err != nil || !schImageFinite(value) {
+			return 0, 0, false
+		}
+		values[i] = value
 	}
-	return w, h, true
+	return values[2], values[3], values[2] > 0 && values[3] > 0
 }
 
 // stripSvgUnit trims a trailing unit suffix (mm/cm/in/px/pt/pc/em/ex/%) from

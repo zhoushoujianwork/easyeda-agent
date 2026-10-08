@@ -158,6 +158,18 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// system.health is answered by the daemon itself; it needs no connector.
+	if req.Action == protocol.BitmapSilkAction {
+		started := time.Now().UTC()
+		message := protocol.BitmapSilkUnsupported
+		if _, err := protocol.DecodeBitmapSilkPayload(req.Payload); err != nil {
+			message = err.Error()
+		}
+		resp := errorResponse(req.ID, "PRECONDITION_REFUSED", message, "")
+		s.audit.Append(fromResponse(started, &req, &resp))
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
 	if req.Action == "system.health" {
 		started := time.Now().UTC()
 		resp := s.systemHealthResponse(req.ID)

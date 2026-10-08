@@ -46,6 +46,15 @@ easyeda sch sheet-geometry --project <project> --doc <page-uuid> --json
 参考图（PNG 含透明背景、JPEG 带 mirror+rotation、SVG 带 rotation）都渲染在电路旁、
 不与任何导线接触。删除走既有 `sch prim-delete --ids <id>`，没有单独的 `sch image delete`。
 
+上述 `live-verified` 是既有原理图参考图片场景的历史记录，本轮未操作 EDA，也未补签现场
+通过。PCB 参考图片另用 DOCUMENT 13；PNG/JPEG 转制造丝印的离线候选与 `unsupported`
+现场写入见 [PCB 图片边界](pcb-layout.md#bitmap-silk-import)，不能混用验证结论。
+
+创建前始终完整解码源文件，即使显式给了两个目标尺寸；PNG/JPEG 扩展名必须与内容一致，
+SVG 必须有完整合法的根与可解析源尺寸。源文件限 8 MiB、位图限 1600 万像素；坐标和
+旋转须有限，显式尺寸须为正有限值。CLI 补齐宽高后才调用 typed create；裸调用须显式
+传两个正有限尺寸。宿主缺 `sch_PrimitiveObject.create` 时返回 `unsupported`，不改走 GUI。
+
 坐标是**原理图 raw 单位（0.01 inch，y-UP）**，不是 PCB 的 mil，别把 PCB 侧
 `pcb silk-import-svg` 的单位习惯带过来。`(x,y)` **已现场实测确认是左上角**（真机：
 `--x 0 --y 0` 创建的图元，回读 bbox 是 `{minX:0,maxX:W,minY:-H,maxY:0}`——落点在

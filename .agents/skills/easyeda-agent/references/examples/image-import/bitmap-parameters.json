@@ -1,0 +1,15 @@
+{
+  "file": "logo.png",
+  "x": 1000,
+  "y": -1000,
+  "width": 600,
+  "keepAspect": true,
+  "layer": 3,
+  "rotation": 0,
+  "mirror": false,
+  "threshold": 128,
+  "background": "white",
+  "invert": false,
+  "simplify": true,
+  "minLineWidth": 6
+}

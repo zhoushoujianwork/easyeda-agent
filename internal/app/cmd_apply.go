@@ -202,6 +202,11 @@ Precedence: CLI flag > playbook file > built-in default.`,
 				defer setDispatchDryRun(true)()
 				return r.printPlan()
 			}
+			for _, step := range pb.Steps {
+				if step.Action == protocol.BitmapSilkAction {
+					return fmt.Errorf("%s", protocol.BitmapSilkUnsupported)
+				}
+			}
 			if resume {
 				if err := r.loadJournal(); err != nil {
 					return err
@@ -362,6 +367,11 @@ func preflight(pb *playbook, vars map[string]string) []string {
 		if s.Action != "" {
 			if _, ok := catalog[s.Action]; !ok {
 				errs = append(errs, fmt.Sprintf("step %s: unknown action %q", ref, s.Action))
+			}
+			if s.Action == protocol.BitmapSilkAction {
+				if _, err := protocol.DecodeBitmapSilkPayload(s.Payload); err != nil {
+					errs = append(errs, fmt.Sprintf("step %s: %v", ref, err))
+				}
 			}
 		}
 		if len(s.LiteralPayloadKeys) > 0 && s.Action == "" {
@@ -762,6 +772,9 @@ func (r *applyRunner) printPlan() error {
 		}
 		if s.Checkpoint {
 			flags += " [checkpoint]"
+		}
+		if s.Action == protocol.BitmapSilkAction {
+			flags += " [unsupported: offline plan only]"
 		}
 		fmt.Fprintf(r.stdout, "  [%d/%d] %-16s %-7s %s%s\n", i+1, len(r.pb.Steps), r.stepRef(i), stepKind(s), target, flags)
 	}

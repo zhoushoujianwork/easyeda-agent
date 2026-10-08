@@ -97,6 +97,7 @@ CLI 完整读取单次 action 的 HTTP 响应，最多 32 MiB；health 清单另
 | `sch no-connect` | 显式设置/清除 NC，不创建零长线，不推断缺失数据为 NC |
 | `sch replace/rebind-symbol/rebind-footprint` | rebind 先回读 Device association，再创建并回读候选，之后才删除原件；恢复后逐字段核对设备/符号或封装绑定、`uniqueId`、位姿和属性。失败回执含 phase、原件/候选存在性和 rollback 事实。超时后禁止盲重试及 `pcb import-changes`，先新鲜回读。换器件另查看 pinDiff，按引脚差异重连和验收 |
 | `sch export-image` | 文档渲染 SVG/PNG/PDF；`--ids` 导局部，不依赖视口截图 |
+| `sch image create/list/modify`，`schematic.image.create/list/modify` | 非电气 PNG/JPEG/SVG；raw 单位、y-UP、源左上角 anchor；list 只读几何，modify 不替换内容，删除走 `schematic.primitives.delete`。历史现场验证仅参考图片，见 [原理图](schematic.md) |
 | `sch read/check/bridge-check/drc/gate` | 用法与判读见 [schematic.md](schematic.md)；SDK DRC 聚合值不代表 UI 所有警告消失 |
 | `sch save` | 通过阶段验证后保存并确认 `saved:true`，不能只依赖防抖 autosave |
 
@@ -224,6 +225,18 @@ EasyEDA 交互界面兜底。能力边界与未来 typed 验收见 [project-impo
 - `pcb.view.filter.get` — 只读返回当前 PCB 画布过滤配置 → `easyeda pcb view-filter`。当前官方 SDK 只有 getter，没有“元件属性”显隐 setter；因此自动隐藏/恢复保持 `unsupported`，不能用 `pcb_PrimitiveAttribute.modify` 改持久属性，也不能点击 GUI 兜底。
 - `pcb.snapshot` — `--fit-mode board|all|none`；默认 `board` 先执行公开 `zoomToBoardOutline()` 再抓取当前渲染区，返回实际 `fitModeApplied` / `fitApi` / `captureKind`。它是 board-fitted viewport PNG，`objectLevelExport=false`；不能冒充编辑器菜单的对象级“复制为 SVG/PNG”，后者当前没有公开 `eda.*` 包装。旧 `--fit=true|false` 仅兼容映射为 `all|none`。
 - `pcb.nets.list` — PCB 全部网络
+- `pcb.image.create/list/modify/delete` — PNG/JPEG/SVG 参考图片，只支持 DOCUMENT 13；
+  mil、y-UP、源左上角 anchor；create 须给宽或高，list 返回实际层和 bbox，不返回 binary。
+  modify/delete 拒绝非 DOCUMENT 对象，部分写入保留 ID 并失败；保存重载后重新回读。
+- `pcb.silk.import_svg` — `pcb silk-import-svg` 的既有 SVG 填充轮廓 action，创建
+  `pcb_PrimitiveImage`；与嵌入参考图片的 `pcb_PrimitiveObject` 分开。
+- `pcb.silk.import_bitmap` — `pcb silk-import-bitmap` 的位图丝印候选契约。
+  payload 包含 `schemaVersion:1`、`source`（`fileName/format/sha256/pixelWidth/pixelHeight`）、
+  `conversion`（`threshold/background/invert/simplify`）、`polygons`、`x/y/width/height`、
+  `rotation/mirror/layer`、`units:"mil"` 和 `anchor:"top-left"`。层为显式 3/4，源画布
+  左上角定位；本地 `--dry-run` 和 `--out` 不访问宿主。连接器 action 固定返回
+  `PRECONDITION_REFUSED` / `unsupported`，没有 `force` 绕过。字段和边界见
+  [位图丝印候选](pcb-layout.md#bitmap-silk-import)。
 - `pcb dump --include-copper --out board.json` — 生成自包含快照；焊盘保留原始 shape、旋转和
   specialPad，铜按 routing/vias/pours/poured/regions/fills 分别标记 available/unknown，
   `semanticSha256` 排除采集时间与自身哈希后用于执行前 stale 检查。

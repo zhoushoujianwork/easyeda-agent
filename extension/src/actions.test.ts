@@ -4286,7 +4286,7 @@ test('schematic.image.create decodes base64, infers PNG mime from extension, and
 
 	const dataBase64 = Buffer.from('fake-png-bytes').toString('base64');
 	const res: any = await runAction('schematic.image.create', {
-		dataBase64, fileName: 'module.png', x: 100, y: -50, width: 400,
+		dataBase64, fileName: 'module.png', x: 100, y: -50, width: 400, height: 300,
 	});
 
 	assert.equal(res.result.primitiveId, 'img-1');
@@ -4315,9 +4315,9 @@ test('schematic.image.create infers JPEG mime for .jpg/.jpeg and SVG mime for .s
 	t.after(() => { delete g.eda; });
 
 	const dataBase64 = Buffer.from('x').toString('base64');
-	await runAction('schematic.image.create', { dataBase64, fileName: 'photo.jpg', x: 0, y: 0 });
-	await runAction('schematic.image.create', { dataBase64, fileName: 'photo.jpeg', x: 0, y: 0 });
-	await runAction('schematic.image.create', { dataBase64, fileName: 'pinout.svg', x: 0, y: 0 });
+	await runAction('schematic.image.create', { dataBase64, fileName: 'photo.jpg', x: 0, y: 0, width: 100, height: 60 });
+	await runAction('schematic.image.create', { dataBase64, fileName: 'photo.jpeg', x: 0, y: 0, width: 100, height: 60 });
+	await runAction('schematic.image.create', { dataBase64, fileName: 'pinout.svg', x: 0, y: 0, width: 100, height: 60 });
 
 	assert.deepEqual(seenTypes, ['image/jpeg', 'image/jpeg', 'image/svg+xml']);
 });
@@ -4330,7 +4330,7 @@ test('schematic.image.create rejects an unsupported extension before touching ed
 
 	const dataBase64 = Buffer.from('x').toString('base64');
 	await assert.rejects(
-		() => runAction('schematic.image.create', { dataBase64, fileName: 'artwork.bmp', x: 0, y: 0 }),
+		() => runAction('schematic.image.create', { dataBase64, fileName: 'artwork.bmp', x: 0, y: 0, width: 100, height: 60 }),
 		(err: any) => err.code === 'PRECONDITION_REFUSED' && /Unsupported reference-image extension/.test(err.message),
 	);
 	assert.equal(called, false, 'create must not be called for a rejected extension');
@@ -4344,7 +4344,7 @@ test('schematic.image.create rejects a payload over the 8 MiB limit', async t =>
 
 	const big = Buffer.alloc((8 << 20) + 1, 1);
 	await assert.rejects(
-		() => runAction('schematic.image.create', { dataBase64: big.toString('base64'), fileName: 'big.png', x: 0, y: 0 }),
+		() => runAction('schematic.image.create', { dataBase64: big.toString('base64'), fileName: 'big.png', x: 0, y: 0, width: 100, height: 60 }),
 		(err: any) => err.code === 'PRECONDITION_REFUSED' && /exceeding the .* limit/.test(err.message),
 	);
 	assert.equal(called, false, 'create must not be called when the size limit is exceeded');
@@ -4356,7 +4356,7 @@ test('schematic.image.create rejects empty image data', async t => {
 	t.after(() => { delete g.eda; });
 
 	await assert.rejects(
-		() => runAction('schematic.image.create', { dataBase64: '', fileName: 'x.png', x: 0, y: 0 }),
+		() => runAction('schematic.image.create', { dataBase64: '', fileName: 'x.png', x: 0, y: 0, width: 100, height: 60 }),
 		(err: any) => err.code === 'MISSING_PAYLOAD_FIELD',
 	);
 });

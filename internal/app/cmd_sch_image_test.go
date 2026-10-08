@@ -3,12 +3,17 @@ package app
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -337,10 +342,13 @@ func TestResolveSchImageDims_HeightOnly_PreservesAspectRatio(t *testing.T) {
 	}
 }
 
-// Both explicit: no decoding needed, values pass straight through even for a
-// corrupt/undecodable file (matches the pre-fix behavior for this one case).
-func TestResolveSchImageDims_BothExplicit_SkipsDecoding(t *testing.T) {
-	w, h, err := resolveSchImageDims([]byte("not a real image"), "x.png", 400, true, 240, true)
+// Explicit target dimensions still require a valid source; resizing must not
+// bypass format/content validation.
+func TestResolveSchImageDims_BothExplicit_ValidatesSource(t *testing.T) {
+	if _, _, err := resolveSchImageDims([]byte("not a real image"), "x.png", 400, true, 240, true); err == nil {
+		t.Fatal("corrupt source accepted with two explicit dimensions")
+	}
+	w, h, err := resolveSchImageDims(encodeTestPNG(t, 200, 120), "x.png", 400, true, 240, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -386,5 +394,129 @@ func TestSchImageModify_WiresActionAndPayload(t *testing.T) {
 	}
 	if _, ok := cap.payload["x"]; ok {
 		t.Errorf("x should be omitted when --x was not passed, got %v", cap.payload["x"])
+	}
+}
+
+func encodeSchReferenceJPEG(t *testing.T) []byte {
+	t.Helper()
+	var data bytes.Buffer
+	if err := jpeg.Encode(&data, image.NewRGBA(image.Rect(0, 0, 20, 12)), nil); err != nil {
+		t.Fatal(err)
+	}
+	return data.Bytes()
+}
+
+func TestSchImageCreate_RefusesInvalidSourcesWithoutDaemon(t *testing.T) {
+	cfg, cap, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+	pngData := encodeTestPNG(t, 20, 12)
+	jpegData := encodeSchReferenceJPEG(t)
+	// Keep the dimensions readable, but remove pixel data. Header-only decoding
+	// must not count as source validation.
+	truncatedPNG := pngData[:41]
+	truncatedJPEG := jpegData[:len(jpegData)-16]
+	for name, data := range map[string][]byte{"PNG": truncatedPNG, "JPEG": truncatedJPEG} {
+		if _, _, err := image.DecodeConfig(bytes.NewReader(data)); err != nil {
+			t.Fatalf("%s truncated fixture must retain a readable header: %v", name, err)
+		}
+	}
+	oversizedPixels := append([]byte(nil), pngData...)
+	binary.BigEndian.PutUint32(oversizedPixels[16:20], 4001)
+	binary.BigEndian.PutUint32(oversizedPixels[20:24], 4000)
+	binary.BigEndian.PutUint32(oversizedPixels[29:33], crc32.ChecksumIEEE(oversizedPixels[12:29]))
+	for _, tc := range []struct {
+		name, fileName string
+		data           []byte
+		want           string
+	}{
+		{"corrupt PNG", "source.png", []byte("broken"), "decode raster"},
+		{"truncated PNG", "source.png", truncatedPNG, "decode raster image:"},
+		{"truncated JPEG", "source.jpeg", truncatedJPEG, "decode raster image:"},
+		{"PNG named JPEG", "source.jpg", pngData, "does not match extension"},
+		{"JPEG named PNG", "source.png", jpegData, "does not match extension"},
+		{"empty", "source.png", nil, "1 to 8388608 bytes"},
+		{"too many bytes", "source.png", make([]byte, maxSchImageSourceBytes+1), "1 to 8388608 bytes"},
+		{"too many pixels", "source.png", oversizedPixels, "16 million pixels"},
+		{"nested SVG root", "source.svg", []byte(`<html><svg width="10" height="6"/></html>`), "expected SVG root"},
+		{"bad SVG namespace", "source.svg", []byte(`<svg xmlns="urn:other" width="10" height="6"/>`), "expected SVG root"},
+		{"unclosed SVG", "source.svg", []byte(`<svg width="10" height="6">`), "decode SVG"},
+		{"extra SVG root", "source.svg", []byte(`<svg width="10" height="6"/><svg/>`), "after SVG root"},
+		{"trailing text", "source.svg", []byte(`<svg width="10" height="6"/>garbage`), "after SVG root"},
+		{"no SVG size", "source.svg", []byte(`<svg/>`), "intrinsic size"},
+		{"nonfinite SVG size", "source.svg", []byte(`<svg width="NaN" height="6"/>`), "intrinsic size"},
+		{"nonfinite SVG viewBox origin", "source.svg", []byte(`<svg viewBox="Inf 0 10 6"/>`), "intrinsic size"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tc.fileName)
+			if err := os.WriteFile(path, tc.data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			window := "w1"
+			cmd := newSchImageCmd(cfg, &window, &stdout, &stderr)
+			cmd.SetArgs([]string{"create", "--file", path, "--width", "400", "--height", "240", "--dry-run"})
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want refusal containing %q, got %v", tc.want, err)
+			}
+			cap.mu.Lock()
+			defer cap.mu.Unlock()
+			if cap.action != "" {
+				t.Fatalf("invalid source contacted daemon: %s", cap.action)
+			}
+		})
+	}
+}
+
+func TestSchImageCreate_RefusesInvalidGeometryWithoutDaemon(t *testing.T) {
+	cfg, cap, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+	path := filepath.Join(t.TempDir(), "module.PnG")
+	if err := os.WriteFile(path, encodeTestPNG(t, 20, 12), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"x", "y", "rotation", "width", "height"} {
+		values := []string{"NaN", "+Inf", "-Inf"}
+		if key == "width" || key == "height" {
+			values = append(values, "0", "-1")
+		}
+		for _, value := range values {
+			t.Run(key+"="+value, func(t *testing.T) {
+				var stdout, stderr bytes.Buffer
+				window := "w1"
+				cmd := newSchImageCmd(cfg, &window, &stdout, &stderr)
+				cmd.SetArgs([]string{"create", "--file", path, "--" + key, value, "--dry-run"})
+				cmd.SetOut(&stdout)
+				cmd.SetErr(&stderr)
+				if err := cmd.Execute(); err == nil {
+					t.Fatal("invalid geometry accepted")
+				}
+				cap.mu.Lock()
+				defer cap.mu.Unlock()
+				if cap.action != "" {
+					t.Fatalf("invalid geometry contacted daemon: %s", cap.action)
+				}
+			})
+		}
+	}
+}
+
+func TestResolveSchImageDims_RejectsDerivedOverflow(t *testing.T) {
+	data := []byte(`<svg width="1" height="100"/>`)
+	if _, _, err := resolveSchImageDims(data, "x.svg", math.MaxFloat64, true, 0, false); err == nil {
+		t.Fatal("derived infinite height accepted")
+	}
+}
+
+func TestValidateSchImageSource_AcceptsRealJPEGAndCommaViewBox(t *testing.T) {
+	w, h, err := validateSchImageSource(encodeSchReferenceJPEG(t), "接口照片.JpEg")
+	if err != nil || w != 20 || h != 12 {
+		t.Fatalf("JPEG dimensions = %gx%g, err=%v", w, h, err)
+	}
+	w, h, err = validateSchImageSource([]byte(`<svg viewBox="0,0,100,60"/>`), "pinout.svg")
+	if err != nil || w != 100 || h != 60 {
+		t.Fatalf("SVG dimensions = %gx%g, err=%v", w, h, err)
 	}
 }

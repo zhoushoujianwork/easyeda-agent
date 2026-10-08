@@ -77,6 +77,13 @@ These object classes have separate inventories and deletion APIs. API availabili
 and offline tests do not prove Web rendering or save/reload persistence.
 Usage and verification: [public PCB Skill](../.agents/skills/easyeda-agent/references/pcb-layout.md).
 
+**位图丝印候选**由 `pcb silk-import-bitmap` 将 PNG/JPEG 的前景像素边界转换为填充
+多边形。源 SHA-256、像素尺寸、透明合成背景和阈值保留在 `schemaVersion:1` 的 typed
+payload 中；坐标为 mil、y-UP，源画布左上角为 anchor。它与 DOCUMENT 13 的参考图片
+不是同一数据模型。当前仅离线转换、报告与 Apply 队列可验证；`pcb.silk.import_bitmap`
+现场写入固定返回 `PRECONDITION_REFUSED` / `unsupported`，不能借用既有 SVG 或参考图片
+的现场证据。像素间距只是分辨率提示，不证明最窄笔画、焊盘净距或制造 DFM。
+
 ## 本地设计比较与 Lib 内部计算
 
 ### eprj3 文件生成与校验边界

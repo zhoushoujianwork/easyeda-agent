@@ -97,6 +97,7 @@ typed CLI 操作嘉立创EDA专业版的原理图——每个动作可观测、�
 
 | 能力 | 命令 | 说明 |
 |---|---|---|
+| 非电气参考图片 | `sch image create/list/modify` / `sch prim-delete --ids` | PNG/JPEG/SVG 嵌入原理图，不产生引脚或网络；raw 单位、左上角 anchor，尺寸可按源比例解析；[使用与历史验证边界](../../.agents/skills/easyeda-agent/references/schematic.md) |
 | 页面导图 | `sch export-image` | SVG/PNG/PDF,选区或整页,不依赖前台视口(残留进度条已在导出后主动销毁) |
 | BOM/网表 | `sch export`(bom/netlist) | BOM 自动补 LCSC C 号(`bom-enrich.py`) |
 
