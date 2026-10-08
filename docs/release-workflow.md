@@ -18,6 +18,17 @@
   GitHub's `Latest` pointer and hub `latest` tags move to the newest release; older patches are
   historical/superseded and receive no further fixes.
 
+## 小版本测试范围
+
+小版本指 patch（`vX.Y.Z` 的 `Z > 0`），按 [AGENTS.md](../AGENTS.md) 中的
+「小版本发布测试范围」执行。小版本发布不跑全量需求到成品 E2E，也不要求重跑完整
+ESP32-S3 最小点灯板或 B00–B10 / A00–A06 全集。测试覆盖本次改动：相关自动测试、缺陷复现
+与定向回归；涉及真实 EDA 读写时补受影响动作、必要的 save→reload→fresh readback。
+发布说明如实列明覆盖范围，未执行的 E2E 保留 `not-run` / 既有状态，不补签完整设计通过。
+
+版本一致性、`release-check`、`release-build`、SHA256、安装/升级冒烟与远端资产核验继续执行。
+小版本免全量 E2E 不改变版本递增规则、具体版本批准要求或中版本的现场验收材料要求。
+
 ## 中版本验收材料（从 v1.6.0 起）
 
 发布 `vX.Y.0`（`Y > 0`）前，按[验收材料格式](releases/evidence/README.md)提交
