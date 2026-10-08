@@ -15,7 +15,7 @@
 
 | 样例 | 何时读取 | 状态 |
 |---|---|---|
-| [参考图片与位图丝印候选](image-import/README.md) | 自生成透明 PNG、物理尺寸和顶/底丝印参数；本地轮廓报告与 Apply 契约，不连接 EDA | `offline-verified` 仅转换与参数；制造丝印写入 `unsupported`，本轮无现场验证 |
+| [原理图与 PCB 参考图片](image-import/README.md) | 自生成透明 PNG；raw/mil 单位、物理尺寸和源图比例；纯本地 dry-run，不连接 EDA | `offline-verified` 仅素材、解析与尺寸参数；本轮无现场导入，不认证制造丝印 |
 | [原理图部分写入后的精确恢复](schematic-partial-recovery/README.md) | fresh 核对失败对象、保护引脚属性、真实 unwired 重算及图签修正 | `live-verified` 仅精确恢复子例，有限独立复核通过；不签 PCB/E2E |
 | [已有相对布局的完整组移动](pcb-group-move/README.md) | 五成员整体平移/旋转、非对称 anchor、完整成员与固定件对账；开发验证场景起点 | `offline-verified`；五成员合成几何与 CLI 已验证，现场待验证 |
 | [260919 AT32F415 总索引](260919-at32f415/index.md) | 69 个器件、15 个功能区、90×50 mm 两层板的完整 Demo | `partial-live-verified`；代表性步骤已验证，完整布线明确未完成 |

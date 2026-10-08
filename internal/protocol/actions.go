@@ -972,12 +972,6 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list", "pcb.snapshot"},
 		},
 		{
-			Name: BitmapSilkAction, Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
-			Description: "PNG/JPEG pixel-boundary manufacturing silk plan (#272). Cobra pcb silk-import-bitmap converts locally, retains alpha holes and emits closed even-odd polygons in mil. This action validates schemaVersion 1 then ALWAYS refuses with PRECONDITION_REFUSED/unsupported before host calls: bitmap creation, fresh geometry, DFM and save/reload are not live-verified. No force or host-presence bypass. Existing SVG silk and DOCUMENT reference pictures retain separate contracts.",
-			Inputs:      []string{"schemaVersion (1)", "source (fileName/format/sha256/pixelWidth/pixelHeight)", "conversion (threshold 0..255/background white|black/invert/simplify)", "polygons (closed local x-right/y-down pixel boundaries in mil)", "x", "y", "width", "height", "rotation", "mirror", "layer (3|4, required)", "units (mil)", "anchor (top-left)"},
-			Outputs:     []string{"PRECONDITION_REFUSED: unsupported; no write attempted"},
-		},
-		{
 			Name:        "pcb.nets.list",
 			Domain:      DomainPcb,
 			Phase:       2,

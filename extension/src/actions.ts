@@ -1,5 +1,4 @@
 import { projectOpen, projectExport } from './project-transfer';
-import { pcbSilkImportBitmap } from './pcb-bitmap-silk';
 import { documentSourceGet, documentSourceRoundtrip } from './document-source';
 import { listSystemCommonLibrary } from './common-library';
 import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
@@ -14825,7 +14824,6 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.silk.list': pcbSilkList,
 	'pcb.silk.add': pcbSilkAdd,
 	'pcb.silk.import_svg': pcbSilkImportSvg,
-	'pcb.silk.import_bitmap': pcbSilkImportBitmap,
 	'pcb.image.create': pcbImageCreate,
 	'pcb.image.list': pcbImageList,
 	'pcb.image.modify': pcbImageModify,

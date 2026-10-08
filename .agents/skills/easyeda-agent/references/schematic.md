@@ -47,8 +47,8 @@ easyeda sch sheet-geometry --project <project> --doc <page-uuid> --json
 不与任何导线接触。删除走既有 `sch prim-delete --ids <id>`，没有单独的 `sch image delete`。
 
 上述 `live-verified` 是既有原理图参考图片场景的历史记录，本轮未操作 EDA，也未补签现场
-通过。PCB 参考图片另用 DOCUMENT 13；PNG/JPEG 转制造丝印的离线候选与 `unsupported`
-现场写入见 [PCB 图片边界](pcb-layout.md#bitmap-silk-import)，不能混用验证结论。
+通过。PCB 参考图片另用 DOCUMENT 13；PNG/JPEG 转制造丝印需要人工调节图稿，不在自动化
+范围内。参考图片与既有 SVG 丝印的边界见 [PCB 图片说明](pcb-layout.md)，不能混用验证结论。
 
 创建前始终完整解码源文件，即使显式给了两个目标尺寸；PNG/JPEG 扩展名必须与内容一致，
 SVG 必须有完整合法的根与可解析源尺寸。源文件限 8 MiB、位图限 1600 万像素；坐标和

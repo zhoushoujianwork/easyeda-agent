@@ -220,7 +220,7 @@ EP/地过孔直接决定模块布局，可以在整板确认前作为一个参�
   姿态归一可能已经写入，须核对 `normalization`、`appliedIds` 与 `partial` 后从实际状态重算。
 - `easyeda pcb silk-add` — **add a FREE silkscreen string** (board marking / credit / note) at `--x/--y` with config: `--layer` (3=top silk default, 4=bottom), `--font-size` (mil), `--line-width` (stroke mil), `--rotation`, `--font-family` (for example Arial). Legible JLCPCB-safe defaults (font 40 / stroke 6) — **a small font (<~32mil) with a thick stroke smears the glyphs (糊)**. Returns primitiveId + rendered bbox and actual font family (check it fits + clears parts). Then restyle/reposition with `pcb silk-set`.
 - `easyeda pcb silk-set` — **batch-adjust existing silk** (designators + free strings): `--ids id1,id2` (CSV) + any of `--x/--y/--rotation/--font-size/--line-width/--font-family/--text` (only given keys change). **ALIGN shortcut**: `--align center|mid|centerx|centery|left|right|top|bottom` + `--ref <designator>|board|outline|fill` positions each silk relative to that reference bbox (e.g. `--ref board --align centerx` centers the board credit; `--ref U1 --align top` aligns a label to U1's top), computed from the silk's own bbox. Uses the reliable `.modify(id,props)` — mutation 后即时 screenshot/list 可能带 `staleRisk`，最终字体、旋转和位置用 save → reload → `silk-list` 回读。
-- `easyeda pcb image create/list/modify/delete` — embedded **reference pictures on DOCUMENT layer 13** (#272), preserving color and transparency through `pcb_PrimitiveObject`, separate from manufacturing silk polygons. PNG/JPEG/SVG; `--file`, `--x/--y` top-left (mil, y-UP), **explicit `--width` or `--height` required** to avoid guessing a physical size from pixels. One dimension preserves aspect; both allow resizing. `--rotation/--mirror`, `--layer 13` (only supported reference layer). Web 4.1.60 mirrors **after rotation about the anchor vertical axis**: at rotation 0 a mirrored image extends to `x-width`, and at rotation 90 it extends to `x-height`; the anchor is the source top-left, not always the bbox minimum. `create --dry-run` validates locally; its bbox includes rotation/mirror. Create/modify return fresh geometry and `verified`; partial writes return the ID and fail the CLI — read back before retrying. `list [--id ID]` returns embedded objects and their actual layers (including pre-existing silk objects), without binary data; modify/delete refuse non-document objects. Replace content with a new create, then delete the old ID. After import: `pcb save → doc reload → pcb image list --id ID → pcb snapshot`; inspect the real picture and compare other board objects. Live-verified on EasyEDA Pro Web 4.1.60 with connector 1.8.2: transparent PNG, JPEG and SVG, Chinese/space filenames, physical sizing, move/resize/rotate/mirror, save → close/reopen → fresh list and typed viewport PNG. Three test pictures were created outside the existing board; the PNG transparent hole and asymmetrical marker made color/alpha/orientation visible. The mirrored dry-run bbox defect found live was fixed using captured regression cases. Deleting only the three returned IDs, saving and reopening restored the embedded inventory to zero; the original 51 components, outline, silk, rules and complete copper inventories matched the before snapshot, including its semantic hash. This does not complete the bitmap-to-manufacturing-silk part of #272. Official create expects a data URI, not bare base64: [API](https://prodocs.lceda.cn/en/api/reference/pro-api.pcb_primitiveobject.create.html).
+- `easyeda pcb image create/list/modify/delete` — embedded **reference pictures on DOCUMENT layer 13** (#272), preserving color and transparency through `pcb_PrimitiveObject`, separate from manufacturing silk polygons. PNG/JPEG/SVG; `--file`, `--x/--y` top-left (mil, y-UP), **explicit `--width` or `--height` required** to avoid guessing a physical size from pixels. One dimension preserves aspect; both allow resizing. `--rotation/--mirror`, `--layer 13` (only supported reference layer). Web 4.1.60 mirrors **after rotation about the anchor vertical axis**: at rotation 0 a mirrored image extends to `x-width`, and at rotation 90 it extends to `x-height`; the anchor is the source top-left, not always the bbox minimum. `create --dry-run` validates locally; its bbox includes rotation/mirror. Create/modify return fresh geometry and `verified`; partial writes return the ID and fail the CLI — read back before retrying. `list [--id ID]` returns embedded objects and their actual layers (including pre-existing silk objects), without binary data; modify/delete refuse non-document objects. Replace content with a new create, then delete the old ID. After import: `pcb save → doc reload → pcb image list --id ID → pcb snapshot`; inspect the real picture and compare other board objects. Live-verified on EasyEDA Pro Web 4.1.60 with connector 1.8.2: transparent PNG, JPEG and SVG, Chinese/space filenames, physical sizing, move/resize/rotate/mirror, save → close/reopen → fresh list and typed viewport PNG. Three test pictures were created outside the existing board; the PNG transparent hole and asymmetrical marker made color/alpha/orientation visible. The mirrored dry-run bbox defect found live was fixed using captured regression cases. Deleting only the three returned IDs, saving and reopening restored the embedded inventory to zero; the original 51 components, outline, silk, rules and complete copper inventories matched the before snapshot, including its semantic hash. Bitmap-to-manufacturing-silk conversion requires manual artwork adjustment and is outside this automation scope. Official create expects a data URI, not bare base64: [API](https://prodocs.lceda.cn/en/api/reference/pro-api.pcb_primitiveobject.create.html).
 
 ```bash
 easyeda pcb image create --file "module photo.png" --x 1000 --y -1000 --width 600 --dry-run
@@ -230,8 +230,8 @@ easyeda pcb image modify --id <primitiveId> --rotation 90
 easyeda pcb image delete --id <primitiveId>
 ```
 
-PNG/JPEG 的制造丝印候选另见 [位图丝印候选](#bitmap-silk-import)，当前仅离线生成，现场写入
-为 `unsupported`。
+PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令，也不列为后续开发目标。
+已有 SVG 丝印导入保持原契约；[透明 PNG 离线样例](examples/image-import/README.md)仅验证参考图片。
 
 - `easyeda pcb silk-import-svg` — **import an SVG (logo / brand mark / artwork) as a FILLED silkscreen graphic** (`pcb.silk.import_svg` → `eda.pcb_PrimitiveImage.create`) — the typed path for placing a vector graphic on a PCB **without `debug.exec_js`**. The CLI parses the SVG (path `M/L/H/V/C/S/Q/T/A/Z`, `polygon`/`polyline`/`rect`/`circle`/`ellipse`/`line`, nested `transform`, viewBox), **flattens every curve to line segments**, applies viewBox→mil scaling, and sends the resulting **complex polygon** (contours + **even-odd holes**, so a logo's counters — the hole in an "o" — punch through) to the connector, which creates **one** image primitive on the silk layer. `--file <path>`/`--svg <string>`; `--x/--y` (or `--at "x,y"`) = where the artwork's **top-left** lands (mil); `--width`/`--height` in mil (`--keep-aspect` for uniform scaling; only one given ⇒ aspect always preserved); `--layer` 3=top (default) / 4=bottom (auto-mirrors); `--rotation`/`--mirror`; `--flatten-tol` (curve tolerance mil). **`--dry-run` parses + scales WITHOUT touching the editor** and prints target bbox / contour count / vertex count / **min-feature** (a DFM proxy — warns when < `--min-line-width`, JLCPCB silk min ≈ 6 mil) — always dry-run first. **Fill rule is even-odd; stroke-only art is not stroked (all geometry is filled).** Returns `primitiveId` + rendered `bbox`. **Real-machine verified**: creates on top/bottom silk, holes punch, rotation/mirror honored, and it **persists across `doc reload` + `pcb save`** (same primitiveId/bbox). Note: the image is a distinct primitive type — it does **not** appear in `pcb silk-list` (that lists silk *text*); read it back via `pcb check` (runs clean) or a snapshot. After a real import follow reload → check → `pcb save`.
 - **Teardrops (泪滴) — `unsupported`.** `eda.*` has no verified create/apply-teardrop API
@@ -479,60 +479,3 @@ Operational order:
 6. **Verify** — `pcb.drc.check` (and the PCB linter once it lands); fix by rule number. Pull fresh primitiveIds before each mutation; confirm destructive ops; log before/after.
 
 **Key corrections from review** (see the conventions doc): decoupling effectiveness is governed by the cap's **mounting-loop inductance** (pad→via→plane), not raw distance; **default a single solid ground plane** partitioned by placement (do *not* split-ground by default); all hard thresholds are **conditioned on stackup / fab / enclosure** context.
-
-<a id="bitmap-silk-import"></a>
-
-## 位图丝印候选（#272，仅离线验证）
-
-`pcb silk-import-bitmap` 将 PNG/JPEG 的前景像素转换为填充多边形，用于准备制造丝印
-候选。当前可离线验证转换、几何报告与 typed Apply 队列；连接器的
-`pcb.silk.import_bitmap` 固定返回 `PRECONDITION_REFUSED` / `unsupported`，不调用创建
-接口，没有 `force` 绕过。既有 `pcb silk-import-svg` 与 DOCUMENT 13 参考图片的历史
-现场证据不能认证此动作。本轮未现场导入，不声称持久化、制造丝印或 DFM 通过。
-
-官方 Beta `pcb_MathPolygon.convertImageToComplexPolygon` 是后续宿主调研入口，本命令
-采用独立离线像素轮廓算法；接口存在不代表已验证。CLI、Apply 与 daemon 也在路由或
-执行其他步骤前拒绝该 typed 写入，不能依赖旧连接器的 `UNKNOWN_ACTION` 来兜底。
-
-```bash
-easyeda pcb silk-import-bitmap --file logo.png --x 1000 --y -1000 \
-  --width 600 --layer 3 --dry-run --out bitmap.apply.json
-easyeda pcb silk-import-bitmap --from bitmap-parameters.json --dry-run --out bitmap.apply.json
-```
-
-`--file` 接受 `.png/.jpg/.jpeg`，文件不超过 8 MiB、源图不超过 100 万像素，扩展名须与
-解码格式一致；`--from` 读取同名 JSON 参数，参数文件的相对 `file`
-路径按参数文件目录解析。CLI flag 覆盖 JSON 同名字段；显式 `--file` 可替换参数文件的
-源图，使用普通 CLI 文件路径。可调字段与对应 flag 如下。
-
-| JSON 参数 / flag | 语义 |
-|---|---|
-| `x/y` / `--x/--y` | 源画布左上角 anchor，mil、y-UP；图片像素向下展开 |
-| `width/height` / `--width/--height` | 至少显式给一个物理尺寸；只给一个保留源比例，两个都给可变形，`keepAspect` / `--keep-aspect` 请求等比缩放到给定框内 |
-| `layer` / `--layer` | 必须显式选 3（顶丝印）或 4（底丝印），可在参数文件声明；底面默认 mirror，可显式 `--mirror=false` / `mirror:false` |
-| `rotation/mirror` / `--rotation/--mirror` | degree / bool；计划先绕源画布竖直中线镜像，再绕左上角 anchor 旋转；与 DOCUMENT 13 参考图片的宿主镜像不同，未经现场确认 |
-| `threshold` / `--threshold` | 灰度阈值 0..255，默认 128 |
-| `background` / `--background` | 半透明颜色先合成到指定背景再作 Rec.601 灰度阈值处理；默认 `white` 选灰度 ≤ 阈值的深色，`black` 选灰度 > 阈值的亮色 |
-| `invert` / `--invert` | 默认 false；反转阈值前景，完全透明像素始终留作背景 |
-| `simplify` / `--simplify` | 默认 true；仅删除共线冗余顶点，不平滑、不去噪、不损失像素边界 |
-| `minLineWidth` / `--min-line-width` | 默认 6 mil，仅用于分辨率提示，不是最窄笔画保证 |
-
-`--dry-run` 只在本地解码与转换，输出变换后的源画布 `bbox`、着墨 `inkBBox`、源 SHA-256、
-像素/轮廓/顶点计数及 `polygons`。`bboxKind:"planned-geometry"`、`hostBBoxVerified:false`
-明确这是计划坐标，不能当宿主回读。`pixelPitch:{x,y}` 表示每个像素映射到的物理间距；它不能
-证明旋转后斜边、孔洞、窄颈或任意最窄笔画可制造。焊盘净距、板边避让和制造 DFM 检查
-当前为 `unsupported`；报告的 `dfm` 保留 `minimumStroke:"not-measured"`、
-`boardEdge:"not-checked"` 和 `padOverlap:"not-checked"`。报告不读取板内对象，
-不因提示为空就认为可生产。
-
-`--out` 在本地写入新的 `easyeda apply` 队列，已有文件会拒绝覆盖；即使不加 `--dry-run`
-也不访问宿主。队列为 `{version:1,meta,steps:[{id,action,payload}]}`，步骤使用
-`action:"pcb.silk.import_bitmap"`。
-payload 为 `schemaVersion:1`，保留 `source:{fileName,format,sha256,pixelWidth,pixelHeight}`、
-`conversion:{threshold,background,invert,simplify}`、`polygons`、`x/y/width/height`、
-`rotation/mirror/layer`、`units:"mil"` 和 `anchor:"top-left"`。这份文件是可审查候选，
-执行仍返回 `unsupported`；不得改 action 为 SVG 导入来绕过未验证边界。
-`polygons` 使用源画布局部 mil 坐标（x 向右、y 向下），每条闭合轮廓为
-`[x0,y0,"L",x1,y1,...,x0,y0]`，按 even-odd 填充保留孔洞；`x/y` 和旋转/镜像声明其
-在 PCB y-UP 空间的位置。几何只描述精确像素边界，不能证明宿主已创建该图元。
-自包含素材、参数和预期几何见 [图片导入离线样例](examples/image-import/README.md)。

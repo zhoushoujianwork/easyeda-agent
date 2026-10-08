@@ -70,7 +70,8 @@
 | 自由丝印 | `pcb silk-add` / `silk-set` | 板注/极性标记,层/字号/线宽/旋转/`--font-family` 可配并回读实际字体；`--align --ref` 对齐参考 |
 | 非电气参考图片 | `pcb image create/list/modify/delete` | PNG/JPEG/SVG 嵌入 DOCUMENT 13；mil、左上角 anchor，创建须给宽或高；不是制造丝印 |
 | 矢量图形 | `pcb silk-import-svg` | SVG(logo/品牌)转填充丝印图元,dry-run 预览 |
-| 位图丝印候选 | `pcb silk-import-bitmap --file` / `--from` | PNG/JPEG 离线阈值转多边形，`--dry-run --out` 输出报告与 typed Apply；层 3/4 必须显式，须给宽或高；现场 action 返回 `unsupported`，不认证制造 DFM；[参数与边界](../../.agents/skills/easyeda-agent/references/pcb-layout.md#bitmap-silk-import) |
+
+PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令；已有 SVG 丝印导入按原契约使用。
 
 ### 6. 叠层、规则与制造
 

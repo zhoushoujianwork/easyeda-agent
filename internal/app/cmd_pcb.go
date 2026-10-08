@@ -4736,7 +4736,6 @@ After a real import, follow reload → pcb.silk.list / pcb check → pcb save.`,
 	}
 
 	pcb.AddCommand(newPcbImageCmd(cfg, &window, stdout, stderr))
-	pcb.AddCommand(newPcbSilkImportBitmapCmd(stdout))
 
 	// ── length constraints (#176) — see cmd_pcb_constraints.go ────────────
 	addPcbConstraintCmds(pcb, cfg, &window, stdout, stderr)

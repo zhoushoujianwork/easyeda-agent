@@ -230,13 +230,7 @@ EasyEDA 交互界面兜底。能力边界与未来 typed 验收见 [project-impo
   modify/delete 拒绝非 DOCUMENT 对象，部分写入保留 ID 并失败；保存重载后重新回读。
 - `pcb.silk.import_svg` — `pcb silk-import-svg` 的既有 SVG 填充轮廓 action，创建
   `pcb_PrimitiveImage`；与嵌入参考图片的 `pcb_PrimitiveObject` 分开。
-- `pcb.silk.import_bitmap` — `pcb silk-import-bitmap` 的位图丝印候选契约。
-  payload 包含 `schemaVersion:1`、`source`（`fileName/format/sha256/pixelWidth/pixelHeight`）、
-  `conversion`（`threshold/background/invert/simplify`）、`polygons`、`x/y/width/height`、
-  `rotation/mirror/layer`、`units:"mil"` 和 `anchor:"top-left"`。层为显式 3/4，源画布
-  左上角定位；本地 `--dry-run` 和 `--out` 不访问宿主。连接器 action 固定返回
-  `PRECONDITION_REFUSED` / `unsupported`，没有 `force` 绕过。字段和边界见
-  [位图丝印候选](pcb-layout.md#bitmap-silk-import)。
+  PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令；参考图片的回读不证明制造几何。
 - `pcb dump --include-copper --out board.json` — 生成自包含快照；焊盘保留原始 shape、旋转和
   specialPad，铜按 routing/vias/pours/poured/regions/fills 分别标记 available/unknown，
   `semanticSha256` 排除采集时间与自身哈希后用于执行前 stale 检查。
