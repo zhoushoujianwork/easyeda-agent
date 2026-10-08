@@ -137,7 +137,8 @@ Web 项目已打开不代表 connector 已连接；`easyeda health` 的 `windows
 板外稳压 3.3V、基本启动/复位与去耦、一颗 GPIO LED、单页原理图和两层 PCB。
 让 Agent 自行选型、读真实引脚、生成连接和参数布局，按公开 Skill 的 S0–S6/P0–P10
 完成原理图、PCB、布线、检查与保存重载；**不喂预制 BOM/UUID/网表或坐标答案**。
-layout-lint / autosave / design-flow / 连接器运行行为改动后的默认端到端回归使用这一小板。
+layout-lint / autosave / design-flow / 连接器运行行为改动后的完整端到端回归使用这一小板。
+小版本发布不跑该完整回归，按下文「小版本发布测试范围」验证本次改动。
 验收核对需求、电气连接、0 overlap/越界、DRC 无错误、全部必接网络连通、丝印极性及落盘一致。
 PCB Layout 的两轮自检与用户确认规则保持不变；测试工程使用 `ceshi` 或已获准复用的专用工程，
 只清理本轮创建对象。执行与证据归[详细稿](docs/test-case-esp32-blink-detail.md)。
@@ -192,6 +193,14 @@ pushing the related verified code without a second push confirmation, but it doe
 not by itself authorize a release tag. Close fixed issues or fully adopted PRs
 with links to the adoption commit or approved release; keep unresolved issues open
 and report remaining validation gaps accurately.
+
+**小版本发布测试范围**：小版本指 patch（`vX.Y.Z` 的 `Z > 0`）。小版本发布不运行
+全量需求到成品 E2E，包括完整 ESP32-S3 最小点灯板的原理图、PCB、整板布线与终检流程；
+不以重跑 B00–B10 / A00–A06 全集作为发布前置。按本次改动的影响范围运行相关自动测试、
+缺陷复现与定向回归；影响真实 EDA 读写时，验证受影响动作、必要的保存重载和 fresh 回读。
+版本一致性、`release-check`、发布构建、资产 SHA256、安装/升级冒烟和远端资产核验继续执行。
+未执行的全量 E2E 保持 `not-run` / 既有状态，不标为通过；该规则不改变中版本验收材料、
+实际设计任务的质量与用户确认要求，也不改变具体发布版本的批准要求。
 
 **中版本发布验收材料**：从 `v1.6.0` 起，发布 `vX.Y.0`（`Y > 0`）前必须完成现场验收，
 在 `docs/releases/evidence/vX.Y.0/` 提交测试报告、基准、测试用例和通过的独立复核清单。
