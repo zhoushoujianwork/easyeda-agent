@@ -98,10 +98,11 @@ func checkSchPreservedSource(want, live map[string]any) error {
 }
 
 type schPreservedParts struct {
-	Parts     map[string]map[string]any
-	Instances map[string]map[string]any
-	IDs       []string
-	Scene     map[string]any
+	Parts           map[string]map[string]any
+	Instances       map[string]map[string]any
+	IDs             []string
+	Scene           map[string]any
+	OwnedAttributes *schOwnedAttributesExpectation
 }
 
 // Preserve mode is a layout/route change only, not a device or connectivity
@@ -177,6 +178,9 @@ func prepareSchPreservedParts(p *schCompositionPlan, before []byte, allowUnwired
 		for _, v := range pins {
 			q := v.(map[string]any)
 			number := schDesignatorPinNumber(q)
+			if _, err := schPreservedPin(q); err != nil {
+				return nil, fmt.Errorf("%s.%s: %w", c.Ref, number, err)
+			}
 			expected, ok := want[number]
 			if !ok || seen[number] {
 				return nil, fmt.Errorf("%s unknown/duplicate physical pin %s", c.Ref, number)
@@ -190,6 +194,28 @@ func prepareSchPreservedParts(p *schCompositionPlan, before []byte, allowUnwired
 		out.IDs = append(out.IDs, pid)
 	}
 	sort.Strings(out.IDs)
+	page, err := schComposeProtectedPage(baseline.Result)
+	if err != nil {
+		return nil, err
+	}
+	owners := append([]string(nil), out.IDs...)
+	for _, part := range out.Parts {
+		for _, item := range part["pins"].([]any) {
+			owners = append(owners, stringVal(item.(map[string]any)["primitiveId"]))
+		}
+	}
+	for _, item := range page["components"].([]any) {
+		row := item.(map[string]any)
+		if row["componentType"] == "sheet" {
+			owners = append(owners, stringVal(row["primitiveId"]))
+		}
+	}
+	sort.Strings(owners)
+	attrs, err := schOwnedAttributes(page, owners)
+	if err != nil {
+		return nil, err
+	}
+	out.OwnedAttributes = &schOwnedAttributesExpectation{Owners: owners, Attributes: attrs}
 	out.Scene, err = schDesignatorScene(baseline.Result)
 	return out, err
 }
@@ -239,6 +265,7 @@ func schComposeFullyUnwired(result map[string]any) bool {
 }
 
 func (p *schPreservedParts) protect(e *schematicStateExpectation) {
+	e.OwnedAttributes = p.OwnedAttributes
 	for ref, part := range e.Parts {
 		part.PrimitiveID = stringVal(p.Parts[ref]["primitiveId"])
 		part.Instance = p.Instances[ref]
@@ -248,6 +275,11 @@ func (p *schPreservedParts) protect(e *schematicStateExpectation) {
 			name := q["pinName"].(string)
 			pin := part.Pins[number]
 			pin.Name = &name
+			pin.Persistent, _ = schPreservedPin(q) // validated before queue generation
+			if pin.NC == nil {
+				nc := q["noConnected"].(bool)
+				pin.NC = &nc
+			}
 			part.Pins[number] = pin
 		}
 		e.Parts[ref] = part

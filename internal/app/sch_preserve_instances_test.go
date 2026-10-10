@@ -19,6 +19,9 @@ func preserveComposeFixture(t *testing.T) (*schCompositionPlan, map[string]any) 
 	for _, v := range result["components"].([]any) {
 		raw := v.(map[string]any)
 		if raw["componentType"] != "part" {
+			if raw["componentType"] == "netflag" {
+				raw["pins"] = []any{map[string]any{"primitiveId": "pin-" + stringVal(raw["primitiveId"]), "pinNumber": "1", "pinName": "Pin1", "otherProperty": map[string]any{}, "noConnected": false, "net": nil, "x": raw["x"], "y": raw["y"]}}
+			}
 			continue
 		}
 		ref := raw["designator"].(string)
@@ -45,6 +48,11 @@ func preserveComposeFixture(t *testing.T) (*schCompositionPlan, map[string]any) 
 		raw["otherProperty"] = map[string]any{connectivity.ComponentIDProperty: canonical.ID, "Value": "10kΩ", "a.b": "${literal}", "empty": "", "bool": false, "zero": 0.0}
 		if canonical.Role != "" {
 			raw["otherProperty"].(map[string]any)[connectivity.ComponentRoleProperty] = canonical.Role
+		}
+		for _, item := range raw["pins"].([]any) {
+			pin := item.(map[string]any)
+			pin["primitiveId"] = "pin-" + ref + "-" + stringVal(pin["pinNumber"])
+			pin["otherProperty"] = map[string]any{"literal": "${literal}", "empty": "", "zero": 0.0}
 		}
 	}
 	return p, env
@@ -91,12 +99,24 @@ func TestPreserveInstancesQueueNeverRecreatesAndGuardsEveryPhase(t *testing.T) {
 		}
 	}
 	_, clear := composeStep(t, pb, "reset-drawing-preserving-instances")
-	if clear.Action != "schematic.page.clear" || clear.Payload["preserveParts"] != true || len(clear.Payload["preservePartIds"].([]string)) != len(p.Connectivity.Components) || clear.Payload["expectedPagePrimitives"] == "" || len(clear.LiteralPayloadKeys) != 1 || clear.LiteralPayloadKeys[0] != "expectedPagePrimitives" || clear.Assert["$.instancesPreserved"] != "==true" {
-		t.Fatal("clear has no explicit protected set")
+	if clear.Action != "schematic.primitives.delete" || len(clear.Payload["primitiveIds"].([]string)) == 0 {
+		t.Fatal("drawing reset lacks explicit deletion ids")
 	}
-	substituted, err := substPayloadVars(clear.Payload, clear.LiteralPayloadKeys, map[string]string{"literal": "would-corrupt-source"})
-	if err != nil || !strings.Contains(substituted["expectedPagePrimitives"].(string), "${literal}") {
-		t.Fatalf("native snapshot was treated as a variable template: %v", err)
+	for _, step := range pb.Steps {
+		if step.Action == "schematic.page.clear" || step.Run == "sch clear" {
+			t.Fatal("preservation queue uses broad clear")
+		}
+	}
+	_, after := composeStep(t, pb, "verify-preserved-parts-after-clear")
+	if after.ExpectSchematic.PagePrimitives == nil || after.ExpectSchematic.OwnedAttributes == nil {
+		t.Fatal("missing complete residual inventory or native attribute guard")
+	}
+	for _, part := range after.ExpectSchematic.Parts {
+		for _, pin := range part.Pins {
+			if pin.Persistent == nil {
+				t.Fatal("native pin fields unprotected")
+			}
+		}
 	}
 }
 
@@ -189,8 +209,12 @@ func TestPreserveInstancesEmptyNetlistExportIsOnlyAllowedForProvenEmptyPage(t *t
 		{"nc", func() { preserveFirstPart(env)["pins"].([]any)[0].(map[string]any)["noConnected"] = true }},
 		{"net", func() { preserveFirstPart(env)["pins"].([]any)[0].(map[string]any)["net"] = "GND" }},
 		{"missing pins", func() { preserveFirstPart(env)["pinsAvailable"] = false }},
-		{"wire", func() { result["wires"] = []any{map[string]any{"primitiveId": "w", "net": "", "x0": 0.0, "y0": 0.0, "x1": 10.0, "y1": 0.0}} }},
-		{"unlisted graphic", func() { result["pagePrimitives"].(map[string]any)["rectangles"] = []any{map[string]any{"primitiveId": "r"}} }},
+		{"wire", func() {
+			result["wires"] = []any{map[string]any{"primitiveId": "w", "net": "", "x0": 0.0, "y0": 0.0, "x1": 10.0, "y1": 0.0}}
+		}},
+		{"unlisted graphic", func() {
+			result["pagePrimitives"].(map[string]any)["rectangles"] = []any{map[string]any{"primitiveId": "r"}}
+		}},
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {

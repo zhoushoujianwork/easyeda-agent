@@ -20,6 +20,8 @@ type schematicStateExpectation struct {
 	Drawing         *schematicDrawingExpectation        `json:"drawing,omitempty"`
 	Ownership       *schematicOwnershipExpectation      `json:"ownership,omitempty"`
 	SourceScene     map[string]any                      `json:"sourceScene,omitempty"`
+	PagePrimitives  map[string]any                      `json:"pagePrimitives,omitempty"`
+	OwnedAttributes *schOwnedAttributesExpectation      `json:"ownedAttributes,omitempty"`
 }
 
 type schematicPartExpectation struct {
@@ -92,11 +94,12 @@ func measuredSchematicDevice(ref string, have map[string]any) (*schematicDeviceE
 }
 
 type schematicPinExpectation struct {
-	Name *string  `json:"name,omitempty"`
-	X    *float64 `json:"x,omitempty"`
-	Y    *float64 `json:"y,omitempty"`
-	Net  *string  `json:"net,omitempty"`
-	NC   *bool    `json:"noConnected,omitempty"`
+	Name       *string        `json:"name,omitempty"`
+	X          *float64       `json:"x,omitempty"`
+	Y          *float64       `json:"y,omitempty"`
+	Net        *string        `json:"net,omitempty"`
+	NC         *bool          `json:"noConnected,omitempty"`
+	Persistent map[string]any `json:"persistent,omitempty"`
 }
 
 // Explicit null must not silently mean "do not check this fact". Omission is
@@ -113,7 +116,7 @@ func (p *schematicPinExpectation) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	for _, key := range []string{"net", "noConnected", "name"} {
+	for _, key := range []string{"net", "noConnected", "name", "persistent"} {
 		if value, exists := fields[key]; exists && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return fmt.Errorf("expectSchematic pin %s cannot be null; omit it when this fact is not checked", key)
 		}
@@ -155,6 +158,9 @@ func validateSchematicExpectationStep(s *playbookStep) error {
 		if s.Payload["includeWires"] != true || s.Payload["includeConnectivitySummary"] != true || s.Payload["includePagePrimitives"] != true {
 			return fmt.Errorf("expectSchematic sourceScene requires includeWires, includeConnectivitySummary and includePagePrimitives:true")
 		}
+	}
+	if (s.ExpectSchematic.PagePrimitives != nil || s.ExpectSchematic.OwnedAttributes != nil) && s.Payload["includePagePrimitives"] != true {
+		return fmt.Errorf("expectSchematic native inventory requires includePagePrimitives:true")
 	}
 	return s.ExpectSchematic.validate()
 }
@@ -208,6 +214,11 @@ func (e *schematicStateExpectation) validate() error {
 			if strings.TrimSpace(number) == "" {
 				return fmt.Errorf("%s has an empty pin number", ref)
 			}
+			if pin.Persistent != nil {
+				if err := validateSchPreservedPin(number, pin.Persistent); err != nil {
+					return fmt.Errorf("%s.%s persistent pin: %w", ref, number, err)
+				}
+			}
 			if pin.Net != nil && strings.TrimSpace(*pin.Net) == "" && (*pin.Net != "" || pin.NC == nil) {
 				return fmt.Errorf("%s.%s empty expected net requires explicit noConnected:true/false; whitespace is not a net", ref, number)
 			}
@@ -244,10 +255,19 @@ func (e *schematicStateExpectation) substitutionValue() map[string]any {
 	// expressions. Only the existing geometry/locator expectation is substituted.
 	base := e.jsonValue().(map[string]any)
 	delete(base, "sourceScene")
+	delete(base, "pagePrimitives")
+	delete(base, "ownedAttributes")
 	if parts, ok := base["parts"].(map[string]any); ok {
 		for _, p := range parts {
 			if part, ok := p.(map[string]any); ok {
 				delete(part, "instance")
+				if pins, ok := part["pins"].(map[string]any); ok {
+					for _, value := range pins {
+						if pin, ok := value.(map[string]any); ok {
+							delete(pin, "persistent")
+						}
+					}
+				}
 			}
 		}
 	}
@@ -268,8 +288,14 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 		return err
 	}
 	expected.SourceScene = e.SourceScene
+	expected.PagePrimitives = e.PagePrimitives
+	expected.OwnedAttributes = e.OwnedAttributes
 	for ref, part := range expected.Parts {
 		part.Instance = e.Parts[ref].Instance
+		for number, pin := range part.Pins {
+			pin.Persistent = e.Parts[ref].Pins[number].Persistent
+			part.Pins[number] = pin
+		}
 		expected.Parts[ref] = part
 	}
 	if err := expected.validate(); err != nil {
@@ -281,6 +307,16 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 	}
 	if expected.SourceScene != nil {
 		if err := checkSchPreservedSource(expected.SourceScene, root); err != nil {
+			return err
+		}
+	}
+	if expected.PagePrimitives != nil {
+		if err := checkSchPageInventory(expected.PagePrimitives, root); err != nil {
+			return err
+		}
+	}
+	if expected.OwnedAttributes != nil {
+		if err := expected.OwnedAttributes.check(root); err != nil {
 			return err
 		}
 	}
@@ -400,6 +436,11 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 			}
 			if wantPin.Name != nil && pin["pinName"] != *wantPin.Name {
 				return fmt.Errorf("%s.%s pinName changed or unavailable", ref, number)
+			}
+			if wantPin.Persistent != nil {
+				if err := checkSchPreservedPin(ref, number, wantPin.Persistent, pin); err != nil {
+					return err
+				}
 			}
 			for field, value := range map[string]*float64{"x": wantPin.X, "y": wantPin.Y} {
 				if err := compareStateCoordinate(ref+"."+number, field, pin, value); err != nil {

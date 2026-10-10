@@ -857,6 +857,9 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 	}
 	pb := &playbook{Version: 1, RequireFullExecution: true, Meta: playbookMeta{Name: name, Project: p.Connectivity.ProjectID, Doc: p.Connectivity.DocumentID}, Defaults: stepPolicy{Retry: &zero, TimeoutSec: &timeout, ContinueOnError: &stop}}
 	read := map[string]any{"includePins": true, "includeBBox": true, "includeDeviceIdentity": true, "includeWires": true, "includeConnectivitySummary": true}
+	if preserved != nil {
+		read["includePagePrimitives"] = true
+	}
 	if matches {
 		all := *final
 		all.Drawing = nil
@@ -937,14 +940,16 @@ func schCompositionPlaybook(p *schCompositionPlan, before []byte, replace bool, 
 				// also the safe path on a page with no physical sheet primitive.
 				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-fully-unwired-before-move", Action: "schematic.components.list", Payload: read, ExpectSchematic: baseline})
 			} else {
-				ids := strings.Join(preserved.IDs, ",")
-				protected, _ := json.Marshal(pagePrimitives)
-				// The protected inventory can be megabytes on a normal drawing.
-				// Send it as a typed payload instead of an OS command-line argument.
-				pb.Steps = append(pb.Steps, playbookStep{ID: "reset-drawing-preserving-instances", Action: "schematic.page.clear", Payload: map[string]any{"preserveSheet": true, "preserveParts": true, "preservePartIds": preserved.IDs, "expectedPagePrimitives": string(protected)}, LiteralPayloadKeys: []string{"expectedPagePrimitives"}, Assert: map[string]string{"$.preserveParts": "==true", "$.instancesPreserved": "==true", "$.remaining": "==0"}})
-				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-no-residual-primitives", Run: "sch clear", Flags: map[string]any{"preserve-parts": true, "part-ids": ids, "dry-run": true, "expect-empty": true}})
+				ids, remaining, err := schPreservedDrawingReset(pagePrimitives, preserved)
+				if err != nil {
+					return nil, fmt.Errorf("preserve-instances drawing reset: %w", err)
+				}
+				if len(ids) > 0 {
+					pb.Steps = append(pb.Steps, playbookStep{ID: "reset-drawing-preserving-instances", Action: "schematic.primitives.delete", Payload: map[string]any{"primitiveIds": ids}, Assert: map[string]string{"$.total": fmt.Sprintf("==%d", len(ids)), "$.requested": fmt.Sprintf("==%d", len(ids))}})
+				}
 				cleared := cloneSchExpectation(baseline)
 				cleared.SourceScene = nil
+				cleared.PagePrimitives = remaining
 				cleared.Drawing = &schematicDrawingExpectation{}
 				for ref, part := range cleared.Parts {
 					for number, q := range part.Pins {

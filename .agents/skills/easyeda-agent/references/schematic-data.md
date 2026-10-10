@@ -754,6 +754,12 @@ dev.8 开发入口为 `compose --replace --preserve-instances`：只接受同页
 单独读取完整身份、几何、引脚和导线基线。两个守卫职责不同，不能因精简跨页读取而删掉
 目标页的完整实例保全检查。
 此段是实现及验收契约；开发包安装不等于现场已通过，以实际 Apply、保存重开和回读为准。
+当前 CLI 的保全重建队列仅向 `schematic.primitives.delete` 传入 fresh 完整 inventory 中明确
+枚举的 wire、netflag/netport/netlabel、矩形框及 text ID；不传器件、纸张、引脚或属性 ID。
+不支持的 bus、arc、circle、polygon、嵌入对象、short symbol 及无法归属的属性会拒绝生成。
+删除后核对完整剩余 inventory，移动前后持续核对原生 pin ID、pin `otherProperty`、NC 和
+器件/引脚/纸张所属属性；属性随器件变化的 X/Y/Rotation 单独排除，其内容、可见性及样式仍须一致。
+这一 CLI 路径已有离线回归，尚未证明现场 Apply 或 #267 connector 修复通过。
 当前清理子步骤的 pin-owned 属性保护尚有 #267 缺口；含广义保留器件清页的重建队列暂停执行，
 限制与局部恢复条件见 [原理图清理说明](schematic.md)。已完全匹配的验证分支、真实零导线/零图形的
 未布线复用分支不依赖该清理步骤，须按各自 fresh 守卫核对，不能把有残留的快照改称未布线。
