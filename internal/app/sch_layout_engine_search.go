@@ -448,7 +448,19 @@ func libNameIslands(p *powerLayoutPlan, policies map[string]string, budget ...*i
 const libJointNamingChoicesPerIsland = 8
 
 func libNameIslandsJoint(base *powerLayoutPlan, policies map[string]string, islands []libIsland, budget *int) error {
-	return libNameIslandsJointWithMode(base, policies, islands, budget, libJointNamingOptions, true)
+	if *budget <= 4096 {
+		return libNameIslandsJointWithMode(base, policies, islands, budget, libJointNamingOptions, true)
+	}
+	// Preserve the inexpensive incumbent search before paying for a larger
+	// geometry-diverse pool. Both passes debit the same caller allowance.
+	fast := 4096
+	before := fast
+	err := libNameIslandsJointWithMode(base, policies, islands, &fast, libJointNamingOptions, true)
+	*budget -= before - fast
+	if err == nil {
+		return nil
+	}
+	return libNameIslandsMRV(base, policies, libIslands(base), budget)
 }
 
 type libNamingOptionVisitor func(*powerLayoutPlan, libIsland, string, func(*powerLayoutPlan) bool, *int)

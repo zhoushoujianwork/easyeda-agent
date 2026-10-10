@@ -244,9 +244,17 @@ func (s *schematicRepairSearch) search(p powerLayoutPlan, pending []string) (*po
 	}
 	if len(pending) == 0 {
 		limit := s.terminalSliceBudget()
-		before := limit
-		out, err := libFinishSchematicLayoutRegenerate(p, s.input.NetPolicies, &limit, s.routing)
-		*s.budget -= before - limit
+		var out *powerLayoutPlan
+		var err error
+		for {
+			before := limit
+			out, err = libFinishSchematicLayoutRegenerate(p, s.input.NetPolicies, &limit, s.routing)
+			*s.budget -= before - limit
+			limit = s.nextTerminalSliceBudget(before, limit, err)
+			if limit == 0 {
+				break
+			}
+		}
 		if err != nil && !isBareSchematicResourceStop(err) {
 			s.lastTerminal = p
 			s.lastTerminal.Placements = append([]powerLayoutPlacement(nil), p.Placements...)
@@ -910,4 +918,27 @@ func (s *schematicRepairSearch) terminalSliceBudget() int {
 		quota = *s.budget
 	}
 	return quota
+}
+
+// A bare candidate stop has observed no complete terminal conflict. Retry the
+// same immutable placement with a larger slice only after it used its entire
+// allowance. Every repeat debits the shared candidates and routing context;
+// neither routing nodes nor reroutes reset. Concrete conflicts retain ordinary
+// relocation/backtracking, and ample remainder keeps a repair reserve.
+func (s *schematicRepairSearch) nextTerminalSliceBudget(previous, unused int, err error) int {
+	if err != errLibLayoutBudget || unused != 0 {
+		return 0
+	}
+	cap := *s.budget
+	reserve := s.initial / 8
+	if cap > reserve*2 {
+		cap -= reserve
+	}
+	if cap <= previous {
+		return 0
+	}
+	if previous > cap/2 {
+		return cap
+	}
+	return previous * 2
 }
