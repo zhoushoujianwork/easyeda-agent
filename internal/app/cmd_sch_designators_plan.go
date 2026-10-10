@@ -111,7 +111,7 @@ func parseSchDesignatorBaseline(raw []byte, allowUnwired ...bool) (schDesignator
 			return out, fmt.Errorf("%s: mirror unavailable", pid)
 		}
 		dev, ok := c["device"].(map[string]any)
-		if !ok || len(stringVal(dev["uuid"])) != 32 || stringVal(dev["libraryUuid"]) == "" || c["deviceIdentityError"] != nil {
+		if !ok || len(stringVal(dev["uuid"])) != 32 || stringVal(dev["libraryUuid"]) == "" || c["deviceIdentityError"] != nil || c["deviceIdentityCompatibilityError"] != nil {
 			return out, fmt.Errorf("%s: exact official device/library identity unavailable", pid)
 		}
 		if c["pinsAvailable"] != true || c["netAmbiguous"] == true {
@@ -323,7 +323,8 @@ func newSchDesignatorsPlanCmd(stdout io.Writer) *cobra.Command {
 }
 
 // Compare all persistent instance data, irrespective of enumeration order.
-// Ignore only the rendered part bbox and the two intentionally changed fields.
+// Normalize completed independent identity proofs; the rendered part bbox and
+// the two intentionally changed fields are not persistent scene differences.
 func schDesignatorScene(result map[string]any) (map[string]any, error) {
 	out := map[string]any{}
 	components, ok := result["components"].([]any)

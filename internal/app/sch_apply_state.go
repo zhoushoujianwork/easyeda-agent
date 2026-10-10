@@ -71,8 +71,10 @@ func (d schematicDeviceExpectation) validate() error {
 }
 
 func measuredSchematicDevice(ref string, have map[string]any) (*schematicDeviceExpectation, error) {
-	if problem, exists := have["deviceIdentityError"]; exists && problem != nil && problem != "" {
-		return nil, fmt.Errorf("%s device identity is unresolved: %v", ref, problem)
+	for _, key := range []string{"deviceIdentityError", "deviceIdentityCompatibilityError"} {
+		if problem, exists := have[key]; exists && problem != nil && problem != "" {
+			return nil, fmt.Errorf("%s device identity is unresolved: %v", ref, problem)
+		}
 	}
 	device, ok := have["device"].(map[string]any)
 	if !ok {

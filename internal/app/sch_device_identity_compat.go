@@ -8,6 +8,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -114,7 +115,7 @@ func schematicIdentitySearches(components []map[string]any) []schematicIdentityS
 		if query == "" {
 			query = schematicStableDeviceName(c)
 		}
-		library := schematicIdentityString(schematicIdentityMap(c, "device"), "libraryUuid")
+		library := schematicIdentityString(schematicIdentityPlacedDevice(c), "libraryUuid")
 		if query != "" && library != "" {
 			unique[schematicIdentitySearch{Query: query, LibraryUUID: library}] = true
 		}
@@ -178,11 +179,25 @@ func schematicIdentityMap(m map[string]any, key string) map[string]any {
 	v, _ := m[key].(map[string]any)
 	return v
 }
+
+// Connector recovery leaves the exact original placed handle beside its
+// resolved device. Verify those records through the same independent probe as
+// unresolved instances, so request-local lookup shape cannot choose the guard
+// evidence schema. Native 32-hex library references without a placed handle
+// remain authoritative and do not take this compatibility path.
+func schematicIdentityPlacedDevice(c map[string]any) map[string]any {
+	d := schematicIdentityMap(c, "device")
+	if isDeviceLibraryUUID(schematicIdentityString(d, "uuid")) {
+		return schematicIdentityMap(c, "placedDevice")
+	}
+	return d
+}
+
 func needsSchematicIdentityCompat(c map[string]any) bool {
 	if schematicIdentityString(c, "componentType") != "part" {
 		return false
 	}
-	device, part, fp := schematicIdentityMap(c, "device"), schematicIdentityMap(c, "component"), schematicIdentityMap(c, "footprint")
+	device, part, fp := schematicIdentityPlacedDevice(c), schematicIdentityMap(c, "component"), schematicIdentityMap(c, "footprint")
 	supplier := schematicIdentityString(c, "supplierId")
 	model := schematicIdentityString(c, "manufacturerId")
 	// Personal library assets need not have a supplier C-number. They still
@@ -275,7 +290,7 @@ func resolveSchematicIdentityCompat(c map[string]any, candidates []schematicIden
 	lcsc := schematicIdentityString(c, "supplierId")
 	mpn := schematicIdentityString(c, "manufacturerId")
 	name := schematicStableDeviceName(c)
-	placedLibrary := schematicIdentityString(schematicIdentityMap(c, "device"), "libraryUuid")
+	placedLibrary := schematicIdentityString(schematicIdentityPlacedDevice(c), "libraryUuid")
 	label := lcsc
 	if label == "" {
 		label = mpn
@@ -324,6 +339,11 @@ func resolveSchematicIdentityCompat(c map[string]any, candidates []schematicIden
 	if len(matches) != 1 {
 		return zero, fmt.Errorf("%s has %d exact supplier/model/native-footprint-source candidates; requires exactly one", label, len(matches))
 	}
+	resolved := schematicIdentityMap(c, "device")
+	if isDeviceLibraryUUID(schematicIdentityString(resolved, "uuid")) &&
+		(schematicIdentityString(resolved, "uuid") != matches[0].UUID || schematicIdentityString(resolved, "libraryUuid") != matches[0].LibraryUUID) {
+		return zero, fmt.Errorf("connector resolved device conflicts with independent exact supplier/model/native-footprint-source proof")
+	}
 	return matches[0], nil
 }
 
@@ -350,9 +370,12 @@ func schematicIdentityCompatSceneProof(c map[string]any) bool {
 		return false
 	}
 	d, fp := schematicIdentityMap(c, "device"), schematicIdentityMap(c, "footprint")
+	instance := schematicIdentityMap(r, "instanceFootprint")
 	s, association := schematicIdentityMap(r, "footprintSource"), schematicIdentityMap(r, "libraryFootprint")
 	return isDeviceLibraryUUID(schematicIdentityString(d, "uuid")) && schematicIdentityString(d, "libraryUuid") != "" &&
 		schematicPlacedIdentityRE.MatchString(schematicIdentityString(fp, "uuid")) &&
+		schematicIdentityString(instance, "uuid") == schematicIdentityString(fp, "uuid") &&
+		schematicIdentityString(instance, "libraryUuid") == schematicIdentityString(fp, "libraryUuid") &&
 		schematicIdentityString(s, "instanceUuid") == schematicIdentityString(fp, "uuid") &&
 		isDeviceLibraryUUID(schematicIdentityString(s, "uuid")) &&
 		schematicIdentityString(s, "libraryUuid") != "" && schematicIdentityString(s, "libraryUuid") == schematicIdentityString(fp, "libraryUuid") &&
@@ -365,14 +388,25 @@ func schematicIdentityCompatStableScene(c map[string]any) {
 		return
 	}
 	delete(c, "deviceIdentityCandidates")
-	resolution := schematicIdentityMap(c, "deviceResolution")
-	stable := make(map[string]any, len(resolution))
-	for key, value := range resolution {
-		if key != "probeId" && key != "connectorError" {
-			stable[key] = value
-		}
+	r := schematicIdentityMap(c, "deviceResolution")
+	asset := func(m map[string]any) map[string]any {
+		return map[string]any{"uuid": schematicIdentityString(m, "uuid"), "libraryUuid": schematicIdentityString(m, "libraryUuid")}
 	}
-	c["deviceResolution"] = stable
+	source := asset(schematicIdentityMap(r, "footprintSource"))
+	source["instanceUuid"] = schematicIdentityString(schematicIdentityMap(r, "footprintSource"), "instanceUuid")
+	// Compare exact identities, not acquisition-path diagnostics or optional
+	// search display names. The actual full footprint and device records remain
+	// protected outside this canonical proof, as do properties and every pin.
+	c["deviceResolution"] = map[string]any{
+		"schemaVersion":     float64(1),
+		"proofKind":         "exact-native-footprint-device-association",
+		"via":               r["via"],
+		"supplierId":        schematicIdentityString(c, "supplierId"),
+		"device":            asset(schematicIdentityMap(c, "device")),
+		"instanceFootprint": asset(schematicIdentityMap(c, "footprint")),
+		"footprintSource":   source,
+		"libraryFootprint":  asset(schematicIdentityMap(r, "libraryFootprint")),
+	}
 }
 
 // Called once at the shared postAction choke point. Library reads never recurse
@@ -497,7 +531,7 @@ func hydrateSchematicIdentityCompatibility(cfg *appConfig, action, window string
 			c["deviceIdentityCompatibilityError"] = err.Error()
 			continue
 		}
-		original := c["device"]
+		original := maps.Clone(schematicIdentityPlacedDevice(c))
 		previousError := c["deviceIdentityError"]
 		c["placedDevice"] = original
 		c["device"] = map[string]any{"uuid": hit.UUID, "libraryUuid": hit.LibraryUUID, "name": schematicIdentityString(c, "name")}
