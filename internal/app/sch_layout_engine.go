@@ -19,9 +19,10 @@ type SchematicLayoutAttach struct {
 	PinNumber   string `json:"pinNumber"`
 }
 type SchematicLayoutPeripheral struct {
-	ComponentID string                 `json:"componentId"`
-	PinNumber   string                 `json:"pinNumber,omitempty"`
-	AttachTo    *SchematicLayoutAttach `json:"attachTo,omitempty"`
+	ComponentID               string                 `json:"componentId"`
+	PinNumber                 string                 `json:"pinNumber,omitempty"`
+	AttachTo                  *SchematicLayoutAttach `json:"attachTo,omitempty"`
+	MinimumAttachmentDistance float64                `json:"minimumAttachmentDistance,omitempty"`
 }
 
 // SchematicMarkerAnchor makes marker ownership explicit. Pin anchors must start
@@ -194,6 +195,14 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		if h.AttachTo != nil && (h.AttachTo.ComponentID == h.ComponentID || measured[h.AttachTo.ComponentID].Designator == "") {
 			return nil, fmt.Errorf("invalid attachment target")
 		}
+		if h.MinimumAttachmentDistance != 0 {
+			if !plGrid(h.MinimumAttachmentDistance) || h.MinimumAttachmentDistance < 5 || h.MinimumAttachmentDistance > 400 || h.AttachTo == nil || h.PinNumber == "" || h.AttachTo.PinNumber == "" {
+				return nil, fmt.Errorf("minimumAttachmentDistance requires explicit attachment pins and 5..400 raw on the 5-raw grid")
+			}
+			if input.LayoutMode != "" || input.Optimization != nil {
+				return nil, fmt.Errorf("minimumAttachmentDistance requires bounded measured-pose layout")
+			}
+		}
 		hints[h.ComponentID] = h
 	}
 	optimization, allowed, err := schematicOptimizationSettings(input)
@@ -255,6 +264,9 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 			return nil, err
 		}
 	}
+	if err := validateMinimumAttachmentDistances(result, measured, hints); err != nil {
+		return nil, err
+	}
 	if err := annotateSchematicMarkerAnchors(result, input.MarkerAnchors, ""); err != nil {
 		return nil, err
 	}
@@ -267,4 +279,46 @@ func planSchematicLayoutWithBudget(input SchematicLayoutInput, budget *int) (*Sc
 		}
 	}
 	return result, nil
+}
+
+// Check the declared outward pin separation again after routing/relocation.
+func validateMinimumAttachmentDistances(result *SchematicLayoutResult, measured map[string]powerLayoutPlacement, hints map[string]SchematicLayoutPeripheral) error {
+	placed := map[string]powerLayoutPlacement{}
+	for _, c := range result.Placements {
+		placed[c.Designator] = c
+	}
+	for id, hint := range hints {
+		if hint.MinimumAttachmentDistance == 0 {
+			continue
+		}
+		own := placed[measured[id].Designator]
+		host := placed[measured[hint.AttachTo.ComponentID].Designator]
+		op, ok := libPin(own, hint.PinNumber)
+		if !ok {
+			return fmt.Errorf("minimum attachment pin missing")
+		}
+		hp, ok := libPin(host, hint.AttachTo.PinNumber)
+		if !ok {
+			return fmt.Errorf("minimum attachment host pin missing")
+		}
+		side, err := libPinSide(hp, host.BBox)
+		if err != nil {
+			return err
+		}
+		distance := 0.0
+		switch side {
+		case "left":
+			distance = hp.X - op.X
+		case "right":
+			distance = op.X - hp.X
+		case "up":
+			distance = op.Y - hp.Y
+		case "down":
+			distance = hp.Y - op.Y
+		}
+		if distance+1e-6 < hint.MinimumAttachmentDistance {
+			return fmt.Errorf("%s attachment outward distance %g is below declared minimum %g", own.Designator, distance, hint.MinimumAttachmentDistance)
+		}
+	}
+	return nil
 }

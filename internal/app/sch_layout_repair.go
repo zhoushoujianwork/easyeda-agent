@@ -310,7 +310,7 @@ func (s *schematicRepairSearch) search(p powerLayoutPlan, pending []string) (*po
 			}
 			limit := s.sliceBudget()
 			before := limit
-			next, placeErr := libPlacePeripheralPairsWithRouting(p, s.measured[id], pairs, s.input.NetPolicies, &limit, rejected, s.routing, &cursor)
+			next, placeErr := libPlacePeripheralPairsAtMinimum(p, s.measured[id], pairs, s.input.NetPolicies, &limit, rejected, s.routing, &cursor, s.hints[id].MinimumAttachmentDistance)
 			*s.budget -= before - limit
 			if next == nil {
 				conflict := s.placementConflict(id, pairs, placed, pending, &p, placeErr)

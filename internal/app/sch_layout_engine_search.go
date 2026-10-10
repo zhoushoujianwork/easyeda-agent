@@ -128,6 +128,10 @@ func libPlacePeripheralPairs(current powerLayoutPlan, measured powerLayoutPlacem
 }
 
 func libPlacePeripheralPairsWithRouting(current powerLayoutPlan, measured powerLayoutPlacement, pairs []libAttachmentPair, policies map[string]string, budget *int, rejected map[[2]float64]bool, routing *schematicRoutingContext, cursor *float64) (*powerLayoutPlan, error) {
+	return libPlacePeripheralPairsAtMinimum(current, measured, pairs, policies, budget, rejected, routing, cursor, 0)
+}
+
+func libPlacePeripheralPairsAtMinimum(current powerLayoutPlan, measured powerLayoutPlacement, pairs []libAttachmentPair, policies map[string]string, budget *int, rejected map[[2]float64]bool, routing *schematicRoutingContext, cursor *float64, minimum float64) (*powerLayoutPlan, error) {
 	current.Flags = nil // Full marker placement is deferred to the final gate.
 	existingContactNodes := libWireContactNodes(current.Wires)
 	namingWitnesses := libNamingPlacementWitnesses{}
@@ -159,7 +163,7 @@ func libPlacePeripheralPairsWithRouting(current powerLayoutPlan, measured powerL
 		}
 		for lateral := 0.0; lateral <= math.Min(200, cost-5); lateral += 5 {
 			distance := cost - lateral
-			if distance > 400 {
+			if distance > 400 || distance < minimum {
 				continue
 			}
 			for _, sign := range []float64{1, -1} {

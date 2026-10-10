@@ -20,7 +20,11 @@ net NAME, optional attachments and maxCandidates. measurement contains explicit
 designator,x,y,rotation,mirror,bbox,pins (number,name,net,x,y), optional textBboxes.
 Every empty-net pin requires pinStates[number] = nc or unconnected.
 Policies: direct, module_port, local_power, local_ground.
-Attachments: {componentId,pinNumber?,attachTo?:{componentId,pinNumber}}.
+Attachments: {componentId,pinNumber?,attachTo?:{componentId,pinNumber},
+minimumAttachmentDistance?}. A nonzero minimum is the host-outward pin-axis gap,
+5..400 raw on the 5-raw grid; both attachment pins must be explicit. It applies
+only to bounded physical layout without optimization; omitted/zero keeps defaults.
+The same minimum is checked again after routing and relocation.
 Core is normalized to 0,0. Output preserves pin states and component IDs.
 Optional optimization:{maxVariants?:4,maxAttempts?:24} enables bounded rotation
 and geometry refinement after a complete baseline. maxVariants is 1..4 (including
