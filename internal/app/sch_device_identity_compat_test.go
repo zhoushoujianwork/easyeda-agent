@@ -152,6 +152,147 @@ func TestSchematicIdentityCompatExactDomainAndProof(t *testing.T) {
 	}
 }
 
+func identityCompatCustomFixture(model string, stableName bool) (map[string]any, schematicIdentityCandidate, schematicIdentityAsset) {
+	c, hit := identityCompatFixture()
+	c["supplierId"] = ""
+	c["manufacturerId"] = model
+	c["name"] = model
+	schematicIdentityMap(c, "device")["libraryUuid"] = "personal"
+	schematicIdentityMap(c, "component")["libraryUuid"] = "personal"
+	schematicIdentityMap(c, "component")["name"] = model
+	schematicIdentityMap(c, "footprint")["libraryUuid"] = "personal"
+	hit.LibraryUUID, hit.SupplierID, hit.ManufacturerID, hit.Name = "personal", "", model, model
+	hit.Footprint.LibraryUUID = "personal"
+	hit.Device.LibraryUUID, hit.Device.SupplierID, hit.Device.ManufacturerID, hit.Device.Name = "personal", "", model, model
+	hit.Device.Footprint.LibraryUUID = "personal"
+	if stableName {
+		c["manufacturerId"] = ""
+		hit.ManufacturerID, hit.Device.ManufacturerID = "", ""
+	}
+	source := identityCompatSource()
+	source.LibraryUUID = "personal"
+	return c, hit, source
+}
+
+func TestSchematicIdentityCompatCustomNoSupplierExactProof(t *testing.T) {
+	for _, model := range []string{"RT0603BRD07583KL", "MOTOBOX-TP-1MM"} {
+		for _, stableName := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/name=%t", model, stableName), func(t *testing.T) {
+				c, hit, source := identityCompatCustomFixture(model, stableName)
+				matched, err := resolveSchematicIdentityCompat(c, []schematicIdentityCandidate{hit}, source)
+				if err != nil || matched.UUID != hit.UUID {
+					t.Fatalf("exact custom library proof rejected: %+v %v", matched, err)
+				}
+			})
+		}
+	}
+	for _, scenario := range []string{"missing-model-and-name", "malformed-supplier", "wrong-search-supplier", "wrong-detail-supplier", "wrong-model", "wrong-device-library", "wrong-footprint-source", "wrong-detail-association", "missing-detail", "ambiguous"} {
+		t.Run(scenario, func(t *testing.T) {
+			c, hit, source := identityCompatCustomFixture("RT0603BRD07583KL", false)
+			hits := []schematicIdentityCandidate{hit}
+			switch scenario {
+			case "missing-model-and-name":
+				c["manufacturerId"], c["name"] = "", "={Manufacturer Part}"
+				schematicIdentityMap(c, "component")["name"] = "={Manufacturer Part}"
+			case "malformed-supplier":
+				c["supplierId"], hits[0].SupplierID, hits[0].Device.SupplierID = "not-a-C-number", "not-a-C-number", "not-a-C-number"
+			case "wrong-search-supplier":
+				hits[0].SupplierID = "C6186"
+			case "wrong-detail-supplier":
+				hits[0].Device.SupplierID = "C6186"
+			case "wrong-model":
+				hits[0].ManufacturerID, hits[0].Device.ManufacturerID = "different", "different"
+			case "wrong-device-library":
+				hits[0].LibraryUUID, hits[0].Device.LibraryUUID = "other", "other"
+			case "wrong-footprint-source":
+				source.UUID = strings.Repeat("f", 32)
+			case "wrong-detail-association":
+				hits[0].Device.Footprint.LibraryUUID = "other"
+			case "missing-detail":
+				hits[0].Device = nil
+			case "ambiguous":
+				other := hit
+				other.UUID = strings.Repeat("c", 32)
+				d := *hit.Device
+				d.UUID = other.UUID
+				other.Device = &d
+				hits = append(hits, other)
+			}
+			if _, err := resolveSchematicIdentityCompat(c, hits, source); err == nil {
+				t.Fatal("custom identity accepted incomplete or conflicting proof")
+			}
+		})
+	}
+}
+
+func TestSchematicIdentityCompatCustomNoSupplierSharedRead(t *testing.T) {
+	original, hit, _ := identityCompatCustomFixture("RT0603BRD07583KL", false)
+	before, _ := json.Marshal(original)
+	cfg, _, cleanup := newBlockApplyTestDaemon(t, func(call blockApplyTestCall) string {
+		if call.Action == "schematic.components.list" {
+			return identityCompatEnvelope(map[string]any{"components": []any{original}}, "page")
+		}
+		if call.Action != "debug.exec_js" {
+			t.Fatalf("unexpected action %s", call.Action)
+		}
+		code, _ := call.Payload["code"].(string)
+		if !strings.Contains(code, "const ids = [];") {
+			t.Fatal("empty supplier sent to LCSC lookup")
+		}
+		p := identityCompatProof(hit)
+		p.Query.LCSCIDs = []string{}
+		p.Query.Searches = schematicIdentitySearches([]map[string]any{original})
+		p.NativeFootprints[0].MetadataLines[1] = strings.Replace(p.NativeFootprints[0].MetadataLines[1], "|system", "|personal", 1)
+		return identityCompatEnvelope(map[string]any{"value": p}, "page")
+	})
+	defer cleanup()
+	runner := applyRunner{cfg: cfg, window: "w1"}
+	result, err := runner.runAction("schematic.components.list", map[string]any{"includeDeviceIdentity": true}, defaultActionTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := result.(map[string]any)["components"].([]any)[0].(map[string]any)
+	if schematicIdentityString(schematicIdentityMap(c, "device"), "uuid") != hit.UUID || c["deviceIdentityError"] != nil {
+		t.Fatalf("custom identity unresolved %+v", c)
+	}
+	resolution := schematicIdentityMap(c, "deviceResolution")
+	if resolution["via"] != "scoped-library-footprint-source" || resolution["lcsc"] != nil || resolution["sameFootprintUUID"] != true {
+		t.Fatalf("custom proof provenance inaccurate %+v", resolution)
+	}
+	after, _ := json.Marshal(original)
+	if string(before) != string(after) {
+		t.Fatal("custom read adapter mutated caller snapshot")
+	}
+}
+
+func TestSchematicIdentityProbeCustomNoSupplierSkipsLCSCLookup(t *testing.T) {
+	c, _, source := identityCompatCustomFixture("MOTOBOX-TP-1MM", false)
+	code, _ := json.Marshal(schematicIdentityProbeCode([]string{}, []string{"abe23dba1def1246"}, "project", "page", schematicIdentitySearches([]map[string]any{c})...))
+	entry := identityCompatNativeFootprint()
+	entry.MetadataLines[1] = strings.Replace(entry.MetadataLines[1], "|system", "|personal", 1)
+	native, _ := json.Marshal(entry)
+	js := `
+const entry = ` + string(native) + `;
+const eda = {
+ dmt_Project:{getCurrentProjectInfo:async()=>({uuid:"project"})},
+ dmt_SelectControl:{getCurrentDocumentInfo:async()=>({uuid:"page"})},
+ sys_FileManager:{getDocumentFootprintSources:async()=>[{footprintUuid:entry.footprintUuid,documentSource:entry.metadataLines.join("\n")}]},
+ lib_Device:{
+  getByLcscIds:async()=>{throw new Error("custom device must not query LCSC");},
+  search:async(query,library)=>{if(query!=="MOTOBOX-TP-1MM"||library!=="personal")throw new Error("wrong scoped query");return [{uuid:"9f9c6cb41c7449fd8acf96aceed2661a",libraryUuid:library,name:query}];},
+  get:async(uuid,library)=>({uuid,libraryUuid:library,name:"MOTOBOX-TP-1MM",property:{supplierId:"",manufacturerId:"MOTOBOX-TP-1MM"},association:{footprint:{uuid:"20c29e37a9b84b4197418483096f9c05",libraryUuid:library}}})
+ }
+};
+(async()=>{const value=await new (Object.getPrototypeOf(async function(){}).constructor)("eda",` + string(code) + `)(eda);process.stdout.write(JSON.stringify(value));})().catch(e=>{process.stderr.write(String(e));process.exitCode=1;});`
+	var proof schematicIdentityProbe
+	if err := json.Unmarshal(runIdentityJavaScript(t, js), &proof); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveSchematicIdentityCompat(c, proof.Candidates, source); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func identityCompatEnvelope(result any, doc string) string {
 	b, _ := json.Marshal(map[string]any{"ok": true, "id": "probe-test", "result": result, "context": map[string]any{"projectUuid": "project", "documentUuid": doc, "documentType": "schematic"}})
 	return string(b)
@@ -161,6 +302,7 @@ func identityCompatProof(hit schematicIdentityCandidate) schematicIdentityProbe 
 	proof.SchemaVersion = 1
 	proof.Query.LCSCIDs = []string{"C6186"}
 	proof.Query.AllowMultiMatch = true
+	proof.Query.Searches = []schematicIdentitySearch{{Query: "AMS1117-3.3", LibraryUUID: "system"}}
 	proof.Candidates = []schematicIdentityCandidate{hit}
 	proof.NativeFootprints = []schematicNativeFootprint{identityCompatNativeFootprint()}
 	return proof
@@ -231,7 +373,7 @@ func TestSchematicIdentityCompatSharedDispatchAndApplyRead(t *testing.T) {
 }
 
 func TestSchematicIdentityCompatFailureNeverWeakensGuard(t *testing.T) {
-	for _, scenario := range []string{"wrong-context", "missing-candidates", "missing-all-match-proof", "ambiguous", "probe-error", "missing-native-source", "bad-native-source", "source-error", "dry-run"} {
+	for _, scenario := range []string{"wrong-context", "missing-candidates", "missing-all-match-proof", "missing-scoped-search", "wrong-scoped-library", "ambiguous", "probe-error", "missing-native-source", "bad-native-source", "source-error", "dry-run"} {
 		t.Run(scenario, func(t *testing.T) {
 			original, hit := identityCompatFixture()
 			cfg, daemon, cleanup := newBlockApplyTestDaemon(t, func(call blockApplyTestCall) string {
@@ -250,6 +392,10 @@ func TestSchematicIdentityCompatFailureNeverWeakensGuard(t *testing.T) {
 					p.Candidates = nil
 				case "missing-all-match-proof":
 					p.Query.AllowMultiMatch = false
+				case "missing-scoped-search":
+					p.Query.Searches = nil
+				case "wrong-scoped-library":
+					p.Query.Searches[0].LibraryUUID = "personal"
 				case "ambiguous":
 					other := hit
 					other.UUID = strings.Repeat("c", 32)
@@ -286,6 +432,64 @@ func TestSchematicIdentityCompatFailureNeverWeakensGuard(t *testing.T) {
 			}
 			if scenario == "dry-run" && len(daemon.snapshot()) != 1 {
 				t.Fatalf("dry-run ran debug probe %+v", daemon.snapshot())
+			}
+		})
+	}
+}
+
+func TestSchematicIdentityScopedSearchKeepsExactNativeSourceProof(t *testing.T) {
+	original, _ := identityCompatFixture()
+	queries := schematicIdentitySearches([]map[string]any{original, original})
+	if len(queries) != 1 || queries[0].Query != "AMS1117-3.3" || queries[0].LibraryUUID != "system" {
+		t.Fatalf("placed model/library queries are not exact and deduplicated: %+v", queries)
+	}
+	code, _ := json.Marshal(schematicIdentityProbeCode([]string{"C6186"}, []string{"abe23dba1def1246"}, "project", "page", queries...))
+	entry, _ := json.Marshal(identityCompatNativeFootprint())
+	for _, scenario := range []string{"personal-shadow", "wrong-C", "wrong-MPN", "wrong-footprint", "wrong-search-library", "ambiguous", "search-error"} {
+		t.Run(scenario, func(t *testing.T) {
+			scenarioJSON, _ := json.Marshal(scenario)
+			js := `
+const scenario = ` + string(scenarioJSON) + `, entry = ` + string(entry) + `;
+const asset = "9f9c6cb41c7449fd8acf96aceed2661a", second = "cccccccccccccccccccccccccccccccc", personal = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+let searches = 0;
+const eda = {
+ dmt_Project:{getCurrentProjectInfo:async()=>({uuid:"project"})},
+ dmt_SelectControl:{getCurrentDocumentInfo:async()=>({uuid:"page"})},
+ sys_FileManager:{getDocumentFootprintSources:async()=>[{footprintUuid:entry.footprintUuid,documentSource:entry.metadataLines.join("\n")}]},
+ lib_Device:{
+  getByLcscIds:async(ids,unused,all)=>{if(all !== true)throw new Error("not all matches");return [{uuid:personal,libraryUuid:"personal",supplierId:"C6186",manufacturerId:"AMS1117-3.3",name:"AMS1117-3.3"}];},
+  search:async(query,library)=>{searches++;if(query!=="AMS1117-3.3"||library!=="system")throw new Error("unscoped or fuzzy query");if(scenario==="search-error")throw new Error("unavailable");const row={uuid:asset,libraryUuid:scenario==="wrong-search-library"?"personal":"system",name:"AMS1117-3.3"};return scenario==="ambiguous"?[row,{...row,uuid:second}]:[row];},
+  get:async(uuid,library)=>({uuid,libraryUuid:library,name:"AMS1117-3.3",property:{supplierId:scenario==="wrong-C"&&uuid!==personal?"C999":"C6186",manufacturerId:scenario==="wrong-MPN"&&uuid!==personal?"AMS1117-5.0":"AMS1117-3.3"},association:{footprint:{uuid:uuid===personal||scenario==="wrong-footprint"?"ffffffffffffffffffffffffffffffff":"20c29e37a9b84b4197418483096f9c05",libraryUuid:library}}})
+ }
+};
+(async()=>{try{const value=await new (Object.getPrototypeOf(async function(){}).constructor)("eda",` + string(code) + `)(eda);process.stdout.write(JSON.stringify({value,searches}));}catch(error){process.stdout.write(JSON.stringify({error:String(error),searches}));}})();`
+			var result struct {
+				Value    schematicIdentityProbe `json:"value"`
+				Error    string                 `json:"error"`
+				Searches int                    `json:"searches"`
+			}
+			if err := json.Unmarshal(runIdentityJavaScript(t, js), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Searches != 1 {
+				t.Fatalf("expected one official scoped search, got %d", result.Searches)
+			}
+			if scenario == "search-error" {
+				if result.Error == "" {
+					t.Fatal("failed candidate search silently accepted")
+				}
+				return
+			}
+			if result.Error != "" {
+				t.Fatal(result.Error)
+			}
+			hit, err := resolveSchematicIdentityCompat(original, result.Value.Candidates, identityCompatSource())
+			if scenario == "personal-shadow" {
+				if err != nil || hit.UUID != "9f9c6cb41c7449fd8acf96aceed2661a" {
+					t.Fatalf("official system asset lost behind personal lookup: %+v %v", hit, err)
+				}
+			} else if err == nil {
+				t.Fatal("scoped search weakened exact C/MPN/native-source uniqueness")
 			}
 		})
 	}

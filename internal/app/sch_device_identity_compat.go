@@ -21,9 +21,13 @@ var schematicLCSCIdentityRE = regexp.MustCompile(`^C[0-9]+$`)
 // associations. Its single-result output cannot prove uniqueness. This fixed
 // compatibility script calls only official read APIs, requests all matches and
 // returns bounded identity fields (no full properties/geometry payloads).
-func schematicIdentityProbeCode(ids, footprintIDs []string, project, document string) string {
+func schematicIdentityProbeCode(ids, footprintIDs []string, project, document string, searches ...schematicIdentitySearch) string {
 	b, _ := json.Marshal(ids)
 	footprints, _ := json.Marshal(footprintIDs)
+	if searches == nil {
+		searches = []schematicIdentitySearch{}
+	}
+	queries, _ := json.Marshal(searches)
 	scope, _ := json.Marshal(map[string]string{"projectUuid": project, "documentUuid": document})
 	return schematicIdentityArchiveCode + `
 const expectedContext = ` + string(scope) + `;
@@ -57,10 +61,24 @@ if (missingFootprints.size) {
  } catch(error) { sourceError = "official project footprint source unavailable: " + String(error); }
 }
 const text = x => typeof x === "string" ? x : "";
-const hits = await eda.lib_Device.getByLcscIds(ids, undefined, true);
+const hits = ids.length ? await eda.lib_Device.getByLcscIds(ids, undefined, true) : [];
 if (!Array.isArray(hits) || hits.length > 128) throw new Error("identity lookup is missing or exceeds 128 candidates");
+const searches = ` + string(queries) + `;
+for (const query of searches) {
+ await assertIdentityContext();
+ const found = await eda.lib_Device.search(query.query, query.libraryUuid);
+ if (!Array.isArray(found) || found.length > 128) throw new Error("scoped identity search is missing or exceeds 128 candidates");
+ for (const hit of found) {
+  if (hit && text(hit.libraryUuid) === query.libraryUuid) hits.push(hit);
+ }
+}
 const candidates = [];
+const seen = new Set();
 for (const hit of hits) {
+ const key = text(hit.libraryUuid) + "/" + text(hit.uuid);
+ if (seen.has(key)) continue;
+ seen.add(key);
+ if (seen.size > 128) throw new Error("merged identity lookup exceeds 128 candidates");
  const f = hit.footprint && typeof hit.footprint === "object" ? hit.footprint : {uuid:hit.footprintUuid,libraryUuid:hit.footprintLibraryUuid,name:hit.footprintName};
  const out = {uuid:text(hit.uuid),libraryUuid:text(hit.libraryUuid),supplierId:text(hit.supplierId),manufacturerId:text(hit.manufacturerId),name:text(hit.name),footprint:{uuid:text(f.uuid),libraryUuid:text(f.libraryUuid),name:text(f.name)}};
  try {
@@ -68,11 +86,50 @@ for (const hit of hits) {
   if (!d) throw new Error("library Device.get returned no identity");
   const a = d.association || {}, p = d.property || {}, af = a.footprint || {};
   out.device = {uuid:text(d.uuid),libraryUuid:text(d.libraryUuid),name:text(d.name),supplierId:text(p.supplierId),manufacturerId:text(p.manufacturerId),footprint:{uuid:text(af.uuid),libraryUuid:text(af.libraryUuid)}};
+  // Search rows may omit properties or associations. Only the fresh official
+  // detail supplies missing fields; nonempty search/detail conflicts survive.
+  if (!out.supplierId) out.supplierId = out.device.supplierId;
+  if (!out.manufacturerId) out.manufacturerId = out.device.manufacturerId;
+  if (!out.footprint.uuid) out.footprint.uuid = out.device.footprint.uuid;
+  if (!out.footprint.libraryUuid) out.footprint.libraryUuid = out.device.footprint.libraryUuid;
  } catch(error) { out.error = String(error); }
  candidates.push(out);
 }
 await assertIdentityContext();
-return {schemaVersion:1,query:{lcscIds:ids,allowMultiMatch:true},candidates,nativeFootprints,sourceError};`
+return {schemaVersion:1,query:{lcscIds:ids,allowMultiMatch:true,searches},candidates,nativeFootprints,sourceError};`
+}
+
+type schematicIdentitySearch struct {
+	Query       string `json:"query"`
+	LibraryUUID string `json:"libraryUuid"`
+}
+
+// The placed instance tells us which library to search. A bare C-number lookup
+// can be shadowed by personal copies, even with allowMultiMatch=true. These
+// searches add candidates; they never authorize a name or footprint guess.
+func schematicIdentitySearches(components []map[string]any) []schematicIdentitySearch {
+	unique := map[schematicIdentitySearch]bool{}
+	for _, c := range components {
+		query := schematicIdentityString(c, "manufacturerId")
+		if query == "" {
+			query = schematicStableDeviceName(c)
+		}
+		library := schematicIdentityString(schematicIdentityMap(c, "device"), "libraryUuid")
+		if query != "" && library != "" {
+			unique[schematicIdentitySearch{Query: query, LibraryUUID: library}] = true
+		}
+	}
+	result := make([]schematicIdentitySearch, 0, len(unique))
+	for query := range unique {
+		result = append(result, query)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].LibraryUUID != result[j].LibraryUUID {
+			return result[i].LibraryUUID < result[j].LibraryUUID
+		}
+		return result[i].Query < result[j].Query
+	})
+	return result
 }
 
 type schematicIdentityAsset struct {
@@ -107,8 +164,9 @@ type schematicNativeFootprint struct {
 type schematicIdentityProbe struct {
 	SchemaVersion int `json:"schemaVersion"`
 	Query         struct {
-		LCSCIDs         []string `json:"lcscIds"`
-		AllowMultiMatch bool     `json:"allowMultiMatch"`
+		LCSCIDs         []string                  `json:"lcscIds"`
+		AllowMultiMatch bool                      `json:"allowMultiMatch"`
+		Searches        []schematicIdentitySearch `json:"searches"`
 	} `json:"query"`
 	Candidates       []schematicIdentityCandidate `json:"candidates"`
 	NativeFootprints []schematicNativeFootprint   `json:"nativeFootprints"`
@@ -125,11 +183,18 @@ func needsSchematicIdentityCompat(c map[string]any) bool {
 		return false
 	}
 	device, part, fp := schematicIdentityMap(c, "device"), schematicIdentityMap(c, "component"), schematicIdentityMap(c, "footprint")
+	supplier := schematicIdentityString(c, "supplierId")
+	model := schematicIdentityString(c, "manufacturerId")
+	// Personal library assets need not have a supplier C-number. They still
+	// need an exact searchable model/name and a fixed placed device library.
+	identityKey := schematicLCSCIdentityRE.MatchString(supplier) ||
+		(supplier == "" && (model != "" || schematicStableDeviceName(c) != "") &&
+			strings.TrimSpace(schematicIdentityString(device, "libraryUuid")) != "")
 	return schematicPlacedIdentityRE.MatchString(schematicIdentityString(device, "uuid")) &&
 		schematicPlacedIdentityRE.MatchString(schematicIdentityString(part, "uuid")) &&
 		schematicIdentityString(device, "uuid") == schematicIdentityString(part, "uuid") &&
 		schematicPlacedIdentityRE.MatchString(schematicIdentityString(fp, "uuid")) &&
-		strings.TrimSpace(schematicIdentityString(fp, "libraryUuid")) != "" && schematicLCSCIdentityRE.MatchString(schematicIdentityString(c, "supplierId"))
+		strings.TrimSpace(schematicIdentityString(fp, "libraryUuid")) != "" && identityKey
 }
 
 func schematicStableDeviceName(c map[string]any) string {
@@ -210,18 +275,29 @@ func resolveSchematicIdentityCompat(c map[string]any, candidates []schematicIden
 	lcsc := schematicIdentityString(c, "supplierId")
 	mpn := schematicIdentityString(c, "manufacturerId")
 	name := schematicStableDeviceName(c)
+	placedLibrary := schematicIdentityString(schematicIdentityMap(c, "device"), "libraryUuid")
+	label := lcsc
+	if label == "" {
+		label = mpn
+		if label == "" {
+			label = name
+		}
+	}
 	var matches []schematicIdentityCandidate
 	seen := map[string]bool{}
 	for _, hit := range candidates {
 		if hit.SupplierID != lcsc {
 			continue
 		}
+		if lcsc == "" && hit.LibraryUUID != placedLibrary {
+			continue
+		}
 		if hit.Error != "" || hit.Device == nil {
-			return zero, fmt.Errorf("complete candidate identity unavailable for %s", lcsc)
+			return zero, fmt.Errorf("complete candidate identity unavailable for %s", label)
 		}
 		d := hit.Device
 		if !isDeviceLibraryUUID(hit.UUID) || strings.TrimSpace(hit.LibraryUUID) == "" || d.UUID != hit.UUID || d.LibraryUUID != hit.LibraryUUID || d.SupplierID != lcsc {
-			return zero, fmt.Errorf("candidate library identity or exact LCSC proof disagrees for %s", lcsc)
+			return zero, fmt.Errorf("candidate library identity or exact supplier proof disagrees for %s", label)
 		}
 		if mpn != "" {
 			if hit.ManufacturerID != mpn || d.ManufacturerID != mpn {
@@ -246,7 +322,7 @@ func resolveSchematicIdentityCompat(c map[string]any, candidates []schematicIden
 		matches = append(matches, hit)
 	}
 	if len(matches) != 1 {
-		return zero, fmt.Errorf("%s has %d exact C/MPN/native-footprint-source candidates; requires exactly one", lcsc, len(matches))
+		return zero, fmt.Errorf("%s has %d exact supplier/model/native-footprint-source candidates; requires exactly one", label, len(matches))
 	}
 	return matches[0], nil
 }
@@ -276,7 +352,9 @@ func hydrateSchematicIdentityCompatibility(cfg *appConfig, action, window string
 		c, ok := item.(map[string]any)
 		if ok && needsSchematicIdentityCompat(c) {
 			needing = append(needing, c)
-			ids[schematicIdentityString(c, "supplierId")] = true
+			if supplier := schematicIdentityString(c, "supplierId"); supplier != "" {
+				ids[supplier] = true
+			}
 		}
 	}
 	if len(needing) == 0 {
@@ -311,15 +389,19 @@ func hydrateSchematicIdentityCompatibility(cfg *appConfig, action, window string
 		ordered = append(ordered, id)
 	}
 	sort.Strings(ordered)
+	searches := schematicIdentitySearches(needing)
 	if len(ordered) > 64 {
 		return fail("legacy identity lookup exceeds 64 distinct C-numbers; upgrade connector or read a smaller page")
+	}
+	if len(searches) > 128 {
+		return fail("legacy identity lookup exceeds 128 scoped model queries; read a smaller page")
 	}
 	// Copy the routing configuration instead of changing the caller's project or
 	// document selection. The response context must still agree after the probe.
 	scoped := *cfg
 	scoped.project = project
 	scoped.doc = "" // library reads need no navigation; reject context drift after the probe
-	probeResult, err := requestActionTimed(&scoped, "debug.exec_js", window, map[string]any{"code": schematicIdentityProbeCode(ordered, footprintIDs, project, doc)}, timeout)
+	probeResult, err := requestActionTimed(&scoped, "debug.exec_js", window, map[string]any{"code": schematicIdentityProbeCode(ordered, footprintIDs, project, doc, searches...)}, timeout)
 	if err != nil {
 		return fail("legacy identity lookup failed: " + err.Error())
 	}
@@ -344,6 +426,14 @@ func hydrateSchematicIdentityCompatibility(cfg *appConfig, action, window string
 			return fail("identity proof query differs from requested C-numbers")
 		}
 	}
+	if len(proof.Query.Searches) != len(searches) {
+		return fail("identity proof scoped searches differ from requested model/library queries")
+	}
+	for i, query := range searches {
+		if proof.Query.Searches[i] != query {
+			return fail("identity proof scoped searches differ from requested model/library queries")
+		}
+	}
 	for _, c := range needing {
 		instanceFootprintUUID := schematicIdentityString(schematicIdentityMap(c, "footprint"), "uuid")
 		native, err := schematicNativeFootprintIdentity(instanceFootprintUUID, proof.NativeFootprints)
@@ -364,6 +454,11 @@ func hydrateSchematicIdentityCompatibility(cfg *appConfig, action, window string
 		c["placedDevice"] = original
 		c["device"] = map[string]any{"uuid": hit.UUID, "libraryUuid": hit.LibraryUUID, "name": schematicIdentityString(c, "name")}
 		resolution := map[string]any{"via": "lcsc-footprint-source", "resolver": "cli-legacy-placed-footprint-v1", "lcsc": hit.SupplierID, "footprint": hit.Footprint.Name, "instanceFootprint": c["footprint"], "libraryFootprint": hit.Device.Footprint, "footprintSource": map[string]string{"instanceUuid": instanceFootprintUUID, "uuid": native.UUID, "libraryUuid": native.LibraryUUID}, "sameFootprintUUID": true, "proof": "all LCSC candidates; exact MPN or stable device name; native footprint META.source matches official Device.get asset association", "connectorError": previousError, "probeId": probeResult.ID}
+		if hit.SupplierID == "" {
+			resolution["via"] = "scoped-library-footprint-source"
+			resolution["proof"] = "all scoped library candidates; exact MPN or stable device name; native footprint META.source matches official Device.get asset association"
+			delete(resolution, "lcsc")
+		}
 		for _, entry := range proof.NativeFootprints {
 			if entry.FootprintUUID == instanceFootprintUUID && entry.SourceKind != "" {
 				resolution["sourceKind"] = entry.SourceKind
