@@ -327,6 +327,54 @@ func resolveSchematicIdentityCompat(c map[string]any, candidates []schematicIden
 	return matches[0], nil
 }
 
+// Only a completed compatibility read may separate obsolete connector
+// diagnostics from stable identity evidence. Keep the resolved device, native
+// instance, source asset/library and official association in the scene.
+func schematicIdentityCompatSceneProof(c map[string]any) bool {
+	if _, present := c["deviceIdentityError"]; present {
+		return false
+	}
+	if _, present := c["deviceIdentityCompatibilityError"]; present {
+		return false
+	}
+	r := schematicIdentityMap(c, "deviceResolution")
+	if r["resolver"] != "cli-legacy-placed-footprint-v1" || r["sameFootprintUUID"] != true {
+		return false
+	}
+	supplier := schematicIdentityString(c, "supplierId")
+	if supplier == "" {
+		if r["via"] != "scoped-library-footprint-source" {
+			return false
+		}
+	} else if !schematicLCSCIdentityRE.MatchString(supplier) || r["via"] != "lcsc-footprint-source" || r["lcsc"] != supplier {
+		return false
+	}
+	d, fp := schematicIdentityMap(c, "device"), schematicIdentityMap(c, "footprint")
+	s, association := schematicIdentityMap(r, "footprintSource"), schematicIdentityMap(r, "libraryFootprint")
+	return isDeviceLibraryUUID(schematicIdentityString(d, "uuid")) && schematicIdentityString(d, "libraryUuid") != "" &&
+		schematicPlacedIdentityRE.MatchString(schematicIdentityString(fp, "uuid")) &&
+		schematicIdentityString(s, "instanceUuid") == schematicIdentityString(fp, "uuid") &&
+		isDeviceLibraryUUID(schematicIdentityString(s, "uuid")) &&
+		schematicIdentityString(s, "libraryUuid") != "" && schematicIdentityString(s, "libraryUuid") == schematicIdentityString(fp, "libraryUuid") &&
+		schematicIdentityString(association, "uuid") == schematicIdentityString(s, "uuid") &&
+		schematicIdentityString(association, "libraryUuid") == schematicIdentityString(s, "libraryUuid")
+}
+
+func schematicIdentityCompatStableScene(c map[string]any) {
+	if !schematicIdentityCompatSceneProof(c) {
+		return
+	}
+	delete(c, "deviceIdentityCandidates")
+	resolution := schematicIdentityMap(c, "deviceResolution")
+	stable := make(map[string]any, len(resolution))
+	for key, value := range resolution {
+		if key != "probeId" && key != "connectorError" {
+			stable[key] = value
+		}
+	}
+	c["deviceResolution"] = stable
+}
+
 // Called once at the shared postAction choke point. Library reads never recurse
 // into this path. Original daemon context/sequence/error evidence is preserved.
 func hydrateSchematicIdentityCompatibility(cfg *appConfig, action, window string, payload any, body []byte, timeout time.Duration) ([]byte, error) {

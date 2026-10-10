@@ -349,6 +349,9 @@ func schDesignatorScene(result map[string]any) (map[string]any, error) {
 		}
 		if c["componentType"] == "part" {
 			delete(copy, "bbox")
+			// An exact compatibility proof supersedes the old connector's
+			// unordered rejected candidate diagnostics, not its native assets.
+			schematicIdentityCompatStableScene(copy)
 			pins, ok := copy["pins"].([]any)
 			if !ok {
 				return nil, fmt.Errorf("pins unavailable")
