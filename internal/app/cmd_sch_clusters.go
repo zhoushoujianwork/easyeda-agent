@@ -51,11 +51,14 @@ type schCluster struct {
 
 // schClusterTyped 是一个归属成员的类型化记录。
 type schClusterTyped struct {
-	Kind    string // part | wire | netflag | netport | netlabel …
-	Net     string
-	BBox    layoutBBox
-	WireID  string
-	Segment *[4]float64 // exact observed segment; nil for bodies/markers/legacy members
+	Kind string // part | wire | netflag | netport | netlabel …
+	Net  string
+	BBox layoutBBox
+	// CollisionBoxes separates a marker's symbol/text occupancy while BBox
+	// retains its envelope for existing terminal/planner consumers.
+	CollisionBoxes []layoutBBox
+	WireID         string
+	Segment        *[4]float64 // exact observed segment; nil for bodies/markers/legacy members
 }
 
 // Model a schematic centreline with a 1-raw topological stroke for positive-area
@@ -316,6 +319,7 @@ func buildSchClusters(comps []layoutComp, wires []schGroupWire) ([]schCluster, i
 		jb := markerJudgeBBox(c)
 		grow(owner, jb)
 		note(owner, c.ComponentType, c.Net, jb)
+		typed[owner][len(typed[owner])-1].CollisionBoxes = markerCollisionBoxes(c)
 		markers[owner]++
 	}
 
@@ -411,16 +415,20 @@ func judgeSchClustersWithCrossings(cs []schCluster, usable *layoutBBox, minGap f
 						if schClusterMembersProvedCrossing(cs[i], ai, cs[j], bi, proof) {
 							continue
 						}
-						x := math.Min(a.MaxX, b.MaxX) - math.Max(a.MinX, b.MinX)
-						y := math.Min(a.MaxY, b.MaxY) - math.Max(a.MinY, b.MinY)
-						if x > 0 && y > 0 {
-							if !hit || x*y > ox*oy {
-								ox, oy, hit = x, y, true
+						for _, occupiedA := range clusterMemberCollisionBoxes(cs[i], ai, a) {
+							for _, occupiedB := range clusterMemberCollisionBoxes(cs[j], bi, b) {
+								x := math.Min(occupiedA.MaxX, occupiedB.MaxX) - math.Max(occupiedA.MinX, occupiedB.MinX)
+								y := math.Min(occupiedA.MaxY, occupiedB.MaxY) - math.Max(occupiedA.MinY, occupiedB.MinY)
+								if x > 0 && y > 0 {
+									if !hit || x*y > ox*oy {
+										ox, oy, hit = x, y, true
+									}
+									continue
+								}
+								if g := math.Max(-x, -y); g < gap {
+									gap = g
+								}
 							}
-							continue
-						}
-						if g := math.Max(-x, -y); g < gap {
-							gap = g
 						}
 					}
 				}

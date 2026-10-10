@@ -373,20 +373,13 @@ func flagTextBand(c layoutComp) *layoutBBox {
 // least one side is a net marker (marker×part or marker×marker); part×part is
 // already `sch layout-lint`'s overlap rule. Only overlaps whose smaller axis
 // exceeds eps are reported — edge grazing and parallel-port float noise are below.
-// netflag 的判定 bbox = 符号本体 ∪ 文字带(flagTextBand)——符号相切文字互叠
-// 的拥挤对此前漏报。
+// Symbols and calibrated text bands are judged separately: their rectangular
+// envelope may contain empty corners, but real text collisions must still report.
 func markerOverlapFindings(comps []layoutComp, eps float64) []checkFinding {
 	withBox := make([]layoutComp, 0, len(comps))
 	for _, c := range comps {
 		if c.BBox == nil || c.ComponentType == "sheet" {
 			continue
-		}
-		if band := flagTextBand(c); band != nil {
-			merged := layoutBBox{
-				MinX: math.Min(c.BBox.MinX, band.MinX), MinY: math.Min(c.BBox.MinY, band.MinY),
-				MaxX: math.Max(c.BBox.MaxX, band.MaxX), MaxY: math.Max(c.BBox.MaxY, band.MaxY),
-			}
-			c.BBox = &merged
 		}
 		withBox = append(withBox, c)
 	}
@@ -400,14 +393,23 @@ func markerOverlapFindings(comps []layoutComp, eps float64) []checkFinding {
 			if isCoincidentDuplicate(a, b) {
 				continue // already reported (with a keep/delete fix) by duplicate-net-marker
 			}
-			ox, oy, overlap := overlapExtent(*a.BBox, *b.BBox)
-			// Platform bboxes are floating point (often ending in .499999...),
-			// so an intended one-raw pitch/font graze can arrive as
-			// 1.0000000000002 and spuriously cross the documented eps=1 floor.
-			// This tolerance is numeric only; a real 2-raw overlap still reports.
-			if !overlap || math.Min(ox, oy) <= eps+1e-6 {
+			ox, oy, overlap := 0.0, 0.0, false
+			var boxA, boxB layoutBBox
+			for _, occupiedA := range markerCollisionBoxes(a) {
+				for _, occupiedB := range markerCollisionBoxes(b) {
+					x, y, hit := overlapExtent(occupiedA, occupiedB)
+					// Preserve the numeric-only tolerance for platform float drift.
+					// Real text/symbol intersections above eps still report.
+					if hit && math.Min(x, y) > eps+1e-6 && (!overlap || x*y > ox*oy) {
+						ox, oy, overlap = x, y, true
+						boxA, boxB = occupiedA, occupiedB
+					}
+				}
+			}
+			if !overlap {
 				continue
 			}
+			a.BBox, b.BBox = &boxA, &boxB
 			// Order the pair by id for stable output.
 			pa, pb := a, b
 			if pb.ID < pa.ID {
