@@ -71,7 +71,9 @@ func (d schematicDeviceExpectation) validate() error {
 }
 
 func measuredSchematicDevice(ref string, have map[string]any) (*schematicDeviceExpectation, error) {
-	for _, key := range []string{"deviceIdentityError", "deviceIdentityCompatibilityError"} {
+	// The fresh independent proof failure explains why legacy recovery failed;
+	// surface it before the original connector mismatch it was meant to adapt.
+	for _, key := range []string{"deviceIdentityCompatibilityError", "deviceIdentityError"} {
 		if problem, exists := have[key]; exists && problem != nil && problem != "" {
 			return nil, fmt.Errorf("%s device identity is unresolved: %v", ref, problem)
 		}

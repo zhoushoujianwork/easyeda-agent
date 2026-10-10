@@ -373,7 +373,7 @@ func TestSchematicIdentityCompatSharedDispatchAndApplyRead(t *testing.T) {
 }
 
 func TestSchematicIdentityCompatFailureNeverWeakensGuard(t *testing.T) {
-	for _, scenario := range []string{"wrong-context", "missing-candidates", "missing-all-match-proof", "missing-scoped-search", "wrong-scoped-library", "ambiguous", "probe-error", "missing-native-source", "bad-native-source", "source-error", "dry-run"} {
+	for _, scenario := range []string{"wrong-context", "missing-candidates", "missing-all-match-proof", "missing-scoped-search", "wrong-scoped-library", "ambiguous", "probe-error", "probe-context-error", "missing-native-source", "bad-native-source", "source-error", "dry-run"} {
 		t.Run(scenario, func(t *testing.T) {
 			original, hit := identityCompatFixture()
 			cfg, daemon, cleanup := newBlockApplyTestDaemon(t, func(call blockApplyTestCall) string {
@@ -411,6 +411,8 @@ func TestSchematicIdentityCompatFailureNeverWeakensGuard(t *testing.T) {
 					p.SourceError = "native source unavailable"
 				case "probe-error":
 					return `{"ok":false,"error":{"code":"FAILED","message":"offline"}}`
+				case "probe-context-error":
+					return `{"ok":false,"error":{"code":"EDA_CALL_FAILED","message":"exec_js failed.","detail":"project/document changed during official identity reads"}}`
 				}
 				return identityCompatEnvelope(map[string]any{"value": p}, doc)
 			})
@@ -426,6 +428,9 @@ func TestSchematicIdentityCompatFailureNeverWeakensGuard(t *testing.T) {
 			c := res.Result["components"].([]any)[0].(map[string]any)
 			if _, err := measuredSchematicDevice("U1", c); err == nil {
 				t.Fatalf("%s escaped device guard: %+v", scenario, c)
+			} else if scenario == "probe-context-error" &&
+				(!strings.Contains(err.Error(), "project/document changed during official identity reads") || strings.Contains(err.Error(), "package-variant mismatch")) {
+				t.Fatalf("fresh context failure was hidden behind obsolete connector diagnosis: %v", err)
 			}
 			if c["deviceIdentityCompatibilityError"] == nil {
 				t.Fatalf("failure reason was hidden: %+v", c)
