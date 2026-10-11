@@ -1,13 +1,13 @@
 # Changelog
 
-## [1.9.1] - 2026-10-08
+## [1.9.1] - 2026-10-11
 
-- Fix DSH Git plugin installation failing with `entry file missing: index.js` (#274) by shipping an explicit, side-effect-free package entry.
-- Declare the MCP SDK at the bundle root so Git installations can start the bundled stdio MCP without separately installing the nested adapter package.
-- Restrict plugin packaging to the public entry, bundle patch, MCP sources and Agent Skill; exclude local logs and unrelated repository content.
-- Add real tarball installation, MCP initialization and offline discovery regression coverage to the macOS/Linux/Windows native CI matrix. Dependency installation uses the registry when npm metadata is absent from a clean cache.
-- Synchronize the DSH bundle, CLI/daemon, connector asset and Skill release versions to 1.9.1. Connector runtime logic and action contracts are unchanged; existing 1.9.x connectors remain compatible.
-- This patch covers DSH distribution and startup. It does not expand the existing EDA design acceptance scope or certify Windows DSH Web UI behavior.
+- 修复 DSH Git 插件安装时缺少 `index.js` 的分发缺陷（#274）；入口仅导出无副作用的 Cordis `apply`，MCP 与 Skill 由 bundle patch 加载。
+- 根包声明 MCP SDK，分发清单仅包含入口、patch、MCP 源码与公开 Skill，Git 安装无需另行安装嵌套依赖。
+- Windows、macOS、Linux CI 覆盖实际 npm tarball 安装、MCP 握手与离线目录发现；缺少缓存元数据时允许联网，不声明严格断网安装。
+- macOS 独立环境验证 DSH CLI 0.1.5-rc.1（MCP/Skill 模块解析为 rc.3）的真实 Git 安装、Hub v1.4.8 装后入口检查、DSH Web 的 12 个 MCP 工具和 Skill 正文加载。原 Windows 报障环境及 Hub 网页完整安装流程仍待复测，#274 保持 open。
+- DSH bundle、CLI/daemon、连接器资产与 Skill 统一为 1.9.1；连接器运行逻辑与动作契约未变，已有 1.9.x 连接器兼容。
+- 本版仅验收 DSH 分发与加载；完整设计 E2E 保持原状态，未验证的 EDA 设计读写不补签通过。
 
 ## [1.9.0] - 2026-10-01
 

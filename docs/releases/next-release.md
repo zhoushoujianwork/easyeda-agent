@@ -1,50 +1,43 @@
 # 下一版本发布评估
 
-2026-10-01：用户已批准按图片功能与 CLI 有限范围发布 **v1.9.0**，准备状态及未完成范围见
-[v1.9.0 发布记录](release-1.9.md)。下文仅保留 v1.8.0 的历史评估，不作为本轮准入。
+当前正式版为 [v1.9.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.9.0)。
+本轮准备 **v1.9.1**，只纳入 main 已集成的 DSH 分发修复与对应说明；具体版本尚待用户批准。
+发布规则见 [发布流程](../release-workflow.md)，既有设计验收范围见
+[v1.9.0 发布记录](release-1.9.md)，日常开发状态见 [CLI Status](../cli-STATUS.md)。
 
-更新于 **2026-09-27**。**[v1.8.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.8.0) 已按用户批准的 CLI 修复范围正式发布；完整 ESP32 成品测试后续跟进。**
-发布结果见 [v1.8.0 发布记录](release-1.8.md)。以下修复统计固定对比正式版 `v1.7.0`
-与开发提交 `52fc822`，不包含随后整理文档及准备发布的提交。
-当前使用状态统一见 [CLI Status](../cli-STATUS.md)。
+## 修复与用户收益
 
-## 修复量与用户收益
+- #274：根包提供声明的 `index.js` 入口和 MCP SDK，Git 安装不再缺入口或嵌套依赖。
+- 分发白名单限制为公开入口、bundle patch、MCP 源码与 Skill，排除本地运行资料及无关代码。
+- npm tarball 在仓库外安装、SDK/MCP 握手、12 个工具与目录发现回归覆盖三平台 CI；
+  `--prefer-offline` 允许缺失元数据时联网，不声明严格断网安装。
+- DSH 安装文档补齐独立 CLI、Windows `EASYEDA_BIN`、配置与运行检查的区别。
 
-这段历史共有 18 个提交：8 个 `fix`、1 个 `feat`、9 个文档提交。
-8 个修复提交可归并为 **6 组可靠性修复**，包含同一路径的多次修正，不代表关闭了 8 个独立 bug。
+入口修复为 [4391cfd](https://github.com/zhoushoujianwork/easyeda-agent/commit/4391cfd2a5188689d26da5eba80fe54177c1e998)，
+干净缓存回归修复为 [b535c26](https://github.com/zhoushoujianwork/easyeda-agent/commit/b535c26c4047fcdce982c4565f6c9ae6a59c5084)。
+本版不改变连接器运行逻辑或动作契约，按 patch 递增，全部分发组件仍统一为 1.9.1。
 
-| 修复组 | 最终行为与证据 |
-|---|---|
-| 多窗口预检 | 按目标窗口核对版本与工程，其他旧连接不再误拦目标；见[预检修复记录](../reviews/2026-09-26-advanced-cli.md)。 |
-| 导出后的原理图删除 | 等待宿主同步就绪，再核对删除结果；[已复现路径定向通过](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-sch-delete-fix.md)，未泛化为所有删除故障已解决。 |
-| 后台重连与上下文身份 | 修复沙箱时钟、注册等待和旧 context 覆盖；[dev.7 重连实测通过](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-cli-reconnect-fix.md)。 |
-| 同文档连接互踢 | 保留不同连接身份，避免错误替换；[dev.9 实测通过](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-window-identity-fix.md)。 |
-| 页面改名失败漏报 | 官方拒绝或回读不符时正确失败退出；[失败传播已验证](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-page-rename-fix.md)，实际改名仍受 #55 影响。 |
-| 铺铜与 Apply 失败传播 | 校验 fresh 边界，参数不符时停止依赖写入，阻止重试/继续选项绕过失败；[dev.11 错值检测已验证](../reviews/2026-09-26-v1.7.1-dev11-pour-live.md)，实际字段及成功创建仍待验证。 |
+## 验证状态与边界
 
-另有 `sch sheet-geometry --from-svg`：从官方 SVG 导出提取精确纸张与标题栏几何，属于新增能力，
-不计入上述修复组。变更来源为提交 `4188190`。
+- main `a3f2b7e` 的最新 CI 通过；Windows/macOS/Linux 的 npm 分发测试均为 8/8。
+- macOS 独立 DSH_HOME、全新 web profile 的真实 Git 安装、Hub v1.4.8 装后入口检查、
+  官方 DSH Web 启动、12 个 MCP 工具、真实 CLI 目录调用和 Skill provider 正文读取通过。
+  CLI 0.1.5-rc.1 的 MCP/Skill 依赖解析为 rc.3，loader 为 1.0.3；
+  [完整反馈](https://github.com/zhoushoujianwork/easyeda-agent/issues/274#issuecomment-6104813413)保留精确范围。
+- v1.9.1 候选的版本一致性、打包/MCP 回归、发布脚本与自更新定向测试、发布构建通过；
+  9 项资产 SHA256、15 项本机 CLI 冒烟及 201 个 Skill 文件与安装后链接核对通过。
+- macOS 隔离目录中，真实安装脚本读取候选资产字节，首次安装和从已发布 v1.9.0 升级通过；
+  下载端点使用本地替身。候选本地 Git ref 的 DSH 安装、Web/MCP/Skill 加载也通过。
+  这些结果不冒充远端 v1.9.1 或 `easyeda update` 联网升级已通过。
+- 原 Windows 报障环境、Hub 网页完整安装流程仍待复测，#274 保持 open。
+  发布修复包不自动关闭用户故障；远端发布资产只能在实际上传后核验。
+- 完整设计 E2E 保持原状态。本次不运行全集，不把离线或 DSH 加载成功补签为 EDA 设计通过。
 
-这些修复覆盖连接稳定性、写入结果可信度和失败后的行为，值得让正式版用户获得。
-尚未解决的问题与使用建议见[已知问题](../cli-known-bugs.md)；本轮三项是改名、边界线宽和铺铜优先级，
-另有此前登记的间歇问题继续跟踪。
+## 其他近期 Issue
 
-## 版本建议与发布条件
+#273 的显式标签/展开布局已在 v1.8.1 提供离线替代路径，默认搜索耗尽仍未修复；
+#267 在 dev 已提交的 CLI 保留器件重建有有限防护，但广义连接器清理和现场验收仍未完成；
+#268 的后台保存改动仍在未提交开发工作中。它们不计为 v1.9.1 已解决，也不夹带入此分发补丁。
 
-按现行[发布规则](../release-workflow.md#version-and-retention-policy)，用户需要更新连接器才能获得
-行为变化时递增 minor。本批包含连接器运行时代码修改，因此本次准备 **v1.8.0**。
-现场开发验证使用 dev.11–dev.14；正式源码与软件包已统一为 1.8.0。
-随后续测修复 #262–#266、#269–#271，具体有限范围见[发布说明](release-1.8.md)。
-
-本次发布按用户明确选择的 `cli-fixes` 范围收尾：
-
-- 严格基础验收未全部通过；用户已接受三项已知限制并移除整体阻断，准入范围见 [v1.8.0 发布准备](release-1.8.md#已接受的已知限制)。
-- 完整设计 E2E 保留 in-progress，不作为这次发版前置；不声明整板布线或 DRC 通过。
-- 已复用有限现场/独立证据；声明范围的验收包、正式构建、`release-check`、离线 smoke 和 11 项远端资产大小/SHA 核验均通过。
-
-软件发版已完成。用户随后选择[最小点灯板](../test-case-esp32-blink.md)作为下一轮默认收尾：
-板外稳压 3.3V、单页原理图、两层 PCB，完成连接/几何/DRC/保存重载检查即可按该范围收尾。
-新用例尚未执行；旧完整四层 ESP32 成品保留为扩展回归，不作为下一轮默认前置。
-未解决问题和两类用例的实际状态继续在 CLI Status 独立跟进。
-不要求为发布关闭所有历史 issue，但不能用已知问题清单代替范围内的通过证据。
-此前基础集中检查的收尾与失败记录保留；已有证据保持真实运行版本和有限范围，不改成正式包现场全集通过。
+v1.8.0 的历史发布评估与有限验收范围保留在 [对应发布记录](release-1.8.md)，
+不作为新版本的默认豁免。

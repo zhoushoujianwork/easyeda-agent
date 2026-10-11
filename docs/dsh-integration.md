@@ -6,16 +6,16 @@ DSH（`@deepseek-ai/dsh`，Cordis 插件化框架）原生支持 skill 与 MCP c
 | DSH 形态 | 本项目资产 | 落地方式 | 开发量 |
 |---|---|---|---|
 | **Skill**（SKILL.md 自动发现） | `.agents/skills/easyeda-agent/SKILL.md` | 软链进 DSH skill 根 | 0 |
-| **MCP client**（`dsh-mcp-client` 桥接） | `mcp/`（stdio MCP server，11 工具） | `cordis.patch.yml` 加一行插件实例 | 几行 YAML |
+| **MCP client**（`dsh-mcp-client` 桥接） | `mcp/`（stdio MCP server，12 工具） | `cordis.patch.yml` 加一行插件实例 | 几行 YAML |
 | **Bundle 插件包**（`dsh.bundle.patch` 声明） | 仓库根 `package.json` + `cordis.patch.yml` | `dsh plugin add github:zhoushoujianwork/easyeda-agent#<tag>` 一行装 | 已完成 |
 | **原生 Cordis 插件**（`ctx.tools` / client-plugin UI） | 暂无 | 新建 npm 包，注册结构化工具 / daemon 状态面板 | 中等，跟 rc 版本 |
 
 ## 团队/他人接入（推荐：Bundle 一键安装）
 
-**任何人 `dsh plugin add` 一行装完**（skill + MCP 全部就位，无需 clone、无需改配置）：
+先按[安装说明](quick-start.md)安装独立的 `easyeda` CLI，再安装包含修复的 Git 分发包：
 
 ```sh
-dsh plugin --profile web add "github:zhoushoujianwork/easyeda-agent#<tag>"
+dsh plugin --profile web add git+https://github.com/zhoushoujianwork/easyeda-agent.git
 # 重启 dsh web 生效；升级/卸载走 Settings → Plugins
 ```
 
@@ -46,6 +46,26 @@ Git 安装不需要另行进入 `mcp/` 安装依赖；包的 `files` 清单限�
 
 遇到该报错时应安装包含修复的 Git ref；旧 release tag 内容保持不变。尚未集成到所用
 ref 时，不要仅靠重复安装同一 tag 或在用户安装目录中手工创建 `index.js`。
+
+**当前验证范围**：2026-10-11 在 macOS arm64 的独立 `DSH_HOME` 和全新 `web`
+profile，验证 main 的 `a3f2b7e` Git 安装、Plugin Hub v1.4.8 原版装后入口检查，以及
+官方 DSH profile 启动链中的 Web HTTP 200、12 个 MCP 工具、真实 CLI 的只读目录调用和
+Skill provider `easyeda` 正文读取。CLI 为 0.1.5-rc.1，npm 版本范围将 MCP/Skill 模块解析为
+0.1.5-rc.3，loader 为 1.0.3。Windows 原报障环境、Hub 网页完整安装和装前预检未计为通过；
+详细结果与复测反馈见 [#274](https://github.com/zhoushoujianwork/easyeda-agent/issues/274#issuecomment-6104813413)。
+
+Windows 安装器不自动修改 PATH；启动 DSH 的同一 PowerShell 中应检查 CLI 路径：
+
+```powershell
+$env:EASYEDA_BIN = Join-Path $env:USERPROFILE '.local\bin\easyeda.exe'
+& $env:EASYEDA_BIN version
+(& $env:EASYEDA_BIN actions | ConvertFrom-Json).Count
+dsh --profile web --dump-config | Select-String 'easyeda-mcp|easyeda-skill-fs'
+```
+
+非默认安装时使用实际 `easyeda.exe` 路径。`dump-config` 只验证配置；重启 DSH 后还需
+发现 `mcp__easyeda__easyeda_actions`、执行只读目录调用，并通过 Skill 功能读取
+`easyeda-agent` 正文，才算运行加载通过。
 
 **已验证（2026-08-14）**：`dsh plugin add file:...` 到 headless profile → 自动
 提升为 bundle 层 → headless 会话实测模型可见全部 11 个 `mcp__easyeda__*` 工具
@@ -152,10 +172,6 @@ checkout 的 `mcp/node_modules`。`npm ci` 只保证锁定 tarball 已下载，�
 ```bash
 # 配置合并树（不启动服务）：应出现 easyeda-mcp 条目
 dsh --profile web --dump-config | grep -A 16 easyeda-mcp
-
-# MCP server 自身握手：应列出 11 个 easyeda_* 工具
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | \
-  EASYEDA_BIN=$(which easyeda) node mcp/src/server.mjs
 ```
 
 host 插件（MCP client）改动需要**重启 dsh web** 才加载（HMR 只覆盖 client-plugin）；
