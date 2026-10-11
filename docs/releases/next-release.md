@@ -1,7 +1,7 @@
 # 下一版本发布评估
 
 当前正式版为 [v1.9.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.9.0)。
-本轮准备 **v1.9.1**，只纳入 main 已集成的 DSH 分发修复与对应说明；具体版本尚待用户批准。
+本轮准备 **v1.9.1**，只纳入 main 已集成的 DSH 分发修复与对应说明；用户已批准发布该版本。
 发布规则见 [发布流程](../release-workflow.md)，既有设计验收范围见
 [v1.9.0 发布记录](release-1.9.md)，日常开发状态见 [CLI Status](../cli-STATUS.md)。
 
