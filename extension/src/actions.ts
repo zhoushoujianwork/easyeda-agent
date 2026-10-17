@@ -5922,7 +5922,7 @@ export async function requireLibraryAssetIn(uuid: string, libraryUuid: string, l
  * editor while creating the 260919 M3 footprint), so a returned tab id alone is
  * not safe evidence for a write.
  */
-async function activateLibraryDocument(
+export async function activateLibraryDocument(
 	uuid: string,
 	libraryUuid: string,
 	libraryType: ELIB_LibraryType.SYMBOL | ELIB_LibraryType.FOOTPRINT,
@@ -5940,7 +5940,15 @@ async function activateLibraryDocument(
 	}
 	catch { /* opening without a split id is supported */ }
 
-	const tabId = await eda.dmt_EditorControl.openLibraryDocument(libraryUuid, libraryType, uuid, splitScreenId);
+	let tabId = await eda.dmt_EditorControl.openLibraryDocument(libraryUuid, libraryType, uuid, splitScreenId);
+	if (!tabId) {
+		// Desktop local libraries can be read/created by alias, while the generic
+		// editor opener returns undefined. The asset-specific opener supports them.
+		const api = label === 'symbol' ? eda.lib_Symbol : eda.lib_Footprint;
+		if (typeof api?.openInEditor === 'function') {
+			tabId = await api.openInEditor(uuid, libraryUuid, splitScreenId);
+		}
+	}
 	if (!tabId && label === 'footprint' && libraryNames.has('project')) {
 		// Live 4.1.71 (#279): the API opens no editor for a PROJECT-library
 		// footprint under either library name, foreground or background; the same
@@ -5963,7 +5971,12 @@ async function activateLibraryDocument(
 		catch { actual = undefined; }
 		if (
 			actual?.uuid === uuid &&
-			libraryNames.has(actual.parentLibraryUuid ?? '') &&
+			(libraryNames.has(actual.parentLibraryUuid ?? '') || (
+				// A desktop local asset record has an empty libraryUuid, but its
+				// editor reports an internal UUID. Accept the alias only when both
+				// the returned and active tab bind this exact asset to that alias.
+				recordLibrary === '' && tabId === `${uuid}@${libraryUuid}` && actual.tabId === tabId
+			)) &&
 			actual.documentType === expectedDocumentType
 		) return tabId;
 		if (Date.now() >= focusBy) break;

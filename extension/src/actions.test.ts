@@ -24,6 +24,7 @@ import {
 	connectPinEndpoint,
 	clickImportConfirm,
 	requireLibraryAssetIn,
+	activateLibraryDocument,
 	padShapeTupleError,
 	pcbComponentLayerId,
 	constraintList,
@@ -1254,6 +1255,113 @@ test('library build refuses a wrong --library before opening an editor and names
 		assert.equal(opened, 0);
 	}
 	finally { delete (globalThis as any).eda; }
+});
+
+test('local library symbol uses its specific opener and verifies the alias-bound active tab', async (t) => {
+	const calls: unknown[][] = [];
+	let current: any;
+	(globalThis as any).eda = {
+		lib_Symbol: {
+			get: async () => ({ uuid: 'SYM', libraryUuid: '' }),
+			openInEditor: async (...args: unknown[]) => {
+				calls.push(args);
+				current = { uuid: 'SYM', documentType: 2, parentLibraryUuid: 'INTERNAL', tabId: 'SYM@LOCAL' };
+				return 'SYM@LOCAL';
+			},
+		},
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => current },
+		dmt_EditorControl: { openLibraryDocument: async () => undefined, activateDocument: async () => false },
+	};
+	t.after(() => { delete (globalThis as any).eda; });
+	assert.equal(await activateLibraryDocument('SYM', 'LOCAL', '2' as any, 2 as any, 'symbol'), 'SYM@LOCAL');
+	assert.deepEqual(calls, [['SYM', 'LOCAL', undefined]]);
+});
+
+test('library opener keeps the generic path and does not invoke fallback when it succeeds', async (t) => {
+	let fallbacks = 0;
+	(globalThis as any).eda = {
+		...libraryDocumentControl('SYM', 'LIB', 2, 'TAB'),
+		lib_Symbol: { get: async () => ({ uuid: 'SYM', libraryUuid: 'LIB' }), openInEditor: async () => { fallbacks++; } },
+	};
+	t.after(() => { delete (globalThis as any).eda; });
+	assert.equal(await activateLibraryDocument('SYM', 'LIB', '2' as any, 2 as any, 'symbol'), 'TAB');
+	assert.equal(fallbacks, 0);
+});
+
+test('library footprint fallback selects the footprint API and retains project rejection when both fail', async (t) => {
+	let current: any;
+	let opens = 0;
+	const api = {
+		get: async () => ({ uuid: 'FP', libraryUuid: 'LIB' }),
+		openInEditor: async () => { opens++; current = { uuid: 'FP', documentType: 4, parentLibraryUuid: 'LIB' }; return 'FP-TAB'; },
+	};
+	(globalThis as any).eda = {
+		lib_Footprint: api,
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => current },
+		dmt_EditorControl: { openLibraryDocument: async () => undefined, activateDocument: async () => true },
+	};
+	t.after(() => { delete (globalThis as any).eda; });
+	assert.equal(await activateLibraryDocument('FP', 'LIB', '4' as any, 4 as any, 'footprint'), 'FP-TAB');
+	assert.equal(opens, 1);
+	api.openInEditor = async () => undefined as any;
+	await assert.rejects(() => activateLibraryDocument('FP', 'project', '4' as any, 4 as any, 'footprint'),
+		(err: any) => err.code === 'PRECONDITION_REFUSED' && /personal library/.test(err.message));
+});
+
+for (const wrong of [
+	{ uuid: 'OTHER', documentType: 2, parentLibraryUuid: 'INTERNAL', tabId: 'SYM@LOCAL' },
+	{ uuid: 'SYM', documentType: 4, parentLibraryUuid: 'INTERNAL', tabId: 'SYM@LOCAL' },
+	{ uuid: 'SYM', documentType: 2, parentLibraryUuid: 'INTERNAL', tabId: 'OTHER-TAB' },
+]) {
+	test(`local library fallback refuses mismatched canvas ${JSON.stringify(wrong)}`, async (t) => {
+		let ticks = 0;
+		t.mock.method(Date, 'now', () => ticks++ * 5000);
+		(globalThis as any).eda = {
+			lib_Symbol: { get: async () => ({ uuid: 'SYM', libraryUuid: '' }), openInEditor: async () => 'SYM@LOCAL' },
+			dmt_SelectControl: { getCurrentDocumentInfo: async () => wrong },
+			dmt_EditorControl: { openLibraryDocument: async () => undefined, activateDocument: async () => true },
+		};
+		t.after(() => { delete (globalThis as any).eda; });
+		await assert.rejects(() => activateLibraryDocument('SYM', 'LOCAL', '2' as any, 2 as any, 'symbol'),
+			(err: any) => err.code === 'INVALID_STATE' && /did not focus/.test(err.message));
+	});
+}
+
+test('library fallback does not trust an alias when the asset lookup was unreadable', async (t) => {
+	let ticks = 0;
+	t.mock.method(Date, 'now', () => ticks++ * 5000);
+	(globalThis as any).eda = {
+		lib_Symbol: { get: async () => { throw new Error('unreadable'); }, openInEditor: async () => 'SYM@LOCAL' },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'SYM', documentType: 2, parentLibraryUuid: 'INTERNAL', tabId: 'SYM@LOCAL' }) },
+		dmt_EditorControl: { openLibraryDocument: async () => undefined, activateDocument: async () => true },
+	};
+	t.after(() => { delete (globalThis as any).eda; });
+	await assert.rejects(() => activateLibraryDocument('SYM', 'LOCAL', '2' as any, 2 as any, 'symbol'),
+		(err: any) => err.code === 'INVALID_STATE' && /did not focus/.test(err.message));
+});
+
+test('library fallback refuses a conflicting known parent library', async (t) => {
+	let ticks = 0;
+	t.mock.method(Date, 'now', () => ticks++ * 5000);
+	(globalThis as any).eda = {
+		lib_Symbol: { get: async () => ({ uuid: 'SYM', libraryUuid: 'KNOWN' }), openInEditor: async () => 'SYM@LOCAL' },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'SYM', documentType: 2, parentLibraryUuid: 'OTHER', tabId: 'SYM@LOCAL' }) },
+		dmt_EditorControl: { openLibraryDocument: async () => undefined, activateDocument: async () => true },
+	};
+	t.after(() => { delete (globalThis as any).eda; });
+	await assert.rejects(() => activateLibraryDocument('SYM', 'LOCAL', '2' as any, 2 as any, 'symbol'),
+		(err: any) => err.code === 'INVALID_STATE' && /did not focus/.test(err.message));
+});
+
+test('library opener refuses before authoring when neither opener returns a tab', async (t) => {
+	(globalThis as any).eda = {
+		lib_Symbol: { get: async () => ({ uuid: 'SYM', libraryUuid: '' }), openInEditor: async () => undefined },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => undefined },
+		dmt_EditorControl: { openLibraryDocument: async () => undefined },
+	};
+	t.after(() => { delete (globalThis as any).eda; });
+	await assert.rejects(() => activateLibraryDocument('SYM', 'LOCAL', '2' as any, 2 as any, 'symbol'),
+		(err: any) => err.code === 'INVALID_STATE' && /did not open/.test(err.message));
 });
 
 test('pad shape tuples must use the official string types before any write (#279)', () => {

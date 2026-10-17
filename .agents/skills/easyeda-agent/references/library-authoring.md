@@ -40,6 +40,9 @@
   宿主会在写入中途拒绝，现已在写入前拦截。图形线为 `lines[]`。
 - `--library` 用 `lib symbol/footprint create` 回包**顶层**的 `libraryUuid`；工程库资产自身记录里的
   `libraryUuid` 会写成个人库 uuid，照抄它会打不开编辑器（CLI 会拒绝并给出正确值）。
+- 桌面本地库可能以库名作为 `libraryUuid`，资产记录该字段为空，而编辑器报告内部 UUID。
+  通用打开接口无标签页时，连接器回退到对应资产的 `openInEditor`；别名匹配仍须核对
+  已读到的资产、完整 `uuid@库名` 标签页和文档类型，不仅凭同名或打开返回值允许写入。
 - 封装建在**个人库**（`lib footprint create --scope personal`）：Web 4.1.71 的 API 打不开工程库封装的
   编辑器，build 会被拒绝；符号可建在工程库或个人库。
 - pad 可声明 `solderMaskAndPasteMaskExpansion`，仅支持官方 `topSolderMask`、
