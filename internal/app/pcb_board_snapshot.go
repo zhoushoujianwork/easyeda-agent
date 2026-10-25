@@ -1091,12 +1091,29 @@ func boardSnapshotSemanticSHA256(s *boardSnapshot) (string, error) {
 	if err := json.Unmarshal(raw, &tree); err != nil {
 		return "", err
 	}
+	dropPouredFills(tree)
 	canonical, err := json.Marshal(roundSemanticNumbers(tree))
 	if err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(canonical)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// dropPouredFills removes copper.poured[].fills from the hashed tree. The editor
+// recomputes pour fills on every reload: new fill ids, float noise and shifted
+// polygon start points for an identical design (live 2026-10-24: same board,
+// a46c735d → 91126df4). The pour definitions (copper.pours) and which pours are
+// filled (poured[] without fills) stay in the hash.
+func dropPouredFills(tree any) {
+	root, _ := tree.(map[string]any)
+	copper, _ := root["copper"].(map[string]any)
+	poured, _ := copper["poured"].([]any)
+	for _, raw := range poured {
+		if m, ok := raw.(map[string]any); ok {
+			delete(m, "fills")
+		}
+	}
 }
 
 // roundSemanticNumbers rounds every JSON number to 1e-3 (normalising -0 to 0).

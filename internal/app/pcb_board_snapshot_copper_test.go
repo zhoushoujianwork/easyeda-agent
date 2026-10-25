@@ -117,3 +117,35 @@ func TestBoardSnapshotSemanticHashIgnoresFloatJitter(t *testing.T) {
 		t.Fatal("a real 0.01 mil move must change the semantic hash")
 	}
 }
+
+func TestBoardSnapshotSemanticHashIgnoresRecomputedPourFills(t *testing.T) {
+	// Live 2026-10-24: an editor reload re-poured the same GND planes with new
+	// fill ids and shifted polygons; the semantic hash changed with no edit.
+	poured := func(fillID string, x float64) []any {
+		return []any{map[string]any{"primitiveId": "p1", "pourPrimitiveId": "p1", "net": "GND", "layer": 1.0,
+			"fills": []any{map[string]any{"id": fillID, "source": []any{"M", x, 0.0, "L", 10.0, 0.0}, "fill": true}}}}
+	}
+	snap := func(fills []any) *boardSnapshot {
+		s := lpSnapshot(lpComp("c1", "C1", 0, 0, 0, lpBBox(0, 0, 10, 10)))
+		s.Copper = &boardCopperSnapshot{Availability: map[string]string{"pours": "available", "poured": "available"},
+			Pours:  []any{map[string]any{"primitiveId": "p1", "net": "GND", "layer": 1.0}},
+			Poured: fills}
+		return s
+	}
+	a, b := snap(poured("f1", 0)), snap(poured("f9", 3.25))
+	ha, _ := boardSnapshotSemanticSHA256(a)
+	hb, _ := boardSnapshotSemanticSHA256(b)
+	if ha == "" || ha != hb {
+		t.Fatalf("recomputed pour fills changed the semantic hash: %s != %s", ha, hb)
+	}
+	if len(b.Copper.Poured[0].(map[string]any)["fills"].([]any)) != 1 {
+		t.Fatal("hashing must not strip fills from the snapshot itself")
+	}
+	if hc, _ := boardSnapshotSemanticSHA256(snap([]any{})); hc == ha {
+		t.Fatal("an unpoured board must hash differently from a poured one")
+	}
+	b.Copper.Pours[0].(map[string]any)["net"] = "VCC"
+	if hd, _ := boardSnapshotSemanticSHA256(b); hd == ha {
+		t.Fatal("a pour definition change must change the semantic hash")
+	}
+}
