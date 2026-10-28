@@ -6145,6 +6145,110 @@ function equivalentLinearRegionGeometry(requested: unknown, actual: unknown): bo
 	return false;
 }
 
+type NativeRegionSegment = { kind: 'L' | 'ARC'; start: [number, number]; end: [number, number]; sweep?: number };
+
+/** A native contour below this area (mil²) does not bound a real copper region. */
+const NATIVE_REGION_MIN_AREA = 1e-6;
+
+/**
+ * Drop repeated terminal closing vertices; reject internal zero-length edges.
+ *
+ * The host may repeat the first vertex after save/reload. That is an encoding
+ * difference, not geometry, so a trailing zero-length `L` that repeats the
+ * already closed start point is normalized away. A zero-length edge anywhere
+ * else is malformed and stays fail-closed.
+ */
+function normalizeNativeRegionSegments(segments: NativeRegionSegment[], start: [number, number]): NativeRegionSegment[] | null {
+	let end = segments.length;
+	while (end > 0) {
+		const last = segments[end - 1];
+		if (last.kind !== 'L' || !sameRegionVertex(last.start, last.end)) break;
+		const previous = segments[end - 2];
+		if (!previous || !sameRegionVertex(previous.end, start) || !sameRegionVertex(last.start, start)) return null;
+		end--;
+	}
+	const kept = segments.slice(0, end);
+	if (kept.some(segment => segment.kind === 'L' && sameRegionVertex(segment.start, segment.end))) return null;
+	return kept.length >= 2 ? kept : null;
+}
+
+/**
+ * Decode one closed native L/ARC contour into its segments.
+ *
+ * The request contract is one flat contour array; the host readback is unwrapped
+ * by `nativeReadbackSegments`. Preserve native arcs when checking a pour:
+ * sampled points/area could hide a lost or reversed ARC.
+ */
+function nativeRegionSegments(source: unknown): NativeRegionSegment[] | null {
+	if (!Array.isArray(source) || !sourceIsClosed(source)) return null;
+	const decoded = polygonSourceToPoints(source);
+	if (!decoded.points || polygonArea(decoded.points) <= NATIVE_REGION_MIN_AREA) return null;
+	const segments: NativeRegionSegment[] = [];
+	let current: [number, number] = [source[0] as number, source[1] as number];
+	let i = 2;
+	while (i < source.length) {
+		const command = source[i++];
+		if (command === 'L') {
+			let count = 0;
+			while (i + 1 < source.length && typeof source[i] === 'number' && Number.isFinite(source[i])
+				&& typeof source[i + 1] === 'number' && Number.isFinite(source[i + 1])) {
+				const end: [number, number] = [source[i++] as number, source[i++] as number];
+				segments.push({ kind: 'L', start: current, end });
+				current = end;
+				count++;
+			}
+			if (!count) return null;
+		}
+		else if (command === 'ARC') {
+			const sweep = source[i++], x = source[i++], y = source[i++];
+			if (typeof sweep !== 'number' || !Number.isFinite(sweep)
+				|| typeof x !== 'number' || !Number.isFinite(x)
+				|| typeof y !== 'number' || !Number.isFinite(y)) return null;
+			const end: [number, number] = [x, y];
+			segments.push({ kind: 'ARC', start: current, end, sweep });
+			current = end;
+		}
+		else return null;
+	}
+	return normalizeNativeRegionSegments(segments, [source[0] as number, source[1] as number]);
+}
+
+/**
+ * Decode the host's boundary readback. The host may return the contour wrapped
+ * in one array; unwrap exactly that single contour. A multi-contour readback is
+ * a different shape and stays fail-closed.
+ */
+function nativeReadbackSegments(actual: unknown): NativeRegionSegment[] | null {
+	if (!Array.isArray(actual)) return null;
+	if (Array.isArray(actual[0])) {
+		if (actual.length !== 1) return null;
+		return nativeRegionSegments(actual[0]);
+	}
+	return nativeRegionSegments(actual);
+}
+
+function equivalentNativeRegionGeometry(requested: unknown, actual: unknown): boolean {
+	const expected = nativeRegionSegments(requested);
+	const observed = nativeReadbackSegments(actual);
+	if (!expected || !observed || expected.length !== observed.length) return false;
+	// EDA may rotate the starting segment or reverse the winding. Its persisted
+	// coordinates can be rounded to 0.01mil, so allow only that quantization.
+	const samePoint = (a: [number, number], b: [number, number]) =>
+		Math.abs(a[0] - b[0]) <= 0.011 && Math.abs(a[1] - b[1]) <= 0.011;
+	for (let start = 0; start < observed.length; start++) {
+		for (const direction of [1, -1]) {
+			if (expected.every((segment, i) => {
+				const candidate = observed[(start + direction * i + observed.length) % observed.length];
+				return segment.kind === candidate.kind
+					&& samePoint(segment.start, direction === 1 ? candidate.start : candidate.end)
+					&& samePoint(segment.end, direction === 1 ? candidate.end : candidate.start)
+					&& (segment.kind === 'L' || Math.abs((segment.sweep ?? 0) - direction * (candidate.sweep ?? 0)) <= 1e-6);
+			})) return true;
+		}
+	}
+	return false;
+}
+
 /** Add a persistent placement/copper rule region inside an existing footprint. */
 const libraryFootprintRegionCreate: Handler = async (payload) => {
 	const uuid = requireString(payload, 'uuid');
@@ -13965,16 +14069,33 @@ function regionBoundaryWidth(payload: Record<string, unknown>): number | undefin
 
 const pcbPourCreate: Handler = async (payload) => {
 	const lineWidth = regionBoundaryWidth(payload);
-	const rawPts = payload.points;
-	if (!Array.isArray(rawPts) || rawPts.length < 3) {
-		throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'points must be an array of >= 3 [x,y] pairs (mil).');
+	if ((payload.points === undefined) === (payload.source === undefined)) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'Pass exactly one of points or source, not both.');
 	}
-	const pts: Array<[number, number]> = [];
-	for (const p of rawPts) {
-		if (!Array.isArray(p) || p.length < 2 || typeof p[0] !== 'number' || typeof p[1] !== 'number') {
-			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each point must be [x, y] numbers.');
+	let src: Array<number | string>;
+	if (payload.source !== undefined) {
+		if (!nativeRegionSegments(payload.source)) {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD,
+				'source must be one closed EasyEDA polygon contour using finite L/ARC commands (mil, signed sweep degrees).');
 		}
-		pts.push([p[0], p[1]]);
+		src = [...(payload.source as Array<number | string>)];
+	}
+	else {
+		const rawPts = payload.points;
+		if (!Array.isArray(rawPts) || rawPts.length < 3) {
+			throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'points must be an array of >= 3 [x,y] pairs (mil).');
+		}
+		const pts: Array<[number, number]> = [];
+		for (const p of rawPts) {
+			if (!Array.isArray(p) || p.length < 2 || typeof p[0] !== 'number' || typeof p[1] !== 'number') {
+				throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'each point must be [x, y] numbers.');
+			}
+			pts.push([p[0], p[1]]);
+		}
+		// Preserve the legacy points encoding and its existing semantic readback.
+		src = [pts[0][0], pts[0][1], 'L'];
+		for (let i = 1; i < pts.length; i++) src.push(pts[i][0], pts[i][1]);
+		src.push(pts[0][0], pts[0][1]);
 	}
 	// A copper pour MUST bind to a net. Silently defaulting to '' created netless
 	// dead copper (issue #34: a net:"" layer-1 pour that pour-fit --replace can't
@@ -13991,12 +14112,6 @@ const pcbPourCreate: Handler = async (payload) => {
 	const pourName = optionalString(payload, 'name');
 	const orderPlan = await preparePourOrder(payload.priority, Number(layer));
 
-	// Polygon source array: [x0,y0,'L',x1,y1,...,x0,y0] — a single 'L' command then
-	// a run of vertex pairs, EXPLICITLY closed by repeating the first vertex. Matches
-	// the proven balance-copper path format (patternGenerator.ts).
-	const src: Array<number | string> = [pts[0][0], pts[0][1], 'L'];
-	for (let i = 1; i < pts.length; i++) src.push(pts[i][0], pts[i][1]);
-	src.push(pts[0][0], pts[0][1]);
 	const requestedSource = src.slice();
 	const poly = eda.pcb_MathPolygon.createPolygon(src as unknown as TPCB_PolygonSourceArray);
 	if (!poly) {
@@ -14042,7 +14157,9 @@ const pcbPourCreate: Handler = async (payload) => {
 		if (actual.fill !== String(fill)) differences.push('fill');
 		if (pourName !== undefined && actual.pourName !== pourName) differences.push('pourName');
 		if (lineWidth !== undefined && actual.lineWidth !== lineWidth) differences.push('lineWidth');
-		if (!equivalentLinearRegionGeometry(requestedSource, actual.source)) differences.push('geometry');
+		if (!(payload.source === undefined
+			? equivalentLinearRegionGeometry(requestedSource, actual.source)
+			: equivalentNativeRegionGeometry(requestedSource, actual.source))) differences.push('geometry');
 		return { fresh, actual, differences };
 	};
 	try {

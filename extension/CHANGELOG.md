@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `pcb.pour.create` / `easyeda pcb pour` now accept a closed native `L`/`ARC` polygon `source` as an alternative to `points`. Signed arc sweeps remain native in the pour boundary; exact-ID fresh readback checks segment type, endpoints and sweep (including rotated/reversed encoding) before copper rebuild. Malformed/open paths and mixed inputs fail before mutation. Web 4.1.78 定向现场验证通过：双 ARC 圆、ARC+L 半圆、混合 L/ARC 轮廓及原有 points 矩形均生成实际铜，保存重载后精确 ID 边界与铜对象回读一致，原生 DRC passed:true、0 违例；开环与零弧度输入拒绝且未新增铜皮。宿主实际返回反向轮廓；单轮廓数组包装及重复闭合点仍只有离线回归覆盖。本结论限于独立测试板，不代表完整设计 E2E 或任意板卡验收。
+
 ## [1.15.0] - 2026-10-24
 
 - PCB 焊盘回读新增钻孔与金属化：`pcb.components.list --includePads` 的每个焊盘带原样的 `hole`（`["ROUND", d, d]`，10 mil 单位）、`metallization` 与 `availability.hole`，`pcb dump` 保留这两项。`pcb enclosure plan` 改为按真实孔径识别安装孔（≥ 2.1 mm 且焊盘无信号网络，按孔径选 M2–M6），不再按位号 H/MH 猜——真板上 H1–H4 常是排针；缺孔数据的旧 dump 只按 HOLE/MOUNT 封装名兜底并警告。ceshi 现场回读 111 个焊盘均带孔信息。

@@ -2094,24 +2094,29 @@ connected). Everything created is rolled back if any step fails. Verify with
 
 	// ── pour (铺铜) ────────────────────────────────────────────────────────
 	{
-		var pointsJSON, net, fill, name string
+		var pointsJSON, sourceJSON, net, fill, name string
 		var layer, priority int
 		var width float64
 		c := &cobra.Command{
 			Use:   "pour",
 			Short: "Create a copper pour (铺铜) from a closed polygon, bound to a net (usually GND)",
-			Long: `Create a copper pour (铺铜) from a closed polygon of [x,y] points (mil, y-up).
+			Long: `Create a copper pour (铺铜) from either [x,y] points or a native L/ARC source (mil, y-up).
+
+Use --source for a closed EasyEDA path such as
+[0,0,"L",100,0,"ARC",90,110,10,"L",110,100,0,100,0,0].
+ARC sweeps are signed degrees. Pass exactly one of --points or --source.
 
 Builds the polygon internally and verifies fresh boundary parameters before
 rebuilding copper. verified describes the boundary; poured is the separate
 rebuild result. A mismatch or unreadable boundary exits nonzero and retains the
 created ID for inspection. Size it to the board outline; bind to GND for a ground
 plane. fill = solid (default) | grid | grid45.`,
-			Args:    cobra.NoArgs,
-			Example: `  easyeda pcb pour --points '[[0,0],[2000,0],[2000,1500],[0,1500]]' --net GND --layer 2`,
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb pour --points '[[0,0],[2000,0],[2000,1500],[0,1500]]' --net GND --layer 2
+  easyeda pcb pour --source '[0,0,"L",100,0,"ARC",90,110,10,"L",110,100,0,100,0,0]' --net GND --layer 17`,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				if pointsJSON == "" {
-					return fmt.Errorf("--points is required")
+				if (pointsJSON == "") == (sourceJSON == "") {
+					return fmt.Errorf("pass exactly one of --points or --source")
 				}
 				// A pour MUST bind to a net. Omitting --net used to create netless
 				// dead copper (net:"") that pour-fit --replace can't clear (it only
@@ -2120,11 +2125,20 @@ plane. fill = solid (default) | grid | grid45.`,
 					return fmt.Errorf("--net is required (a copper pour must bind to a net, e.g. --net GND); " +
 						"a netless pour is dead copper — see `pcb pour-clean --netless` to remove existing ones")
 				}
-				var points any
-				if err := json.Unmarshal([]byte(pointsJSON), &points); err != nil {
-					return fmt.Errorf("invalid --points json (expected array): %w", err)
+				payload := map[string]any{"net": net}
+				if pointsJSON != "" {
+					var points any
+					if err := json.Unmarshal([]byte(pointsJSON), &points); err != nil {
+						return fmt.Errorf("invalid --points json (expected array): %w", err)
+					}
+					payload["points"] = points
+				} else {
+					var source any
+					if err := json.Unmarshal([]byte(sourceJSON), &source); err != nil {
+						return fmt.Errorf("invalid --source json (expected array): %w", err)
+					}
+					payload["source"] = source
 				}
-				payload := map[string]any{"points": points, "net": net}
 				if cmd.Flags().Changed("layer") {
 					payload["layer"] = layer
 				}
@@ -2143,7 +2157,8 @@ plane. fill = solid (default) | grid | grid45.`,
 				return dispatch(cfg, "pcb.pour.create", window, payload, stdout, stderr)
 			},
 		}
-		c.Flags().StringVar(&pointsJSON, "points", "", `JSON array of [x,y] points in mil (required)`)
+		c.Flags().StringVar(&pointsJSON, "points", "", `JSON array of [x,y] points in mil (exclusive with --source)`)
+		c.Flags().StringVar(&sourceJSON, "source", "", `closed native L/ARC path JSON array in mil (exclusive with --points)`)
 		c.Flags().StringVar(&net, "net", "", "net to bind the pour to (e.g. GND)")
 		c.Flags().IntVar(&layer, "layer", 1, "copper layer id (TOP=1, BOTTOM=2; inner via 'easyeda pcb layers')")
 		c.Flags().StringVar(&fill, "fill", "", "fill style: solid (default) | grid | grid45")

@@ -285,12 +285,28 @@ skew/spread 验收。
 ### Copper pour (铺铜)
 
 A pour is a net-bound copper region (usually GND/power plane). **The agent passes raw
-points** — the connector builds the `IPCB_Polygon` (`pcb_MathPolygon.createPolygon`)
+points or a closed native `L`/`ARC` source** — the connector builds the `IPCB_Polygon` (`pcb_MathPolygon.createPolygon`)
 and re-pours; passing raw points to the bare `eda.*` create fails ("无法创建覆铜边框图元").
 
-- `pcb.pour.create` — pour from a closed polygon `points` (`[[x,y],…]`, mil, y-up) on a
-  copper layer, bound to a `net` (**required — a netless pour is dead copper; `pcb pour`
-  now refuses an empty `--net`, issue #34**). `fill = solid` (default) `| grid | grid45`.
+- `pcb.pour.create` — pour on a copper layer from a closed polygon `points`
+  (`[[x,y],…]`, mil, y-up) or `source`
+  (`[x0,y0,"L",x1,y1,"ARC",signedSweep,endX,endY,...,x0,y0]`, mil, y-up),
+  bound to a `net` (**required — a netless pour is dead copper; `pcb pour`
+  now refuses an empty `--net`, issue #34**).
+  The two inputs are mutually exclusive. Use `easyeda pcb pour --source '<JSON>'` for
+  native arcs; the connector checks each ARC's endpoints and signed sweep in the
+  fresh boundary instead of accepting a many-vertex approximation. An unsupported
+  command, open ring, or malformed arc is rejected before creating a primitive.
+  The request `source` is one flat closed contour; the fresh readback may return it
+  wrapped in a single contour array or with the terminal closing vertex repeated, and
+  both are read as the same geometry. A two-segment contour (two arcs for a circle,
+  or an arc and a line for a semicircle) is
+  accepted. A multi-contour readback, an internal zero-length edge, or a zero-area
+  contour stays fail-closed.
+  Web 4.1.78 定向现场已验证双 ARC 圆、ARC+L 半圆、混合 L/ARC 与原有 points
+  矩形：生成实际铜，保存重载后按精确 ID 回读边界与铜对象，原生 DRC 0 违例。
+  宿主返回反向绕行编码；数组包装与重复闭合点仅离线覆盖。此范围不代替目标板的独立验收。
+  `fill = solid` (default) `| grid | grid45`.
   创建后按精确 ID fresh 回读边界的网、层、填充方式、几何和明确提供的名称、优先级、线宽。
   `verified:true` 只证明边界参数兑现；`poured` 独立报告重建返回值，实际铜须再读
   `pcb poured-list`，连通与制造质量另做 DRC。`poured:false` 或空铜本身不证明算法故障。
