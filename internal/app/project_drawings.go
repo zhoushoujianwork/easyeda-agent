@@ -37,12 +37,29 @@ type projectDrawingsArtifact struct {
 	Evidence *projectDrawingsEvidence `json:"evidence,omitempty"`
 }
 
+// Review results are caller declarations tied to the supplied drawing revision.
+// They are not inferred from connectivity, DRC or successful packaging.
+type projectDrawingsPCBReview struct {
+	LabelDensity   string `json:"labelDensity"`
+	TextCollisions string `json:"textCollisions"`
+	CopperGeometry string `json:"copperGeometry"`
+}
+
+func (r *projectDrawingsPCBReview) normalize() {
+	for _, value := range []*string{&r.LabelDensity, &r.TextCollisions, &r.CopperGeometry} {
+		if *value == "" {
+			*value = "pending"
+		}
+	}
+}
+
 type projectDrawingsStatus struct {
-	Layout         string   `json:"layout"`
-	Routing        string   `json:"routing"`
-	DRCPassed      *bool    `json:"drcPassed"`
-	DesignAccepted *bool    `json:"designAccepted"`
-	Unresolved     []string `json:"unresolved"`
+	PCBReview      projectDrawingsPCBReview `json:"pcbReview"`
+	Layout         string                   `json:"layout"`
+	Routing        string                   `json:"routing"`
+	DRCPassed      *bool                    `json:"drcPassed"`
+	DesignAccepted *bool                    `json:"designAccepted"`
+	Unresolved     []string                 `json:"unresolved"`
 }
 
 type projectDrawingsSpec struct {
@@ -155,6 +172,7 @@ func generateProjectDrawings(specPath, outDir string) (_ *projectDrawingsManifes
 	if dec.Decode(new(any)) != io.EOF {
 		return nil, fmt.Errorf("specification must contain one JSON object")
 	}
+	spec.Status.PCBReview.normalize()
 	if err = validateDrawingsSpec(spec); err != nil {
 		return nil, err
 	}
@@ -301,6 +319,20 @@ func validateDrawingsSpec(spec projectDrawingsSpec) error {
 	}
 	if *spec.Status.DesignAccepted && (spec.Status.Layout != "verified" || spec.Status.Routing != "routed" || spec.Status.DRCPassed == nil || !*spec.Status.DRCPassed || len(spec.Status.Unresolved) > 0) {
 		return fmt.Errorf("status.designAccepted conflicts with candidate, routing, DRC or unresolved status")
+	}
+	for name, result := range map[string]string{
+		"labelDensity":   spec.Status.PCBReview.LabelDensity,
+		"textCollisions": spec.Status.PCBReview.TextCollisions,
+		"copperGeometry": spec.Status.PCBReview.CopperGeometry,
+	} {
+		switch result {
+		case "", "pending", "pass", "fail":
+		default:
+			return fmt.Errorf("status.pcbReview.%s must be pending, pass or fail", name)
+		}
+		if *spec.Status.DesignAccepted && result != "pass" {
+			return fmt.Errorf("status.designAccepted conflicts with status.pcbReview.%s: explicit pass required", name)
+		}
 	}
 	seen := map[string]bool{}
 	for _, a := range spec.Artifacts {
@@ -607,6 +639,7 @@ func drawingsREADME(m *projectDrawingsManifest) string {
 	var out strings.Builder
 	fmt.Fprintf(&out, "# %s\n\n版本：%s · 板尺寸：%.3f × %.3f mm\n\n", drawingsMarkdown(m.Title), drawingsMarkdown(m.Revision), m.DimensionsMM.Width, m.DimensionsMM.Height)
 	fmt.Fprintf(&out, "状态（输入声明）：布局 `%s`，布线 `%s`，DRC `%s`，设计验收 `%t`。图册生成成功只证明文件与关联检查完成，不替代电路、布局、制造或硬件验收。\n\n", m.Status.Layout, m.Status.Routing, drawingsBoolText(m.Status.DRCPassed), *m.Status.DesignAccepted)
+	fmt.Fprintf(&out, "PCB 复核（输入声明）：网名密度 `%s`，文字碰撞 `%s`，铜几何 `%s`。三项独立于连通性与 DRC；打包器不检测宿主网名或文字重叠。\n\n", m.Status.PCBReview.LabelDensity, m.Status.PCBReview.TextCollisions, m.Status.PCBReview.CopperGeometry)
 	fmt.Fprintf(&out, "工程 `%s`；原理图页 `%s`；PCB `%s`。仅包含这一页原理图和这一块 PCB。\n\n", drawingsMarkdown(m.ProjectUUID), drawingsMarkdown(m.SchematicDocumentUUID), drawingsMarkdown(m.PCBDocumentUUID))
 	if len(m.Status.Unresolved) > 0 {
 		out.WriteString("待解决：\n\n")

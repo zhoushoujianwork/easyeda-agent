@@ -74,6 +74,9 @@ func TestProjectDrawingsFixtureAndBytePreservation(t *testing.T) {
 	if !manifest.GenerationSuccess || *manifest.Status.DesignAccepted {
 		t.Fatalf("generation changed acceptance: %+v", manifest.Status)
 	}
+	if manifest.Status.PCBReview != (projectDrawingsPCBReview{"pending", "pending", "pending"}) {
+		t.Fatalf("missing review inferred a pass: %+v", manifest.Status.PCBReview)
+	}
 	if manifest.DimensionsMM.Width != 25.4 || manifest.DimensionsMM.Height != 50.8 {
 		t.Fatalf("dimensions: %+v", manifest.DimensionsMM)
 	}
@@ -104,7 +107,7 @@ func TestProjectDrawingsFixtureAndBytePreservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"candidate", "unrouted", "false", "共同坐标", "镜像装配", "Synthetic clearance", "输入声明", "未提供身份回执"} {
+	for _, want := range []string{"candidate", "unrouted", "false", "共同坐标", "镜像装配", "Synthetic clearance", "输入声明", "未提供身份回执", "网名密度 `pending`", "文字碰撞 `pending`", "铜几何 `pending`"} {
 		if !bytes.Contains(readme, []byte(want)) {
 			t.Fatalf("README lost %q", want)
 		}
@@ -395,5 +398,82 @@ func TestProjectDrawingsSummarizesLargeLimitationsWithoutLosingManifestEvidence(
 	}
 	if !bytes.Contains(persisted, []byte(limitations[0])) || !bytes.Contains(persisted, []byte(limitations[449])) {
 		t.Fatal("persisted manifest lost full limitation details")
+	}
+}
+
+// A fully connected/DRC-clean declaration must not stand in for visual review.
+func TestProjectDrawingsPCBReviewAcceptance(t *testing.T) {
+	_, spec := drawingsTestFixture(t)
+	yes := true
+	spec.Status.Layout, spec.Status.Routing = "verified", "routed"
+	spec.Status.DRCPassed, spec.Status.DesignAccepted = &yes, &yes
+	spec.Status.Unresolved = nil
+	spec.Status.PCBReview = projectDrawingsPCBReview{"pass", "pass", "pass"}
+	if err := validateDrawingsSpec(spec); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"labelDensity", "textCollisions", "copperGeometry"} {
+		for _, result := range []string{"", "pending", "fail", "invalid"} {
+			t.Run(field+"/"+result, func(t *testing.T) {
+				s := spec
+				switch field {
+				case "labelDensity":
+					s.Status.PCBReview.LabelDensity = result
+				case "textCollisions":
+					s.Status.PCBReview.TextCollisions = result
+				case "copperGeometry":
+					s.Status.PCBReview.CopperGeometry = result
+				}
+				if err := validateDrawingsSpec(s); err == nil || !strings.Contains(err.Error(), field) {
+					t.Fatalf("unchecked review accepted or wrong error: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestProjectDrawingsPreservesSeparatePCBReviews(t *testing.T) {
+	for _, result := range []string{"pending", "fail", "pass", "invalid"} {
+		t.Run(result, func(t *testing.T) {
+			dir, spec := drawingsTestFixture(t)
+			spec.Status.PCBReview = projectDrawingsPCBReview{result, "pass", "fail"}
+			out := filepath.Join(dir, "result")
+			manifest, err := generateProjectDrawings(drawingsTestWriteSpec(t, dir, spec), out)
+			if result == "invalid" {
+				if err == nil || !strings.Contains(err.Error(), "labelDensity") {
+					t.Fatalf("invalid review: %v", err)
+				}
+				if _, err := os.Stat(out); !os.IsNotExist(err) {
+					t.Fatalf("invalid review created output: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if manifest.Status.PCBReview != spec.Status.PCBReview || *manifest.Status.DesignAccepted {
+				t.Fatalf("review changed: %+v", manifest.Status)
+			}
+			data, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved projectDrawingsManifest
+			if err := json.Unmarshal(data, &saved); err != nil {
+				t.Fatal(err)
+			}
+			if saved.Status.PCBReview != spec.Status.PCBReview {
+				t.Fatalf("manifest lost review: %+v", saved.Status)
+			}
+			readme, err := os.ReadFile(filepath.Join(out, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"网名密度 `" + result + "`", "文字碰撞 `pass`", "铜几何 `fail`", "打包器不检测宿主网名或文字重叠"} {
+				if !bytes.Contains(readme, []byte(want)) {
+					t.Fatalf("README lost %q", want)
+				}
+			}
+		})
 	}
 }
