@@ -162,8 +162,11 @@ test('a quiet window restarts when a sync appears after the first idle sample (#
 });
 
 test('without a quiet window one idle sample is still enough', async t => {
-	const { idle } = fixture(t);
+	const { g, idle } = fixture(t);
 	idle();
+	let reads = 0;
+	g.eda.dmt_SelectControl.getCurrentDocumentInfo = async () => { reads++; return { ...context }; };
 	await waitForSchematicReady(context);
+	assert.equal(reads, 1, 'idle readiness must not schedule another identity sample');
 	assert.equal(pendingDeadlines(), 0, 'idle readiness completes without another deadline sample');
 });
