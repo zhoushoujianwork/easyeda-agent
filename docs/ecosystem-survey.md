@@ -747,3 +747,15 @@ client/updateTime/version 三值重新生成。原文 SHA 不稳定，默认 exa
 - [EasyEDA Pro API 文档](https://prodocs.easyeda.com/en/api/guide/index.html) · 权威类型定义 `@jlceda/pro-api-types@0.2.63`
 - [嘉立创EDA扩展广场](https://extensions.oshwhub.com/)
 - **KiCad**（§9）：[kicad-source-mirror](https://github.com/KiCad/kicad-source-mirror)（只读镜像，不收 PR）· 上游 [gitlab.com/kicad/code/kicad](https://gitlab.com/kicad/code/kicad) · 本机实跑 KiCad 10.0.1（`pcbnew` Python + `kicad-cli`），对照用例 `motobox/hardware/box-v2/rev-a` §1
+
+## CBB 只读能力的当前边界
+
+当前 `@jlceda/pro-api-types` 将 `lib_Cbb.search/get` 与 `createCbbSymbol` 标为 beta，
+不能继续用早期 alpha 标记判断当前不可用。已提供 typed `library.cbb.search/get` 和
+`lib cbb search/get`，仅搜索、读取身份与变体，不调用会丢弃未保存工程的
+`openProjectInEditor`，也未提供实例放置。
+
+Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，须逐项经 `get` 确认；
+`boards[].schematic` 可能为 UUID 字符串，而非声明的完整对象。对真实系统库资产的
+`getSchematicInfo` 未返回详情，结果明确记为 `schematicDetails[].available:false`。
+库资产可读不证明块符号可选择，也不完成 #244 的真实实例引脚网与保存重载验收。
