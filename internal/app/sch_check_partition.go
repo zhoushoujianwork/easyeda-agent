@@ -20,6 +20,9 @@ func missingDeliverableHints(findings []checkFinding) []string {
 		// 文案与 titleBlockFinding 的明细逐字同源,免得提示行和明细行教两套写法。
 		out = append(out, "→ missing-titleblock: 图签必填项空着,交付图必须能认领 — `sch titleblock --data '{\"Name\":\"…\",\"Drawed\":\"…\",\"Description\":\"…\"}'`")
 	}
+	if seen["hidden-titleblock"] {
+		out = append(out, "→ hidden-titleblock: 必填图签需显示值；不能隐藏来规避越界。恢复 showValue:true 后，用 `sch attribute-move` 的 ownerType:sheet 位置修复，再保存重载回读")
+	}
 	return out
 }
 

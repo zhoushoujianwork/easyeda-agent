@@ -162,6 +162,9 @@ destagger。先从完整快照计算局部模块几何，经 compose 守卫重�
 
 ## 只移动属性文字
 
+必填图签 Name、Description、Drawed 的值必须可见；`hidden-titleblock` 是严格检查失败。
+不得把 `showValue` 改为 false 规避越界。回读完整原生属性后按下述接口仅修复位置。
+
 `easyeda sch attribute-move --from attribute-move.json --project <project> --doc <page-uuid>`
 默认只修改已有板上器件 `Name` 或 `Designator` 属性的 X/Y，单位 raw，Y 向上。
 修复图签文字位置时显式指定 `ownerType:"sheet"`，仅支持纸张的 `Name`、`Description`、

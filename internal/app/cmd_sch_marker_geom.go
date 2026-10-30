@@ -551,7 +551,7 @@ func mergeMarkerGeomFindingsWith(cfg *appConfig, window string, allPages bool, o
 			rep.Summary.OutOfSheet++
 		case "marker-overlap":
 			rep.Summary.MarkerOverlaps++
-		case "missing-partition", "missing-titleblock":
+		case "missing-partition", "missing-titleblock", "hidden-titleblock":
 			// 交付件(区框/图签)共用一个聚合计数槽 —— 汇总行必须写成
 			// missing-deliverable 而不是 missing-partition:2026-08-17 真机上一条
 			// missing-titleblock 被汇总行标成「1 missing-partition」,引着人去查
@@ -751,7 +751,7 @@ func titleBlockFindingsFor(data map[string]any) []*checkFinding {
 		}
 		return strings.TrimSpace(asString(m["value"]))
 	}
-	var blank, absent []string
+	var blank, absent, hidden []string
 	for _, req := range titleBlockRequired {
 		if _, present := data[req.Key]; !present {
 			absent = append(absent, req.Key)
@@ -759,9 +759,17 @@ func titleBlockFindingsFor(data map[string]any) []*checkFinding {
 		}
 		if valueOf(req.Key) == "" {
 			blank = append(blank, req.Label)
+		} else if field, ok := data[req.Key].(map[string]any); ok && field["showValue"] == false {
+			hidden = append(hidden, req.Label)
 		}
 	}
 	var out []*checkFinding
+	if len(hidden) > 0 {
+		out = append(out, &checkFinding{
+			Type: "hidden-titleblock", Level: "warn", Count: len(hidden),
+			Message: fmt.Sprintf("图签必填值被隐藏:%s — 不能通过隐藏规避文字越界。保持内容并恢复 showValue:true；越界文字用 sch attribute-move（ownerType:sheet，完整原状态，x/y-only）移回纸内，再保存重载回读", strings.Join(hidden, "、")),
+		})
+	}
 	if len(blank) > 0 {
 		out = append(out, &checkFinding{
 			Type:    "missing-titleblock",

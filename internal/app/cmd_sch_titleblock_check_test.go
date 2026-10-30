@@ -40,6 +40,21 @@ func TestTitleBlockFindingsFor_FilledPageIsClean(t *testing.T) {
 	}
 }
 
+func TestTitleBlockFindingsForHiddenRequiredValuesBlockStrict(t *testing.T) {
+	name, description := tbItem("LED board"), tbItem("3.3V indicator")
+	name["showValue"], description["showValue"] = false, false
+	data := map[string]any{"Name": name, "Description": description, "Drawed": tbItem("test"), "Reviewed": map[string]any{"value": "optional", "showValue": false}}
+	fs := titleBlockFindingsFor(data)
+	f := tbFindingOfType(t, fs, "hidden-titleblock")
+	if len(fs) != 1 || f.Count != 2 || !checkLevelBlocks(f.Level, true) || !strings.Contains(f.Message, "attribute-move") {
+		t.Fatalf("hidden required text passed: %+v", fs)
+	}
+	name["showValue"], description["showValue"] = true, true
+	if got := titleBlockFindingsFor(data); len(got) != 0 {
+		t.Fatalf("restored values or optional hidden field rejected: %+v", got)
+	}
+}
+
 // 有这个明细项、只是空着 —— 这是 `sch titleblock` 真的能修的那一种,提示照给,
 // --strict 照挡。
 func TestTitleBlockFindingsFor_BlankItemStaysBlockingUnderStrict(t *testing.T) {
