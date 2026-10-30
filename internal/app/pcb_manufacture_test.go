@@ -121,7 +121,7 @@ func TestManufactureArtifactIntegrityAndAtomicNoOverwrite(t *testing.T) {
 	data := []byte(manufactureCSV)
 	p := filepath.Join(t.TempDir(), "artifact.csv")
 	os.WriteFile(p, data, 0600)
-	res := &actionResult{OK: true, Result: map[string]any{"artifactId": "a", "fileType": "csv", "unit": "mm", "size": float64(len(data))}, Artifacts: []artifactRef{{ID: "a", Path: p, Size: int64(len(data)), SHA256: sha256Hex(data)}}}
+	res := &actionResult{OK: true, Result: map[string]any{"artifactId": "a", "fileType": "csv", "unit": "mm", "size": float64(len(data)), "fileSha256": sha256Hex(data)}, Artifacts: []artifactRef{{ID: "a", Path: p, Size: int64(len(data)), SHA256: sha256Hex(data)}}}
 	if got, err := verifyManufactureArtifact(res, "csv", "mm"); err != nil || !bytes.Equal(got, data) {
 		t.Fatal(err)
 	}

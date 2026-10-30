@@ -51,11 +51,12 @@ async function exportManufacture(payload: Record<string, unknown>, kind: 'gerber
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Official ${kind} file exceeds the 20 MiB transport limit.`);
 	}
 	const inlineBase64 = await blobToBase64(file);
+	const fileSha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer())), v => v.toString(16).padStart(2, '0')).join('');
 	const drift = mutationContextError(before, await readResponseContext());
 	if (drift) throw new ActionError(ErrorCodes.INVALID_STATE, `Manufacture export target changed: ${drift}. No artifact accepted.`);
 	const id = newArtifactId();
 	return {
-		result: { artifactId: id, fileType, fileName: file.name || fileName, size: file.size, unit,
+		result: { artifactId: id, fileType, fileName: file.name || fileName, size: file.size, fileSha256, unit,
 			exportContext: before, ...(kind === 'gerber' ? { colorSilkscreen: color, digitalFormat: digital } : {}) },
 		artifacts: [{ id, kind: `pcb_${kind}`, fileName: file.name || fileName,
 			mimeType: file.type || (fileType === 'csv' ? 'text/csv' : fileType === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/zip'), inlineBase64 }],
