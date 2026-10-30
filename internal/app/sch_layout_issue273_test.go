@@ -1,9 +1,12 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -102,11 +105,11 @@ func TestIssue273RouteNamingProbeReplaysCompleteVerdict(t *testing.T) {
 // with 18,994 candidates at 100,000 but failed at 80,000 (its accepted C21 +10
 // pose received only 6,348 of the 8,022 candidates it needs). Slice sizes are
 // now fixed and truncated only by the real remainder: every sufficient total
-// follows the same trajectory and spends the same candidates, while the frozen
-// 3,000 cap still stops with an explicit budget reason.
+// follows the same trajectory and spends the same candidates. Wider checkpoint
+// search now also solves the frozen 3,000 cap; tiny caps keep a resource stop.
 func TestIssue273SufficientBudgetIsNotDefeatedBySlicing(t *testing.T) {
 	used := -1
-	for _, budget := range []int{20000, 80000, 100000} {
+	for _, budget := range []int{3000, 20000, 80000, 100000} {
 		input := loadIssue273Fixture(t, "boost-input")
 		input.MaxCandidates = budget
 		start := time.Now()
@@ -133,9 +136,149 @@ func TestIssue273SufficientBudgetIsNotDefeatedBySlicing(t *testing.T) {
 		}
 	}
 	frozen := loadIssue273Fixture(t, "boost-input")
+	frozen.MaxCandidates = 1
 	_, err := planLibLayout(frozen)
 	var failure *SchematicLayoutSearchFailure
 	if !errors.As(err, &failure) || failure.RemainingCandidates != 0 || !errors.Is(err, errLibLayoutBudget) {
-		t.Fatalf("frozen 3000 cap must stop with an explicit budget reason: %v", err)
+		t.Fatalf("tiny cap must stop with an explicit budget reason: %v", err)
+	}
+}
+
+// The unchanged canonical fixtures must now solve in their authored allowance,
+// retaining every measured symbol and explicit attachment, and must compose on
+// the original paper. No labels may substitute for a mandatory physical path.
+func TestIssue273FrozenDefaultCompletesWithoutWeakeningEvidence(t *testing.T) {
+	for _, name := range []string{"input", "boost-input"} {
+		t.Run(name, func(t *testing.T) {
+			input := loadIssue273Fixture(t, name)
+			before, _ := json.Marshal(input)
+			result, err := planLibLayoutZones(input, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.CandidatesUsed > input.MaxCandidates || result.CandidatesUsed <= 0 || len(result.Zones) != 1 {
+				t.Fatalf("invalid accounting: %+v", result)
+			}
+			layout := result.Zones[0].Layout
+			if layout.LayoutMode != "" {
+				t.Fatal("substituted an alternate mode")
+			}
+			if len(layout.Placements) != len(input.Measurements) {
+				t.Fatal("lost components")
+			}
+			p := powerLayoutPlan{Placements: layout.Placements, Wires: layout.Wires, Flags: layout.Flags}
+			for _, original := range input.Measurements {
+				actual := libPlacementByDesignator(&p, original.Designator)
+				if actual == nil || !reflect.DeepEqual(plTranslate(original, actual.X-original.X, actual.Y-original.Y), *actual) {
+					t.Fatal("changed measured body/text/pin geometry or pose", original.Designator)
+				}
+			}
+			policies := map[string]string{}
+			for _, net := range input.Connectivity.Nets {
+				policies[net.Name] = input.LayoutModules[0].NetPolicies[net.ID]
+			}
+			first := map[string]powerLayoutPin{}
+			for _, c := range p.Placements {
+				for _, pin := range c.Pins {
+					if policies[pin.Net] != "direct" {
+						continue
+					}
+					if prior, ok := first[pin.Net]; ok {
+						if !libPinsShareIsland(&p, prior, pin) {
+							t.Fatal("direct net split into label islands", pin.Net)
+						}
+					} else {
+						first[pin.Net] = pin
+					}
+				}
+			}
+			idToRef := map[string]string{}
+			for _, c := range input.Connectivity.Components {
+				idToRef[c.ID] = c.Ref
+				if layout.ComponentIDs[c.Ref] != c.ID {
+					t.Fatal("lost canonical component identity")
+				}
+			}
+			for _, h := range input.LayoutModules[0].Peripherals {
+				if h.AttachTo == nil || h.PinNumber == "" {
+					continue
+				}
+				host := libPlacementByDesignator(&p, idToRef[h.AttachTo.ComponentID])
+				own := libPlacementByDesignator(&p, idToRef[h.ComponentID])
+				a, aOK := libPin(*host, h.AttachTo.PinNumber)
+				b, bOK := libPin(*own, h.PinNumber)
+				if !aOK || !bOK || !libPinsShareIsland(&p, a, b) {
+					t.Fatal("lost explicit attachment", h.ComponentID)
+				}
+			}
+			if findings := layoutContractRuntimeFindings(t, layout); len(findings) != 0 {
+				t.Fatalf("runtime guard: %+v", findings)
+			}
+			if layout.Routing.ExpandedNodes > layout.Routing.MaxExpandedNodes || layout.Routing.Reroutes > layout.Routing.MaxReroutes {
+				t.Fatal("reset routing allowances")
+			}
+			if len(layout.Search.SpacingTrials) != 1 || layout.Search.SpacingTrials[0].Result != "accepted" {
+				t.Fatal("missing accepted spacing diagnostic")
+			}
+			composition, err := planLibLayout(input)
+			if err != nil {
+				t.Fatal("original sheet cannot contain result", err)
+			}
+			if composition.Sheet != input.Sheet || !reflect.DeepEqual(composition.SheetBorder, input.SheetBorder) || !reflect.DeepEqual(composition.Connectivity, input.Connectivity) {
+				t.Fatal("changed sheet or canonical graph")
+			}
+			after, _ := json.Marshal(input)
+			if !bytes.Equal(before, after) {
+				t.Fatal("mutated source")
+			}
+			t.Logf("%s: candidates=%d/%d, nodes=%d/%d", name, result.CandidatesUsed, input.MaxCandidates, layout.Routing.ExpandedNodes, layout.Routing.MaxExpandedNodes)
+		})
+	}
+}
+
+func TestIssue273OriginalPaperStillRejectsTooSmallComposition(t *testing.T) {
+	input := loadIssue273Fixture(t, "boost-input")
+	input.Sheet = layoutBBox{0, 0, 100, 100}
+	border := layoutBBox{10, 10, 90, 90}
+	input.SheetBorder = &border
+	before, _ := json.Marshal(input)
+	if out, err := planLibLayout(input); err == nil || out != nil {
+		t.Fatal("expanded paper or emitted a partial composition")
+	}
+	after, _ := json.Marshal(input)
+	if !bytes.Equal(before, after) {
+		t.Fatal("changed original input on failure")
+	}
+}
+
+func TestCheckpointSpacingRejectsBrokenPeripheralAndKeepsSharedBudget(t *testing.T) {
+	input := standaloneLayoutFixture()
+	compact, err := PlanSchematicLayout(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := powerLayoutPlan{Placements: compact.Placements, Wires: compact.Wires, Flags: compact.Flags}
+	before, _ := json.Marshal(p)
+	for _, allowance := range []int{1, 20000} {
+		measured := map[string]powerLayoutPlacement{}
+		for _, c := range input.Components {
+			measured[c.ID] = c.Measurement
+		}
+		budget := allowance
+		search := newSchematicRepairSearch(input, measured, []string{"anchor", "peripheral"}, nil, &budget)
+		if _, ok := search.tryCheckpointSpacing(p); ok {
+			t.Fatal("accepted spacing that splits a required peripheral")
+		}
+		if budget < 0 || budget >= allowance || len(search.diagnostics.SpacingTrials) != 1 {
+			t.Fatalf("invalid bounded accounting: remaining=%d", budget)
+		}
+		trace := search.diagnostics.SpacingTrials[0]
+		if trace.CandidatesUsed != allowance-budget || trace.CandidatesUsed > trace.CandidateQuota+1 || trace.Result == "accepted" {
+			t.Fatalf("invalid spacing diagnostic: %+v", trace)
+		}
+		after, _ := json.Marshal(p)
+		if !bytes.Equal(before, after) {
+			t.Fatal("failed candidate corrupted its parent checkpoint")
+		}
 	}
 }

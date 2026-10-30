@@ -17,3 +17,12 @@ easyeda sch lib-layout --from internal/app/testdata/schematic-layout/2026-09-29-
 Both inputs set `maxCandidates: 3000`. The buck exits 1 after 3,000 candidates, 20 backtracks and 3 relocation attempts, with `cmp-R6` placement `candidate-budget` as the last conflict. The boost exits 1 after 3,000 candidates and 12 backtracks with `candidate search budget exhausted`. Raising the isolated buck input to 80,000 did not return within three minutes; that run was stopped, so it is a latency observation, not a completed failure. The earlier closed issue #262 covered a different 51-part/10-zone regression.
 
 The source symbols and pins were measured in EasyEDA Pro Web 4.1.60. Component model and pin data are in each JSON. The full source project's BOM and part-lock file remain with that project; this public fixture contains only the two failing zones.
+
+The bounded solver now also tries one wider translation-only checkpoint before
+exhausting its terminal naming budget. The unchanged 3,000-candidate fixtures
+are covered by `TestIssue273FrozenDefaultCompletesWithoutWeakeningEvidence`:
+all measured poses/pins and canonical nets are preserved, mandatory direct nets
+and explicit attachment pairs remain physical wire paths, the original sheet
+must pass composition, and runtime geometry guards must accept the result.
+This is offline solver evidence, not a live-editor circuit acceptance result.
+The historical v1.8.0 observations above remain unchanged.

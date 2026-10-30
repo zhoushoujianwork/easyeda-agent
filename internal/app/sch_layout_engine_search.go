@@ -639,13 +639,15 @@ func libNameOrderedIslands(p *powerLayoutPlan, policies map[string]string, islan
 		if libPlaceWireTreeMarker(p, island, kind, budget...) {
 			continue
 		}
+		// A valid lead is a complete feasibility witness. Do not spend the
+		// shared budget proving every other endpoint merely to choose the
+		// shortest local lead; later islands and placement repair need it.
 		var best *powerLayoutPlan
 		for _, q := range island.pins {
 			trial := *p
 			if libPlaceMarker(&trial, q, kind, budget...) {
-				if best == nil || libCandidateLess(&trial, best) {
-					best = &trial
-				}
+				best = &trial
+				break
 			}
 		}
 		if best == nil {
