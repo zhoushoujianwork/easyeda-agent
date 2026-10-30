@@ -3,6 +3,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/xml"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 type manufactureEntry struct {
@@ -220,11 +223,53 @@ func placementTable(rows [][]string, unit, sheet string) ([]manufacturePlacement
 	return result, nil
 }
 
+// The official "csv" getter also returns BOM-marked UTF-16 tabular files.
+// Decode only for inspection; the original artifact bytes are never rewritten.
+func decodeManufactureCSV(data []byte) ([]byte, error) {
+	var order binary.ByteOrder
+	if bytes.HasPrefix(data, []byte{0xff, 0xfe}) {
+		order = binary.LittleEndian
+	}
+	if bytes.HasPrefix(data, []byte{0xfe, 0xff}) {
+		order = binary.BigEndian
+	}
+	if order == nil {
+		data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
+		if !utf8.Valid(data) {
+			return nil, fmt.Errorf("placement CSV requires UTF-8 or BOM-marked UTF-16")
+		}
+		return data, nil
+	}
+	data = data[2:]
+	if len(data)%2 != 0 {
+		return nil, fmt.Errorf("truncated UTF-16 placement CSV")
+	}
+	units := make([]uint16, len(data)/2)
+	for i := range units {
+		units[i] = order.Uint16(data[i*2:])
+	}
+	for i := 0; i < len(units); i++ {
+		if units[i] >= 0xd800 && units[i] <= 0xdbff {
+			if i+1 >= len(units) || units[i+1] < 0xdc00 || units[i+1] > 0xdfff {
+				return nil, fmt.Errorf("invalid UTF-16 placement surrogate")
+			}
+			i++
+		} else if units[i] >= 0xdc00 && units[i] <= 0xdfff {
+			return nil, fmt.Errorf("invalid UTF-16 placement surrogate")
+		}
+	}
+	return []byte(string(utf16.Decode(units))), nil
+}
+
 func inspectPlacement(data []byte, format, unit string) ([]manufacturePlacement, error) {
 	if format == "csv" {
+		decoded, err := decodeManufactureCSV(data)
+		if err != nil {
+			return nil, err
+		}
 		var last error
 		for _, delimiter := range []rune{',', '\t', ';'} {
-			r := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})))
+			r := csv.NewReader(bytes.NewReader(decoded))
 			r.Comma = delimiter
 			r.FieldsPerRecord = -1
 			rows, err := r.ReadAll()
