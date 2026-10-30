@@ -216,7 +216,7 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 > 平台墙(#31,无 create API)。survey 2026-06-28 版部分条目已过时,下次做市场全量扫描时更新。
 
 **更长期盲区(列入 roadmap,暂不动手)**:制造输出 `pcb_ManufactureData` 的下单等未接入接口（Gerber/贴片文件已有 typed 导出）、
-拼板 `pnl_Document`、电路仿真 `sch_SimulationEngine`、复用模块 `lib_Cbb`、层叠管理 `pcb_Layer.setTheNumberOfCopperLayers`、
+拼板 `pnl_Document`、电路仿真 `sch_SimulationEngine`、复用块实例放置（库只读能力见文末）、层叠管理 `pcb_Layer.setTheNumberOfCopperLayers`、
 事件订阅 `*_Event`。
 
 ---
@@ -747,3 +747,19 @@ client/updateTime/version 三值重新生成。原文 SHA 不稳定，默认 exa
 - [EasyEDA Pro API 文档](https://prodocs.easyeda.com/en/api/guide/index.html) · 权威类型定义 `@jlceda/pro-api-types@0.2.63`
 - [嘉立创EDA扩展广场](https://extensions.oshwhub.com/)
 - **KiCad**（§9）：[kicad-source-mirror](https://github.com/KiCad/kicad-source-mirror)（只读镜像，不收 PR）· 上游 [gitlab.com/kicad/code/kicad](https://gitlab.com/kicad/code/kicad) · 本机实跑 KiCad 10.0.1（`pcbnew` Python + `kicad-cli`），对照用例 `motobox/hardware/box-v2/rev-a` §1
+
+## CBB 只读能力的当前边界
+
+当前 `@jlceda/pro-api-types` 将 `lib_Cbb.search/get` 与 `createCbbSymbol` 标为 beta，
+不能继续用早期 alpha 标记判断当前不可用。已提供 typed `library.cbb.search/get` 和
+`lib cbb search/get`，仅搜索、读取身份与变体；另提供 `lib cbb export-source`
+调用官方 beta `getCbbFileByCbbUuid` 只读导出原生归档。不调用会丢弃未保存工程的
+`openProjectInEditor`，也未提供实例放置。
+
+Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，须逐项经 `get` 确认；
+`boards[].schematic` 可能为 UUID 字符串，而非声明的完整对象。对真实系统库资产的
+`getSchematicInfo` 未返回详情，结果明确记为 `schematicDetails[].available:false`。
+库资产可读不证明块符号可选择，也不完成 #244 的真实实例引脚网与保存重载验收。
+
+同一环境对精确系统库资产调用官方归档 getter 时，宿主返回“没有下载库权限”，未生成文件。
+这是真实权限拒绝，不能当作没有复用块或网络解析失败，也不改权限/切工程绕过。
