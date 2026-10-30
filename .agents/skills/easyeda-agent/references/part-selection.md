@@ -277,3 +277,20 @@ easyeda sch block-apply <block> --parts /tmp/parts.intl.json --project <project>
 --out <new-file.epro2>` 通过官方 beta `getCbbFileByCbbUuid` 获取原生归档，不打开工程。
 导出要求模块下载权限；不修改权限，失败保留错误。归档限定 16 MiB，CLI 校验 ZIP/CRC
 与原生项目数据并以不覆盖方式写入，返回 SHA-256；归档读取不等于真实实例验收。
+
+## 受控复用块样件的创建与清理
+
+为验证原生 `block_symbol`，可自行创建最小 CBB，无须下载第三方工程。
+`lib cbb create --name <name>` 只在当前账号个人可写库创建 `EA_AGENT__` 命名空间资产；
+返回的 `uuid/libraryUuid/name` 必须留作本轮所有权凭据。创建只调用一次，部分结果或超时
+先读取，不重复创建。`lib cbb delete --uuid ... --library ... --expected-name ...` 仅精确
+删除同一命名空间、同一库且名称匹配的资产；仍在编辑该 CBB 时拒绝删除。
+
+`lib cbb open --uuid ... --library ... --expected-name ... --from-project ... --allow-project-switch`
+会切换整个工程，调用前必须保存所有打开文档；官方接口可能丢弃未保存内容。它核对原工程
+与本轮 CBB 身份，并要求显式切换标志；不在失败后重开或自动重试。
+`lib cbb symbol-open` 使用相同身份三元组打开官方块符号页，回读符号类型与 `cbbUuid`，
+不猜第一个变体。所有创建、打开与放置仍需新鲜 health 中的专用连接；离线测试不能替代现场验收。
+
+样件至少覆盖已命名导线连接与未接线端口；保存 → 真实关闭重开 → fresh 引脚网对账后
+才能判断 #244。默认普通器件符号、工具 `block-apply` 或最近 netflag 不能充当真实 CBB。

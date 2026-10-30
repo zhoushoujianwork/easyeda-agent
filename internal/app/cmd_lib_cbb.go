@@ -76,5 +76,6 @@ func newLibCbbCmd(cfg *appConfig, stdout, stderr io.Writer, window *string) *cob
 		c.Flags().StringVar(&out, "out", "", "new native .epro2 archive; no overwrite (required)")
 		group.AddCommand(c)
 	}
+	addCbbAuthoringCommands(group, cfg, stdout, stderr, window)
 	return group
 }

@@ -754,7 +754,7 @@ client/updateTime/version 三值重新生成。原文 SHA 不稳定，默认 exa
 不能继续用早期 alpha 标记判断当前不可用。已提供 typed `library.cbb.search/get` 和
 `lib cbb search/get`，仅搜索、读取身份与变体；另提供 `lib cbb export-source`
 调用官方 beta `getCbbFileByCbbUuid` 只读导出原生归档。不调用会丢弃未保存工程的
-`openProjectInEditor`，也未提供实例放置。
+`openProjectInEditor`，实例放置及受控样件创建已补 typed 入口，但自建样件的现场验收尚未完成。
 
 Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，须逐项经 `get` 确认；
 `boards[].schematic` 可能为 UUID 字符串，而非声明的完整对象。对真实系统库资产的
@@ -763,3 +763,8 @@ Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，�
 
 同一环境对精确系统库资产调用官方归档 getter 时，宿主返回“没有下载库权限”，未生成文件。
 这是真实权限拒绝，不能当作没有复用块或网络解析失败，也不改权限/切工程绕过。
+
+受控样件可通过 `lib cbb create/open/symbol-open/delete` 和 `sch cbb-place` 建立，
+仅个人可写库 `EA_AGENT__` 资产，严格核对所有权、符号变体、活动项目/页面及单次创建结果。
+工程打开前必须保存所有文档并显式允许切换；未知/部分结果禁止自动重试，清理必须名称及身份匹配。
+这些新增写入口仍待专用连接下的真实创建、内容构建、实例接线及保存重载验收；不能据离线测试关闭 #244。

@@ -21,7 +21,12 @@ func (e *unverifiedLibraryWriteError) Error() string {
 func (e *unverifiedLibraryWriteError) Unwrap() error { return e.cause }
 
 func isVerifiedLibraryWrite(action string) bool {
-	return action == "library.footprint.build" || action == "schematic.rebind.footprint"
+	switch action {
+	case "library.footprint.build", "schematic.rebind.footprint", "library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "schematic.cbb.place":
+		return true
+	default:
+		return false
+	}
 }
 
 // A timeout, rejected envelope or undecodable response does not prove that a

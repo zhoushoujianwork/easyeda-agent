@@ -93,3 +93,11 @@ PCB 保持在 `pcb` 域。CLI → daemon → connector 是唯一运行链路，�
 [原理图数据与 SCH Apply](../.agents/skills/easyeda-agent/references/schematic-data.md)。
 新版本的 Skill、命令示例与实际参数必须一起核对；发布准备见
 [1.4 发布准备](releases/release-1.4.md)。
+
+## 受控 CBB 样件入口
+
+`lib cbb create/delete/open/symbol-open` 管理本轮个人库 `EA_AGENT__` 样件；`open` 要求
+保存全部文档、显式 `--from-project` 与 `--allow-project-switch`，核对工程切换。
+`sch cbb-place` 必须指定库、CBB、精确块符号、项目、页面和坐标，单次官方创建后核对
+`block_symbol` 身份、几何与旧器件几何保全。所有 partial/缺失 verified/传输失败均非零退出，
+原始返回与已知 ID 保留，不自动重试或清理未知写入。现场状态与完整网络验收另行记录。

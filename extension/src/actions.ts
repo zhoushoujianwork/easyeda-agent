@@ -1,3 +1,4 @@
+import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbPlace } from './cbb-author';
 import { libraryCbbSearch, libraryCbbGet, libraryCbbExportSource } from './library-cbb';
 import { projectOpen, projectExport, projectImport } from './project-transfer';
 import { pcbExport3D, pcbExport3DShell } from './pcb-export-3d';
@@ -16289,6 +16290,11 @@ const HANDLERS: Record<string, Handler> = {
 	'library.footprint.create': libraryFootprintCreate,
 	'library.cbb.search': libraryCbbSearch,
 	'library.cbb.get': libraryCbbGet,
+	'library.cbb.create': cbbCreate,
+	'library.cbb.delete': cbbDelete,
+	'library.cbb.open': cbbOpen,
+	'library.cbb.symbol_open': cbbSymbolOpen,
+	'schematic.cbb.place': cbbPlace,
 	'library.cbb.export_source': libraryCbbExportSource,
 	'library.footprint.get': libraryFootprintGet,
 	'library.footprint.copy': libraryFootprintCopy,
