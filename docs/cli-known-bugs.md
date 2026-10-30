@@ -4,6 +4,27 @@
 此前基础 CLI 集中检查已收尾；日常可用范围和新发布验收进度见 [CLI Status](cli-STATUS.md)，本页维护问题细节。
 各轮现场依据见[历史证据索引](reviews/README.md)及对应 issue。
 
+## 连续 PCB 修改后宿主白屏 / connector 离线
+
+[#286](https://github.com/zhoushoujianwork/easyeda-agent/issues/286)：macOS 宿主连续修改后白屏，
+每批 5 件、间隔 1 秒仍复现；根因未确定。源码已确认并修正每次 `doc switch` 对活动目标
+重复调用 `openDocument` 的路径，保留新鲜身份复核与 CLI 数据就绪检查；显式指定 split 时仍
+按指定位置打开，缺少有效 tab ID 时不复用。150 次活动 PCB 检查及 split、身份漂移/不可读、
+无效 tab 对照由离线回归覆盖。这不是白屏现场修复证明，也不是真实 reload，不能清除
+staleRisk 或代替 `save → doc reload → fresh readback`。没有已验证的安全批次大小、等待
+秒数或宿主版本处方。
+
+连接器离线、`StatusGoingAway` 或主进程存活都不能单独判定 renderer 崩溃。失败后停止写入，
+不重放不确定步骤；私有证据中保存精确构建/宿主版本、新鲜 health、最后请求、成功保存点及
+断线前后 daemon 日志。daemon 日志只证明传输断开；页面退出需宿主的导航/关闭事件；renderer
+失效需宿主记录的 renderer 退出/无响应事件或崩溃转储。缺少对应事件时原因保持 unknown，
+不要把重连或限速签为根因修复。
+
+候选加载与现场验收仍 pending。另行预约独占可丢弃 fixture 和写入范围后，分别对照只读空闲、
+单步 modify、modify+save、modify+save+真实 reload，一次只变一个因素，记录身份、耗时及
+持久化对账。出错即保留部分状态；新鲜绑定目标后再评估恢复，不自动重开或重试。
+仍需独立验收者在精确候选 HEAD 上复验白屏场景，本项不因离线测试通过而关闭。
+
 ## 封装构建与重新绑定
 
 本地 dev.9 候选补齐 `library.footprint.build` 的逐侧阻焊/钢网扩展字段，保留零值；
