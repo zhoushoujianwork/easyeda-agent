@@ -562,7 +562,13 @@ func drawingsSVGMetadata(data []byte) (*drawingsActualMetadata, error) {
 					return nil, fmt.Errorf("SVG event handlers are unsupported")
 				}
 				if (name == "href" || name == "src") && val != "" && !strings.HasPrefix(val, "#") && !strings.HasPrefix(val, "data:image/png;base64,") {
-					return nil, fmt.Errorf("external SVG resource is unsupported")
+					const embeddedSVGPrefix = "data:image/svg+xml;base64,"
+					if name != "href" || t.Name.Local != "image" || (t.Name.Space != "" && t.Name.Space != "http://www.w3.org/2000/svg") || !strings.HasPrefix(val, embeddedSVGPrefix) {
+						return nil, fmt.Errorf("external SVG resource is unsupported")
+					}
+					if err := validateDrawingsEmbeddedSVG(strings.TrimSpace(a.Value)[len(embeddedSVGPrefix):]); err != nil {
+						return nil, err
+					}
 				}
 				if strings.Contains(val, "url(") && !strings.Contains(val, "url(#") {
 					return nil, fmt.Errorf("external SVG style resource is unsupported")
