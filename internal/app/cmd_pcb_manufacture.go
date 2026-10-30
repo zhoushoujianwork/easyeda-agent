@@ -108,7 +108,7 @@ func newPcbManufactureExportCmd(cfg *appConfig, window *string, stdout, stderr i
 				content, err = inspectPlacement(data, fileType, unit)
 			}
 			if err != nil {
-				return err
+				return fmt.Errorf("manufacture content rejected; original artifact retained at %s: %w", res.Artifacts[0].Path, err)
 			}
 			if err = writeNewManufactureFile(out, data); err != nil {
 				return err
