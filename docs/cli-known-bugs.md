@@ -102,13 +102,13 @@ NC 清除本次成功也不关闭 #257 的间歇问题；严格基础准入仍�
 | Bug | 影响判断 | 当前使用方式 |
 |---|---|---|
 | [#258：规则首次初始化出现微小差异](https://github.com/zhoushoujianwork/easyeda-agent/issues/258) | 暂定 P3：已观察差值 0.0000006 mm 很小，但非请求字段变化与校验失败仍需定位。 | 展示完整差分，保留 verified:false；已冻结自定义规则的后续操作单独验证。 |
-| [#55：页面改名被拒绝](https://github.com/zhoushoujianwork/easyeda-agent/issues/55) | 暂定 P2：dev.9 B04 官方返回 false，fresh 名称仍 P2，基础验收失败。 | 重新打开原 issue；失败传播已修复，实际改名仍待定位。保留非零退出，不用无关写入或重复改名恢复。 |
+| [#55：旧版页面改名被拒绝](https://github.com/zhoushoujianwork/easyeda-agent/issues/55) | Web 4.1.78 / 本地 `1.15.1-dev.5` 定向复验不再复现：单次调用 true、fresh 名称匹配，保存真实重载后保持。 | 临时页已删除、原页清单和 components/pins/wires 回读恢复；旧 4.1.60/4.1.71 失败保留。未跑 B00–B10 全集，不推定具体上游修复版本；仍要求 true + fresh 名称。 |
 | [#260：区域/铺铜边界线宽 1→0.2 mil](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) | 暂定 P2：显式参数未兑现，B08 失败；未证明电气损坏程度或三个对象类型同源。 | dev.11 已能 fresh 检出并停止依赖；宽度本身未修复。保留 ID，精确清理并保存重载核对。 |
 | [#261：铺铜优先级 2→1](https://github.com/zhoushoujianwork/easyeda-agent/issues/261) | 暂定 P2：请求与回读不符；单个 pour 的排序语义未确定，不直接归因为宿主 bug。 | 当前默认宽度正向测试失败。先明确合法范围及排序契约，再修适配或写前拒绝；不得静默改参。 |
 | [#267：保留器件清页的引脚属性保护](https://github.com/zhoushoujianwork/easyeda-agent/issues/267) | 完整 global 属性库存下可能误计划删除 pin-owned 属性；仅隔离 dry-run 复现，未执行现场删除。 | 暂停 `sch clear --preserve-parts` 及包含它的队列；只有完整范围外保护证明成立才可精确局部回退。 |
 | [#268：切页后后台 PCB 保存返回 false](https://github.com/zhoushoujianwork/easyeda-agent/issues/268) | 两批后台 `pcb.save` 外层 ok:true、saved:false；精确原因尚未确定，未观察到设计丢失。 | 外层 ok 不代表保存成功；稳定检查点核对显式 saved:true，再真实重载与 fresh 回读。 |
 
-本轮剩余八项保持 open 并加 `bug` 标签；优先级是当前分诊判断，不是已证明的损坏程度或发生概率。
+历史本轮曾将剩余八项保持 open 并加 `bug` 标签；优先级是当时分诊判断，不是已证明的损坏程度或发生概率。当前状态以各行最新定向结论及 issue 为准。
 #271 位号误报 clean 已由`83a98b2`修复，dev.14 实际51位号保存重载及独立复核通过，按该范围关闭；
 不签完整布局或E2E，旧失败保留，见[修复记录](reviews/2026-09-27-pcb-silk-align-fix.md)。
 #256 关联已关闭的 #210，但不继承其已撤回的根因主张。#256 与 #257 也尚未证明同源。
@@ -196,7 +196,7 @@ stderr warning，包含 bug 编号、影响及回读方法；stdout 的原始 JS
 | 导出后删除残留 | [有界只读就绪检查与删除三态](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-sch-delete-fix.md)，dev.4 定向回归及保存重载通过 | 仅覆盖已复现触发路径，不代表所有复合清理已验证；此前失败候选保留在报告中。 |
 | 后台重连 | [沙箱时钟、注册等待与 context 身份修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-cli-reconnect-fix.md)，dev.7 B02 通过 | 连接恢复不证明页面写入或设计正确。 |
 | 同文档连接互踢 | [连接身份修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-window-identity-fix.md)，dev.9 复测通过 | 更换连接不能修复或补签 #55。 |
-| 页面改名失败漏报 | [dev.8 定向失败传播验证](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-page-rename-fix.md) | 实际改名仍失败，见 #55 与 [dev.9 B04](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev9-B04.md)。 |
+| 页面改名失败漏报 | [dev.8 定向失败传播验证](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-page-rename-fix.md) | 旧版实际改名失败，见 [dev.9 B04](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-v1.7.1-dev9-B04.md)；Web 4.1.78 的当前定向结果见上方 #55。 |
 | 铺铜参数不符漏报与 Apply 继续写入 | [边界回读及失败传播修复](https://github.com/zhoushoujianwork/easyeda-agent/blob/3283c05f8e42cdf8694bedf58330b71b3f3c667c/docs/reviews/2026-09-26-pour-readback-fix.md)，[dev.11 错值检测与清理复测](reviews/2026-09-26-v1.7.1-dev11-pour-live.md) | #260、#261 的实际字段未修复，正向成功路径未通过；`rebuildAttempted:false` 不保证无铜，失败库存带 staleRisk，不能据此验收铜持久化。 |
 
 ## 观察项与覆盖缺口
