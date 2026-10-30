@@ -78,6 +78,21 @@ easyeda project drawings --from drawings.json --out drawings
 - `status.layout` 为 `candidate|verified`，`routing` 为 `unrouted|partial|routed|unknown`，
   `drcPassed` 为布尔或 `null`，`designAccepted` 为布尔，`unresolved` 为问题列表。
   它们是调用方声明，打包器不会代替设计审查；互相矛盾的验收声明会拒绝。
+- `status.pcbReview` 独立声明 `labelDensity`、`textCollisions`、`copperGeometry`，各为
+  `pending|pass|fail`。省略项默认 `pending`；`designAccepted=true` 要求三项明确 `pass`，
+  并保留原有布局、布线、DRC 与未解决项约束。旧已验收输入需先补充真实复核结果，不能直接
+  将模板值改为 pass。manifest 与 README 保留原声明，打包成功不代表自动检测或验收通过。
 
-官方图片按原字节复制。SVG 检查基本结构和主动/外部内容，PNG 实际解码；PDF 仅检查文件头尾，
+三项复核绑定同一保存 → 真实重载 → 新回读版本：网名密度在 TOP、BOTTOM、叠层及整板/局部
+缩放下检查短线和转折处叠字；文字碰撞检查网名、位号、其他可见文字及交付裁切后的可读性；
+铜几何按 PID、网络、层、端点及线宽核对，覆盖焊盘、过孔和铺铜，区分同网冗余与异层投影。
+连通性和原生 DRC 独立报告；辅助 SVG 不一定含宿主原生网名，不能代签图面复核。
+只调整显示时限于可读、可恢复的 typed 接口，恢复旧值并回读；隐藏网名不能证明布线修复。
+缺少接口或现场证据时保持 pending，不能通过 GUI、任意 JS 或阶段签字补证。
+
+
+官方图片按原字节复制。官方 SVG 中的 `data:image/svg+xml;base64` 内嵌静态矢量图可保留，
+但单张解码不超过 1 MiB、深度不超过 64；仅接受基本矢量元素和静态属性，拒绝脚本、事件、
+样式表、外链、嵌套图片与动画。不能通过删改原图或移除未知资源掩盖未支持格式。
+SVG 检查基本结构和主动/外部内容，PNG 实际解码；PDF 仅检查文件头尾，
 不宣称 PDF 语法或渲染已核验。图册不证明电路正确、布局被接受、制造可行或实物通过测试。

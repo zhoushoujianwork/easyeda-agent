@@ -25,6 +25,9 @@ with path, sha256 and JSON-pointer identity/time bindings; artifacts with role,
 path, sha256 and optional capture evidence; and explicit status. Required roles:
 schematic-svg, schematic-png, pcb-official-top-png, pcb-official-bottom-png,
 pcb-actual-top-svg, pcb-actual-bottom-svg. schematic-pdf is optional.
+status.pcbReview declares labelDensity, textCollisions and copperGeometry separately:
+pending (also the default when omitted), pass or fail. designAccepted=true requires
+explicit pass for all three; packaging does not detect label or copper overlaps.
 Read the synthetic example at internal/app/testdata/project-drawings/spec.json.
 Relative source paths are resolved beside the spec and cannot contain '..'.
 The output directory must not exist; its parent must exist. Source symlinks,

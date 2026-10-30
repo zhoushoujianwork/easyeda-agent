@@ -33,7 +33,7 @@ easyeda <domain> <action> [flags]
   分阶段实施，见 [PCB 3D 建模设计](pcb-3d-design.md)。
 
 - `pcb layout render --actual --board <dump.json> --side top|bottom|both --out <图.svg>`：实际回读辅助图；与候选输入互斥，不执行 EDA 动作。
-- `project drawings --from <drawings.json> --out <新目录>`：纯离线组合一页原理图与一块 PCB 的图册，核对文件/回读绑定并保留状态声明。
+- `project drawings --from <drawings.json> --out <新目录>`：纯离线组合一页原理图与一块 PCB 的图册，核对文件/回读绑定并保留状态声明。`status.pcbReview` 分开声明网名密度、文字碰撞与铜几何（`pending|pass|fail`，缺省 pending）；声明设计已验收须三项明确 pass，打包不自动检查重叠。
 - `doc reload --json`、`pcb dump`、`pcb stage-snapshot` 保留各自职责；重载凭据、采集完整性和设计验收不是同一返回状态。
 
 输入、图源与朝向见[清晰设计图交付](../.agents/skills/easyeda-agent/references/design-drawings.md)。
