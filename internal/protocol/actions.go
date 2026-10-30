@@ -534,6 +534,12 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"uuid", "libraryUuid", "verified", "footprint"},
 			VerifyWith:  []string{"library.footprint.get"},
 		},
+		{Name: "library.cbb.search", Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
+			Description: "Read-only keyword search through official beta lib_Cbb.search. Explicit page/limit; no editor open, creation or fallback. Empty results only describe this query/library/page.",
+			Inputs:      []string{"query", "libraryUuid optional", "limit optional 1..100", "page optional positive integer"}, Outputs: []string{"items", "count", "source", "apiStatus"}},
+		{Name: "library.cbb.get", Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
+			Description: "Read exact CBB asset through official beta lib_Cbb.get, including boards and schematic.cbbSymbol variants; never opens its project or picks the first variant.",
+			Inputs:      []string{"uuid", "libraryUuid optional"}, Outputs: []string{"cbb", "source", "apiStatus"}},
 		{
 			Name:        "library.footprint.get",
 			Domain:      DomainLibrary,
