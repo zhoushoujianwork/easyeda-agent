@@ -2,6 +2,7 @@
 import { readResponseContext, mutationContextError } from './eda-context';
 import { ActionError, ErrorCodes, type ActionResult } from './protocol';
 import { blobToBase64, newArtifactId } from './util';
+import { sha256BytesHex } from './sha256';
 
 export const MAX_MANUFACTURE_BYTES = 20 * 1024 * 1024;
 
@@ -51,7 +52,7 @@ async function exportManufacture(payload: Record<string, unknown>, kind: 'gerber
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Official ${kind} file exceeds the 20 MiB transport limit.`);
 	}
 	const inlineBase64 = await blobToBase64(file);
-	const fileSha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer())), v => v.toString(16).padStart(2, '0')).join('');
+	const fileSha256 = sha256BytesHex(new Uint8Array(await file.arrayBuffer()));
 	const drift = mutationContextError(before, await readResponseContext());
 	if (drift) throw new ActionError(ErrorCodes.INVALID_STATE, `Manufacture export target changed: ${drift}. No artifact accepted.`);
 	const id = newArtifactId();

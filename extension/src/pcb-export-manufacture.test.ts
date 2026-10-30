@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { pcbExportGerber, pcbExportPlacement, MAX_MANUFACTURE_BYTES } from './pcb-export-manufacture';
+import { createHash, randomUUID } from 'node:crypto';
 
 function host(options: { drift?: boolean; empty?: boolean; missing?: boolean; oversized?: boolean; noComponents?: boolean; unsupported?: boolean } = {}) {
 	let reads = 0;
@@ -39,6 +40,17 @@ test('manufacture defaults match documented official settings', async () => {
 	assert.deepEqual(calls[0], ['board.zip', false, 'mm', { integerNumber: 4, decimalNumber: 5 }]);
 	calls = host(); await pcbExportPlacement({});
 	assert.deepEqual(calls[0], ['board.csv', 'csv', 'mm']);
+});
+
+test('official getter hash remains available in the EasyEDA sandbox without crypto.subtle', async () => {
+	const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+	Object.defineProperty(globalThis, 'crypto', { value: { randomUUID }, configurable: true });
+	try {
+		host(); const result = await pcbExportGerber({});
+		assert.equal(result.result?.fileSha256, createHash('sha256').update('exact-official-bytes').digest('hex'));
+	} finally {
+		if (original) Object.defineProperty(globalThis, 'crypto', original); else delete (globalThis as any).crypto;
+	}
 });
 
 test('unavailable, undefined, empty, oversized, empty-board and target-drift exports fail without artifacts', async () => {
