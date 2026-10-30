@@ -46,6 +46,7 @@ func newLibCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		Short: "EasyEDA device library operations",
 	}
 	lib.PersistentFlags().StringVar(&window, "window", "", "EasyEDA window ID")
+	lib.AddCommand(newLibCbbCmd(cfg, stdout, stderr, &window))
 
 	// ── lib libraries ─────────────────────────────────────────────────────
 	lib.AddCommand(&cobra.Command{

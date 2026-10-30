@@ -255,3 +255,25 @@ easyeda sch block-apply <block> --parts /tmp/parts.intl.json --project <project>
   agent gets a ranked pick directly instead of running a tool.
 - **LCSC mall breadth** — JLC SMT covers assembly-stocked parts; for non-assembly
   catalog parts, add the LCSC wmsc search path.
+
+## 原生复用块库（CBB）只读检索
+
+`lib search` 搜的是器件，`sch block-apply` 是工具电路块，都不是原生复用块库。
+用 `easyeda lib cbb search --query <keyword> --limit 20 --page 1` 搜索原生 CBB，
+可用 `--library <fresh-library-uuid>` 限定库；默认由官方 SDK 搜系统库。
+再用 `easyeda lib cbb get --uuid <cbb-uuid> --library <library-uuid>` 读取确切身份、
+`boards` 与 `schematic.cbbSymbol`。搜索候选通过 `lib_Cbb.get` 逐项确认库身份，
+不猜缺失的搜索字段。宿主若只返回原理图 UUID，`schematicDetails` 会通过官方只读
+`getSchematicInfo` 查询；`available:false` 不能用作块符号选择依据。多板或多符号须明确目标，不能默认取第一项。
+
+这两个命令只读，调用官方 beta `lib_Cbb.search/get`，不打开工程、不创建库、不放置实例。
+宿主接口缺失、读失败或响应结构异常均失败，不能当成“没有样件”；空结果只说明当前
+查询、库、页的结果，不能证明所有库都没有复用块。不得调用会丢弃未保存工程的
+`lib_Cbb.openProjectInEditor` 作为探测或验证兜底。
+
+#244 的引脚网解析已有导线几何兜底；库检索成功仍不等于真实块实例的网络与保存重载验证通过。
+
+若原理图详情不可读，可用 `lib cbb export-source --uuid <cbb-uuid> --library <library-uuid>
+--out <new-file.epro2>` 通过官方 beta `getCbbFileByCbbUuid` 获取原生归档，不打开工程。
+导出要求模块下载权限；不修改权限，失败保留错误。归档限定 16 MiB，CLI 校验 ZIP/CRC
+与原生项目数据并以不覆盖方式写入，返回 SHA-256；归档读取不等于真实实例验收。
