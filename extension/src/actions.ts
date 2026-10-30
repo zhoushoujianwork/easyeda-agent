@@ -9151,26 +9151,32 @@ const documentOpen: Handler = async (payload) => {
 	// API only when the caller did not preserve the target split. Older hosts
 	// without this metadata keep the original one-argument open path.
 	let splitScreenId = requestedSplitScreenId;
+	let tabId: string | undefined;
 	if (splitScreenId === undefined) {
 		try {
 			const current = await eda.dmt_SelectControl.getCurrentDocumentInfo();
 			if (typeof current?.tabId === 'string' && current.tabId.trim()) {
-				const split = await eda.dmt_EditorControl.getSplitScreenIdByTabId(current.tabId);
-				if (typeof split === 'string' && split.trim()) {
-					splitScreenId = split;
+				// Apply's per-batch doc switch often targets the active PCB (#286).
+				// Do not ask the host to reopen it on every checkpoint. This is
+				// not reload evidence: identity/settle checks below still run.
+				if (current.uuid === uuid) tabId = current.tabId;
+				else {
+					const split = await eda.dmt_EditorControl.getSplitScreenIdByTabId(current.tabId);
+					if (typeof split === 'string' && split.trim()) splitScreenId = split;
 				}
 			}
 		}
 		catch { /* split metadata is optional; never guess a destination ID */ }
 	}
-	let tabId;
-	try {
-		tabId = splitScreenId === undefined
-			? await eda.dmt_EditorControl.openDocument(uuid)
-			: await eda.dmt_EditorControl.openDocument(uuid, splitScreenId);
-	}
-	catch (err) {
-		throw edaError(err, 'Failed to open document.');
+	if (tabId === undefined) {
+		try {
+			tabId = splitScreenId === undefined
+				? await eda.dmt_EditorControl.openDocument(uuid)
+				: await eda.dmt_EditorControl.openDocument(uuid, splitScreenId);
+		}
+		catch (err) {
+			throw edaError(err, 'Failed to open document.');
+		}
 	}
 	if (tabId === undefined) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Failed to open document "${uuid}".`);

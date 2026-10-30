@@ -702,6 +702,7 @@ function installDocumentOpenStub(t: { after: (fn: () => void) => void }, options
 	split?: string;
 	splitFails?: boolean;
 	beforeTabId?: string;
+	beforeUuid?: string;
 	afterUuid?: string;
 	afterReadFails?: boolean;
 } = {}) {
@@ -725,7 +726,7 @@ function installDocumentOpenStub(t: { after: (fn: () => void) => void }, options
 				if (opened && options.afterReadFails) throw new Error('identity unavailable');
 				return opened
 					? { uuid: options.afterUuid ?? 'pcb-target', tabId: 'tab-target', documentType: 3 }
-					: { uuid: 'old-page', tabId: options.beforeTabId ?? 'tab-old', documentType: 1 };
+					: { uuid: options.beforeUuid ?? 'old-page', tabId: options.beforeTabId ?? 'tab-old', documentType: options.beforeUuid === 'pcb-target' ? 3 : 1 };
 			},
 		},
 		dmt_EditorControl: {
@@ -743,6 +744,51 @@ function installDocumentOpenStub(t: { after: (fn: () => void) => void }, options
 	};
 	return { opens, splitReads };
 }
+
+test('document.open repeated active PCB checks never reopen the host document (#286)', async (t) => {
+	const fx = installDocumentOpenStub(t, { beforeUuid: 'pcb-target' });
+	for (let batch = 0; batch < 150; batch++) {
+		const res: any = await runAction('document.open', { uuid: 'pcb-target' });
+		assert.deepEqual(res.result, { tabId: 'tab-old', ready: true });
+	}
+	assert.deepEqual(fx.opens, [], 'an already active document must not be reopened per batch');
+	assert.deepEqual(fx.splitReads, [], 'no navigation needs no split lookup');
+});
+
+test('document.open still honors an explicit split for an already active target', async (t) => {
+	const fx = installDocumentOpenStub(t, { beforeUuid: 'pcb-target' });
+	await runAction('document.open', { uuid: 'pcb-target', splitScreenId: 'requested-split' });
+	assert.deepEqual(fx.opens, [['pcb-target', 'requested-split']]);
+});
+
+test('document.open rechecks identity even when navigation is skipped (#286)', async (t) => {
+	const fx = installDocumentOpenStub(t, { beforeUuid: 'pcb-target' });
+	let reads = 0;
+	(globalThis as any).eda.dmt_SelectControl.getCurrentDocumentInfo = async () => ({
+		uuid: ++reads <= 2 ? 'pcb-target' : 'other-page', tabId: 'tab-old', documentType: 3,
+	});
+	const res: any = await runAction('document.open', { uuid: 'pcb-target' });
+	assert.equal(res.result.ready, false, 'a skipped navigation is not readiness evidence');
+	assert.deepEqual(fx.opens, [], 'identity drift must not trigger corrective navigation');
+});
+
+test('document.open does not reuse an active UUID without a usable tab ID', async (t) => {
+	const fx = installDocumentOpenStub(t, { beforeUuid: 'pcb-target', beforeTabId: ' ' });
+	await runAction('document.open', { uuid: 'pcb-target' });
+	assert.deepEqual(fx.opens, [['pcb-target']]);
+});
+
+test('document.open skipped navigation cannot hide an unavailable fresh identity', async (t) => {
+	const fx = installDocumentOpenStub(t, { beforeUuid: 'pcb-target' });
+	let reads = 0;
+	(globalThis as any).eda.dmt_SelectControl.getCurrentDocumentInfo = async () => {
+		if (++reads > 2) throw new Error('identity unavailable');
+		return { uuid: 'pcb-target', tabId: 'tab-old', documentType: 3 };
+	};
+	const res: any = await runAction('document.open', { uuid: 'pcb-target' });
+	assert.equal(res.result.ready, false);
+	assert.deepEqual(fx.opens, []);
+});
 
 test('document.open uses the active tab\'s official split ID without guessing', async (t) => {
 	const fx = installDocumentOpenStub(t, { split: 'official-split-42' });
