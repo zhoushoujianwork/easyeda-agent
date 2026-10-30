@@ -4,6 +4,7 @@ import { pcbExportGerber, pcbExportPlacement } from './pcb-export-manufacture';
 import { pcbModel3dBind, pcbModel3dList, pcbModel3dSetTransform } from './pcb-model3d';
 import { PROJECTED_STATE_KEYS } from './projected-keys';
 import { moveSchematicAttribute } from './schematic-attribute-move';
+import { readConnectorLogs } from './connector-logs';
 import { documentSourceGet, documentSourceRoundtrip } from './document-source';
 import { applyAndVerifyPourOrder, preparePourOrder, PourOrderError, verifyPourOrderReadback, type PourOrderVerification } from './pcb-pour-order';
 import { listSystemCommonLibrary } from './common-library';
@@ -484,7 +485,7 @@ async function blobToArtifact(
 
 // ─── Project / document ──────────────────────────────────────────────
 
-const projectCurrent: Handler = async () => {
+const projectCurrent: Handler = async (payload) => {
 	let project;
 	try {
 		project = await eda.dmt_Project.getCurrentProjectInfo();
@@ -502,6 +503,7 @@ const projectCurrent: Handler = async () => {
 			friendlyName: project.friendlyName,
 			teamUuid: project.teamUuid,
 			description: project.description,
+			...(payload.includeConnectorLogs !== undefined ? { connectorLogs: await readConnectorLogs(payload.includeConnectorLogs) } : {}),
 		},
 	};
 };

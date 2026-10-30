@@ -61,6 +61,7 @@ func AllActions() []ActionSpec {
 			Phase:       1,
 			NeedsWindow: true,
 			Description: "Read current EasyEDA project information.",
+			Inputs:      []string{"includeConnectorLogs (optional integer 1-100; only this connector's bounded transport diagnostics)"},
 			Outputs:     []string{"project uuid", "project name", "team/workspace context"},
 		},
 		{

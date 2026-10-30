@@ -23,6 +23,10 @@ Skill 目录。源码位置不改变发布包内的 `easyeda-agent/` 根目录�
 
 ## 连接器宿主（connector host）
 
+**连接器诊断日志**是连接器通过官方 `sys_Log` 记录的连接、心跳和重连原因；
+`debug connector-logs` 仅回读 `[easyeda-agent]` 前缀的有界条目，不清空日志、不导出工程日志，
+也不代表工程检查通过。它复用 `project.current` 的可选 `includeConnectorLogs:1..100` 读取。
+
 **连接器宿主**指承载连接器窗口的页面环境：`edadesk`（桌面外壳，UA 含 `edadesk/`）、`electron`
 （其他 Electron 应用，如桌面版客户端）、`browser`（普通浏览器标签）或 `unknown`（旧连接器未上报）。
 连接器在 `register` 帧原样上报 `navigator.userAgent`，由 daemon 的 `protocol.ClassifyHost` 分类，

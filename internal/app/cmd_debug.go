@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,9 +15,31 @@ func newDebugCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 
 	dbg := &cobra.Command{
 		Use:   "debug",
-		Short: "Debug escape hatches (confirmation-gated)",
+		Short: "Read connector diagnostics or run confirmation-gated debug scripts",
 	}
 	dbg.PersistentFlags().StringVar(&window, "window", "", "EasyEDA window ID")
+	{
+		var limit int
+		c := &cobra.Command{
+			Use: "connector-logs", Short: "Read bounded connector transport diagnostics without scripts or log clearing",
+			Args: cobra.NoArgs,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if limit < 1 || limit > 100 {
+					return fmt.Errorf("--limit must be from 1 to 100")
+				}
+				res, err := requestAction(cfg, "project.current", window, map[string]any{"includeConnectorLogs": limit})
+				if err != nil {
+					return err
+				}
+				if err := validateConnectorLogs(res.Result, limit); err != nil {
+					return err
+				}
+				return writeJSON(stdout, res)
+			},
+		}
+		c.Flags().IntVar(&limit, "limit", 30, "Most recent connector log entries (1-100); other extension/project logs excluded")
+		dbg.AddCommand(c)
+	}
 
 	// ── debug exec ────────────────────────────────────────────────────────
 	// debug.exec_js
@@ -47,4 +70,18 @@ func newDebugCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	}
 
 	return dbg
+}
+
+func validateConnectorLogs(result map[string]any, limit int) error {
+	rows, ok := result["connectorLogs"].([]any)
+	if !ok || len(rows) > limit {
+		return fmt.Errorf("connector diagnostics unavailable or exceed requested limit; update the connector before diagnosing")
+	}
+	for _, value := range rows {
+		row, ok := value.(map[string]any)
+		if !ok || !schAttributeFinite(row["timestamp"]) || strField(row, "type") == "" || !strings.HasPrefix(strField(row, "message"), "[easyeda-agent] ") {
+			return fmt.Errorf("connector diagnostic entry is incomplete or unscoped")
+		}
+	}
+	return nil
 }
