@@ -179,11 +179,6 @@ func (s *Server) forwardSchematicGeometry(ctx context.Context, req protocol.Requ
 	}
 	readCtx := ctx
 	var cancelPublication context.CancelFunc
-	defer func() {
-		if cancelPublication != nil {
-			cancelPublication()
-		}
-	}()
 	previousSeq := res.Seq
 	for attempt := 0; ; attempt++ {
 		suffix := "after"
@@ -226,6 +221,7 @@ func (s *Server) forwardSchematicGeometry(ctx context.Context, req protocol.Requ
 				}
 				if cancelPublication == nil {
 					readCtx, cancelPublication = context.WithTimeout(ctx, protocol.SchematicWirePublicationBudget)
+					defer cancelPublication()
 				}
 				timer := time.NewTimer(wirePublicationDelay)
 				select {
