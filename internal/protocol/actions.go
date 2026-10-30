@@ -1490,6 +1490,18 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"artifactId", "fileType", "fileName", "size", "exportContext"},
 		},
 		{
+			Name: "pcb.export.gerber", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Description: "Read-only official beta Gerber ZIP export of the active PCB. Refuses empty/undefined files and unsupported APIs; preserves original bytes. CLI validates artifact integrity and enumerates archive entries. Export does not certify manufacturing readiness.",
+			Inputs:      []string{"fileName optional basename", "unit optional mm|inch (default mm)", "colorSilkscreen optional boolean (default false)", "digitalFormat optional {integerNumber:1..6,decimalNumber:1..6} (mm default 4:5, inch 3:6)"},
+			Outputs:     []string{"artifactId", "fileName", "fileType", "size", "unit", "exportContext", "digitalFormat"},
+		},
+		{
+			Name: "pcb.export.placement", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Description: "Read-only official beta Pick and Place file export. csv (default) or xlsx, mm (default) or mil. Refuses unsupported APIs and missing files; preserves original bytes. CLI validates integrity and reads designator/center/layer/rotation fields.",
+			Inputs:      []string{"fileName optional basename", "fileType optional csv|xlsx", "unit optional mm|mil"},
+			Outputs:     []string{"artifactId", "fileName", "fileType", "size", "unit", "exportContext"},
+		},
+		{
 			Name:        "pcb.export.dsn",
 			Domain:      DomainPcb,
 			Phase:       2,

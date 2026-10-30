@@ -66,6 +66,30 @@ Board 绑定正确且可见 pin/net 一致时，官方 `Import Changes` 告警�
 
 ## Actions
 
+### 制造文件导出
+
+先完成该版本的保存、真实重载、新回读以及独立设计/制造检查；导出本身只读，不代替这些步骤。
+
+```sh
+easyeda pcb export-gerber --project <uuid> --doc <pcb-uuid> --window <window-id> --out ./board-gerber.zip
+easyeda pcb export-placement --project <uuid> --doc <pcb-uuid> --window <window-id> --format csv --unit mm --out ./board-placement.csv
+easyeda pcb export-placement --project <uuid> --doc <pcb-uuid> --window <window-id> --format xlsx --unit mil --out ./board-placement.xlsx
+```
+
+命令仅封装官方 beta `getGerberFile` / `getPickAndPlaceFile`，保留宿主返回的文件原字节。
+Gerber 默认 mm/4:5、不生成彩色丝印；`--unit inch` 默认 3:6，可显式 `--digital-format 3:6`。
+坐标默认 csv/mm，可选 xlsx、mil。`--name` 是传给宿主的文件 basename，默认取输出 basename。
+必须指定活动 PCB 的精确窗口及不存在的输出文件，前后完整板回读的身份、tab 和 semantic SHA
+须一致；输出 JSON 保留 artifactId、文件大小/SHA、exportContext、板版本及内容读取结果。
+Gerber ZIP 列出文件名、大小、SHA 和可识别类型；坐标文件读取 designator/midX/midY/layer/rotation，
+单位保持请求单位，不擅自转换。CSV 支持 UTF-8 或带 BOM 的 UTF-16（官方常返回 UTF-16LE/tab），
+分隔符支持逗号、分号或 tab；只解码读取，不改写原字节。XLSX 读取实际单元格及共享字符串，
+公式、缺字段或非数值坐标拒绝。未知文件结构失败，不猜测或重写成“可用文件”。
+文件上限 20 MiB，ZIP 展开上限 100 MiB；空板、getter 无文件、宿主不支持、版本漂移或校验失败
+均非零退出，不产生最终文件，不自动重试或使用 GUI/任意 JS 兜底。已有输出拒绝覆盖。
+`manufacturingAccepted:false` 明确表示仅验证了导出传输与内容结构；清单不证明层覆盖、钻孔、
+坐标原点、底面镜像或装配旋转已经过制造商审核。下单前逐项核对，不自动下单。
+
 ### 真实 PCB 三维导出
 
 ```sh
