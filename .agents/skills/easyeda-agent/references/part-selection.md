@@ -289,8 +289,11 @@ easyeda sch block-apply <block> --parts /tmp/parts.intl.json --project <project>
 `lib cbb open --uuid ... --library ... --expected-name ... --from-project ... --allow-project-switch`
 会切换整个工程，调用前必须保存所有打开文档；官方接口可能丢弃未保存内容。它核对原工程
 与本轮 CBB 身份，并要求显式切换标志；不在失败后重开或自动重试。
-`lib cbb symbol-open` 使用相同身份三元组打开官方块符号页，回读符号类型与 `cbbUuid`，
-不猜第一个变体。所有创建、打开与放置仍需新鲜 health 中的专用连接；离线测试不能替代现场验收。
+`lib cbb symbol-open --symbol <uuid>` 必须先进入该 CBB 工程，依据原理图
+`cbbSymbol.uuid` 的明确关联，以工程库别名 `project` 打开指定符号并回读类型 17 和 UUID。
+Web 4.1.78 的记录可能不带库 UUID 或 cbbUuid，不能靠这两个缺字段猜归属，也不默认选第一项。
+`lib cbb symbol-build --symbol <uuid> --spec <pins-outline.json> --dry-run` 先检查库存；
+去掉 dry-run 只允许空目标单次构建，逐脚/边框核对并要求 saved:true，失败保留创建 ID。所有创建、打开与放置仍需新鲜 health 中的专用连接；离线测试不能替代现场验收。
 
 样件至少覆盖已命名导线连接与未接线端口；保存 → 真实关闭重开 → fresh 引脚网对账后
 才能判断 #244。默认普通器件符号、工具 `block-apply` 或最近 netflag 不能充当真实 CBB。

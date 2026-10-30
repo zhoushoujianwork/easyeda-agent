@@ -96,7 +96,7 @@ PCB 保持在 `pcb` 域。CLI → daemon → connector 是唯一运行链路，�
 
 ## 受控 CBB 样件入口
 
-`lib cbb create/delete/open/symbol-open` 管理本轮个人库 `EA_AGENT__` 样件；`open` 要求
+`lib cbb create/delete/open/symbol-open/symbol-build` 管理本轮个人库 `EA_AGENT__` 样件；`open` 要求
 保存全部文档、显式 `--from-project` 与 `--allow-project-switch`，核对工程切换。
 `sch cbb-place` 必须指定库、CBB、精确块符号、项目、页面和坐标，单次官方创建后核对
 `block_symbol` 身份、几何与旧器件几何保全。所有 partial/缺失 verified/传输失败均非零退出，

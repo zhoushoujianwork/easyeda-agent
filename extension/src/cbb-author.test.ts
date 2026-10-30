@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbPlace } from './cbb-author';
+import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbPlace } from './cbb-author';
 const asset = { uuid:'c',libraryUuid:'l',name:'EA_AGENT__TEST',boards:[] };
 const identity = {uuid:'c',libraryUuid:'l',expectedName:asset.name};
 function setup(extra: any = {}) {
@@ -12,6 +12,11 @@ function setup(extra: any = {}) {
   dmt_EditorControl:{activateDocument:async()=>true,...extra.dmt_EditorControl},
   lib_Symbol:{get:async()=>({uuid:'s',libraryUuid:'l',type:17,cbbUuid:'c'}),...extra.lib_Symbol},
   sch_PrimitiveComponent:extra.sch_PrimitiveComponent,
+  dmt_Schematic:extra.dmt_Schematic,
+  sch_PrimitivePin:extra.sch_PrimitivePin,
+  sch_PrimitivePolygon:extra.sch_PrimitivePolygon,
+  sch_PrimitiveCircle:extra.sch_PrimitiveCircle,
+  sch_Document:extra.sch_Document,
  };
 }
 function clear(){delete (globalThis as any).eda;}
@@ -56,12 +61,15 @@ test('CBB rejected project open stays partial with no replay',async()=>{
  let opens=0;setup({lib_Cbb:{openProjectInEditor:async()=>{opens++;return false;}}});
  try{const r=(await cbbOpen({...identity,fromProjectUuid:'p',allowProjectSwitch:true})).result;assert.equal(r?.partial,true);assert.equal(opens,1);}finally{clear();}
 });
-test('CBB symbol opener requires active type 17 and proven cbbUuid',async()=>{
- for(const owner of ['c','other']){
- setup({lib_Cbb:{openSymbolInEditor:async()=>'s@l'},dmt_SelectControl:{getCurrentDocumentInfo:async()=>({uuid:'s',tabId:'s@l',documentType:17})},lib_Symbol:{get:async()=>({uuid:'s',libraryUuid:'l',type:17,cbbUuid:owner})}});
- try{const r=(await cbbSymbolOpen(identity)).result;assert.equal(r?.verified,owner==='c');assert.equal(r?.partial,owner!=='c');}finally{clear();}
- }
+function symbolSetup(extra:any={}){
+ setup({lib_Cbb:{get:async()=>({...asset,boards:[{schematic:'schema'}]})},dmt_Project:{getCurrentProjectInfo:async()=>({uuid:'c',itemType:'CBB Project'})},dmt_Schematic:{getSchematicInfo:async()=>({uuid:'schema',parentProjectUuid:'c',cbbSymbol:{uuid:'s',type:17}})},dmt_SelectControl:{getCurrentDocumentInfo:async()=>({uuid:'s',tabId:'s@project',documentType:17})},dmt_EditorControl:{openLibraryDocument:async(lib:string,type:string,uuid:string)=>{assert.deepEqual([lib,type,uuid],['project','2','s']);return 's@project';}},lib_Symbol:{get:async()=>({uuid:'s',libraryUuid:'l',type:17})},...extra});
+}
+test('CBB symbol opener proves active project graph membership despite omitted record cbbUuid',async()=>{
+ symbolSetup();try{const r=(await cbbSymbolOpen({...identity,symbolUuid:'s'})).result;assert.equal(r?.verified,true);assert.equal((r?.membership as any).source,'active-CBB-schematic-graph');}finally{clear();}
+ symbolSetup({dmt_Schematic:{getSchematicInfo:async()=>({uuid:'schema',parentProjectUuid:'other',cbbSymbol:{uuid:'s',type:17}})}});
+ try{await assert.rejects(cbbSymbolOpen({...identity,symbolUuid:'s'}));}finally{clear();}
 });
+
 function instance(overrides:any={}){
  return {getState_PrimitiveId:()=>'new',getState_ComponentType:()=>'block_symbol',getState_X:()=>100,getState_Y:()=>200,getState_Rotation:()=>0,getState_Mirror:()=>false,getState_Cbb:()=>({uuid:'c',libraryUuid:'l'}),getState_CbbSymbol:()=>({uuid:'s',cbbUuid:'c',libraryUuid:'l'}),...overrides};
 }
@@ -96,4 +104,25 @@ test('CBB placement detects unexpected movement of an existing component',async(
  const moved=instance({getState_PrimitiveId:()=>'old',getState_ComponentType:()=>'part',getState_X:()=>501});
  setup({sch_PrimitiveComponent:{getAll:async()=>written?[moved,instance()]:[old],createCbbSymbol:async()=>{writes++;written=true;return instance();}}});
  try{const r=(await cbbPlace(placement)).result;assert.equal(r?.partial,true);assert.equal(r?.primitiveId,'new');assert.equal(r?.preserved,false);assert.equal(writes,1);}finally{clear();}
+});
+
+const symbolSpec={...identity,symbolUuid:'s',outline:[-20,20,20,20,20,-20,-20,-20,-20,20],pins:[{number:'1',name:'IN',x:-40,y:0,rotation:180,length:20}]};
+function buildSetup(saved=true){
+ const pins:any[]=[];let line:number[]|undefined,creates=0;
+ symbolSetup({sch_PrimitivePin:{getAll:async()=>pins,create:async(x:number,y:number,number:string,name:string,rotation:number,length:number)=>{creates++;const pin={getState_PrimitiveId:()=>`pin${creates}`,getState_PinNumber:()=>number,getState_PinName:()=>name,getState_X:()=>x,getState_Y:()=>y,getState_Rotation:()=>rotation,getState_PinLength:()=>length,getState_PinShape:()=>'None',getState_pinType:()=>'Passive'};pins.push(pin);return pin;}},sch_PrimitivePolygon:{getAllPrimitiveId:async()=>line?['outline']:[],create:async(value:number[])=>{line=value;return {getState_PrimitiveId:()=>'outline'};},get:async()=>({getState_Line:()=>line})},sch_PrimitiveCircle:{getAllPrimitiveId:async()=>[]},sch_Document:{save:async()=>saved}});
+ return ()=>({pins,creates,line});
+}
+test('CBB symbol preview is read-only and exact empty-target build verifies geometry plus save',async()=>{
+ const state=buildSetup();
+ try{const preview=(await cbbSymbolBuild({...symbolSpec,dryRun:true})).result;assert.equal(preview?.dryRun,true);assert.equal(state().creates,0);assert.equal(state().line,undefined);
+ const built=(await cbbSymbolBuild(symbolSpec)).result;assert.equal(built?.verified,true);assert.equal(built?.saved,true);assert.deepEqual(built?.createdPins,['pin1']);
+ await assert.rejects(cbbSymbolBuild(symbolSpec));assert.equal(state().creates,1);
+ }finally{clear();}
+});
+test('CBB symbol save refusal preserves created identities and never retries or deletes them',async()=>{
+ const state=buildSetup(false);
+ try{const r=(await cbbSymbolBuild(symbolSpec)).result;assert.equal(r?.partial,true);assert.equal(r?.verified,false);assert.deepEqual(r?.createdPins,['pin1']);assert.equal(r?.outlineId,'outline');assert.equal(state().creates,1);}finally{clear();}
+});
+test('CBB symbol invalid specs fail before opening any editor',async()=>{
+ setup();try{for(const p of [{...symbolSpec,outline:[0,0,1,0,1,1,0,1]},{...symbolSpec,pins:[symbolSpec.pins[0],symbolSpec.pins[0]]},{...symbolSpec,pins:[{...symbolSpec.pins[0],x:Infinity}]}])await assert.rejects(cbbSymbolBuild(p));}finally{clear();}
 });

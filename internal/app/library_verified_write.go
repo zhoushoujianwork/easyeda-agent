@@ -22,7 +22,7 @@ func (e *unverifiedLibraryWriteError) Unwrap() error { return e.cause }
 
 func isVerifiedLibraryWrite(action string) bool {
 	switch action {
-	case "library.footprint.build", "schematic.rebind.footprint", "library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "schematic.cbb.place":
+	case "library.footprint.build", "schematic.rebind.footprint", "library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "library.cbb.symbol_build", "schematic.cbb.place":
 		return true
 	default:
 		return false

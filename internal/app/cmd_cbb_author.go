@@ -1,9 +1,11 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,14 +42,24 @@ func addCbbAuthoringCommands(group *cobra.Command, cfg *appConfig, stdout, stder
 	} {
 		target := new(cbbTarget)
 		action := item.action
+		var symbol string
 		c := &cobra.Command{Use: item.use, Short: item.short, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 			p, err := target.payload()
 			if err != nil {
 				return err
 			}
+			if action == "library.cbb.symbol_open" {
+				if strings.TrimSpace(symbol) == "" {
+					return fmt.Errorf("--symbol is required")
+				}
+				p["symbolUuid"] = symbol
+			}
 			return dispatch(cfg, action, *window, p, stdout, stderr)
 		}}
 		target.flags(c)
+		if action == "library.cbb.symbol_open" {
+			c.Flags().StringVar(&symbol, "symbol", "", "exact CBB symbol UUID from the active module schematic graph (required)")
+		}
 		group.AddCommand(c)
 	}
 	{
@@ -71,6 +83,47 @@ func addCbbAuthoringCommands(group *cobra.Command, cfg *appConfig, stdout, stder
 		c.Flags().BoolVar(&allow, "allow-project-switch", false, "explicitly allow project switch after saving ALL open documents")
 		group.AddCommand(c)
 	}
+	{
+		target := new(cbbTarget)
+		var specPath, symbol string
+		var dryRun bool
+		c := &cobra.Command{Use: "symbol-build", Short: "Build exact geometry on a proven-empty owned CBB symbol (or inspect with --dry-run)", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+			p, err := target.payload()
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(symbol) == "" || specPath == "" {
+				return fmt.Errorf("--symbol and --spec are required")
+			}
+			data, err := os.ReadFile(specPath)
+			if err != nil {
+				return err
+			}
+			if len(data) > 1<<20 {
+				return fmt.Errorf("symbol spec exceeds 1 MiB")
+			}
+			var spec map[string]any
+			if err = json.Unmarshal(data, &spec); err != nil {
+				return err
+			}
+			for key := range spec {
+				if key != "pins" && key != "outline" {
+					return fmt.Errorf("unknown CBB symbol spec field %s", key)
+				}
+			}
+			p["symbolUuid"] = symbol
+			p["pins"] = spec["pins"]
+			p["outline"] = spec["outline"]
+			p["dryRun"] = dryRun
+			return dispatch(cfg, "library.cbb.symbol_build", *window, p, stdout, stderr)
+		}}
+		target.flags(c)
+		c.Flags().StringVar(&symbol, "symbol", "", "exact CBB symbol UUID (required)")
+		c.Flags().StringVar(&specPath, "spec", "", "JSON with pins and closed outline (required)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "read existing symbol geometry without writing")
+		group.AddCommand(c)
+	}
+
 }
 func newSchCbbPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string) *cobra.Command {
 	target := new(cbbTarget)

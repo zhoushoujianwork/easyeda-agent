@@ -15,7 +15,7 @@ func TestCbbAuthorDispatch(t *testing.T) {
 	}{
 		{[]string{"cbb", "create", "--name", "test"}, "library.cbb.create"},
 		{append([]string{"cbb", "delete"}, id...), "library.cbb.delete"},
-		{append([]string{"cbb", "symbol-open"}, id...), "library.cbb.symbol_open"},
+		{append(append([]string{"cbb", "symbol-open"}, id...), "--symbol", "s"), "library.cbb.symbol_open"},
 		{append(append([]string{"cbb", "open"}, id...), "--from-project", "p", "--allow-project-switch"), "library.cbb.open"},
 	} {
 		cfg, c, cleanup := newCapturingDaemon(t)
@@ -49,7 +49,7 @@ func TestCbbAuthorRejectsIncompleteInput(t *testing.T) {
 	}
 }
 func TestCbbWritesRequireExplicitVerifiedResult(t *testing.T) {
-	for _, action := range []string{"library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "schematic.cbb.place"} {
+	for _, action := range []string{"library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "library.cbb.symbol_build", "schematic.cbb.place"} {
 		for _, result := range []map[string]any{{}, {"verified": false}, {"verified": true, "partial": true}} {
 			if libraryWriteResultError(action, result, []byte("original response")) == nil {
 				t.Fatalf("%s accepted %#v", action, result)
