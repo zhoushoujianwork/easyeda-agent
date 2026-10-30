@@ -126,3 +126,11 @@ test('CBB symbol save refusal preserves created identities and never retries or 
 test('CBB symbol invalid specs fail before opening any editor',async()=>{
  setup();try{for(const p of [{...symbolSpec,outline:[0,0,1,0,1,1,0,1]},{...symbolSpec,pins:[symbolSpec.pins[0],symbolSpec.pins[0]]},{...symbolSpec,pins:[{...symbolSpec.pins[0],x:Infinity}]}])await assert.rejects(cbbSymbolBuild(p));}finally{clear();}
 });
+
+test('CBB project-library alias resolves only to the exact active CBB project tab',async()=>{
+ let opens=0,active=false;
+ symbolSetup({dmt_SelectControl:{getCurrentDocumentInfo:async()=>active?{uuid:'s',tabId:'s@c',documentType:17}:{uuid:'page',tabId:'page@c',documentType:1}},dmt_EditorControl:{openLibraryDocument:async()=>{opens++;active=true;return 's@project';}}});
+ try{const r=(await cbbSymbolOpen({...identity,symbolUuid:'s'})).result;assert.equal(r?.verified,true);assert.equal(r?.tabId,'s@c');assert.equal(opens,1);
+ const reused=(await cbbSymbolOpen({...identity,symbolUuid:'s'})).result;assert.equal(reused?.verified,true);assert.equal(opens,1);
+ }finally{clear();}
+});

@@ -103,16 +103,23 @@ export async function cbbSymbolOpen(p: Payload): Promise<ActionResult> {
  try {
   // CBB symbols are PROJECT-library assets. Web 4.1.78 does not return them
   // from the enclosing personal library, and its CBB-wide opener can throw.
-  tabId = await eda.dmt_EditorControl.openLibraryDocument('project', '2' as ELIB_LibraryType.SYMBOL, symbolUuid);
-  if (!tabId) return partial(identity, 'Official project-library symbol open returned no tab.');
-  await eda.dmt_EditorControl.activateDocument(tabId);
+  if ((await eda.dmt_Project.getCurrentProjectInfo())?.uuid !== identity.uuid) fail('CBB project changed before symbol navigation.');
+  let before: Awaited<ReturnType<typeof eda.dmt_SelectControl.getCurrentDocumentInfo>>;
+  try { before = await eda.dmt_SelectControl.getCurrentDocumentInfo(); } catch { before = undefined; }
+  const exactTab = (id: string | undefined) => id === `${symbolUuid}@project` || id === `${symbolUuid}@${identity.uuid}`;
+  if (before?.uuid === symbolUuid && before.documentType === 17 && exactTab(before.tabId)) tabId = before.tabId;
+  else {
+   tabId = await eda.dmt_EditorControl.openLibraryDocument('project', '2' as ELIB_LibraryType.SYMBOL, symbolUuid);
+   if (!tabId) return partial(identity, 'Official project-library symbol open returned no tab.');
+   await eda.dmt_EditorControl.activateDocument(tabId);
+  }
   for (let i = 0; i < 20; i++) {
    const actual = await eda.dmt_SelectControl.getCurrentDocumentInfo();
    const current = await eda.dmt_Project.getCurrentProjectInfo();
-   if (current?.uuid === identity.uuid && actual?.tabId === tabId && actual.uuid === symbolUuid && actual.documentType === 17) {
+   if (current?.uuid === identity.uuid && actual?.uuid === symbolUuid && actual.documentType === 17 && exactTab(actual.tabId) && (actual.tabId === tabId || (tabId === `${symbolUuid}@project` && actual.tabId === `${symbolUuid}@${identity.uuid}`))) {
     const symbol = await eda.lib_Symbol.get(symbolUuid, 'project');
     if (!symbol || symbol.uuid !== symbolUuid || symbol.type !== 17) return partial({ ...identity, tabId, actual }, 'Exact project-library CBB symbol is unreadable.');
-    return { result: { ...identity, tabId, symbol, actual, membership: { source: 'active-CBB-schematic-graph', schematicUuid: evidence[0], cbbUuid: identity.uuid, symbolUuid }, verified: true, partial: false } };
+    return { result: { ...identity, tabId: actual.tabId, symbol, actual, membership: { source: 'active-CBB-schematic-graph', schematicUuid: evidence[0], cbbUuid: identity.uuid, symbolUuid }, verified: true, partial: false } };
    }
    await sleep(100);
   }
