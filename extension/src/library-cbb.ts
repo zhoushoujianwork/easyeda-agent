@@ -23,7 +23,7 @@ export async function libraryCbbSearch(payload: Record<string, unknown>): Promis
  if (typeof eda.lib_Cbb?.search !== 'function') throw new ActionError(ErrorCodes.INVALID_STATE, 'Official beta lib_Cbb.search is unavailable.');
  try {
   const items = await eda.lib_Cbb.search(query, libraryUuid, undefined, limit, page);
-  if (!Array.isArray(items) || items.length > limit || items.some(item => !item || typeof item.uuid !== 'string' || !item.uuid || typeof item.libraryUuid !== 'string' || !item.libraryUuid || typeof item.name !== 'string')) throw new ActionError(ErrorCodes.INVALID_STATE, 'CBB search returned an unsupported inventory; cannot treat it as empty.');
+  if (!Array.isArray(items) || items.length > limit || items.some(item => !item || typeof item.uuid !== 'string' || !item.uuid || typeof item.libraryUuid !== 'string' || !item.libraryUuid || typeof item.name !== 'string')) throw new ActionError(ErrorCodes.INVALID_STATE, 'CBB search returned an unsupported inventory; cannot treat it as empty.', JSON.stringify({ observed: items }));
   return { result: { query, libraryUuid: libraryUuid ?? null, limit, page, count: items.length, items, source: 'lib_Cbb.search', apiStatus: 'beta' } };
  } catch (err) { return failure(err); }
 }
