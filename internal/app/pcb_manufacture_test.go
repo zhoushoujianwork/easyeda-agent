@@ -3,11 +3,13 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/binary"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf16"
 )
 
 const manufactureGerber = "G04 test*\n%FSLAX45Y45*%\n%MOMM*%\nM02*\n"
@@ -87,6 +89,30 @@ func TestManufacturePlacementCSVFieldsAndFailures(t *testing.T) {
 	for _, sep := range []string{";", "\t"} {
 		if _, err := inspectPlacement([]byte(strings.ReplaceAll(manufactureCSV, ",", sep)), "csv", "mm"); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestManufactureOfficialUTF16TabularCSV(t *testing.T) {
+	source := "Designator\tDevice\tFootprint\tMid X\tMid Y\tLayer\tRotation\tComment\r\n\"R1\"\t\"demo\"\t\"0603\"\t\"10.795mm\"\t\"10.287mm\"\t\"T\"\t\"0\"\t\"1kΩ\"\r\n"
+	for _, order := range []binary.ByteOrder{binary.LittleEndian, binary.BigEndian} {
+		units := append([]uint16{0xfeff}, utf16.Encode([]rune(source))...)
+		data := make([]byte, len(units)*2)
+		for i, value := range units {
+			order.PutUint16(data[i*2:], value)
+		}
+		before := append([]byte(nil), data...)
+		rows, err := inspectPlacement(data, "csv", "mm")
+		if err != nil || len(rows) != 1 || rows[0].MidX != 10.795 || rows[0].MidY != 10.287 || rows[0].Layer != "T" {
+			t.Fatal(rows, err)
+		}
+		if !bytes.Equal(data, before) {
+			t.Fatal("rewrote official UTF-16 artifact")
+		}
+	}
+	for _, bad := range [][]byte{{0xff, 0xfe, 1}, {0xff, 0xfe, 0, 0xd8}, {0xff, 0xfe, 0, 0xdc}, {0xff}} {
+		if _, err := decodeManufactureCSV(bad); err == nil {
+			t.Fatal("accepted invalid/truncated encoding")
 		}
 	}
 }

@@ -82,7 +82,8 @@ Gerber 默认 mm/4:5、不生成彩色丝印；`--unit inch` 默认 3:6，可显
 必须指定活动 PCB 的精确窗口及不存在的输出文件，前后完整板回读的身份、tab 和 semantic SHA
 须一致；输出 JSON 保留 artifactId、文件大小/SHA、exportContext、板版本及内容读取结果。
 Gerber ZIP 列出文件名、大小、SHA 和可识别类型；坐标文件读取 designator/midX/midY/layer/rotation，
-单位保持请求单位，不擅自转换。CSV 支持逗号、分号或 tab；XLSX 读取实际单元格及共享字符串，
+单位保持请求单位，不擅自转换。CSV 支持 UTF-8 或带 BOM 的 UTF-16（官方常返回 UTF-16LE/tab），
+分隔符支持逗号、分号或 tab；只解码读取，不改写原字节。XLSX 读取实际单元格及共享字符串，
 公式、缺字段或非数值坐标拒绝。未知文件结构失败，不猜测或重写成“可用文件”。
 文件上限 20 MiB，ZIP 展开上限 100 MiB；空板、getter 无文件、宿主不支持、版本漂移或校验失败
 均非零退出，不产生最终文件，不自动重试或使用 GUI/任意 JS 兜底。已有输出拒绝覆盖。
