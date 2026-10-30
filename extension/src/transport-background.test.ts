@@ -5,6 +5,27 @@ import { test } from 'node:test';
 type Receiver = (event: { data: string }) => void;
 const handshake = JSON.stringify({ type: 'handshake', service: 'easyeda-agent' });
 
+test('a pending native action releases the host callback so pongs remain deliverable', async () => fixture(async f => {
+ f.transport.start(); await f.tick(); await f.receive(0);
+ const window = f.transport.getConnectionStatus().windowId;
+ f.deferContexts();
+ let returned = false;
+ const pending = f.receive(0, JSON.stringify({ type: 'request', id: 'long-export', action: 'project.current' })).then(() => { returned = true; });
+ for (let i = 0; i < 20; i++) await Promise.resolve();
+ assert.equal(returned, true, 'host callback must not wait for the native action to settle');
+ assert.ok(f.contexts.length > 0, 'native reads remain pending');
+ for (let i = 0; i < 5; i++) {
+  await f.tick(3000); await f.receive(0, JSON.stringify({ type: 'pong' }));
+ }
+ assert.equal(f.transport.getConnectionStatus().windowId, window);
+ assert.equal(f.transport.getConnectionStatus().connected, true);
+ for (let i = 0; i < 30; i++) {
+  for (const resolve of f.contexts.splice(0)) resolve({ uuid: 'project', friendlyName: 'project' });
+  await Promise.resolve();
+ }
+ await pending;
+}));
+
 // Only worker messages run. Main-thread timers remain queued: this tests the
 // production transport without sleeps or assuming a background timer will fire.
 async function fixture(run: (f: {

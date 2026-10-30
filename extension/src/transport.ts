@@ -772,7 +772,12 @@ function tryConnectToPort(port: number, sessionId: number): Promise<boolean> {
 							return;
 						}
 
-						await handleMessage(msg);
+						// Some hosts await each WebSocket callback before delivering the
+						// next message. Holding this callback for an export/DRC then also
+						// holds its pongs, causing a false disconnect after three ticks.
+						// handleRequest submits synchronously to our existing FIFO before
+						// its first await; detaching does not parallelize action handlers.
+						void handleMessage(msg).catch(err => diag(`message handling failed: ${describeThrown(err)}`));
 					},
 					() => {},
 				);

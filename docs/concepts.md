@@ -21,11 +21,17 @@ Skill 目录。源码位置不改变发布包内的 `easyeda-agent/` 根目录�
 入口和索引只路由到该位置。历史报告说明特定版本发生过什么，不覆盖当前规范，也不证明新版
 已验证。具体导航与归属表见 [文档索引](README.md)，设计理由见 [Agent 协作设计](agent-collaboration.md)。
 
-## 连接器宿主（connector host）
+## 连接器诊断日志
 
 **连接器诊断日志**是连接器通过官方 `sys_Log` 记录的连接、心跳和重连原因；
 `debug connector-logs` 仅回读 `[easyeda-agent]` 前缀的有界条目，不清空日志、不导出工程日志，
 也不代表工程检查通过。它复用 `project.current` 的可选 `includeConnectorLogs:1..100` 读取。
+
+WebSocket 入站回调只负责立即登记动作，不等待其完成；实际动作仍由唯一 FIFO 串行执行。
+这样宿主即使逐个等待消息回调，也能在导出/DRC 期间继续递送 pong，不会把长操作误判为断线。
+消息回调释放不改变动作顺序、请求预算、放弃后的队列保护或心跳失联阈值。
+
+## 连接器宿主（connector host）
 
 **连接器宿主**指承载连接器窗口的页面环境：`edadesk`（桌面外壳，UA 含 `edadesk/`）、`electron`
 （其他 Electron 应用，如桌面版客户端）、`browser`（普通浏览器标签）或 `unknown`（旧连接器未上报）。
