@@ -24,6 +24,37 @@ func attributeMoveFixture() (map[string]any, map[string]any) {
 	return payload, result
 }
 
+func TestSchSheetAttributeMoveRequiresExplicitOwnerAndPreservesState(t *testing.T) {
+	for _, key := range []string{"Name", "Description", "Drawed"} {
+		payload, result := attributeMoveFixture()
+		payload["ownerType"], result["ownerType"] = "sheet", "sheet"
+		payload["expected"].(map[string]any)["Key"] = key
+		result["after"].(map[string]any)["Key"] = key
+		if err := validateSchAttributeMovePayload(payload); err != nil {
+			t.Fatal(key, err)
+		}
+		if err := schAttributeMoveResultError("schematic.attribute.move", result); err != nil {
+			t.Fatal(key, err)
+		}
+		delete(payload, "ownerType")
+		if key != "Name" && validateSchAttributeMovePayload(payload) == nil {
+			t.Fatal("sheet-only key accepted without explicit owner")
+		}
+		result["after"].(map[string]any)["ValueVisible"] = true
+		if schAttributeMoveResultError("schematic.attribute.move", result) == nil {
+			t.Fatal("sheet visibility change accepted")
+		}
+	}
+	for _, key := range []string{"Designator", "Device", "@Page Name", "Color"} {
+		payload, _ := attributeMoveFixture()
+		payload["ownerType"] = "sheet"
+		payload["expected"].(map[string]any)["Key"] = key
+		if validateSchAttributeMovePayload(payload) == nil {
+			t.Fatal("unsupported sheet key accepted", key)
+		}
+	}
+}
+
 func TestSchAttributeMovePayloadAndResultValidation(t *testing.T) {
 	for _, mode := range []string{"valid", "missing-state", "extra-state", "wrong-key", "wrong-id", "extra-payload", "null-x", "changed-text", "changed-visibility", "ignored-x", "partial", "missing-verified", "wrong-scope"} {
 		t.Run(mode, func(t *testing.T) {

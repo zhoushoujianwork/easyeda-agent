@@ -782,6 +782,10 @@ dev.8 开发入口为 `compose --replace --preserve-instances`：只接受同页
 不支持的 bus、arc、circle、polygon、嵌入对象、short symbol 及无法归属的属性会拒绝生成。
 删除后核对完整剩余 inventory，移动前后持续核对原生 pin ID、pin `otherProperty`、NC 和
 器件/引脚/纸张所属属性；属性随器件变化的 X/Y/Rotation 单独排除，其内容、可见性及样式仍须一致。
+显式 `titleBlock` 文本更新例外只在该更新步骤之后生效：编译器按唯一纸张所属属性 ID，
+预测源数据明确请求的 Value、showTitle/showValue；更新前仍核对原始状态。未点名的属性、
+器件和引脚属性及其样式保持原样。字段映射缺失/重复、未明确的未知显隐在编译期拒绝，
+不能忽略整组纸张属性来让保全检查通过。
 完整 `pagePrimitives` 包含独立的 `pins` 类，每条为原生 `primitiveId` 与所属器件 `componentId`。
 编译前逐一对账它与 rich component 的真实 part 引脚清单，拒绝缺脚、重号、错属、跨类身份冲突和
 未知类；旧快照缺少该类时重新采集，不删除 `pins` 或补造空数组。该清单不是独立删除对象：

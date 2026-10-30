@@ -163,8 +163,10 @@ destagger。先从完整快照计算局部模块几何，经 compose 守卫重�
 ## 只移动属性文字
 
 `easyeda sch attribute-move --from attribute-move.json --project <project> --doc <page-uuid>`
-只修改已有板上器件 `Name` 或 `Designator` 属性的 X/Y，单位 raw，Y 向上。
-参数文件含 `projectUuid`、`documentUuid`、`primitiveId`、有限数值 `x/y` 和完整 `expected` 原状态；
+默认只修改已有板上器件 `Name` 或 `Designator` 属性的 X/Y，单位 raw，Y 向上。
+修复图签文字位置时显式指定 `ownerType:"sheet"`，仅支持纸张的 `Name`、`Description`、
+`Drawed`。连接器必须核对真实父对象类型；不接受结构键、`@` 派生项或引脚属性。
+参数文件含 `projectUuid`、`documentUuid`、`primitiveId`、可选 `ownerType`、有限数值 `x/y` 和完整 `expected` 原状态；
 `expected` 直接来自新鲜 `schematic.components.list(includePagePrimitives:true)` 的单条原生属性记录，
 包括 `primitiveId` 和所有大写状态字段。公式值保留原文，不能用 SVG 渲染后的文字替换 `Value`。
 

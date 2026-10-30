@@ -1090,6 +1090,20 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 	}
 	pb.Steps = append(pb.Steps, frames...)
 	if len(p.TitleBlock) > 0 {
+		if preserved != nil {
+			// Earlier matching-page guards may already reference final. Detach
+			// before changing the post-title-block preservation expectation.
+			updated := *final
+			final = &updated
+			page, err := schComposeProtectedPage(env.Result)
+			if err != nil {
+				return nil, err
+			}
+			final.OwnedAttributes, err = preserved.OwnedAttributes.afterTitleBlock(page, p.TitleBlock)
+			if err != nil {
+				return nil, err
+			}
+		}
 		patch := make(schCompositionTitleBlock, len(p.TitleBlock))
 		for key, value := range p.TitleBlock {
 			value.legacyText = false // the titleblock CLI patch always uses objects

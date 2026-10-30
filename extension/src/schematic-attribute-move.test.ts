@@ -12,14 +12,14 @@ function fixture(mode = '') {
  g.eda = {
   dmt_Project: { getCurrentProjectInfo: async () => ({ uuid: project }) },
   dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: document, tabId: 'tab-1', documentType: mode === 'wrong-document-type' ? 3 : 1 }) },
-  sch_PrimitiveComponent: { get: async () => ({ getState_PrimitiveId: () => 'part-1', getState_ComponentType: () => mode === 'parent-netflag' ? 'netflag' : 'part' }) },
+  sch_PrimitiveComponent: { get: async () => ({ getState_PrimitiveId: () => 'part-1', getState_ComponentType: () => mode === 'parent-netflag' ? 'netflag' : mode.startsWith('sheet-') ? 'sheet' : 'part' }) },
   sch_PrimitiveAttribute: {
    get: async () => { reads++; if (mode === 'before-context-drift') document = 'other-page'; if (mode === 'fresh-missing' && reads > 1) return undefined; return attribute(); },
    modify: async (id: string, patch: any) => {
     writes++; assert.equal(id, 'attribute-1'); patches.push(patch);
     if (mode !== 'ignored') { state.X = patch.x; state.Y = patch.y; }
     if (mode === 'text-changed') state.Value = 'changed';
-    if (mode === 'visibility-changed') state.ValueVisible = true;
+    if (mode === 'visibility-changed' || mode === 'sheet-visibility-changed') state.ValueVisible = true;
     if (mode === 'style-changed') state.FontSize = 12;
     if (mode === 'parent-changed') state.ParentPrimitiveId = 'part-2';
     if (mode === 'after-context-drift') project = 'other-project';
@@ -43,6 +43,35 @@ test('attribute move no-op still rereads, without invoking modify', async () => 
  const f = fixture(); try {
   const r: any = (await runAction('schematic.attribute.move', { ...f.payload(), x: 10, y: 20 })).result;
   assert.equal(r.verified, true); assert.equal(r.attempted, false); assert.equal(r.moved, false); assert.equal(f.writes(), 0); assert.equal(f.reads(), 2);
+ } finally { f.restore(); }
+});
+
+for (const key of ['Name', 'Description', 'Drawed']) test(`explicit sheet text move preserves ${key}`, async () => {
+ const f = fixture('sheet-parent'); try {
+  f.expected.Key = key; f.state.Key = key;
+  const r: any = (await runAction('schematic.attribute.move', { ...f.payload(), ownerType: 'sheet' })).result;
+  assert.equal(r.verified, true); assert.equal(r.ownerType, 'sheet');
+  assert.deepEqual(r.after, { ...f.expected, X: 30, Y: 40 }); assert.deepEqual(f.patches, [{ x: 30, y: 40 }]);
+ } finally { f.restore(); }
+});
+
+for (const [mode, ownerType, key] of [['sheet-parent', undefined, 'Name'], ['', 'sheet', 'Name'],
+ ['sheet-parent', 'sheet', 'Device'], ['sheet-parent', 'sheet', '@Page Name'], ['', undefined, 'Description'],
+ ['sheet-parent', 'sheet', 'Designator'], ['sheet-parent', 'any', 'Name']] as const) {
+ test(`attribute owner/key mismatch refuses ${mode}/${ownerType}/${key}`, async () => {
+  const f = fixture(mode); try {
+   f.expected.Key = key; f.state.Key = key;
+   const p = { ...f.payload(), ...(ownerType === undefined ? {} : { ownerType }) };
+   await assert.rejects(() => runAction('schematic.attribute.move', p)); assert.equal(f.writes(), 0);
+  } finally { f.restore(); }
+ });
+}
+
+test('sheet text move still fails on a changed visibility field', async () => {
+ const f = fixture('sheet-visibility-changed'); try {
+  f.expected.Key = 'Description'; f.state.Key = 'Description';
+  const r: any = (await runAction('schematic.attribute.move', { ...f.payload(), ownerType: 'sheet' })).result;
+  assert.equal(r.verified, false); assert.equal(r.partial, true); assert.equal(f.writes(), 1);
  } finally { f.restore(); }
 });
 

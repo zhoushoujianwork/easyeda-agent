@@ -18,8 +18,10 @@ var schAttributeStateFields = []string{"primitiveId", "X", "Y", "Rotation", "Col
 func newSchAttributeMoveCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
 	var from string
 	cmd := &cobra.Command{
-		Use: "attribute-move --from <move.json>", Short: "Move one bound Name/Designator attribute using x/y only",
-		Long: `Move one existing placed part's Name or Designator attribute. The JSON file
+		Use: "attribute-move --from <move.json>", Short: "Move one bound part or sheet text attribute using x/y only",
+		Long: `Move one existing placed part's Name or Designator attribute. Explicit
+ownerType:"sheet" instead allows the sheet's Name, Description or Drawed text.
+The actual native parent must match ownerType (default "part"). The JSON file
 contains projectUuid, documentUuid, primitiveId, finite raw x/y (Y-up), and
 expected: the complete original pagePrimitives.attributes record. Preserve raw
 formula Value text; do not replace it with rendered SVG text.
@@ -59,6 +61,10 @@ func schAttributeFinite(value any) bool {
 }
 
 func validateSchAttributeState(state map[string]any) error {
+	return validateSchAttributeStateOwner(state, "part")
+}
+
+func validateSchAttributeStateOwner(state map[string]any, owner string) error {
 	if len(state) != len(schAttributeStateFields) {
 		return fmt.Errorf("attribute expected state must contain every native field")
 	}
@@ -91,15 +97,28 @@ func validateSchAttributeState(state map[string]any) error {
 			}
 		}
 	}
-	if strings.TrimSpace(strField(state, "primitiveId")) == "" || strings.TrimSpace(strField(state, "ParentPrimitiveId")) == "" || (state["Key"] != "Name" && state["Key"] != "Designator") {
-		return fmt.Errorf("attribute requires complete Name/Designator identity")
+	key := state["Key"]
+	allowed := owner == "part" && (key == "Name" || key == "Designator") || owner == "sheet" && (key == "Name" || key == "Description" || key == "Drawed")
+	if strings.TrimSpace(strField(state, "primitiveId")) == "" || strings.TrimSpace(strField(state, "ParentPrimitiveId")) == "" || !allowed {
+		return fmt.Errorf("attribute requires complete identity and a supported key for ownerType %s", owner)
 	}
 	return nil
 }
 
 func validateSchAttributeMovePayload(payload map[string]any) error {
-	if len(payload) != 6 {
-		return fmt.Errorf("attribute move requires only projectUuid, documentUuid, primitiveId, expected, x and y")
+	owner := "part"
+	if value, present := payload["ownerType"]; present {
+		if value != "part" && value != "sheet" {
+			return fmt.Errorf("attribute move ownerType must be part or sheet")
+		}
+		owner = value.(string)
+	}
+	wantFields := 6
+	if _, present := payload["ownerType"]; present {
+		wantFields++
+	}
+	if len(payload) != wantFields {
+		return fmt.Errorf("attribute move requires projectUuid, documentUuid, primitiveId, expected, x and y, with optional ownerType only")
 	}
 	for _, key := range []string{"projectUuid", "documentUuid", "primitiveId"} {
 		if strings.TrimSpace(strField(payload, key)) == "" {
@@ -113,7 +132,7 @@ func validateSchAttributeMovePayload(payload map[string]any) error {
 	if !ok {
 		return fmt.Errorf("attribute move requires the complete expected state")
 	}
-	if err := validateSchAttributeState(expected); err != nil {
+	if err := validateSchAttributeStateOwner(expected, owner); err != nil {
 		return err
 	}
 	if expected["primitiveId"] != payload["primitiveId"] {
@@ -155,7 +174,11 @@ func schAttributeMoveResultError(action string, result map[string]any) error {
 	before, beforeOK := result["before"].(map[string]any)
 	after, afterOK := result["after"].(map[string]any)
 	req, reqOK := result["requested"].(map[string]any)
-	if !beforeOK || !afterOK || !reqOK || len(req) != 2 || validateSchAttributeState(before) != nil || validateSchAttributeState(after) != nil || result["primitiveId"] != before["primitiveId"] {
+	owner := "part"
+	if value, present := result["ownerType"]; present {
+		owner, _ = value.(string)
+	}
+	if !beforeOK || !afterOK || !reqOK || len(req) != 2 || validateSchAttributeStateOwner(before, owner) != nil || validateSchAttributeStateOwner(after, owner) != nil || result["primitiveId"] != before["primitiveId"] {
 		return fail
 	}
 	for _, key := range schAttributeStateFields {

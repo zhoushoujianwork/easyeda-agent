@@ -48,6 +48,52 @@ type schOwnedAttributesExpectation struct {
 	Attributes map[string]any `json:"attributes"`
 }
 
+// Only the explicitly authored sheet text fields may change after the
+// title-block step. Earlier guards keep the original expectation; all other
+// owners, fields, native IDs, visibility and style remain protected.
+func (e *schOwnedAttributesExpectation) afterTitleBlock(page map[string]any, fields schCompositionTitleBlock) (*schOwnedAttributesExpectation, error) {
+	if len(fields) == 0 {
+		return e, nil
+	}
+	sheets := map[string]bool{}
+	for _, item := range page["components"].([]any) {
+		row := item.(map[string]any)
+		if row["componentType"] == "sheet" {
+			sheets[stringVal(row["primitiveId"])] = true
+		}
+	}
+	if len(sheets) != 1 {
+		return nil, fmt.Errorf("titleBlock preservation requires exactly one native sheet")
+	}
+	next := &schOwnedAttributesExpectation{Owners: append([]string(nil), e.Owners...), Attributes: maps.Clone(e.Attributes)}
+	for key, patch := range fields {
+		var id string
+		for candidate, value := range e.Attributes {
+			row := value.(map[string]any)
+			if sheets[stringVal(row["ParentPrimitiveId"])] && row["Key"] == key {
+				if id != "" {
+					return nil, fmt.Errorf("titleBlock field %s has ambiguous native attributes", key)
+				}
+				id = candidate
+			}
+		}
+		if id == "" {
+			return nil, fmt.Errorf("titleBlock field %s lacks a protected native sheet attribute; recapture or add support before writing", key)
+		}
+		row := maps.Clone(e.Attributes[id].(map[string]any))
+		row["Value"] = patch.Value
+		for native, requested := range map[string]*bool{"KeyVisible": patch.ShowTitle, "ValueVisible": patch.ShowValue} {
+			if requested != nil {
+				row[native] = *requested
+			} else if _, known := row[native].(bool); !known {
+				return nil, fmt.Errorf("titleBlock field %s needs explicit visibility for %s", key, native)
+			}
+		}
+		next.Attributes[id] = row
+	}
+	return next, nil
+}
+
 // Attribute coordinates follow the owner during a move. All other native
 // fields, including id, parent, content, visibility and style, remain exact.
 func schOwnedAttributes(page map[string]any, owners []string) (map[string]any, error) {
