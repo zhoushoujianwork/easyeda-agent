@@ -216,7 +216,7 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 > 平台墙(#31,无 create API)。survey 2026-06-28 版部分条目已过时,下次做市场全量扫描时更新。
 
 **更长期盲区(列入 roadmap,暂不动手)**:制造输出 `pcb_ManufactureData` 的下单等未接入接口（Gerber/贴片文件已有 typed 导出）、
-拼板 `pnl_Document`、电路仿真 `sch_SimulationEngine`、复用模块 `lib_Cbb`、层叠管理 `pcb_Layer.setTheNumberOfCopperLayers`、
+拼板 `pnl_Document`、电路仿真 `sch_SimulationEngine`、复用块实例放置（库只读能力见文末）、层叠管理 `pcb_Layer.setTheNumberOfCopperLayers`、
 事件订阅 `*_Event`。
 
 ---

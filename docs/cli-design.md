@@ -16,7 +16,7 @@ easyeda <domain> <action> [flags]
 | `easyeda pcb` | PCB 操作（layout / line / via / import / align …） |
 | `easyeda pcb config` | 当前 PCB 配置：get / clearance / track / via / bind；局部参数修改、单位换算、dry-run 和真实回读 |
 | `easyeda bom` | BOM 导出与补全 |
-| `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型 |
+| `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型；`cbb search/get` 只读检索原生复用块身份与变体 |
 | `easyeda daemon` | 守护进程管理（start / stop / restart / health；restart 与 start 同为前台阻塞） |
 | `easyeda web` | Web 编辑器页面生命周期；`reload` 与 `doc reload` 区分，保存后等待新连接和同一文档可读 |
 | `easyeda audit` | 操作日志查看 |
