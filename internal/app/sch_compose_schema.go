@@ -45,6 +45,8 @@ func schCompositionContract() map[string]any {
 			"With preserve-instances, bind canonical component IDs to each actual part's otherProperty[" + connectivity.ComponentIDProperty + "] and retain its actual uniqueId, device and physical pins. Missing binding is not permission to guess it.",
 			"connectivityEdits lists each changed physical pin once with componentId/ref/pinNumber/pinName and exact before/after net/noConnected. Desk injects the exact snapshot/source hashes; source evidence is never rewritten.",
 			"Required title-block values stay visible. Do not hide Name/Description/Drawed to pass bounds; repair native sheet text through attribute-move with complete original state and x/y only.",
+			"titleBlock object fields use value/showTitle/showValue (not showKey). When a native KeyVisible or ValueVisible boolean is missing or unknown, explicitly declare its showTitle/showValue in the source; do not guess an existing visibility state. A string update only works when both native visibility booleans are known.",
+			"After moving title-block text, inspect the official full-page export for text crossing table borders or other visible text. Bounds and strict checks alone do not prove legibility.",
 			"JSON Schema describes fields and primitive types, not circuit correctness. Compose still checks identities, complete pins, ownership, real wire trees, measured geometry and protection guards.",
 		},
 	}
