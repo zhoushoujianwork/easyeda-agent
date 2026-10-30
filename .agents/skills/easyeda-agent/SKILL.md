@@ -50,6 +50,11 @@ metadata:
 
 只加载当前任务需要的参考；命令参数以当前 CLI help 为准。
 
+应用集成可用 `easyeda skill read --stage requirements|schematic|pcb-init|pcb-layout|pcb-routing|check|enclosure|delivery`
+离线取得本入口与对应阶段章节的实际全文、版本和 SHA256。读取缺章即失败，不以摘要替代。
+这只证明正文已提供，不能证明规则已执行；每阶段仍须按正文形成输入、约束、计划、执行、
+回读和验收证据，不能把链路冒烟或 DRC/DFM 零项称为完整设计规范通过。
+
 | 任务 | 参考 |
 |---|---|
 | 需求、选型与设计取舍 | [设计流程](references/design-flow.md)、[决策参考](references/design-decisions.md)、[器件选型](references/part-selection.md) |

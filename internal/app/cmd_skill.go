@@ -38,6 +38,7 @@ func newSkillCmd(stdout, stderr io.Writer) *cobra.Command {
 			"logs a re-import notice when it detects a stale connector.",
 	}
 	s.AddCommand(
+		newSkillReadCmd(stdout),
 		newSkillStatusCmd(stdout, stderr),
 		newSkillSyncCmd(stdout, stderr),
 	)

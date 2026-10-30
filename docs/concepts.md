@@ -1,5 +1,13 @@
 # 核心概念与对象(拉通认知)
 
+## 阶段 Skill 来源
+
+阶段 Skill 来源是实际提供给调用方的 `SKILL.md` 和阶段章节正文、Skill/CLI 版本、
+相对路径及 SHA256。`skill read --stage` 从同一个根目录读取，缺章即失败，不拼接其他
+安装副本。PCB 分为 `pcb-init`、`pcb-layout`、`pcb-routing`，其余阶段为 `requirements`、
+`schematic`、`check`、`enclosure`、`delivery`。正文已提供不等于模型已遵守；规则执行、
+真实几何、连通和保存重载仍需独立证据，DRC/DFM 通过不代表全部设计规范已覆盖。
+
 > 本文是 easyeda-agent 布局/布线域的**共享词汇表**——把散在代码注释、memory、
 > 对话里的概念统一到项目层,让后续会话、贡献者、Skill 用**同一套心智模型**。
 > 新概念先落这里,再在代码/Skill/memory 里引用。相关:[cli-design.md](./cli-design.md) ·

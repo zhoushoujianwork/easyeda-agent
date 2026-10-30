@@ -23,7 +23,8 @@ easyeda <domain> <action> [flags]
 | `easyeda debug connector-logs --limit 30` | 只读回读当前窗口连接器自己的心跳/重连日志，不运行脚本或清空宿主日志 |
 | `easyeda sch compose schema` | 离线输出由真实 Go 输入类型生成的组合/连接增量 JSON Schema 及语义边界，不含器件或坐标答案 |
 | `easyeda update` | 自更新（别名 `upgrade`）：CLI 二进制 + skill 目录 → latest；连接器只报不改 |
-| `easyeda skill` | skill 目录单独管理（status / sync；`update` 已含其能力） |
+| `easyeda skill` | Skill 管理（status / sync）与离线阶段正文读取（read）；`update` 已含同步能力 |
+| `easyeda skill read --stage <阶段>` | 从同一个实际 Skill 根目录读取入口和该阶段必需章节全文，返回 CLI/Skill 版本、路径和逐章/整体 SHA256；章节缺失、越根或不可读即失败，无 EDA 调用 |
 | `easyeda debug` | 逃生舱（exec-js 等开发/调试命令） |
 
 ## 设计图交付接口
