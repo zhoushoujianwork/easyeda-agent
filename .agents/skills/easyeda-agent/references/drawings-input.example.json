@@ -76,6 +76,11 @@
     "designAccepted": false,
     "unresolved": [
       "填写当前未解决问题；已证实无问题时使用空数组"
-    ]
+    ],
+    "pcbReview": {
+      "labelDensity": "pending",
+      "textCollisions": "pending",
+      "copperGeometry": "pending"
+    }
   }
 }
