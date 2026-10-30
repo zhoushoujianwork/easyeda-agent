@@ -136,18 +136,37 @@ test('the running request budget is visible to handler waits and cleared after',
 test('a quiet window restarts when a sync appears after the first idle sample (#256/#257)', async t => {
 	const { runner, idle } = fixture(t);
 	idle();
-	const started = Date.now();
-	const busyAt = setTimeout(() => Object.assign(runner, { running: true, currentAction: { name: 'RealTimeSync', status: 'running' } }), 20);
-	const idleAt = setTimeout(idle, 50);
-	t.after(() => { clearTimeout(busyAt); clearTimeout(idleAt); });
-	await waitForSchematicReady(context, 5000, undefined, 60);
-	assert.ok(Date.now() - started >= 105, `resolved after ${Date.now() - started} ms, before the post-sync quiet window`);
+	// Drive every observed host state and deadline explicitly. Real timers can
+	// skip the entire busy interval when the CI event loop is delayed.
+	const originalNow = Date.now;
+	let now = 1000, settled = false;
+	Date.now = () => now;
+	t.after(() => { Date.now = originalNow; });
+	const work = waitForSchematicReady(context, 5000, undefined, 60).then(() => { settled = true; });
+	await flush();
+	assert.equal(settled, false);
+
+	now = 1020;
+	Object.assign(runner, { running: true, currentAction: { name: 'RealTimeSync', status: 'running' } });
+	sweepDeadlines(); await flush();
+	assert.equal(settled, false);
+
+	now = 1050; idle();
+	sweepDeadlines(); await flush();
+	now = 1060; sweepDeadlines(); await flush();
+	assert.equal(settled, false, 'the original quiet deadline must not survive an observed sync');
+	now = 1109; sweepDeadlines(); await flush();
+	assert.equal(settled, false, '59 ms of post-sync idle is not a full 60 ms window');
+	now = 1110; sweepDeadlines(); await work;
+	assert.equal(settled, true);
 });
 
 test('without a quiet window one idle sample is still enough', async t => {
-	const { idle } = fixture(t);
+	const { g, idle } = fixture(t);
 	idle();
-	const started = Date.now();
+	let reads = 0;
+	g.eda.dmt_SelectControl.getCurrentDocumentInfo = async () => { reads++; return { ...context }; };
 	await waitForSchematicReady(context);
-	assert.ok(Date.now() - started < 40);
+	assert.equal(reads, 1, 'idle readiness must not schedule another identity sample');
+	assert.equal(pendingDeadlines(), 0, 'idle readiness completes without another deadline sample');
 });
