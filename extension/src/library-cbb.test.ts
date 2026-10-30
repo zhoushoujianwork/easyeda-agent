@@ -5,11 +5,11 @@ import { libraryCbbGet, libraryCbbSearch } from './library-cbb';
 test('CBB search passes explicit pagination and preserves exact library identity', async () => {
  const calls: unknown[][] = [];
  const items = [{uuid:'cbb',libraryUuid:'lib',name:'iso',ordinal:1}];
- (globalThis as any).eda={lib_Cbb:{search:async(...args:unknown[])=>{calls.push(args);return items;}}};
+ (globalThis as any).eda={lib_Cbb:{search:async(...args:unknown[])=>{calls.push(args);return items;},get:async()=>({uuid:'cbb',libraryUuid:'lib',boards:[]})}};
  try {
   const r = await libraryCbbSearch({query:'iso',libraryUuid:'lib',limit:5,page:2});
   assert.deepEqual(calls,[['iso','lib',undefined,5,2]]);
-  assert.deepEqual(r.result?.items,items);assert.equal(r.result?.count,1);
+  assert.deepEqual(r.result?.items,items.map(x=>({...x,libraryIdentitySource:'lib_Cbb.get'})));assert.equal(r.result?.count,1);
  }finally{delete (globalThis as any).eda;}
 });
 test('CBB search rejects invalid requests before accessing SDK',async()=>{
@@ -35,4 +35,27 @@ test('CBB get rejects missing/wrong identity and unsupported boards',async()=>{
   (globalThis as any).eda={lib_Cbb:{get:async()=>cbb}};
   try{await assert.rejects(libraryCbbGet({uuid:'cbb',libraryUuid:'lib'}));}finally{delete (globalThis as any).eda;}
  }
+});
+
+test('search resolves a missing runtime library UUID via get, never guesses it',async()=>{
+ (globalThis as any).eda={lib_Cbb:{search:async()=>[{uuid:'c',name:'Buck'}],get:async()=>({uuid:'c',libraryUuid:'actual',boards:[]})}};
+ try{assert.equal(((await libraryCbbSearch({query:'电源'})).result?.items as any[])[0].libraryUuid,'actual');}
+ finally{delete (globalThis as any).eda;}
+});
+test('runtime schematic references are resolved read-only with strict identity',async()=>{
+ (globalThis as any).eda={lib_Cbb:{get:async()=>({uuid:'c',libraryUuid:'l',boards:[{schematic:'s'}]})},dmt_Schematic:{getSchematicInfo:async()=>({uuid:'s',parentProjectUuid:'other',cbbSymbol:{uuid:'do-not-use'}})}};
+ try{const r=(await libraryCbbGet({uuid:'c',libraryUuid:'l'})).result;
+ assert.equal((r?.schematicDetails as any[])[0].available,false);assert.equal((r?.schematicDetails as any[])[0].schematic,undefined);}
+ finally{delete (globalThis as any).eda;}
+});
+
+test('runtime schematic references expose only exact CBB-owned symbol metadata',async()=>{
+ const schematic={uuid:'s',parentProjectUuid:'c',cbbSymbol:{uuid:'symbol',libraryUuid:'l'}};
+ (globalThis as any).eda={lib_Cbb:{get:async()=>({uuid:'c',libraryUuid:'l',boards:[{schematic:'s'}]})},dmt_Schematic:{getSchematicInfo:async()=>schematic}};
+ try{const r=(await libraryCbbGet({uuid:'c',libraryUuid:'l'})).result;assert.deepEqual((r?.schematicDetails as any[])[0],{uuid:'s',available:true,schematic});}
+ finally{delete (globalThis as any).eda;}
+});
+test('search/get identity disagreement fails the inventory',async()=>{
+ (globalThis as any).eda={lib_Cbb:{search:async()=>[{uuid:'c',name:'Buck',libraryUuid:'search-lib'}],get:async()=>({uuid:'c',libraryUuid:'actual-lib',boards:[]})}};
+ try{await assert.rejects(libraryCbbSearch({query:'Buck'}));}finally{delete (globalThis as any).eda;}
 });

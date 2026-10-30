@@ -262,7 +262,9 @@ easyeda sch block-apply <block> --parts /tmp/parts.intl.json --project <project>
 用 `easyeda lib cbb search --query <keyword> --limit 20 --page 1` 搜索原生 CBB，
 可用 `--library <fresh-library-uuid>` 限定库；默认由官方 SDK 搜系统库。
 再用 `easyeda lib cbb get --uuid <cbb-uuid> --library <library-uuid>` 读取确切身份、
-`boards` 与 `schematic.cbbSymbol`。多板或多符号须明确目标，不能默认取第一项。
+`boards` 与 `schematic.cbbSymbol`。搜索候选通过 `lib_Cbb.get` 逐项确认库身份，
+不猜缺失的搜索字段。宿主若只返回原理图 UUID，`schematicDetails` 会通过官方只读
+`getSchematicInfo` 查询；`available:false` 不能用作块符号选择依据。多板或多符号须明确目标，不能默认取第一项。
 
 这两个命令只读，调用官方 beta `lib_Cbb.search/get`，不打开工程、不创建库、不放置实例。
 宿主接口缺失、读失败或响应结构异常均失败，不能当成“没有样件”；空结果只说明当前
