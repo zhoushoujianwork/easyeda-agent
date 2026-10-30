@@ -149,7 +149,7 @@ func verifyManufactureArtifact(res *actionResult, format, unit string) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	if int64(len(data)) != a.Size || res.Result["size"] != float64(len(data)) || sha256Hex(data) != a.SHA256 {
+	if int64(len(data)) != a.Size || res.Result["size"] != float64(len(data)) || sha256Hex(data) != a.SHA256 || res.Result["fileSha256"] != a.SHA256 {
 		return nil, fmt.Errorf("manufacture artifact getter/daemon size or SHA-256 mismatch")
 	}
 	return data, nil
