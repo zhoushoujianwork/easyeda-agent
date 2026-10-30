@@ -1,6 +1,6 @@
 /// <reference types="@jlceda/pro-api-types" />
 import { ActionError, type ActionResult, ErrorCodes } from './protocol';
-import { describeThrown, requireString, optionalString, optionalNumber } from './util';
+import { describeThrown, requireString, optionalString, optionalNumber, uint8ToBase64 } from './util';
 
 function fields(payload: Record<string, unknown>, allowed: string[]) {
  for (const key of Object.keys(payload)) if (!allowed.includes(key)) throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, `Unknown CBB field: ${key}`);
@@ -53,5 +53,20 @@ export async function libraryCbbGet(payload: Record<string, unknown>): Promise<A
    } catch (err) { schematicDetails.push({ uuid: ref, available: false, reason: describeThrown(err) }); }
   }
   return { result: { cbb, schematicDetails, source: 'lib_Cbb.get', apiStatus: 'beta' } };
+ } catch (err) { return failure(err); }
+}
+
+/** Official read-only native CBB export; never opens its project. */
+export async function libraryCbbExportSource(payload: Record<string, unknown>): Promise<ActionResult> {
+ fields(payload, ['uuid', 'libraryUuid']);
+ const uuid = nonempty(payload, 'uuid'), libraryUuid = nonempty(payload, 'libraryUuid');
+ await libraryCbbGet({ uuid, libraryUuid });
+ if (typeof eda.sys_FileManager?.getCbbFileByCbbUuid !== 'function') throw new ActionError(ErrorCodes.EDA_API_UNAVAILABLE, 'Official beta CBB file getter is unavailable.');
+ try {
+  const file = await eda.sys_FileManager.getCbbFileByCbbUuid(uuid, libraryUuid, { fileName: 'cbb-source.epro2', fileType: 'epro2' });
+  if (!file || !Number.isSafeInteger(file.size) || file.size <= 0 || file.size > 16 * 1024 * 1024) throw new ActionError(ErrorCodes.INVALID_STATE, 'CBB archive missing, empty, or exceeds 16 MiB limit.');
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.length !== file.size) throw new ActionError(ErrorCodes.INVALID_STATE, 'CBB archive size changed during read.');
+  return { result: { uuid, libraryUuid, format: 'epro2', size: bytes.length, base64: uint8ToBase64(bytes) } };
  } catch (err) { return failure(err); }
 }

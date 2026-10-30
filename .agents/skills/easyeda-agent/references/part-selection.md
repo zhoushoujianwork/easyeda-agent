@@ -272,3 +272,8 @@ easyeda sch block-apply <block> --parts /tmp/parts.intl.json --project <project>
 `lib_Cbb.openProjectInEditor` 作为探测或验证兜底。
 
 #244 的引脚网解析已有导线几何兜底；库检索成功仍不等于真实块实例的网络与保存重载验证通过。
+
+若原理图详情不可读，可用 `lib cbb export-source --uuid <cbb-uuid> --library <library-uuid>
+--out <new-file.epro2>` 通过官方 beta `getCbbFileByCbbUuid` 获取原生归档，不打开工程。
+导出要求模块下载权限；不修改权限，失败保留错误。归档限定 16 MiB，CLI 校验 ZIP/CRC
+与原生项目数据并以不覆盖方式写入，返回 SHA-256；归档读取不等于真实实例验收。

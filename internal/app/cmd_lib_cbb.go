@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -42,6 +44,36 @@ func newLibCbbCmd(cfg *appConfig, stdout, stderr io.Writer, window *string) *cob
 		}}
 		c.Flags().StringVar(&uuid, "uuid", "", "CBB asset UUID (required)")
 		c.Flags().StringVar(&library, "library", "", "exact library UUID")
+		group.AddCommand(c)
+	}
+	{
+		var uuid, library, out string
+		c := &cobra.Command{Use: "export-source", Short: "Export exact native CBB archive read-only, without opening its project", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(uuid) == "" || strings.TrimSpace(library) == "" || !strings.EqualFold(filepath.Ext(out), ".epro2") {
+				return fmt.Errorf("--uuid, --library and a new --out .epro2 are required")
+			}
+			if _, err := os.Stat(out); err == nil {
+				return fmt.Errorf("output already exists: %s", out)
+			} else if !os.IsNotExist(err) {
+				return err
+			}
+			res, err := requestAction(cfg, "library.cbb.export_source", *window, map[string]any{"uuid": uuid, "libraryUuid": library})
+			if err != nil {
+				return err
+			}
+			if res.Result["uuid"] != uuid || res.Result["libraryUuid"] != library {
+				return fmt.Errorf("CBB export identity mismatch")
+			}
+			report, err := writeProjectArchive(res.Result, out)
+			if err != nil {
+				return err
+			}
+			report["libraryUuid"] = library
+			return encodeResultEnvelope(res, report, stdout)
+		}}
+		c.Flags().StringVar(&uuid, "uuid", "", "exact CBB asset UUID (required)")
+		c.Flags().StringVar(&library, "library", "", "exact library UUID (required)")
+		c.Flags().StringVar(&out, "out", "", "new native .epro2 archive; no overwrite (required)")
 		group.AddCommand(c)
 	}
 	return group

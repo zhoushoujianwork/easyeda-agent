@@ -30,7 +30,7 @@ func TestLibCbbDispatch(t *testing.T) {
 	}
 }
 func TestLibCbbInvalidBeforeDispatch(t *testing.T) {
-	for _, args := range [][]string{{"cbb", "search"}, {"cbb", "search", "--query", " "}, {"cbb", "search", "--query", "x", "--limit", "0"}, {"cbb", "search", "--query", "x", "--page", "0"}, {"cbb", "get"}} {
+	for _, args := range [][]string{{"cbb", "search"}, {"cbb", "search", "--query", " "}, {"cbb", "search", "--query", "x", "--limit", "0"}, {"cbb", "search", "--query", "x", "--page", "0"}, {"cbb", "get"}, {"cbb", "export-source", "--uuid", "c", "--library", "l"}} {
 		var out bytes.Buffer
 		c := newLibCmd(&appConfig{}, &out, &out)
 		c.SetArgs(args)

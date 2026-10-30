@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { libraryCbbGet, libraryCbbSearch } from './library-cbb';
+import { libraryCbbGet, libraryCbbSearch, libraryCbbExportSource } from './library-cbb';
 
 test('CBB search passes explicit pagination and preserves exact library identity', async () => {
  const calls: unknown[][] = [];
@@ -58,4 +58,24 @@ test('runtime schematic references expose only exact CBB-owned symbol metadata',
 test('search/get identity disagreement fails the inventory',async()=>{
  (globalThis as any).eda={lib_Cbb:{search:async()=>[{uuid:'c',name:'Buck',libraryUuid:'search-lib'}],get:async()=>({uuid:'c',libraryUuid:'actual-lib',boards:[]})}};
  try{await assert.rejects(libraryCbbSearch({query:'Buck'}));}finally{delete (globalThis as any).eda;}
+});
+
+test('CBB export uses exact official identity and format without opening a project',async()=>{
+ const calls:unknown[][]=[];
+ (globalThis as any).eda={lib_Cbb:{get:async()=>({uuid:'c',libraryUuid:'l',boards:[]})},sys_FileManager:{getCbbFileByCbbUuid:async(...args:unknown[])=>{calls.push(args);return new Blob(['archive']);}}};
+ try{const r=(await libraryCbbExportSource({uuid:'c',libraryUuid:'l'})).result;assert.deepEqual(calls,[['c','l',{fileName:'cbb-source.epro2',fileType:'epro2'}]]);assert.equal(r?.size,7);assert.equal(r?.base64,Buffer.from('archive').toString('base64'));}
+ finally{delete (globalThis as any).eda;}
+});
+test('CBB export rejects absent, empty, oversized and changing files',async()=>{
+ for(const file of [undefined,{size:0},{size:16*1024*1024+1},{size:1,arrayBuffer:async()=>new ArrayBuffer(2)}]){
+ (globalThis as any).eda={lib_Cbb:{get:async()=>({uuid:'c',libraryUuid:'l',boards:[]})},sys_FileManager:{getCbbFileByCbbUuid:async()=>file}};
+ try{await assert.rejects(libraryCbbExportSource({uuid:'c',libraryUuid:'l'}));}finally{delete (globalThis as any).eda;}
+ }
+});
+
+test('CBB export preserves module-download permission refusal and never opens the asset',async()=>{
+ let exports=0;
+ (globalThis as any).eda={lib_Cbb:{get:async()=>({uuid:'c',libraryUuid:'l',boards:[]}),openProjectInEditor:async()=>assert.fail('must not open')},sys_FileManager:{getCbbFileByCbbUuid:async()=>{exports++;throw Error('没有下载库权限');}}};
+ try{await assert.rejects(libraryCbbExportSource({uuid:'c',libraryUuid:'l'}),(err:any)=>{assert.match(err.detail,/没有下载库权限/);return true;});assert.equal(exports,1);}
+ finally{delete (globalThis as any).eda;}
 });
