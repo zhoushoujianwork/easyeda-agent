@@ -70,3 +70,20 @@ func TestSchCbbPlaceRequiresExactTargetAndCoordinates(t *testing.T) {
 		}
 	}
 }
+
+func TestSchCbbSourceProbeIsExplicitAndHasBoundedBudget(t *testing.T) {
+	cfg, captured, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+	var out, stderr bytes.Buffer
+	c := newSchCmd(cfg, &out, &stderr)
+	c.SetArgs([]string{"cbb-place", "--uuid", "c", "--library", "l", "--expected-name", "EA_AGENT__TEST", "--symbol", "s", "--project-uuid", "p", "--page", "d", "--x", "0", "--y", "0", "--allow-source-project-probe"})
+	var unverified *unverifiedLibraryWriteError
+	if err := c.Execute(); !errors.As(err, &unverified) {
+		t.Fatalf("unverified fixture response was accepted: %v", err)
+	}
+	captured.mu.Lock()
+	defer captured.mu.Unlock()
+	if captured.action != "schematic.cbb.place" || captured.payload["allowSourceProjectProbe"] != true || captured.timeoutMs != 60000 {
+		t.Fatalf("request action=%s payload=%#v timeout=%d", captured.action, captured.payload, captured.timeoutMs)
+	}
+}

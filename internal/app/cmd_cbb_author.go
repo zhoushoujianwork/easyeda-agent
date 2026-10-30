@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -131,6 +132,7 @@ func newSchCbbPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string)
 	var x, y float64
 	var rotation int
 	var mirror bool
+	var allowProbe bool
 	c := &cobra.Command{Use: "cbb-place", Short: "Place one exact owned native CBB symbol and verify fresh identity/geometry", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := target.payload()
 		if err != nil {
@@ -146,7 +148,8 @@ func newSchCbbPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string)
 		p["y"] = y
 		p["rotation"] = rotation
 		p["mirror"] = mirror
-		return dispatch(cfg, "schematic.cbb.place", *window, p, stdout, stderr)
+		p["allowSourceProjectProbe"] = allowProbe
+		return dispatchTimed(cfg, "schematic.cbb.place", *window, p, 60*time.Second, stdout, stderr)
 	}}
 	target.flags(c)
 	c.Flags().StringVar(&symbol, "symbol", "", "exact verified CBB symbol UUID (required)")
@@ -156,5 +159,6 @@ func newSchCbbPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string)
 	c.Flags().Float64Var(&y, "y", 0, "raw Y coordinate (required)")
 	c.Flags().IntVar(&rotation, "rotation", 0, "quarter-turn rotation in degrees")
 	c.Flags().BoolVar(&mirror, "mirror", false, "mirror the CBB symbol")
+	c.Flags().BoolVar(&allowProbe, "allow-source-project-probe", false, "after saving ALL open documents, allow a read-only source CBB project probe and verified return before single placement")
 	return c
 }

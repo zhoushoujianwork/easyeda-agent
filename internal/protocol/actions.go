@@ -557,8 +557,8 @@ func AllActions() []ActionSpec {
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "pins", "outline", "dryRun optional"}, Outputs: []string{"actualPins", "createdPins", "outlineId", "saved", "verified", "partial"}},
 
 		{Name: "schematic.cbb.place", Domain: DomainSchematic, Phase: 1, NeedsWindow: true, Mutates: true,
-			Description: "Place one exact agent-owned native CBB symbol once; requires explicit symbol variant and project/page. Verifies fresh instance identity, geometry and preservation of existing component geometry; partial/unknown never retries.",
-			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "projectUuid", "documentUuid", "x", "y", "rotation optional", "mirror optional"}, Outputs: []string{"primitiveId", "state", "actualCbb", "actualSymbol", "verified", "partial"}},
+			Description: "Place one exact agent-owned native CBB symbol once; requires explicit symbol variant and project/page. Verifies fresh instance identity, geometry and preservation of existing component geometry. If explicitly allowed after saving ALL documents, probes the source CBB project for exact symbol membership then returns to the verified unchanged target page before single creation. Partial/unknown never retries.",
+			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "projectUuid", "documentUuid", "x", "y", "rotation optional", "mirror optional", "allowSourceProjectProbe optional explicit true after saving ALL documents"}, Outputs: []string{"primitiveId", "state", "actualCbb", "actualSymbol", "sourceProbe", "verified", "partial"}},
 		{Name: "library.cbb.get", Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
 			Description: "Read exact CBB asset through official beta lib_Cbb.get, including boards and schematic.cbbSymbol variants; never opens its project or picks the first variant.",
 			Inputs:      []string{"uuid", "libraryUuid optional"}, Outputs: []string{"cbb", "source", "apiStatus"}},

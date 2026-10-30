@@ -134,3 +134,29 @@ test('CBB project-library alias resolves only to the exact active CBB project ta
  const reused=(await cbbSymbolOpen({...identity,symbolUuid:'s'})).result;assert.equal(reused?.verified,true);assert.equal(opens,1);
  }finally{clear();}
 });
+
+function probeSetup(drift=false){
+ let project='p',written=false,writes=0,returned=false;const events:string[]=[];
+ const old=instance({getState_PrimitiveId:()=>'old',getState_X:()=>500,getState_ComponentType:()=>'part'});
+ const changed=instance({getState_PrimitiveId:()=>'old',getState_X:()=>501,getState_ComponentType:()=>'part'});
+ setup({lib_Cbb:{get:async()=>({...asset,boards:[{schematic:'schema'}]}),openProjectInEditor:async()=>{events.push('source-open');project='c';return true;}},
+ lib_Symbol:{get:async(_:string,lib:string)=>lib==='project'?{uuid:'s',type:17}:undefined},
+ dmt_Project:{getCurrentProjectInfo:async()=>({uuid:project,itemType:project==='c'?'CBB Project':'Project'}),openProject:async(id:string)=>{events.push('return-project');project=id;returned=true;return true;}},
+ dmt_Schematic:{getSchematicInfo:async()=>({uuid:'schema',parentProjectUuid:'c',cbbSymbol:{uuid:'s',type:17}})},
+ dmt_EditorControl:{openDocument:async()=>{events.push('return-page');return 'd@p';}},
+ sch_Document:{save:async()=>{events.push('target-save');return true;}},
+ sch_PrimitiveComponent:{getAll:async()=>written?[old,instance()]:[returned&&drift?changed:old],createCbbSymbol:async()=>{events.push('instance-create');writes++;written=true;return instance();}}
+ });
+ return ()=>({writes,events});
+}
+test('CBB source probe explicitly saves target, proves native variant, returns to unchanged page and creates once',async()=>{
+ const state=probeSetup();try{const r=(await cbbPlace({...placement,allowSourceProjectProbe:true})).result;
+ assert.equal(r?.verified,true);assert.equal((r?.sourceProbe as any).schematicUuid,'schema');assert.equal((r?.sourceProbe as any).targetGeometryPreserved,true);assert.equal(state().writes,1);
+ assert.deepEqual(state().events,['target-save','source-open','return-project','return-page','instance-create']);
+ }finally{clear();}
+});
+test('CBB source probe never creates when target geometry changed across project switch',async()=>{
+ const state=probeSetup(true);try{const r=(await cbbPlace({...placement,allowSourceProjectProbe:true})).result;
+ assert.equal(r?.partial,true);assert.equal(r?.primitiveId,null);assert.equal(r?.instanceCreateAttempted,false);assert.equal(state().writes,0);
+ }finally{clear();}
+});

@@ -138,23 +138,67 @@ async function page(projectUuid: string, documentUuid: string) {
  return doc;
 }
 export async function cbbPlace(p: Payload): Promise<ActionResult> {
- fields(p, ['uuid', 'libraryUuid', 'expectedName', 'symbolUuid', 'projectUuid', 'documentUuid', 'x', 'y', 'rotation', 'mirror']);
+ fields(p, ['uuid', 'libraryUuid', 'expectedName', 'symbolUuid', 'projectUuid', 'documentUuid', 'x', 'y', 'rotation', 'mirror', 'allowSourceProjectProbe']);
  const projectUuid = text(p, 'projectUuid'), documentUuid = text(p, 'documentUuid'), symbolUuid = text(p, 'symbolUuid');
  const x = p.x, y = p.y, rotation = p.rotation ?? 0, mirror = p.mirror ?? false;
  if (typeof x !== 'number' || !Number.isFinite(x) || typeof y !== 'number' || !Number.isFinite(y) ||
      typeof rotation !== 'number' || ![0, 90, 180, 270].includes(rotation) || typeof mirror !== 'boolean') fail('CBB placement requires finite x/y, quarter-turn rotation and boolean mirror.');
  const identity = await owned(p);
  const symbol = await eda.lib_Symbol.get(symbolUuid, identity.libraryUuid);
- if (!symbol || symbol.libraryUuid !== identity.libraryUuid || symbol.uuid !== symbolUuid || symbol.type !== 17 || symbol.cbbUuid !== identity.uuid) fail('Exact CBB symbol ownership is unavailable or mismatched; no instance was placed.');
+ const symbolDirect = !!symbol && symbol.uuid === symbolUuid && symbol.libraryUuid === identity.libraryUuid && symbol.type === 17 && symbol.cbbUuid === identity.uuid;
+ if (p.allowSourceProjectProbe !== undefined && typeof p.allowSourceProjectProbe !== 'boolean') fail('allowSourceProjectProbe must be boolean.');
+ if (!symbolDirect && p.allowSourceProjectProbe !== true) fail('Exact CBB symbol ownership is unavailable. Save ALL open documents and explicitly allow a source-project probe.');
+ if (symbol && (symbol.uuid !== symbolUuid || symbol.type !== 17 || (symbol.cbbUuid && symbol.cbbUuid !== identity.uuid))) fail('CBB symbol metadata contradicts the requested variant.');
  await page(projectUuid, documentUuid);
  const before = (await eda.sch_PrimitiveComponent.getAll()).map(geometry);
  if (before.some(c => !c.id || ![c.x, c.y, c.rotation].every(Number.isFinite) || typeof c.mirror !== 'boolean') || new Set(before.map(c => c.id)).size !== before.length) fail('Incomplete/duplicate geometry in pre-placement inventory.');
  await page(projectUuid, documentUuid);
  let primitiveId: string | undefined;
+ let sourceProbe: Record<string, unknown> | undefined;
+ let instanceCreateAttempted = false;
  try {
+  if (!symbolDirect) {
+   const savedTarget = await eda.sch_Document.save();
+   if (savedTarget !== true) throw Error('Target page save failed; source project was not opened.');
+   await page(projectUuid, documentUuid);
+   if (await eda.lib_Cbb.openProjectInEditor(identity.uuid, identity.libraryUuid) !== true) throw Error('CBB source project open was not accepted.');
+   let found: { schematicUuid: string; symbolUuid: string } | undefined;
+   for (let attempt=0;attempt<30&&!found;attempt++) {
+    const current = await eda.dmt_Project.getCurrentProjectInfo();
+    if (current?.uuid === identity.uuid && current.itemType === 'CBB Project') {
+     for (const board of identity.cbb.boards) {
+      const ref: unknown = board.schematic;
+      const schematic = typeof ref === 'string' ? await eda.dmt_Schematic.getSchematicInfo(ref) : ref as IDMT_SchematicItem | undefined;
+      if (schematic?.parentProjectUuid === identity.uuid && schematic.cbbSymbol?.uuid === symbolUuid && schematic.cbbSymbol.type === 17) found = { schematicUuid: schematic.uuid, symbolUuid };
+     }
+    }
+    if (!found) await sleep(100);
+   }
+   if (!found) throw Error('Exact source CBB symbol membership is unavailable; no instance was created.');
+   const sourceSymbol = await eda.lib_Symbol.get(symbolUuid, 'project');
+   if (!sourceSymbol || sourceSymbol.uuid !== symbolUuid || sourceSymbol.type !== 17) throw Error('Graph-selected CBB source symbol could not be read.');
+   if (await eda.dmt_Project.openProject(projectUuid) !== true) throw Error('Return to target project was not accepted.');
+   let returned=false;
+   for(let attempt=0;attempt<30;attempt++) {
+    if ((await eda.dmt_Project.getCurrentProjectInfo())?.uuid === projectUuid) { returned=true;break; }
+    await sleep(100);
+   }
+   if (!returned) throw Error('Target project identity did not settle after source probe.');
+   if (!await eda.dmt_EditorControl.openDocument(documentUuid)) throw Error('Target page could not be reopened after source probe.');
+   returned=false;
+   for(let attempt=0;attempt<30;attempt++) {
+    try { await page(projectUuid,documentUuid);returned=true;break; } catch { await sleep(100); }
+   }
+   if (!returned) throw Error('Target page identity did not settle after source probe.');
+   const actualBefore = (await eda.sch_PrimitiveComponent.getAll()).map(geometry);
+   if (actualBefore.length !== before.length || !before.every(old=>actualBefore.some(actual=>JSON.stringify(actual)===JSON.stringify(old)))) throw Error('Target component geometry changed across the source probe; no instance was created.');
+   sourceProbe = { savedTarget, sourceProjectUuid: identity.uuid, ...found, returnedProjectUuid: projectUuid, returnedDocumentUuid: documentUuid, targetGeometryPreserved:true };
+  }
+  await page(projectUuid, documentUuid);
+  instanceCreateAttempted = true;
   const created = await eda.sch_PrimitiveComponent.createCbbSymbol({ libraryUuid: identity.libraryUuid, cbbUuid: identity.uuid, uuid: symbolUuid }, x as number, y as number, rotation as number, mirror as boolean);
   primitiveId = created?.getState_PrimitiveId();
-  if (!primitiveId || before.some(c => c.id === primitiveId)) return partial({ ...identity, symbolUuid, primitiveId: primitiveId ?? null, outcome: 'unknown' }, 'Official placement returned no unique new instance.');
+  if (!primitiveId || before.some(c => c.id === primitiveId)) return partial({ ...identity, symbolUuid, sourceProbe, primitiveId: primitiveId ?? null, outcome: 'unknown' }, 'Official placement returned no unique new instance.');
   await page(projectUuid, documentUuid);
   const after = await eda.sch_PrimitiveComponent.getAll();
   const instance = after.find(c => c.getState_PrimitiveId() === primitiveId);
@@ -167,8 +211,8 @@ export async function cbbPlace(p: Payload): Promise<ActionResult> {
    actualCbb?.uuid === identity.uuid && actualCbb.libraryUuid === identity.libraryUuid && actualSymbol?.uuid === symbolUuid && actualSymbol.cbbUuid === identity.uuid && actualSymbol.libraryUuid === identity.libraryUuid;
   if (!matches) return partial({ ...identity, symbolUuid, primitiveId, state, actualCbb, actualSymbol }, 'Placed CBB identity or geometry differs from the request.');
   await page(projectUuid, documentUuid);
-  return { result: { ...identity, symbolUuid, primitiveId, state, actualCbb, actualSymbol, preserved, verified: true, partial: false } };
- } catch (err) { return partial({ ...identity, symbolUuid, primitiveId: primitiveId ?? null, outcome: 'unknown' }, err); }
+  return { result: { ...identity, symbolUuid, primitiveId, state, actualCbb, actualSymbol, preserved, sourceProbe, verified: true, partial: false } };
+ } catch (err) { return partial({ ...identity, symbolUuid, sourceProbe, instanceCreateAttempted, primitiveId: primitiveId ?? null, outcome: 'unknown' }, err); }
 }
 
 type Pin = NonNullable<Awaited<ReturnType<typeof eda.sch_PrimitivePin.getAll>>>[number];

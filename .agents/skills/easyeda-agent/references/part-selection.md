@@ -297,3 +297,8 @@ Web 4.1.78 的记录可能不带库 UUID 或 cbbUuid，不能靠这两个缺字�
 
 样件至少覆盖已命名导线连接与未接线端口；保存 → 真实关闭重开 → fresh 引脚网对账后
 才能判断 #244。默认普通器件符号、工具 `block-apply` 或最近 netflag 不能充当真实 CBB。
+
+外部工程无法直接读取 CBB 内部符号时，`sch cbb-place --allow-source-project-probe` 明确允许
+保存当前页后进入源 CBB 工程核对指定符号与原理图关联，再回到原项目/页面并核对旧组件几何。
+调用前须保存所有其他打开文档；没有显式标志不切工程，源证明缺失或返回页变化时零实例创建。
+源探针与返回核对成功后才执行一次 createCbbSymbol，保留 sourceProbe 和已知 primitiveId。
