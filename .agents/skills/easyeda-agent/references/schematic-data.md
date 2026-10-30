@@ -4,6 +4,11 @@
 CLI 参数以 `easyeda sch <command> --help` 为准；电路选型依据具体器件的数据手册，
 通过 `lib device get` 的属性可取得 Datasheet 地址。转换器不会推断缺失的外围电路。
 
+编写组合源之前先运行 `easyeda sch compose schema`，读取与当前 CLI Go 输入类型同源的
+composition、connectivityEdits JSON Schema 和语义边界。不要试探 `members`、`componentIds`
+等不存在的字段，也不要为已连接引脚编造 `connectionState:connected/net`；连接由 connections
+表达。契约只描述结构，不含 BOM、UUID 或坐标答案，仍须实测并完整运行编译和回读校验。
+
 ## 数据驱动架构基准
 
 这是原理图设计、布局、检查和修复共同遵守的现行基准（2026-09-14 固定，延续 1.4

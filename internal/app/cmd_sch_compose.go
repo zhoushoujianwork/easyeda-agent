@@ -343,6 +343,7 @@ No automatic pagination, symbol scaling or source-page deletion is performed.`, 
 	c.Flags().BoolVar(&preserveInstances, "preserve-instances", false, "with --replace, retain exact existing part IDs/properties and rebuild only drawing content")
 	c.Flags().StringVar(&connectivityEdits, "connectivity-edits", "", "with --preserve-instances, exact hash-bound JSON pin net/NC delta; missing or stale edits are refused")
 	c.Flags().StringVar(&layoutPage, "layout-page", "", "selected complete layout-sheet-plan page: preserve its geometry, frames and spacing instead of repacking; requires matching source modules and explicit sheetBorder")
+	c.AddCommand(newSchCompositionSchemaCmd(stdout))
 	return c
 }
 
