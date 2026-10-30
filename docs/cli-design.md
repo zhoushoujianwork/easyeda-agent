@@ -26,6 +26,9 @@ easyeda <domain> <action> [flags]
 
 ## 设计图交付接口
 
+- `pcb export-gerber --window <id> --out <新文件.zip> [--unit mm|inch] [--digital-format 4:5] [--color-silkscreen]`：官方 beta Gerber ZIP 原字节导出，默认 mm、4:5（inch 默认 3:6），返回各文件名称、大小、哈希和可识别类型。
+- `pcb export-placement --window <id> --out <新文件.csv|xlsx> [--format csv|xlsx] [--unit mm|mil]`：官方 beta 坐标文件原字节导出，默认 csv/mm，读取位号、中心 X/Y、层和旋转。
+  两者前后采集完整 PCB 回读，要求身份及 semantic SHA 相同；校验文件 SHA/大小和内容后才落盘，已有文件拒绝覆盖，不隐式保存或重载。结果不是制造放行声明。
 - `pcb export-3d --format obj|step --window <id> --out <新目录>`：官方整板模型，
   前后完整 `pcb dump --include-copper` 等价回读核对身份与版本，保留模型原文件、回读与
   manifest。显式窗口必需；只读，不隐式保存重载，默认不生成缺模型占位。模型绑定不证明导出覆盖。

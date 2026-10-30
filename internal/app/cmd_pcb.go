@@ -460,6 +460,8 @@ func newPcbCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	}
 	pcb.PersistentFlags().StringVar(&window, "window", "", "EasyEDA window ID")
 	pcb.AddCommand(newPcbExport3DCmd(cfg, &window, stdout, stderr))
+	pcb.AddCommand(newPcbManufactureExportCmd(cfg, &window, stdout, stderr, "gerber"))
+	pcb.AddCommand(newPcbManufactureExportCmd(cfg, &window, stdout, stderr, "placement"))
 	pcb.AddCommand(newPcb3DCmd(cfg, &window, stdout, stderr))
 	pcb.AddCommand(newPcbEnclosureCmd(stdout, stderr))
 	pcb.AddCommand(newPcbConfigCmd(cfg, &window, stdout, stderr))

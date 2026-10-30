@@ -79,7 +79,7 @@ PCB 自动布局/布线算法、最优性、KiCad MCP/Skill 与二层协同求�
 | **PCB 走线/过孔/铺铜图元** | ❌ | `pcb_PrimitiveLine/Via/Pour/Poured.create` | **盲区** |
 | **PCB 设计规则/网络类/差分对/等长** | ❌ | `pcb_Drc.*`(43 方法) | **完全盲区** |
 | **PCB 网络长度/飞线/高亮** | ❌ | `pcb_Net.getNetLength`、`pcb_Document.startCalculatingRatline` | **盲区** |
-| **PCB 制造输出(Gerber/贴片/3D/下单)** | ❌ | `pcb_ManufactureData`(30+ 方法) | **完全盲区** |
+| **PCB 制造输出(Gerber/贴片/3D/下单)** | 部分 | `pcb_ManufactureData`(30+ 方法) | 已封装 beta Gerber/坐标文件及 3D 导出；下单未接入，导出不等于制造验收 |
 | **库管理/器件创建/封装放置/复用模块** | 仅原理图 search | `lib_Device/Footprint/Cbb`(create/place) | **盲区** |
 | **PCB 层叠管理(2/4 层)** | ❌(只 list) | `pcb_Layer.setTheNumberOfCopperLayers` 等 | **盲区** |
 | **拼板 panelize / 电路仿真 / 事件订阅 / 3D 渲染 / 格式转换** | ❌ | `pnl_Document` / `sch_SimulationEngine` / `*_Event` / `pcb_RayTracerEngine` / `sys_FormatConversion` | **完全盲区** |
@@ -215,7 +215,7 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 > **注**:`setTheNumberOfCopperLayers`(旧盲区)已在 #26 吸收(`pcb stackup`);泪滴已确认
 > 平台墙(#31,无 create API)。survey 2026-06-28 版部分条目已过时,下次做市场全量扫描时更新。
 
-**更长期盲区(列入 roadmap,暂不动手)**:制造输出 `pcb_ManufactureData`(Gerber/贴片/下单——流程脊柱的交付端)、
+**更长期盲区(列入 roadmap,暂不动手)**:制造输出 `pcb_ManufactureData` 的下单等未接入接口（Gerber/贴片文件已有 typed 导出）、
 拼板 `pnl_Document`、电路仿真 `sch_SimulationEngine`、复用模块 `lib_Cbb`、层叠管理 `pcb_Layer.setTheNumberOfCopperLayers`、
 事件订阅 `*_Event`。
 
