@@ -40,7 +40,7 @@ func composeApplyFixture(t *testing.T, matching bool) (*schCompositionPlan, map[
 		}
 		pins := []any{}
 		for _, pin := range c.Pins {
-			pins = append(pins, map[string]any{"pinNumber": pin.Number, "pinName": pin.Name, "x": pin.X, "y": pin.Y, "net": pin.Net, "noConnected": nc[c.Designator+"."+pin.Number]})
+			pins = append(pins, map[string]any{"primitiveId": "pin-" + c.Designator + "-" + pin.Number, "pinNumber": pin.Number, "pinName": pin.Name, "x": pin.X, "y": pin.Y, "net": pin.Net, "noConnected": nc[c.Designator+"."+pin.Number]})
 		}
 		parts = append(parts, map[string]any{"componentType": "part", "primitiveId": "live-" + c.Designator, "device": device, "designator": c.Designator, "x": c.X, "y": c.Y, "rotation": c.Rotation, "mirror": c.Mirror, "bbox": c.BBox, "pinsAvailable": true, "pins": pins})
 	}
@@ -90,6 +90,21 @@ func composeFixturePageInventory(result map[string]any) {
 		page[kind] = []any{}
 	}
 	page["components"] = result["components"]
+	page["pins"] = []any{}
+	for _, item := range result["components"].([]any) {
+		component, ok := item.(map[string]any)
+		if !ok || component["componentType"] != "part" {
+			continue
+		}
+		pins, _ := component["pins"].([]any)
+		for _, item := range pins {
+			pin, ok := item.(map[string]any)
+			if !ok {
+				continue // keep malformed rich records for the negative test
+			}
+			page["pins"] = append(page["pins"].([]any), map[string]any{"primitiveId": pin["primitiveId"], "componentId": component["primitiveId"]})
+		}
+	}
 	rows := []any{}
 	used := map[string]bool{}
 	for _, item := range result["wires"].([]any) {

@@ -782,6 +782,11 @@ dev.8 开发入口为 `compose --replace --preserve-instances`：只接受同页
 不支持的 bus、arc、circle、polygon、嵌入对象、short symbol 及无法归属的属性会拒绝生成。
 删除后核对完整剩余 inventory，移动前后持续核对原生 pin ID、pin `otherProperty`、NC 和
 器件/引脚/纸张所属属性；属性随器件变化的 X/Y/Rotation 单独排除，其内容、可见性及样式仍须一致。
+完整 `pagePrimitives` 包含独立的 `pins` 类，每条为原生 `primitiveId` 与所属器件 `componentId`。
+编译前逐一对账它与 rich component 的真实 part 引脚清单，拒绝缺脚、重号、错属、跨类身份冲突和
+未知类；旧快照缺少该类时重新采集，不删除 `pins` 或补造空数组。该清单不是独立删除对象：
+保全绘图重置后仍须完整保留，并回读核对引脚身份、归属及其属性。此兼容修复的离线编译通过
+不代替真实 Apply、保存重载与新回读验收。
 同一显式删除与剩余 inventory 守卫也用于 `paperless:true` 的已有图面，不要求先清空页面；
 它仍要求真实 0 个 sheet，不能退回广义清页、放宽未知图形或借未接线分支处理有线页面。
 这一 CLI 路径已有离线回归，尚未证明现场 Apply 或 #267 connector 修复通过。

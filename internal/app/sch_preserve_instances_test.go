@@ -55,6 +55,7 @@ func preserveComposeFixture(t *testing.T) (*schCompositionPlan, map[string]any) 
 			pin["otherProperty"] = map[string]any{"literal": "${literal}", "empty": "", "zero": 0.0}
 		}
 	}
+	composeFixturePageInventory(result)
 	return p, env
 }
 

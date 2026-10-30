@@ -145,6 +145,7 @@ func checkSchPageInventory(want map[string]any, result map[string]any) error {
 func schPreservedDrawingReset(page map[string]any, preserved *schPreservedParts) ([]string, map[string]any, error) {
 	retained := map[string]bool{}
 	parts := map[string]bool{}
+	pinOwners := map[string]string{}
 	for _, id := range preserved.IDs {
 		retained[id] = true
 		parts[id] = true
@@ -156,6 +157,7 @@ func schPreservedDrawingReset(page map[string]any, preserved *schPreservedParts)
 				return nil, nil, fmt.Errorf("invalid/duplicate preserved pin id")
 			}
 			retained[id] = true
+			pinOwners[id] = stringVal(part["primitiveId"])
 		}
 	}
 	deleted := map[string]bool{}
@@ -168,6 +170,15 @@ func schPreservedDrawingReset(page map[string]any, preserved *schPreservedParts)
 		for _, item := range value.([]any) {
 			row := item.(map[string]any)
 			id := stringVal(row["primitiveId"])
+			if kind == "pins" {
+				// Part pins survive with their instances. They are never a
+				// deletion target; retain the explicit owner ledger for readback.
+				owner := stringVal(row["componentId"])
+				if !parts[owner] || pinOwners[id] != owner {
+					return nil, nil, fmt.Errorf("unprotected native part pin %s", id)
+				}
+				continue
+			}
 			if kind == "components" {
 				switch row["componentType"] {
 				case "part":

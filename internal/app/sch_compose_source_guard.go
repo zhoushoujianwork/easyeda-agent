@@ -18,6 +18,7 @@ func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
 	}
 	fields := map[string][]string{
 		"components": {"componentType"},
+		"pins":       {"componentId"},
 		"wires":      {"Line", "Net", "Color", "LineWidth", "LineType"},
 		"buses":      {"BusName", "Line", "Color", "LineWidth", "LineType"},
 		"arcs":       {"StartX", "StartY", "ReferenceX", "ReferenceY", "EndX", "EndY", "Color", "FillColor", "LineWidth", "LineType"},
@@ -32,6 +33,7 @@ func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
 		return nil, fmt.Errorf("before snapshot pagePrimitives has incomplete class inventory")
 	}
 	sets := map[string]map[string]bool{}
+	identities := map[string]bool{}
 	for kind, required := range fields {
 		rows, ok := page[kind].([]any)
 		if !ok {
@@ -44,10 +46,11 @@ func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
 				return nil, fmt.Errorf("before snapshot malformed %s primitive", kind)
 			}
 			id, ok := row["primitiveId"].(string)
-			if !ok || id == "" || ids[id] {
+			if !ok || id == "" || ids[id] || identities[id] {
 				return nil, fmt.Errorf("before snapshot missing/duplicate %s primitiveId", kind)
 			}
 			ids[id] = true
+			identities[id] = true
 			for _, field := range required {
 				if _, present := row[field]; !present {
 					return nil, fmt.Errorf("before snapshot %s.%s unavailable", kind, field)
@@ -67,6 +70,9 @@ func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
 			return nil, fmt.Errorf("before snapshot component identity differs from page inventory")
 		}
 		componentCounts[stringVal(row["componentType"])]++
+	}
+	if err := schComposePartPinInventory(components, page); err != nil {
+		return nil, err
 	}
 	wires, ok := result["wires"].([]any)
 	if !ok {
@@ -112,6 +118,43 @@ func schComposeProtectedPage(result map[string]any) (map[string]any, error) {
 		}
 	}
 	return page, nil
+}
+
+// The connector's pins class contains part-owned identities, not independent
+// drawing objects. Reconcile it with the rich physical-pin read before using
+// those identities to protect attributes or predict a drawing reset.
+func schComposePartPinInventory(components []any, page map[string]any) error {
+	want := map[string]string{}
+	for _, item := range components {
+		component := item.(map[string]any)
+		if component["componentType"] != "part" {
+			continue
+		}
+		owner := stringVal(component["primitiveId"])
+		pins, ok := component["pins"].([]any)
+		if !ok || component["pinsAvailable"] != true || len(pins) == 0 {
+			return fmt.Errorf("before snapshot part %s physical pin inventory unavailable", owner)
+		}
+		for _, item := range pins {
+			pin, ok := item.(map[string]any)
+			if !ok || stringVal(pin["primitiveId"]) == "" || want[stringVal(pin["primitiveId"])] != "" {
+				return fmt.Errorf("before snapshot invalid/duplicate physical pin identity")
+			}
+			want[stringVal(pin["primitiveId"])] = owner
+		}
+	}
+	pins := page["pins"].([]any) // shape and uniqueness checked above
+	if len(pins) != len(want) {
+		return fmt.Errorf("before snapshot part and page pin inventories differ")
+	}
+	for _, item := range pins {
+		pin := item.(map[string]any)
+		owner, known := pin["componentId"].(string)
+		if !known || owner == "" || want[stringVal(pin["primitiveId"])] != owner {
+			return fmt.Errorf("before snapshot page pin ownership differs from physical pin inventory")
+		}
+	}
+	return nil
 }
 
 // An empty native drawing cannot be exported as a netlist by some hosts. This
