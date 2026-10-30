@@ -96,8 +96,8 @@ func TestPowerIssue273LocalLayoutPreservesCanonicalEvidence(t *testing.T) {
 			if !bytes.Equal(before, after) {
 				t.Fatal("canonical source or sheet mutated")
 			}
-			if partial, err := planLibLayout(input); err == nil || partial != nil {
-				t.Fatal("baseline failure disappeared; reassess fixture")
+			if bounded, err := planLibLayout(input); err != nil || bounded == nil {
+				t.Fatal("bounded spacing search did not solve the original sheet", err)
 			}
 		})
 	}

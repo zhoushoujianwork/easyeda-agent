@@ -10,6 +10,7 @@ import (
 // SchematicLayoutSearchDiagnostics describes bounded search, not a proof that
 // no placement exists outside the explored coordinates/branches.
 type SchematicLayoutSearchDiagnostics struct {
+	SpacingTrials          []SchematicSpacingTrial      `json:"spacingTrials,omitempty"`
 	Strategy               string                       `json:"strategy"`
 	Backtracks             int                          `json:"backtracks"`
 	RepairAttempts         int                          `json:"repairAttempts"`
@@ -158,6 +159,7 @@ type schematicRepairSearch struct {
 	lastErr         error
 	lastTerminal    powerLayoutPlan
 	lastTerminalErr error
+	spacingTried    bool
 	focused         bool
 	routing         *schematicRoutingContext
 }
@@ -243,6 +245,21 @@ func (s *schematicRepairSearch) search(p powerLayoutPlan, pending []string) (*po
 		return nil, errSchematicRepairFocus
 	}
 	if len(pending) == 0 {
+		// Keep a small compact fast path, then explore a different geometry
+		// before naming the same dense checkpoint exhausts the entire budget.
+		// Both attempts share all candidate/node/reroute allowances.
+		if !s.spacingTried && *s.budget >= 1536 && len(p.Placements) > 1 {
+			s.spacingTried = true
+			fastQuota := 256
+			fast, fastErr := libFinishSchematicLayoutRegenerate(p, s.input.NetPolicies, &fastQuota, s.routing)
+			*s.budget -= 256 - fastQuota
+			if fastErr == nil {
+				return fast, nil
+			}
+			if expanded, ok := s.tryCheckpointSpacing(p); ok {
+				return expanded, nil
+			}
+		}
 		limit := s.terminalSliceBudget()
 		var out *powerLayoutPlan
 		var err error
