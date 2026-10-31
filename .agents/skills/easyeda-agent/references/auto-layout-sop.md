@@ -32,7 +32,7 @@ easyeda sch sheet-geometry --from-svg sheet-before.svg --json > sheet-exact.json
 ```
 
 保留导出回执的工程、文档、窗口、时间和工件 SHA256；核对实际文件 SHA256 与解析结果
-`sourceSha256` 相同，再将 `result.sheet.innerBBox` 写入源的 `sheetBorder`，将 `result.keepouts`
+`sourceSha256` 相同，再将 `result.sheet.innerBBox` 写入源的 `sheetBorder`，将 `result.keepouts[].bbox`
 写入源的 `keepouts`。坐标是 raw、y 向上，边界按矢量中心线计算，另留笔画净距。
 解析器只支持已识别的单纸张矩形内外框及单矩形图签；缺失、歧义、变换或不支持的结构会拒绝，
 此时保留错误并标 `unsupported`，不改 SVG、猜比例或回填估计值。离线解析本身不证明现场身份
