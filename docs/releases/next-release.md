@@ -21,8 +21,33 @@
 只读独立 Agent 已重算原始证据与源码对应，专项结论 pass。验收材料见 evidence/v1.16.0。
 不把先前专项通过写成完整小板端到端通过，不把发布回执当作外部平台公开可安装。
 自动检查已通过：Go 5829 项、Connector 1305 项、发布脚本 123 项，另含 MCP、typecheck/build、vet 和 agent/Skill 检查。
-干净 c1770c69 原生候选的 15 项离线 CLI 冒烟通过；完整发布构建、安装升级及其独立核验尚未完成。
+干净 c1770c69 原生候选的 15 项离线 CLI 冒烟通过；标准本地发布构建、全资产校验与隔离安装升级验证均已完成；第二阶段只读独立核验 pass：资产字节、二进制身份、冻结验收包、Skill/连接器、安装脚本与三轮安装结果均独立核对一致。
 尚未打标签、上传或发布；原始记录在本地 release-v1.16.0 证据目录。
+
+
+## 本地发布资产与安装验证
+
+标准 `make release-check VERSION=v1.16.0` 通过。独立干净 clone 基于
+`a5f948b7` 执行 `make release-build VERSION=v1.16.0`，生成五平台 CLI、连接器、
+192 文件 Skill、两种安装脚本、验收包与 checksums 共十一文件。
+十个资产 SHA256 全部匹配，五个二进制 build info 均为同一源码提交、v1.16.0、
+`vcs.modified=false`。其中 macOS arm64 CLI SHA256 为
+`db16f4ffff109973adf7951feb8ca91f4889a6d25b9b724f2fca51113e5a4a4a`。
+完整 `make release-smoke` 通过，包含资产/验收包验证与本机十五项离线 CLI 冒烟。
+其他平台构建完成不等于这些发布二进制已在对应平台运行。
+
+原样 `install.sh` 在临时 bin 和临时 Claude Skill 目录执行，未修改 HOME/CODEX_HOME，
+没有启动 daemon 或更换系统工具。三轮分别为首次安装 v1.16.0、安装已发布 v1.15.0、
+从该版本升级 v1.16.0；每轮 CLI 实字节与输入资产一致、版本正确，192 个 Skill 文件逐字节
+匹配，升级移除了旧包哨兵文件。v1.15.0 的二进制与 Skill 从 GitHub 下载后先与官方
+checksums 比对；v1.16.0 使用本地候选资产。下载通道为仅允许对应精确 URL 的本地 curl
+替身，不把此测试称为尚未发布的 v1.16.0 远端下载或 `easyeda update` 联网升级验收。
+
+原始日志与哈希记录保存在本地 release-v1.16.0 中的 release-build.log、release-smoke.log、
+release-assets-identity.json、installer-smoke-result.json 和三次安装日志。
+验收四份材料保持构建时已审核内容，发布包中 test-evidence.zip 与其逐字节对应。
+本节记录的是候选 a5f948b7 的本地资产验证；正式发布须从最终已审阅提交重新构建、
+核验附注标签、远端资产与公开下载，不能把准备完成当成已经发布。
 
 ---
 
