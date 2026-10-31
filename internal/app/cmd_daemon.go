@@ -29,6 +29,7 @@ func newDaemonCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Manage the easyeda-agent background daemon",
 	}
 	d.AddCommand(
+		newDaemonServeIsolatedCmd(stdout),
 		newDaemonStartCmd(cfg, stdout, stderr),
 		newDaemonStopCmd(cfg, stdout),
 		newDaemonRestartCmd(cfg, stdout, stderr),

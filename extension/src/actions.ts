@@ -1,5 +1,6 @@
 import { libraryCbbSearch, libraryCbbGet, libraryCbbExportSource } from './library-cbb';
 import { projectOpen, projectExport, projectImport } from './project-transfer';
+import { projectDelete, projectDeletePreview } from './project-delete';
 import { pcbExport3D, pcbExport3DShell } from './pcb-export-3d';
 import { pcbExportGerber, pcbExportPlacement } from './pcb-export-manufacture';
 import { pcbModel3dBind, pcbModel3dList, pcbModel3dSetTransform } from './pcb-model3d';
@@ -16238,6 +16239,8 @@ const HANDLERS: Record<string, Handler> = {
 	'project.export_source': projectExportSource,
 	'project.find': projectFind,
 	'project.create': projectCreate,
+	'project.delete_preview': projectDeletePreview,
+	'project.delete': projectDelete,
 	'project.open': projectOpen,
 	'project.export': projectExport,
 	'project.import': projectImport,

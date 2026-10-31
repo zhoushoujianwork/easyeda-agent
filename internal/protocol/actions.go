@@ -101,6 +101,19 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"project.current", "document.current"},
 		},
 		{
+			Name: "project.delete_preview", Domain: DomainProject, Phase: 1, NeedsWindow: true,
+			Description: "Read-only exact UUID/name/team/folder preflight for project deletion from a different reference project. Reports availability of the official internal deleteProject API; does not delete anything.",
+			Inputs:      []string{"projectUuid", "expectedFriendlyName", "expectedTeamUuid optional"},
+			Outputs:     []string{"target", "referenceProjectUuid", "inventoryCount", "supported", "preflightVerified"},
+		},
+		{
+			Name: "project.delete", Domain: DomainProject, Phase: 1, NeedsWindow: true, Mutates: true, NeedsConfirm: true,
+			Description: "Delete one exact inactive project using the official internal SDK API, after UUID/name/team and inventory checks. Requires confirmDelete:true; attempts once, verifies target removal and unchanged reference. Unknown or partial results never authorize retry. No GUI/debug fallback.",
+			Inputs:      []string{"projectUuid", "expectedFriendlyName", "expectedTeamUuid", "confirmDelete:true"},
+			Outputs:     []string{"deleted", "verified", "partial", "removed", "referenceProjectUuid"},
+			VerifyWith:  []string{"project.find", "project.current"},
+		},
+		{
 			Name: "project.export", Domain: DomainProject, Phase: 1, NeedsWindow: true,
 			Description: "Export the active project as native epro2 bytes; checks project identity before and after export, bounds payload to 16 MiB. Save first. CLI validates ZIP/CRC and writes a new file; export does not verify restore.",
 			Inputs:      []string{"projectUuid"},

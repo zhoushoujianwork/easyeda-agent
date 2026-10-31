@@ -146,3 +146,18 @@ Web 4.1.71 现场结果（2026-10-13，连接器 1.10.5）：
 断开、空返回或超时都是**结果未知**（参考 [#203](https://github.com/zhoushoujianwork/easyeda-agent/issues/203)
 桌面端空返回）：先 `project find --name <名称> --team <teamUuid>`，不得盲目重导入；结束后用
 `project open` 切回原工程并核对。回执 `contentVerified:false`：新工程必须打开并回读原理图、PCB 与 DRC。
+
+## 经授权清理测试工程
+
+只有用户明确要求删除时才清理工程。先从创建回执建立 UUID 与名称清单，不只按名称前缀
+选择；保留原报告，使用另一个已观察的参考工程承载调用，拒绝删除当前参考工程。
+运行 `easyeda project delete --window <参考窗口> --project-uuid <目标UUID> --expected-name <精确名称> --dry-run`，
+核对目标、团队与 API 支持；实际删除再加 `--expected-team <预检团队> --yes`。
+预检与删除为不同的只读/写入动作，不能用 dry-run 绕过确认。官方方法 `dmt_Project.deleteProject`
+在 SDK 中标为 internal，运行时缺失或读回不完整即停止，不用 GUI、debug.exec_js 或直接改库兜底。
+方法存在只证明可调用，不保证宿主实现了删除。Web 4.1.78 现场预检可通过，但官方方法返回
+`false`，真实重载后目标仍存在，当前该宿主的整工程删除未验证成功；不得标为 `live-verified`。
+删除只发一次，要求 deleted:true、verified:true、partial:false；仍须真实重载后重新查工程清单。
+关闭标签、删除本地最近记录或清空 Board 不等于删除云端工程；SDK 删除不等于已证明回收站永久清空。
+共享 daemon 不支持新动作时，保留原实例，只能使用显式隔离验收服务及获准的连接器环境更新，
+独立端口/状态目录并恢复配置，不能重启或替换共享 daemon。

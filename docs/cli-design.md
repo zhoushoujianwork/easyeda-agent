@@ -18,6 +18,8 @@ easyeda <domain> <action> [flags]
 | `easyeda bom` | BOM 导出与补全 |
 | `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型；`cbb search/get` 只读检索原生复用块身份与变体，`cbb export-source` 导出原生归档 |
 | `easyeda daemon` | 守护进程管理（start / stop / restart / health；restart 与 start 同为前台阻塞） |
+| `easyeda daemon serve-isolated --port <端口> --state-dir <新绝对目录>` | 临时验收服务；不替换既有实例，不写共享 PID/审计，不自动保存或同步 Skill；端口占用直接失败 |
+| `easyeda project delete --project-uuid <UUID> --expected-name <名称>` | 先 `--dry-run` 预检，实际删除加 `--expected-team <预检团队> --yes`；拒绝参考工程，缺少官方 internal API 即停止，未知结果不重试 |
 | `easyeda web` | Web 编辑器页面生命周期；`reload` 与 `doc reload` 区分，保存后等待新连接和同一文档可读 |
 | `easyeda audit` | 操作日志查看 |
 | `easyeda debug connector-logs --limit 30` | 只读回读当前窗口连接器自己的心跳/重连日志，不运行脚本或清空宿主日志 |
