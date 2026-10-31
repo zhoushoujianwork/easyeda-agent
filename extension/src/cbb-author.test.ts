@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbPlace } from './cbb-author';
+import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbPlace, cbbProjectPlace } from './cbb-author';
 const asset = { uuid:'c',libraryUuid:'l',name:'EA_AGENT__TEST',boards:[] };
 const identity = {uuid:'c',libraryUuid:'l',expectedName:asset.name};
 function setup(extra: any = {}) {
@@ -17,7 +17,7 @@ function setup(extra: any = {}) {
   sch_PrimitivePolygon:extra.sch_PrimitivePolygon,
   sch_PrimitiveCircle:extra.sch_PrimitiveCircle,
   sch_Document:extra.sch_Document,
- };
+   };
 }
 function clear(){delete (globalThis as any).eda;}
 
@@ -74,6 +74,38 @@ function instance(overrides:any={}){
  return {getState_PrimitiveId:()=>'new',getState_ComponentType:()=>'block_symbol',getState_X:()=>100,getState_Y:()=>200,getState_Rotation:()=>0,getState_Mirror:()=>false,getState_Cbb:()=>({uuid:'c',libraryUuid:'l'}),getState_CbbSymbol:()=>({uuid:'s',cbbUuid:'c',libraryUuid:'l'}),...overrides};
 }
 const placement={...identity,symbolUuid:'s',projectUuid:'p',documentUuid:'d',x:100,y:200};
+
+const localPlacement={projectUuid:'p',documentUuid:'d',schematicUuid:'schema',expectedName:asset.name,symbolUuid:'s',x:100,y:200};
+function localSetup(land=true){
+ let writes=0;
+ setup({lib_Cbb:{search:async(_:string,lib:string)=>{assert.equal(lib,'project');return [{uuid:'s',name:asset.name.toLowerCase()}];}},dmt_Schematic:{getSchematicInfo:async()=>({uuid:'schema',parentProjectUuid:'p',itemType:'CBB Schematic',name:asset.name,cbbSymbol:{uuid:'original-source-symbol',name:asset.name,cbbUuid:'original-source-cbb',type:17}})},lib_Symbol:{get:async(id:string,lib:string)=>{assert.equal(id,'s');assert.equal(lib,'project');return {uuid:'s',type:17,name:asset.name};}},sch_PrimitiveComponent:{getAll:async()=>writes&&land?[instance({getState_Symbol:()=>({uuid:'s'})})]:[],createCbbSymbol:async(...args:any[])=>{assert.deepEqual(args,[{libraryUuid:'project',cbbUuid:'',uuid:'s'},100,-200,0,false]);writes++;return instance();}}});
+ return ()=>writes;
+}
+test('project CBB dry-run inspects exact native membership without importing or placing',async()=>{
+ const writes=localSetup();try{const r=(await cbbProjectPlace({...localPlacement,dryRun:true})).result;assert.equal(r?.verified,true);assert.equal((r?.membership as any).symbolUuid,'s');assert.equal((r?.membership as any).sourceSymbolUuid,'original-source-symbol');assert.equal(writes(),0);}finally{clear();}
+});
+test('project CBB catalogue ambiguity refuses rather than guessing a local UUID',async()=>{
+ const writes=localSetup();try{(globalThis as any).eda.lib_Cbb.search=async()=>[{uuid:'a',name:asset.name},{uuid:'b',name:asset.name}];(globalThis as any).eda.lib_Symbol.get=async(id:string)=>({uuid:id,type:17,name:asset.name});assert.equal((await cbbProjectPlace({...localPlacement,viaSymbolApi:false})).result?.partial,true);assert.equal(writes(),0);}finally{clear();}
+});
+test('project CBB rejects graph/explicit variant mismatch before placement',async()=>{
+ const writes=localSetup();try{await assert.rejects(cbbProjectPlace({...localPlacement,symbolUuid:'wrong'}));(globalThis as any).eda.dmt_Schematic.getSchematicInfo=async()=>({uuid:'schema',parentProjectUuid:'other'});await assert.rejects(cbbProjectPlace({...localPlacement,viaSymbolApi:false}));assert.equal(writes(),0);}finally{clear();}
+});
+test('project CBB uses official current-project semantics and verifies fresh local binding',async()=>{
+ const writes=localSetup();try{const r=(await cbbProjectPlace({...localPlacement,viaSymbolApi:false})).result;assert.equal(r?.verified,true);assert.equal(r?.primitiveId,'new');assert.equal(writes(),1);}finally{clear();}
+});
+test('project CBB returned ID without a fresh instance is partial and never replays',async()=>{
+ const writes=localSetup(false);try{const r=(await cbbProjectPlace({...localPlacement,viaSymbolApi:false})).result;assert.equal(r?.verified,false);assert.equal(r?.partial,true);assert.equal(r?.primitiveId,'new');assert.equal(writes(),1);}finally{clear();}
+});
+test('explicit generic symbol API must still produce a native block_symbol bound to the exact project asset',async()=>{
+ for(const native of [true,false]){
+  localSetup();let writes=0;
+  const c=(globalThis as any).eda.sch_PrimitiveComponent;
+  c.createCbbSymbol=async()=>assert.fail('no automatic fallback or replay');
+  c.create=async(...args:any[])=>{assert.deepEqual(args,[{libraryType:'2',libraryUuid:'p',uuid:'s'},100,200,'',0,false,true,true]);writes++;return instance();};
+  c.getAll=async()=>writes?[instance({getState_ComponentType:()=>native?'block_symbol':'part',getState_Symbol:()=>({uuid:'s'})})]:[];
+  try{const r=(await cbbProjectPlace({...localPlacement,viaSymbolApi:true})).result;assert.equal(r?.verified,native);assert.equal(writes,1);}finally{clear();}
+ }
+});
 test('CBB places an explicitly verified native block once and fresh-reads its identity',async()=>{
  let written=false,writes=0;const c=instance();setup({sch_PrimitiveComponent:{getAll:async()=>written?[c]:[],createCbbSymbol:async(...args:any[])=>{assert.deepEqual(args,[{libraryUuid:'l',cbbUuid:'c',uuid:'s'},100,200,0,false]);writes++;written=true;return c;}}});
  try{const r=(await cbbPlace(placement)).result;assert.equal(r?.verified,true);assert.equal(r?.primitiveId,'new');assert.equal(writes,1);}finally{clear();}

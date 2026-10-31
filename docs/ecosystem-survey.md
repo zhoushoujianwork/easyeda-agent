@@ -770,5 +770,18 @@ Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，�
 Web 4.1.78 上已验证个人样件创建、源电路和块符号几何保存重开；外部放置仍未通过：
 官方 createCbbSymbol 返回 ID，但目标页新组件库存及原生源码均无对应实例，保存重开仍缺失。
 同时出现隐式导入的 Board、原理图与 PCB，须按调用前库存识别并精确清理，不能当作零副作用失败。
-具体宿主根因未确认；不得用补调 done、私有消息总线或 GUI 重放绕过。实例接线与引脚网现场验收
-仍不完整，不能据源符号持久化或离线测试关闭 #244。
+具体宿主根因未确认；不得用补调 done、私有消息总线或 GUI 重放绕过。后续通用符号路径的
+定向验收见下文；专用 createCbbSymbol 的失败证据仍保留，不补签为通过。
+
+Web 4.1.78 的 `DMT_Schematic.buildCbbSymbol` 从内部 `source` 的 `symbol|project` 字段
+投影原库 UUID，而非导入后的本地符号 UUID。因此 `cbbSymbol.uuid` 不可直接当作
+当前工程库的 UUID。实验入口 `sch cbb-project-place --dry-run` 交叉核对原生 CBB
+原理图身份、唯一同名工程 CBB 目录项，以及按目录本地 UUID 读取的 type 17 符号。
+目录名称可能是小写内部 title，须按每个目录 UUID 读取符号并比较权威显示名。
+不允许同名歧义、不以原库 UUID 回退猜本地 UUID。
+
+`sch cbb-project-place` 默认走官方 `sch_PrimitiveComponent.create` 的 SYMBOL 索引入口，
+以当前项目 UUID 作为库路径；输入必须是已核实的 type 17 资产，写后必须是真实
+`block_symbol` 且绑定精确本地符号。这条路径在 Type-C、双 5.1kΩ 和按钮模块上通过
+实际放置、引脚绝对坐标、连接网名/未接对照、保存重开回读；KEY 还与平台展开网表中的
+按钮脚一致。专用 CBB API 仍失败；CLI 不自动回退或重放。全局电源旗保留其全局网名语义。

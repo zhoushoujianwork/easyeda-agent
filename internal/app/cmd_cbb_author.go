@@ -162,3 +162,31 @@ func newSchCbbPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string)
 	c.Flags().BoolVar(&allowProbe, "allow-source-project-probe", false, "after saving ALL open documents, allow a read-only source CBB project probe and verified return before single placement")
 	return c
 }
+
+func newSchCbbProjectPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string) *cobra.Command {
+	var project, page, schematic, name, symbol string
+	var x, y float64
+	var dryRun bool
+	var viaSymbol bool
+	c := &cobra.Command{Use: "cbb-project-place", Short: "Inspect or place one exact already-imported project CBB without importing again", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		if strings.TrimSpace(project) == "" || strings.TrimSpace(page) == "" || strings.TrimSpace(schematic) == "" || !strings.HasPrefix(name, "EA_AGENT__") || (!dryRun && strings.TrimSpace(symbol) == "") || !cmd.Flags().Changed("x") || !cmd.Flags().Changed("y") || math.IsNaN(x) || math.IsNaN(y) || math.IsInf(x, 0) || math.IsInf(y, 0) {
+			return fmt.Errorf("explicit project/page/schematic, EA_AGENT__ expected name, finite x/y, and symbol (unless dry-run) required")
+		}
+		p := map[string]any{"projectUuid": project, "documentUuid": page, "schematicUuid": schematic, "expectedName": name, "x": x, "y": y, "dryRun": dryRun}
+		p["viaSymbolApi"] = viaSymbol
+		if symbol != "" {
+			p["symbolUuid"] = symbol
+		}
+		return dispatchTimed(cfg, "schematic.cbb.project_place", *window, p, 35*time.Second, stdout, stderr)
+	}}
+	c.Flags().StringVar(&project, "project-uuid", "", "exact active project UUID (required)")
+	c.Flags().StringVar(&page, "page", "", "exact target page UUID (required)")
+	c.Flags().StringVar(&schematic, "schematic", "", "exact already-imported CBB schematic UUID (required)")
+	c.Flags().StringVar(&name, "expected-name", "", "exact owned EA_AGENT__ module name (required)")
+	c.Flags().StringVar(&symbol, "symbol", "", "exact project-library symbol UUID returned by dry-run")
+	c.Flags().Float64Var(&x, "x", 0, "raw X coordinate (required)")
+	c.Flags().Float64Var(&y, "y", 0, "raw Y coordinate (required)")
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "inspect exact local variant without placement")
+	c.Flags().BoolVar(&viaSymbol, "via-symbol-api", true, "explicitly use official generic symbol placement for the verified native type17 asset; fresh block_symbol readback still required")
+	return c
+}

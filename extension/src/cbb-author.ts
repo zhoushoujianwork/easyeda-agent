@@ -216,9 +216,69 @@ export async function cbbPlace(p: Payload): Promise<ActionResult> {
 }
 
 type Pin = NonNullable<Awaited<ReturnType<typeof eda.sch_PrimitivePin.getAll>>>[number];
+
+/** Place an already-imported project CBB; never invokes the cross-project importer. */
+export async function cbbProjectPlace(p: Payload): Promise<ActionResult> {
+ fields(p, ['projectUuid','documentUuid','schematicUuid','expectedName','symbolUuid','x','y','dryRun','viaSymbolApi']);
+ const projectUuid=text(p,'projectUuid'), documentUuid=text(p,'documentUuid');
+ const schematicUuid=text(p,'schematicUuid'), expectedName=text(p,'expectedName');
+ named(expectedName);
+ if (p.dryRun !== undefined && typeof p.dryRun !== 'boolean') fail('dryRun must be boolean.');
+ if(p.viaSymbolApi!==undefined&&typeof p.viaSymbolApi!=='boolean') fail('viaSymbolApi must be boolean.');
+ const x=p.x,y=p.y;
+ if(typeof x!=='number'||!Number.isFinite(x)||typeof y!=='number'||!Number.isFinite(y)) fail('Finite placement x/y required.');
+ await page(projectUuid,documentUuid);
+ const graph=await eda.dmt_Schematic.getSchematicInfo(schematicUuid);
+ const sourceSymbolUuid=graph?.cbbSymbol?.uuid;
+ if(!graph || graph.uuid!==schematicUuid || graph.parentProjectUuid!==projectUuid || graph.name!==expectedName || graph.itemType!=='CBB Schematic' || !sourceSymbolUuid || graph.cbbSymbol?.type!==17 || graph.cbbSymbol.name!==expectedName) fail('Exact active-project native CBB schematic and symbol membership required.');
+ // DMT buildCbbSymbol projects source.split('|')[0], not the local UUID.
+ // The official project CBB catalogue exposes the local record instead.
+ const catalogue=await eda.lib_Cbb.search(expectedName,'project',undefined,100,1);
+ if(!Array.isArray(catalogue)||catalogue.length>=100) fail('Project CBB catalogue is unavailable or truncated.');
+ // Catalogue name can be the internal lowercase title. Resolve every entry
+ // by its local UUID and compare the authoritative display name instead.
+ const matches:Array<{symbolUuid:string;symbol:NonNullable<Awaited<ReturnType<typeof eda.lib_Symbol.get>>>}>=[];
+ for(const entry of catalogue){
+  if(!entry?.uuid) return partial({graph,catalogue},'Project CBB catalogue contains an unreadable identity.');
+  const record=await eda.lib_Symbol.get(entry.uuid,'project');
+  if(!record || record.uuid!==entry.uuid || record.type!==17) return partial({graph,catalogue,unreadableSymbolUuid:entry.uuid},'Project CBB catalogue symbol is unreadable.');
+  if(record.name===expectedName) matches.push({symbolUuid:entry.uuid,symbol:record});
+ }
+ if(matches.length!==1) return partial({graph,catalogue,matches},'Project CBB catalogue name is missing or ambiguous.');
+ const {symbolUuid,symbol}=matches[0];
+ const membership={source:'active-project-CBB-graph-and-unique-catalogue',projectUuid,schematicUuid,symbolUuid,sourceSymbolUuid,sourceCbbUuid:graph.cbbSymbol.cbbUuid??'',name:expectedName};
+ if(!symbol || symbol.uuid!==symbolUuid || symbol.type!==17 || symbol.name!==expectedName) return partial({membership,graph,symbol:symbol??null},'Project CBB symbol metadata differs from the selected schematic.');
+ if(p.dryRun===true) return {result:{membership,symbol,dryRun:true,verified:true,partial:false}};
+ if(text(p,'symbolUuid')!==symbolUuid) fail('Explicit project symbol differs from the graph-selected variant.');
+ await page(projectUuid,documentUuid);
+ const before=(await eda.sch_PrimitiveComponent.getAll()).map(geometry);
+ if(new Set(before.map(c=>c.id)).size!==before.length || before.some(c=>!c.id||![c.x,c.y,c.rotation].every(Number.isFinite)||typeof c.mirror!=='boolean')) fail('Project CBB baseline inventory is incomplete.');
+ let primitiveId:string|undefined;
+ try {
+  // Official SDK uses cbbUuid="" for an existing CURRENT-project symbol.
+  // An explicit graph proof above replaces cross-project library assumptions.
+  // SDK 0.3.53 passes CBB y unchanged to native (y-down) placeInfo. Our CLI,
+  // and getState_Y(), use schematic y-up coordinates.
+  const created=p.viaSymbolApi!==false
+   ? await eda.sch_PrimitiveComponent.create({libraryType:'2' as ELIB_LibraryType.SYMBOL,libraryUuid:projectUuid,uuid:symbolUuid},x,y,'',0,false,true,true)
+   : await eda.sch_PrimitiveComponent.createCbbSymbol({libraryUuid:'project',cbbUuid:'',uuid:symbolUuid},x,-y,0,false);
+  primitiveId=created?.getState_PrimitiveId();
+  await page(projectUuid,documentUuid);
+  const after=await eda.sch_PrimitiveComponent.getAll();
+  const instance=after.find(c=>c.getState_PrimitiveId()===primitiveId);
+  const preserved=before.every(old=>after.some(c=>JSON.stringify(geometry(c))===JSON.stringify(old)));
+  if(!primitiveId||before.some(c=>c.id===primitiveId)||!instance||after.length!==before.length+1||!preserved) return partial({membership,primitiveId:primitiveId??null,preserved},'Project CBB placement did not produce one isolated fresh instance.');
+  const state=geometry(instance);
+  const binding=(instance as unknown as {getState_Symbol:()=>{uuid:string}}).getState_Symbol();
+  if(state.type!=='block_symbol'||state.x!==x||state.y!==y||state.rotation!==0||state.mirror!==false||binding?.uuid!==symbolUuid) return partial({membership,primitiveId,state,binding},'Project CBB geometry or local symbol binding differs.');
+  return {result:{membership,primitiveId,state,binding,preserved,verified:true,partial:false}};
+ } catch(err){return partial({membership,primitiveId:primitiveId??null,outcome:'unknown'},err);}
+}
+
 function pinState(pin: Pin) {
  return { id: pin.getState_PrimitiveId(), number: pin.getState_PinNumber(), name: pin.getState_PinName(), x: pin.getState_X(), y: pin.getState_Y(), rotation: pin.getState_Rotation(), length: pin.getState_PinLength(), shape: pin.getState_PinShape(), pinType: pin.getState_pinType() };
 }
+
 export async function cbbSymbolBuild(p: Payload): Promise<ActionResult> {
  fields(p, ['uuid', 'libraryUuid', 'expectedName', 'symbolUuid', 'pins', 'outline', 'dryRun']);
  const outline = p.outline;

@@ -49,7 +49,7 @@ func TestCbbAuthorRejectsIncompleteInput(t *testing.T) {
 	}
 }
 func TestCbbWritesRequireExplicitVerifiedResult(t *testing.T) {
-	for _, action := range []string{"library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "library.cbb.symbol_build", "schematic.cbb.place"} {
+	for _, action := range []string{"library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "library.cbb.symbol_build", "schematic.cbb.place", "schematic.cbb.project_place"} {
 		for _, result := range []map[string]any{{}, {"verified": false}, {"verified": true, "partial": true}} {
 			if libraryWriteResultError(action, result, []byte("original response")) == nil {
 				t.Fatalf("%s accepted %#v", action, result)
@@ -57,6 +57,33 @@ func TestCbbWritesRequireExplicitVerifiedResult(t *testing.T) {
 		}
 		if err := libraryWriteResultError(action, map[string]any{"verified": true, "partial": false}, nil); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestSchCbbProjectVariantRequiresExplicitVariantUnlessPreview(t *testing.T) {
+	base := []string{"cbb-project-place", "--project-uuid", "p", "--page", "d", "--schematic", "schema", "--expected-name", "EA_AGENT__TEST", "--x", "0", "--y", "0"}
+	var out bytes.Buffer
+	c := newSchCmd(&appConfig{}, &out, &out)
+	c.SetArgs(base)
+	if c.Execute() == nil {
+		t.Fatal("accepted execution without explicit project symbol")
+	}
+	for _, flags := range [][]string{{"--dry-run"}, {"--symbol", "s"}} {
+		cfg, captured, cleanup := newCapturingDaemon(t)
+		c := newSchCmd(cfg, &out, &out)
+		c.SetArgs(append(append([]string{}, base...), flags...))
+		var unverified *unverifiedLibraryWriteError
+		if err := c.Execute(); !errors.As(err, &unverified) {
+			cleanup()
+			t.Fatalf("accepted unverified response: %v", err)
+		}
+		captured.mu.Lock()
+		matched := captured.action == "schematic.cbb.project_place" && captured.payload["schematicUuid"] == "schema" && captured.payload["viaSymbolApi"] == true && captured.timeoutMs == 35000
+		captured.mu.Unlock()
+		cleanup()
+		if !matched {
+			t.Fatal("wrong project CBB request")
 		}
 	}
 }
