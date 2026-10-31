@@ -49,6 +49,31 @@ release-assets-identity.json、installer-smoke-result.json 和三次安装日志
 本节记录的是候选 a5f948b7 的本地资产验证；正式发布须从最终已审阅提交重新构建、
 核验附注标签、远端资产与公开下载，不能把准备完成当成已经发布。
 
+
+## 正式发布结果
+
+用户于 2026-10-31 明确要求“开始发布”。标准 `make release VERSION=v1.16.0`
+从最终合并提交 `b82be9c32404e164864e07901dd97a1bb1ad11dc` 重新构建并发布；
+附注标签 v1.16.0 精确绑定该提交，GitHub Release 于 2026-10-31 14:09:14 UTC
+转为非草稿、非预发布：[v1.16.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.16.0)。
+十一份远端文件全部实际回下载，名称、字节、SHA256 与本轮最终资产一致；
+下载包通过 release-smoke，验收四文件与 Git 源逐字节对应，不能与准备阶段 a5f948b7 的
+二进制混用。发布范围仍为 cli-fixes，完整小板/制造/硬件 E2E 未补签。
+
+真实 GitHub 首次安装在临时 bin 与 Claude Skill 目录通过，192 个文件逐字节匹配。
+已发布的 v1.15.0 CLI 在独立目录执行 `easyeda update --cli-only --version 1.16.0
+--restart-daemon=false`，完成真实下载、校验和原子替换；新文件与 GitHub 下载资产一致。
+没有替换系统 CLI、Skill 或重启正在运行的 EDA daemon；运行态仍需另行升级 CLI/连接器。
+
+SkillHub [发布任务](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/41208802312)
+成功，回执 `skillId=163177 status=None`；发布后公开下载仍为 1.15.0，
+因此仅记已提交，不称市场前台已经更新。ClawHub 原发布步骤因本机无命令失败，
+改用官方 CLI 补发后遇到写入限流；其公开状态以最后查询结果为准，不能用上传尝试替代可安装验证。
+立创连接器市场未提交新版；用户可直接从 GitHub Release 下载 1.16.0 连接器。
+
+原始发布日志、远端下载文件、SHA256、真实首次安装与升级输出保存在本地
+release-v1.16.0-published 证据目录，未覆盖此前准备阶段记录或冻结验收材料。
+
 ---
 
 ## v1.15.0 发布准备
