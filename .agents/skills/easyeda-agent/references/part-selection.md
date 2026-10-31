@@ -277,3 +277,62 @@ easyeda sch block-apply <block> --parts /tmp/parts.intl.json --project <project>
 --out <new-file.epro2>` 通过官方 beta `getCbbFileByCbbUuid` 获取原生归档，不打开工程。
 导出要求模块下载权限；不修改权限，失败保留错误。归档限定 16 MiB，CLI 校验 ZIP/CRC
 与原生项目数据并以不覆盖方式写入，返回 SHA-256；归档读取不等于真实实例验收。
+
+## 受控复用块样件的创建与清理
+
+为验证原生 `block_symbol`，可自行创建最小 CBB，无须下载第三方工程。
+`lib cbb create --name <name>` 只在当前账号个人可写库创建 `EA_AGENT__` 命名空间资产；
+返回的 `uuid/libraryUuid/name` 必须留作本轮所有权凭据。创建只调用一次，部分结果或超时
+先读取，不重复创建。`lib cbb delete --uuid ... --library ... --expected-name ...` 仅精确
+删除同一命名空间、同一库且名称匹配的资产；仍在编辑该 CBB 时拒绝删除。
+
+`lib cbb open --uuid ... --library ... --expected-name ... --from-project ... --allow-project-switch`
+会切换整个工程，调用前必须保存所有打开文档；官方接口可能丢弃未保存内容。它核对原工程
+与本轮 CBB 身份，并要求显式切换标志；不在失败后重开或自动重试。
+`lib cbb symbol-open --symbol <uuid>` 必须先进入该 CBB 工程，依据原理图
+`cbbSymbol.uuid` 的明确关联，以工程库别名 `project` 打开指定符号并回读类型 17 和 UUID。
+Web 4.1.78 的记录可能不带库 UUID 或 cbbUuid，不能靠这两个缺字段猜归属，也不默认选第一项。
+`lib cbb symbol-build --symbol <uuid> --spec <pins-outline.json> --dry-run` 先检查库存；
+去掉 dry-run 只允许空目标单次构建，逐脚/边框核对并要求 saved:true，失败保留创建 ID。所有创建、打开与放置仍需新鲜 health 中的专用连接；离线测试不能替代现场验收。
+
+原生 CBB 可能已带宿主默认矩形。空目标检查必须包含矩形、圆弧、自由文本和图片，不能
+只看 pin/polygon/circle。`symbol-open` / `symbol-build --dry-run` 返回额外图形库存；
+只有明确属于本轮且精确 ID/几何已核对的默认图形才可经 typed 删除，不自动清空或覆盖。
+导入副本的符号打开必须同时给 `symbol-open --target-project ... --imported-schematic ...`，
+核对原库所有权、导入原理图、工程目录本地符号与源 CBB UUID 后才导航；不把原库 UUID 当本地 UUID。
+
+样件至少覆盖已命名导线连接与未接线端口；保存 → 真实关闭重开 → fresh 引脚网对账后
+才能判断 #244。默认普通器件符号、工具 `block-apply` 或最近 netflag 不能充当真实 CBB。
+
+外部工程无法直接读取 CBB 内部符号时，`sch cbb-place --allow-source-project-probe` 明确允许
+保存当前页后进入源 CBB 工程核对指定符号与原理图关联，再回到原项目/页面并核对旧组件几何。
+调用前须保存所有其他打开文档；没有显式标志不切工程，源证明缺失或返回页变化时零实例创建。
+源探针与返回核对成功后才执行一次 createCbbSymbol，保留 sourceProbe 和已知 primitiveId。
+
+Web 4.1.78 的专用 `createCbbSymbol` 调用曾返回新 primitiveId，
+但目标页组件库存和原生源码均无实例，保存重开后仍不存在；因此返回 ID 不能证明放置成功。
+该调用还会隐式导入模块 Board、原理图及 PCB，失败也可能留下这些文档。
+恢复前须对照调用前工程库存，仅精确清理本轮导入资产，不能仅检查或清理目标页。
+这条专用 API 路径仍未通过，不能把导入成功或返回 ID 当作实例落地。
+
+已有明确导入记录时，可用 `sch cbb-project-place --project-uuid ... --page ...
+--schematic <已导入CBB原理图UUID> --expected-name EA_AGENT__... --x ... --y ... --dry-run`
+只读核对当前项目内的原生 CBB 关联和工程库符号。执行时去掉 dry-run，明确指定回读得到的
+`--symbol`。默认使用官方通用符号创建接口，传入当前项目 UUID 与 type 17 符号索引，
+不再跨工程导入；必须新回读为真实 `block_symbol`，普通器件不能冒充。
+`--via-symbol-api=false` 仅用于诊断专用 CBB 接口，不自动失败回退或重试。
+这里只证明当前工程变体，不以同名推断原库来源；来源仍需调用前后导入库存与源电路对账。
+返回 ID 仍不算落地，必须新库存核对实例、本地 Symbol UUID 和几何，然后保存重开验证。
+Type-C、双 5.1kΩ 下拉和按钮受控样件已验证该通用路径：实际块实例、原库/工程库 UUID
+区分、绝对引脚坐标、已接端口网名和未接端口 `no-touching-wire` 均经保存重开回读。
+KEY 接线后的平台展开网表也关联到内部按钮；内部全局电源旗的网名仍具有全局语义，
+不能据外部别名推断内部电源网已改名。这是定向接口验收，不是 PCB/硬件或完整 E2E 签字。
+`sch check` 对已从展开网表中证实缺席的原生块实例按真实导线判断连接，不再误报
+`geom-net-mismatch`；未接端口仍报 floating，裸标记重叠不构成 CBB 接线。
+普通器件的几何/网表不一致检查保持有效。
+
+源 CBB 符号的默认 Rectangle 可用 `lib cbb symbol-rectangle-delete --symbol <uuid>
+--spec <rectangle.json> --dry-run` 精确预检；spec 必须逐字段采用新回读的
+`{id,x,y,width,height,rotation}`。去掉 `--dry-run` 仅删除该矩形，校验引脚与 polygon
+保持不变并显式保存。只支持已证明归属的个人库源符号，无重试/回退；其他图形类存在时拒绝。
+之后仍须关闭重开符号、新回读与导图，不能把删除成功替代持久化或视觉验收。

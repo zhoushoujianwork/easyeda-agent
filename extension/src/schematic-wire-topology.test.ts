@@ -214,6 +214,37 @@ function installScene(t: { after: (f: () => void) => void }, opts: { sameNet?: b
 	};
 }
 
+test('check: expanded netlist absence is expected for CBB, while real floating ports and ordinary part mismatches remain (#244)',async t=>{
+	installScene(t,{});
+	const api=(globalThis as any).eda;
+	const component=(id:string,type:string,ref:string)=>({getState_PrimitiveId:()=>id,getState_ComponentType:()=>type,getState_Designator:()=>ref});
+	const pin=(number:string,x:number,y:number)=>({getState_PinNumber:()=>number,getState_PinName:()=>number,getState_NoConnected:()=>false,getState_X:()=>x,getState_Y:()=>y});
+	api.sch_PrimitiveComponent.getAll=async()=>[component('block','block_symbol','CBB1'),component('ordinary','part','R1')];
+	api.sch_PrimitiveComponent.getAllPinsByPrimitiveId=async(id:string)=>id==='block'?[pin('1',-20,0),pin('2',-20,40)]:[pin('1',20,0)];
+	api.sch_ManufactureData.getNetlistFile=async()=>({text:async()=>JSON.stringify({components:{}})});
+	api.sch_PrimitiveWire.getAll=async()=>[wire('wire',H,'VBUS')];
+	const out:any=await runAction('schematic.check',{});
+	assert.equal(out.result.summary.geomNetMismatches,1,'ordinary part missing from netlist must still warn');
+	assert.deepEqual(out.result.findings.filter((f:any)=>f.type==='geom-net-mismatch').map((f:any)=>f.designator),['R1']);
+	assert.equal(out.result.summary.floatingPins,1);
+	assert.deepEqual(out.result.findings.find((f:any)=>f.type==='floating-pin'&&f.designator==='CBB1').pins,['2']);
+});
+
+test('check: a bare marker on a CBB port is not physical wire connectivity (#244)',async t=>{
+	installScene(t,{});
+	const api=(globalThis as any).eda;
+	api.sch_PrimitiveComponent.getAll=async()=>[
+		{getState_PrimitiveId:()=>'block',getState_ComponentType:()=>'block_symbol',getState_Designator:()=>'CBB1'},
+		{getState_PrimitiveId:()=>'marker',getState_ComponentType:()=>'netflag',getState_X:()=>0,getState_Y:()=>0,getState_Net:()=>'GND'},
+	];
+	api.sch_PrimitiveComponent.getAllPinsByPrimitiveId=async(id:string)=>id==='block'?[{getState_PinNumber:()=>'',getState_PinName:()=>'GND',getState_NoConnected:()=>false,getState_X:()=>0,getState_Y:()=>0}]:[];
+	api.sch_ManufactureData.getNetlistFile=async()=>({text:async()=>JSON.stringify({components:{}})});
+	api.sch_PrimitiveWire.getAll=async()=>[];
+	const out:any=await runAction('schematic.check',{});
+	assert.equal(out.result.summary.floatingPins,1);
+	assert.equal(out.result.summary.geomNetMismatches,0);
+});
+
 test('check gives bare X INFO only with complete pin evidence; ordinary clean X passes', async t => {
 	installScene(t);
 	const out:any=await runAction('schematic.check',{});
