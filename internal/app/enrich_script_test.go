@@ -27,6 +27,9 @@ func isolate(t *testing.T) (home string) {
 	home = t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("EASYEDA_SKILLS_DIR", "")
+	// Client-root overrides must not leak the developer's installed Skills.
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("PATH", "")
 	t.Chdir(t.TempDir())
 	return home
