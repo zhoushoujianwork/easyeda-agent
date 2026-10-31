@@ -1,3 +1,4 @@
+import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbSymbolRectangleDelete, cbbPlace, cbbProjectPlace } from './cbb-author';
 import { libraryCbbSearch, libraryCbbGet, libraryCbbExportSource } from './library-cbb';
 import { projectOpen, projectExport, projectImport } from './project-transfer';
 import { pcbExport3D, pcbExport3DShell } from './pcb-export-3d';
@@ -4587,6 +4588,12 @@ const schematicCheck: Handler = async (payload) => {
 		if (!Array.isArray(pins)) throw new Error('Check pin API did not return an array.');
 		if (pins.length === 0) continue;
 		const designator = c.getState_Designator?.() ?? '';
+		// Native block instances are deliberately absent from the expanded
+		// manufacture netlist (#244). Its inner parts, not CBB1, own those rows.
+		// Retain physical wire checks without manufacturing a missing-net error.
+		const blockAbsentFromNetlist = netlistAvailable
+			&& c.getState_ComponentType?.() === 'block_symbol'
+			&& !netlistPinNets.has(designator);
 
 		// #183 phase 1: candidate collection — capacitor-designated (C+digits; the
 		// digit keeps CN power terminals / CR diodes out of the cap vote — their
@@ -4617,7 +4624,7 @@ const schematicCheck: Handler = async (payload) => {
 			// Pure-geometry connectivity: a wire touches the pin, or it sits on a
 			// netflag/netport/netlabel anchor.
 			const geomConnected = segs.some(s => pointOnSegment(px, py, s[0], s[1], s[2], s[3]))
-				|| connectionMarkers.some(m => Math.hypot(px - m.x, py - m.y) <= COINCIDE_TOL);
+				|| (!blockAbsentFromNetlist && connectionMarkers.some(m => Math.hypot(px - m.x, py - m.y) <= COINCIDE_TOL));
 			// Cross-check geometry against the JSON-authoritative netlist:
 			//   connected         → netlist has a net (drops #15-class false positives),
 			//                        or netlist muted + geometry wires it
@@ -4628,7 +4635,7 @@ const schematicCheck: Handler = async (payload) => {
 			// netlist's components map — mute the netlist for them so geometry alone
 			// decides, else every flag pin becomes a geom-net-mismatch false report
 			// (probe round #3: 64/64 stubs flagged on a fully-connected page).
-			const status = classifyPinConnectivity(Boolean(netlistNet), geomConnected, netlistAvailable && Boolean(designator));
+			const status = classifyPinConnectivity(Boolean(netlistNet), geomConnected, netlistAvailable && Boolean(designator) && !blockAbsentFromNetlist);
 			if (status === 'floating') {
 				floating.push(num);
 				const name = (() => {
@@ -16289,6 +16296,14 @@ const HANDLERS: Record<string, Handler> = {
 	'library.footprint.create': libraryFootprintCreate,
 	'library.cbb.search': libraryCbbSearch,
 	'library.cbb.get': libraryCbbGet,
+	'library.cbb.create': cbbCreate,
+	'library.cbb.delete': cbbDelete,
+	'library.cbb.open': cbbOpen,
+	'library.cbb.symbol_open': cbbSymbolOpen,
+	'library.cbb.symbol_build': cbbSymbolBuild,
+	'library.cbb.symbol_rectangle_delete': cbbSymbolRectangleDelete,
+	'schematic.cbb.place': cbbPlace,
+	'schematic.cbb.project_place': cbbProjectPlace,
 	'library.cbb.export_source': libraryCbbExportSource,
 	'library.footprint.get': libraryFootprintGet,
 	'library.footprint.copy': libraryFootprintCopy,

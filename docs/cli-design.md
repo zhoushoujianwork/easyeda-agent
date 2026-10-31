@@ -93,3 +93,17 @@ PCB 保持在 `pcb` 域。CLI → daemon → connector 是唯一运行链路，�
 [原理图数据与 SCH Apply](../.agents/skills/easyeda-agent/references/schematic-data.md)。
 新版本的 Skill、命令示例与实际参数必须一起核对；发布准备见
 [1.4 发布准备](releases/release-1.4.md)。
+
+## 受控 CBB 样件入口
+
+`lib cbb create/delete/open/symbol-open/symbol-build/symbol-rectangle-delete` 管理本轮个人库 `EA_AGENT__` 样件；`open` 要求
+保存全部文档、显式 `--from-project` 与 `--allow-project-switch`，核对工程切换。
+`sch cbb-place` 必须指定库、CBB、精确块符号、项目、页面和坐标，单次官方创建后核对
+`block_symbol` 身份、几何与旧器件几何保全。所有 partial/缺失 verified/传输失败均非零退出，
+原始返回与已知 ID 保留，不自动重试或清理未知写入。现场状态与完整网络验收另行记录。
+
+当前 Web 宿主的专用 `createCbbSymbol` 可能只导入资产而未放置实例。已经导入的模块用
+`sch cbb-project-place --project-uuid ... --page ... --schematic ... --expected-name EA_AGENT__...
+--x ... --y ... --dry-run` 核对当前工程目录与原理图关联；执行必须明确传回读的本地 `--symbol`。
+默认通过官方通用 SYMBOL 入口创建 type 17 资产，并要求新回读为 `block_symbol` 与精确本地绑定。
+原库投影 UUID 不等于本地 UUID；专用接口仅在显式 `--via-symbol-api=false` 时用于诊断。

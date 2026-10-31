@@ -754,7 +754,7 @@ client/updateTime/version 三值重新生成。原文 SHA 不稳定，默认 exa
 不能继续用早期 alpha 标记判断当前不可用。已提供 typed `library.cbb.search/get` 和
 `lib cbb search/get`，仅搜索、读取身份与变体；另提供 `lib cbb export-source`
 调用官方 beta `getCbbFileByCbbUuid` 只读导出原生归档。不调用会丢弃未保存工程的
-`openProjectInEditor`，也未提供实例放置。
+`openProjectInEditor`，实例放置及受控样件创建已补 typed 入口，但自建样件的现场验收尚未完成。
 
 Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，须逐项经 `get` 确认；
 `boards[].schematic` 可能为 UUID 字符串，而非声明的完整对象。对真实系统库资产的
@@ -763,3 +763,33 @@ Web 4.1.78 定向观察：搜索记录可能没有声明中的 `libraryUuid`，�
 
 同一环境对精确系统库资产调用官方归档 getter 时，宿主返回“没有下载库权限”，未生成文件。
 这是真实权限拒绝，不能当作没有复用块或网络解析失败，也不改权限/切工程绕过。
+
+受控样件可通过 `lib cbb create/open/symbol-open/delete` 和 `sch cbb-place` 建立，
+仅个人可写库 `EA_AGENT__` 资产，严格核对所有权、符号变体、活动项目/页面及单次创建结果。
+工程打开前必须保存所有文档并显式允许切换；未知/部分结果禁止自动重试，清理必须名称及身份匹配。
+Web 4.1.78 上已验证个人样件创建、源电路和块符号几何保存重开；外部放置仍未通过：
+官方 createCbbSymbol 返回 ID，但目标页新组件库存及原生源码均无对应实例，保存重开仍缺失。
+同时出现隐式导入的 Board、原理图与 PCB，须按调用前库存识别并精确清理，不能当作零副作用失败。
+具体宿主根因未确认；不得用补调 done、私有消息总线或 GUI 重放绕过。后续通用符号路径的
+定向验收见下文；专用 createCbbSymbol 的失败证据仍保留，不补签为通过。
+
+Web 4.1.78 的 `DMT_Schematic.buildCbbSymbol` 从内部 `source` 的 `symbol|project` 字段
+投影原库 UUID，而非导入后的本地符号 UUID。因此 `cbbSymbol.uuid` 不可直接当作
+当前工程库的 UUID。实验入口 `sch cbb-project-place --dry-run` 交叉核对原生 CBB
+原理图身份、唯一同名工程 CBB 目录项，以及按目录本地 UUID 读取的 type 17 符号。
+目录名称可能是小写内部 title，须按每个目录 UUID 读取符号并比较权威显示名。
+不允许同名歧义、不以原库 UUID 回退猜本地 UUID。
+
+`sch cbb-project-place` 默认走官方 `sch_PrimitiveComponent.create` 的 SYMBOL 索引入口，
+以当前项目 UUID 作为库路径；输入必须是已核实的 type 17 资产，写后必须是真实
+`block_symbol` 且绑定精确本地符号。这条路径在 Type-C、双 5.1kΩ 和按钮模块上通过
+实际放置、引脚绝对坐标、连接网名/未接对照、保存重开回读；KEY 还与平台展开网表中的
+按钮脚一致。专用 CBB API 仍失败；CLI 不自动回退或重放。全局电源旗保留其全局网名语义。
+
+`schematic.check` 同样不能假定展开网表包含块实例。对网表可读但无该块记录的原生
+`block_symbol`，保留真实导线连接和悬空检查，跳过不适用的实例网表缺席比较；不把裸标记
+重叠当作已接线，也不放宽普通器件的 `geom-net-mismatch` 检查。
+
+原生 CBB 创建后可能已有默认 Rectangle，pin/polygon/circle 库存为空并不代表整个符号为空。
+样件图面复核曾发现默认矩形与自定义多边形双框叠加；建块前现检查矩形、弧线、自由文本与
+图片库存，任何已有内容或缺测均拒绝构建。默认框不能作为空目标例外自动删掉。
