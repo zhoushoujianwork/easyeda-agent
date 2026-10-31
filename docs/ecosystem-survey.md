@@ -785,3 +785,7 @@ Web 4.1.78 的 `DMT_Schematic.buildCbbSymbol` 从内部 `source` 的 `symbol|pro
 `block_symbol` 且绑定精确本地符号。这条路径在 Type-C、双 5.1kΩ 和按钮模块上通过
 实际放置、引脚绝对坐标、连接网名/未接对照、保存重开回读；KEY 还与平台展开网表中的
 按钮脚一致。专用 CBB API 仍失败；CLI 不自动回退或重放。全局电源旗保留其全局网名语义。
+
+`schematic.check` 同样不能假定展开网表包含块实例。对网表可读但无该块记录的原生
+`block_symbol`，保留真实导线连接和悬空检查，跳过不适用的实例网表缺席比较；不把裸标记
+重叠当作已接线，也不放宽普通器件的 `geom-net-mismatch` 检查。
