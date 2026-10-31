@@ -22,7 +22,22 @@ easyeda sch sheet-geometry --project <project> --json
 
 纸张门禁需从 typed 官方读取得到**红色绘图区内框**及图签真实占位；只有纸张外尺寸
 或图签 keepout 时，保守内缩矩形只能用于离线探索，不能记为内框入页验收通过。
-缺少精确内框 getter 时保留原响应并标 `unsupported`，先补采集能力再做现场写前门禁。
+默认 `sheet-geometry` 的模板比例不是精确内框。没有 getter 时，先使用已有官方全页 SVG
+采集路径，不直接把“缺 getter”当作全部采集方式均不支持：
+
+```bash
+easyeda sch export-image --scope page --format svg --page <page> --project <project> \
+  --window <window> --out sheet-before.svg > sheet-export.json
+easyeda sch sheet-geometry --from-svg sheet-before.svg --json > sheet-exact.json
+```
+
+保留导出回执的工程、文档、窗口、时间和工件 SHA256；核对实际文件 SHA256 与解析结果
+`sourceSha256` 相同，再将 `result.sheet.innerBBox` 写入源的 `sheetBorder`，将 `result.keepouts`
+写入源的 `keepouts`。坐标是 raw、y 向上，边界按矢量中心线计算，另留笔画净距。
+解析器只支持已识别的单纸张矩形内外框及单矩形图签；缺失、歧义、变换或不支持的结构会拒绝，
+此时保留错误并标 `unsupported`，不改 SVG、猜比例或回填估计值。离线解析本身不证明现场身份
+与新鲜度；须与同批完整对象回读配对。应用层若只暴露外纸张 bbox，还须将此采集路径接入
+类型化工具，不能要求模型凭外框补出内框。
 如需调查内置图框的原始符号，可由 `sch list` 的 sheet 组件取 `symbol.uuid/libraryUuid`，
 使用 `lib symbol export-source` 保存官方 `.elibz2` 原包；该导出目前仅为 source-only 证据，
 不得将其或 A4 纸张外框直接填成 `sheetBorder`。命令边界见 [actions.md](actions.md#图纸与明细表)。
@@ -233,8 +248,11 @@ diagnostic/blocked/partial 布局；先修复源数据、采集或算法，再�
    的聚合显示。`blocked` 表示检查未完成，未执行的项目明确列为待验证。
 3. `sch frame check` 核验矩形、标题、颜色、虚线及必检文字净距；另对实际数据检查
    核心/外围归属、直连保持、位号入框和遮挡。型号/参数等非位号属性不参与布局检查。
-   `sch export-image` 仅辅助审阅；若发现漏检，先补原始数据采集、规则和回归再重算，
-   不能用人工看图补签缺测项。覆盖不足不得称完整通过。
+   保存、真实重载和新回读后，再导出同一页官方全页 SVG/PNG，检查全部可见文字：型号、参数、
+   网名、功能标题及图签的遮挡、裁切与可读性。记录所检查文件的哈希、页面与未覆盖项；
+   电气 DRC、位号零碰撞或导出成功均不能代签这项检查。SVG 可解析边界与图签，但不自动证明
+   全部文字无重叠。`sch export-image` 的图面审阅只作辅助；若发现漏检，先补原始数据采集、
+   规则和回归再重算，不能用人工看图补签缺测几何项。覆盖不足不得称完整通过。
 4. `sch save` 返回 `saved:true`。保留输入、生成队列、回读和验证报告，报告仍未覆盖的限制。
 
 只整理已有连线的小范围区域时，可按 [schematic-placement.md](schematic-placement.md)

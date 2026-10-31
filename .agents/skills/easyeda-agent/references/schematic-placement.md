@@ -5,7 +5,9 @@
 
 ## 计算依据
 
-- 使用 `sch sheet-geometry --json --doc <page>` 的实测 sheet bbox 与 `keepouts[]`。
+- 使用 `sch sheet-geometry --json --doc <page>` 回读外纸张及来源标记；精确内框和图签按
+  [采集流程](auto-layout-sop.md#1-准备电路与测量数据)导出官方全页 SVG，再运行 `sheet-geometry --from-svg`。
+  默认比例估算的 `keepouts[]` 不等于精确实测。
   当前图签比例仅标定 A4 横版；`fallback-ratio` 是近似，不能当作精确边界。
   缺少图纸或器件几何时先补测，不扩展坐标到纸外。
 - 原理图坐标 y-UP，1 raw = 0.01 inch；器件 anchor 使用 5 raw 网格。
