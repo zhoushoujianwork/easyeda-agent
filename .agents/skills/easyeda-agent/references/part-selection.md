@@ -295,6 +295,12 @@ Web 4.1.78 的记录可能不带库 UUID 或 cbbUuid，不能靠这两个缺字�
 `lib cbb symbol-build --symbol <uuid> --spec <pins-outline.json> --dry-run` 先检查库存；
 去掉 dry-run 只允许空目标单次构建，逐脚/边框核对并要求 saved:true，失败保留创建 ID。所有创建、打开与放置仍需新鲜 health 中的专用连接；离线测试不能替代现场验收。
 
+原生 CBB 可能已带宿主默认矩形。空目标检查必须包含矩形、圆弧、自由文本和图片，不能
+只看 pin/polygon/circle。`symbol-open` / `symbol-build --dry-run` 返回额外图形库存；
+只有明确属于本轮且精确 ID/几何已核对的默认图形才可经 typed 删除，不自动清空或覆盖。
+导入副本的符号打开必须同时给 `symbol-open --target-project ... --imported-schematic ...`，
+核对原库所有权、导入原理图、工程目录本地符号与源 CBB UUID 后才导航；不把原库 UUID 当本地 UUID。
+
 样件至少覆盖已命名导线连接与未接线端口；保存 → 真实关闭重开 → fresh 引脚网对账后
 才能判断 #244。默认普通器件符号、工具 `block-apply` 或最近 netflag 不能充当真实 CBB。
 

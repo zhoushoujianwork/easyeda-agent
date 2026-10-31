@@ -87,26 +87,39 @@ export async function cbbOpen(p: Payload): Promise<ActionResult> {
 }
 
 export async function cbbSymbolOpen(p: Payload): Promise<ActionResult> {
- fields(p, ['uuid', 'libraryUuid', 'expectedName', 'symbolUuid']);
+ fields(p, ['uuid', 'libraryUuid', 'expectedName', 'symbolUuid', 'targetProjectUuid', 'importedSchematicUuid']);
  const symbolUuid = text(p, 'symbolUuid');
  const identity = await owned(p);
  const project = await eda.dmt_Project.getCurrentProjectInfo();
- if (project?.uuid !== identity.uuid) fail('Open the owned CBB project before opening its project-library symbol.');
+ let expectedProjectUuid=identity.uuid;
  const evidence = [];
+ if(p.targetProjectUuid!==undefined||p.importedSchematicUuid!==undefined){
+  expectedProjectUuid=text(p,'targetProjectUuid');
+  const schematicUuid=text(p,'importedSchematicUuid');
+  const current=await eda.dmt_SelectControl.getCurrentDocumentInfo();
+  if(project?.uuid!==expectedProjectUuid||!current?.uuid) fail('Exact imported target project must be active.');
+  const preview=await cbbProjectPlace({projectUuid:expectedProjectUuid,documentUuid:current.uuid,schematicUuid,expectedName:identity.name,symbolUuid,x:0,y:0,dryRun:true});
+  const membership=preview.result?.membership as Record<string,unknown>|undefined;
+  if(preview.result?.verified!==true) return preview;
+  if(membership?.symbolUuid!==symbolUuid||membership.sourceCbbUuid!==identity.uuid) fail('Imported symbol does not bind the exact owned source CBB.');
+  evidence.push(schematicUuid);
+ }else{
+ if (project?.uuid !== identity.uuid) fail('Open the owned CBB project before opening its project-library symbol.');
  for (const board of identity.cbb.boards) {
   const ref: unknown = board.schematic;
   const schematic = typeof ref === 'string' ? await eda.dmt_Schematic.getSchematicInfo(ref) : ref as IDMT_SchematicItem | undefined;
   if (schematic?.parentProjectUuid === identity.uuid && schematic.cbbSymbol?.uuid === symbolUuid && schematic.cbbSymbol.type === 17) evidence.push(schematic.uuid);
+ }
  }
  if (evidence.length !== 1) fail('Exact CBB symbol membership is missing or ambiguous in the active project graph.');
  let tabId: string | undefined;
  try {
   // CBB symbols are PROJECT-library assets. Web 4.1.78 does not return them
   // from the enclosing personal library, and its CBB-wide opener can throw.
-  if ((await eda.dmt_Project.getCurrentProjectInfo())?.uuid !== identity.uuid) fail('CBB project changed before symbol navigation.');
+  if ((await eda.dmt_Project.getCurrentProjectInfo())?.uuid !== expectedProjectUuid) fail('CBB project changed before symbol navigation.');
   let before: Awaited<ReturnType<typeof eda.dmt_SelectControl.getCurrentDocumentInfo>>;
   try { before = await eda.dmt_SelectControl.getCurrentDocumentInfo(); } catch { before = undefined; }
-  const exactTab = (id: string | undefined) => id === `${symbolUuid}@project` || id === `${symbolUuid}@${identity.uuid}`;
+  const exactTab = (id: string | undefined) => id === `${symbolUuid}@project` || id === `${symbolUuid}@${expectedProjectUuid}`;
   if (before?.uuid === symbolUuid && before.documentType === 17 && exactTab(before.tabId)) tabId = before.tabId;
   else {
    tabId = await eda.dmt_EditorControl.openLibraryDocument('project', '2' as ELIB_LibraryType.SYMBOL, symbolUuid);
@@ -116,10 +129,10 @@ export async function cbbSymbolOpen(p: Payload): Promise<ActionResult> {
   for (let i = 0; i < 20; i++) {
    const actual = await eda.dmt_SelectControl.getCurrentDocumentInfo();
    const current = await eda.dmt_Project.getCurrentProjectInfo();
-   if (current?.uuid === identity.uuid && actual?.uuid === symbolUuid && actual.documentType === 17 && exactTab(actual.tabId) && (actual.tabId === tabId || (tabId === `${symbolUuid}@project` && actual.tabId === `${symbolUuid}@${identity.uuid}`))) {
+   if (current?.uuid === expectedProjectUuid && actual?.uuid === symbolUuid && actual.documentType === 17 && exactTab(actual.tabId) && (actual.tabId === tabId || (tabId === `${symbolUuid}@project` && actual.tabId === `${symbolUuid}@${expectedProjectUuid}`))) {
     const symbol = await eda.lib_Symbol.get(symbolUuid, 'project');
     if (!symbol || symbol.uuid !== symbolUuid || symbol.type !== 17) return partial({ ...identity, tabId, actual }, 'Exact project-library CBB symbol is unreadable.');
-    return { result: { ...identity, tabId: actual.tabId, symbol, actual, membership: { source: 'active-CBB-schematic-graph', schematicUuid: evidence[0], cbbUuid: identity.uuid, symbolUuid }, verified: true, partial: false } };
+    return { result: { ...identity, expectedProjectUuid, tabId: actual.tabId, symbol, actual, extraGraphics:await symbolExtraGraphics(), membership: { source: 'active-CBB-schematic-graph', schematicUuid: evidence[0], cbbUuid: identity.uuid, symbolUuid }, verified: true, partial: false } };
    }
    await sleep(100);
   }
@@ -216,6 +229,15 @@ export async function cbbPlace(p: Payload): Promise<ActionResult> {
 }
 
 type Pin = NonNullable<Awaited<ReturnType<typeof eda.sch_PrimitivePin.getAll>>>[number];
+async function symbolExtraGraphics(){
+ const raw=await eda.sch_PrimitiveRectangle.getAll();
+ if(!Array.isArray(raw)) fail('CBB rectangle inventory is unavailable.');
+ const rectangles=raw.map(r=>({id:r.getState_PrimitiveId(),x:r.getState_TopLeftX(),y:r.getState_TopLeftY(),width:r.getState_Width(),height:r.getState_Height(),rotation:r.getState_Rotation()}));
+ if(rectangles.some(r=>!r.id||![r.x,r.y,r.width,r.height,r.rotation].every(Number.isFinite))) fail('CBB rectangle geometry is incomplete.');
+ const arcs=await eda.sch_PrimitiveArc.getAllPrimitiveId(),texts=await eda.sch_PrimitiveText.getAllPrimitiveId(),objects=await eda.sch_PrimitiveObject.getAllPrimitiveId();
+ if(![arcs,texts,objects].every(Array.isArray)) fail('CBB graphic inventory is unavailable.');
+ return {rectangles,arcs,texts,objects};
+}
 
 /** Place an already-imported project CBB; never invokes the cross-project importer. */
 export async function cbbProjectPlace(p: Payload): Promise<ActionResult> {
@@ -304,9 +326,10 @@ export async function cbbSymbolBuild(p: Payload): Promise<ActionResult> {
  const beforePins = (await eda.sch_PrimitivePin.getAll()).map(pinState);
  const beforePolygons = await eda.sch_PrimitivePolygon.getAllPrimitiveId();
  const beforeCircles = await eda.sch_PrimitiveCircle.getAllPrimitiveId();
+ const beforeExtraGraphics=await symbolExtraGraphics();
  if (!Array.isArray(beforePolygons) || !Array.isArray(beforeCircles)) fail('CBB symbol inventory is unavailable.');
- if (p.dryRun === true) return { result: { ...opened.result, dryRun: true, scope: 'symbol-inventory-preview-only', beforePins, beforePolygons, beforeCircles, requested: { pins, outline }, verified: true, partial: false } };
- if (beforePins.length || beforePolygons.length || beforeCircles.length) fail('CBB symbol build only supports a proven-empty owned target; no overwrite.');
+ if (p.dryRun === true) return { result: { ...opened.result, dryRun: true, scope: 'symbol-inventory-preview-only', beforePins, beforePolygons, beforeCircles, beforeExtraGraphics, requested: { pins, outline }, verified: true, partial: false } };
+ if (beforePins.length || beforePolygons.length || beforeCircles.length||Object.values(beforeExtraGraphics).some(a=>a.length)) fail('CBB symbol build only supports a proven-empty owned target; no overwrite.');
  const createdPins: string[] = []; let outlineId: string | undefined;
  try {
   await active();
@@ -326,7 +349,8 @@ export async function cbbSymbolBuild(p: Payload): Promise<ActionResult> {
   const polygon = await eda.sch_PrimitivePolygon.get(outlineId);
   const polygonIds = await eda.sch_PrimitivePolygon.getAllPrimitiveId(), circleIds = await eda.sch_PrimitiveCircle.getAllPrimitiveId();
   const matches = actualPins.length === pins.length && pins.every((pin,i) => actualPins.some(actual => actual.id === createdPins[i] && actual.number === pin.number && actual.name === pin.name && actual.x === pin.x && actual.y === pin.y && actual.rotation === pin.rotation && actual.length === pin.length && actual.shape === 'None' && actual.pinType === 'Passive'));
-  if (!matches || JSON.stringify(polygon?.getState_Line()) !== JSON.stringify(outline) || polygonIds.length !== 1 || polygonIds[0] !== outlineId || circleIds.length) throw Error('CBB symbol fresh geometry differs from the requested spec.');
+  const extra=await symbolExtraGraphics();
+  if (!matches || JSON.stringify(polygon?.getState_Line()) !== JSON.stringify(outline) || polygonIds.length !== 1 || polygonIds[0] !== outlineId || circleIds.length||Object.values(extra).some(a=>a.length)) throw Error('CBB symbol fresh geometry differs from the requested spec.');
   await active();
   return { result: { ...opened.result, createdPins, outlineId, saved, actualPins, verified: true, partial: false } };
  } catch (err) { return partial({ ...opened.result, createdPins, outlineId: outlineId ?? null }, err); }

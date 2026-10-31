@@ -551,7 +551,7 @@ func AllActions() []ActionSpec {
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "fromProjectUuid", "allowProjectSwitch required true"}, Outputs: []string{"opened", "actual", "verified", "partial"}},
 		{Name: "library.cbb.symbol_open", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Open one explicitly selected owned CBB symbol through the official project-library opener. Requires active CBB project and exact schematic-graph membership; type 17 and focused UUID are read back. Missing libraryUuid/cbbUuid on a symbol record is not guessed.",
-			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid"}, Outputs: []string{"tabId", "symbol", "actual", "membership", "verified", "partial"}},
+			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "targetProjectUuid/importedSchematicUuid optional exact imported-variant pair"}, Outputs: []string{"tabId", "symbol", "actual", "membership", "extraGraphics", "verified", "partial"}},
 		{Name: "library.cbb.symbol_build", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "One-shot geometry build of an explicitly selected, graph-proven owned CBB symbol. Dry-run exposes existing pin/outline inventory; writes require proven empty target. Verifies exact pin/outline data and boolean saved:true; partial outcomes retain created IDs without automatic rollback or retry.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "pins", "outline", "dryRun optional"}, Outputs: []string{"actualPins", "createdPins", "outlineId", "saved", "verified", "partial"}},

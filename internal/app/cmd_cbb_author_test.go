@@ -16,6 +16,7 @@ func TestCbbAuthorDispatch(t *testing.T) {
 		{[]string{"cbb", "create", "--name", "test"}, "library.cbb.create"},
 		{append([]string{"cbb", "delete"}, id...), "library.cbb.delete"},
 		{append(append([]string{"cbb", "symbol-open"}, id...), "--symbol", "s"), "library.cbb.symbol_open"},
+		{append(append([]string{"cbb", "symbol-open"}, id...), "--symbol", "local", "--target-project", "p", "--imported-schematic", "schema"), "library.cbb.symbol_open"},
 		{append(append([]string{"cbb", "open"}, id...), "--from-project", "p", "--allow-project-switch"), "library.cbb.open"},
 	} {
 		cfg, c, cleanup := newCapturingDaemon(t)

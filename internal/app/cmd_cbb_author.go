@@ -44,6 +44,7 @@ func addCbbAuthoringCommands(group *cobra.Command, cfg *appConfig, stdout, stder
 		target := new(cbbTarget)
 		action := item.action
 		var symbol string
+		var targetProject, importedSchematic string
 		c := &cobra.Command{Use: item.use, Short: item.short, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 			p, err := target.payload()
 			if err != nil {
@@ -55,11 +56,20 @@ func addCbbAuthoringCommands(group *cobra.Command, cfg *appConfig, stdout, stder
 				}
 				p["symbolUuid"] = symbol
 			}
+			if action == "library.cbb.symbol_open" && (targetProject != "" || importedSchematic != "") {
+				if strings.TrimSpace(targetProject) == "" || strings.TrimSpace(importedSchematic) == "" {
+					return fmt.Errorf("both --target-project and --imported-schematic are required")
+				}
+				p["targetProjectUuid"] = targetProject
+				p["importedSchematicUuid"] = importedSchematic
+			}
 			return dispatch(cfg, action, *window, p, stdout, stderr)
 		}}
 		target.flags(c)
 		if action == "library.cbb.symbol_open" {
 			c.Flags().StringVar(&symbol, "symbol", "", "exact CBB symbol UUID from the active module schematic graph (required)")
+			c.Flags().StringVar(&targetProject, "target-project", "", "exact current project for an imported owned CBB symbol")
+			c.Flags().StringVar(&importedSchematic, "imported-schematic", "", "exact imported CBB schematic UUID; requires --target-project")
 		}
 		group.AddCommand(c)
 	}

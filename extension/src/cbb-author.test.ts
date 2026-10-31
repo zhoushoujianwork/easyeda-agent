@@ -16,6 +16,10 @@ function setup(extra: any = {}) {
   sch_PrimitivePin:extra.sch_PrimitivePin,
   sch_PrimitivePolygon:extra.sch_PrimitivePolygon,
   sch_PrimitiveCircle:extra.sch_PrimitiveCircle,
+  sch_PrimitiveRectangle:extra.sch_PrimitiveRectangle??{getAll:async()=>[]},
+  sch_PrimitiveArc:extra.sch_PrimitiveArc??{getAllPrimitiveId:async()=>[]},
+  sch_PrimitiveText:extra.sch_PrimitiveText??{getAllPrimitiveId:async()=>[]},
+  sch_PrimitiveObject:extra.sch_PrimitiveObject??{getAllPrimitiveId:async()=>[]},
   sch_Document:extra.sch_Document,
    };
 }
@@ -157,6 +161,22 @@ test('CBB symbol save refusal preserves created identities and never retries or 
 });
 test('CBB symbol invalid specs fail before opening any editor',async()=>{
  setup();try{for(const p of [{...symbolSpec,outline:[0,0,1,0,1,1,0,1]},{...symbolSpec,pins:[symbolSpec.pins[0],symbolSpec.pins[0]]},{...symbolSpec,pins:[{...symbolSpec.pins[0],x:Infinity}]}])await assert.rejects(cbbSymbolBuild(p));}finally{clear();}
+});
+test('CBB symbol default rectangle or unreadable extra graphics prevents a false empty-target build',async()=>{
+ for(const mode of ['rectangle','unreadable']){
+  const state=buildSetup();
+  const api=(globalThis as any).eda;
+  if(mode==='rectangle') api.sch_PrimitiveRectangle.getAll=async()=>[{getState_PrimitiveId:()=>'default-outline',getState_TopLeftX:()=>0,getState_TopLeftY:()=>140,getState_Width:()=>140,getState_Height:()=>140,getState_Rotation:()=>0}];
+  else api.sch_PrimitiveArc.getAllPrimitiveId=async()=>undefined;
+  try{if(mode==='rectangle'){const r=(await cbbSymbolBuild({...symbolSpec,dryRun:true})).result;assert.equal((r?.beforeExtraGraphics as any).rectangles[0].id,'default-outline');await assert.rejects(cbbSymbolBuild(symbolSpec));}else{assert.equal((await cbbSymbolBuild(symbolSpec)).result?.partial,true);}assert.equal(state().creates,0);assert.equal(state().line,undefined);}finally{clear();}
+ }
+});
+test('imported owned symbol opener proves source CBB and exact local catalogue variant before navigation',async()=>{
+ localSetup();const api=(globalThis as any).eda;let opened=false;
+ api.dmt_Schematic.getSchematicInfo=async()=>({uuid:'schema',parentProjectUuid:'p',itemType:'CBB Schematic',name:asset.name,cbbSymbol:{uuid:'source-symbol',name:asset.name,cbbUuid:'c',type:17}});
+ api.dmt_SelectControl.getCurrentDocumentInfo=async()=>opened?{uuid:'s',tabId:'s@p',documentType:17}:{uuid:'d',parentProjectUuid:'p',documentType:1};
+ api.dmt_EditorControl.openLibraryDocument=async(lib:string,type:string,id:string)=>{assert.deepEqual([lib,type,id],['project','2','s']);opened=true;return 's@project';};
+ try{const r=(await cbbSymbolOpen({...identity,symbolUuid:'s',targetProjectUuid:'p',importedSchematicUuid:'schema'})).result;assert.equal(r?.verified,true);assert.equal(r?.expectedProjectUuid,'p');assert.equal(r?.tabId,'s@p');}finally{clear();}
 });
 
 test('CBB project-library alias resolves only to the exact active CBB project tab',async()=>{

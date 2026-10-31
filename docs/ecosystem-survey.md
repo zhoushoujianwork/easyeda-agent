@@ -789,3 +789,7 @@ Web 4.1.78 的 `DMT_Schematic.buildCbbSymbol` 从内部 `source` 的 `symbol|pro
 `schematic.check` 同样不能假定展开网表包含块实例。对网表可读但无该块记录的原生
 `block_symbol`，保留真实导线连接和悬空检查，跳过不适用的实例网表缺席比较；不把裸标记
 重叠当作已接线，也不放宽普通器件的 `geom-net-mismatch` 检查。
+
+原生 CBB 创建后可能已有默认 Rectangle，pin/polygon/circle 库存为空并不代表整个符号为空。
+样件图面复核曾发现默认矩形与自定义多边形双框叠加；建块前现检查矩形、弧线、自由文本与
+图片库存，任何已有内容或缺测均拒绝构建。默认框不能作为空目标例外自动删掉。
