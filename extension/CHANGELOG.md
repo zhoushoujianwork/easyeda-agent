@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-10-31
+
+- 原生 CBB：新增官方库搜索、身份核对、归档导出，以及受控个人库样件创建、符号构建与放置；按当前工程目录解析本地 type 17 符号，写后必须回读为真实 block_symbol。修复已接块端口被展开网表缺席误报的问题，保留悬空端口和普通器件检查。
+- CBB 符号库存覆盖默认 Rectangle，拒绝把含图形目标误判为空；提供精确矩形清理入口，核对归属、几何、保留引脚与 polygon 和显式保存。专用 createCbbSymbol 仍可能只返回未落地 ID，支持路径为已验证的官方通用符号创建。
+- PCB 制造导出：新增官方 Gerber/坐标文件导出，绑定导出前后 PCB 身份及官方文件哈希；校验实际内容并正确处理 UTF-16 表格坐标文件，不把文件扩展名或下载成功当作内容有效。
+- 导图与布局：官方 SVG 导出支持经校验的内嵌静态 SVG；区分 PCB 图面审查与布线验收，避免批量检查反复打开活动文档。密集电源布局在冻结候选预算内求解，不放松保护判据。
+- 宿主弹窗：公开 Skill 要求操作后主动检查、已有授权内精确应答、检查下一层提示和迟到写入，再做 typed 数据回读；这是操作流程改进，未新增通用自动弹窗应答 CLI。
+- 发布目标修正为 SkillHub 的公开条目；外部平台的上传回执与公开可下载安装结果分别核验，不把审核中的版本当作已上线。
+
 - `pcb.pour.create` / `easyeda pcb pour` now accept a closed native `L`/`ARC` polygon `source` as an alternative to `points`. Signed arc sweeps remain native in the pour boundary; exact-ID fresh readback checks segment type, endpoints and sweep (including rotated/reversed encoding) before copper rebuild. Malformed/open paths and mixed inputs fail before mutation. Web 4.1.78 定向现场验证通过：双 ARC 圆、ARC+L 半圆、混合 L/ARC 轮廓及原有 points 矩形均生成实际铜，保存重载后精确 ID 边界与铜对象回读一致，原生 DRC passed:true、0 违例；开环与零弧度输入拒绝且未新增铜皮。宿主实际返回反向轮廓；单轮廓数组包装及重复闭合点仍只有离线回归覆盖。本结论限于独立测试板，不代表完整设计 E2E 或任意板卡验收。
 
 ## [1.15.0] - 2026-10-24
