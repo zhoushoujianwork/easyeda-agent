@@ -135,6 +135,43 @@ func addCbbAuthoringCommands(group *cobra.Command, cfg *appConfig, stdout, stder
 		group.AddCommand(c)
 	}
 
+	{
+		target := new(cbbTarget)
+		var symbol, specPath string
+		var dryRun bool
+		c := &cobra.Command{Use: "symbol-rectangle-delete", Short: "Remove one exact inventoried rectangle from an owned source CBB symbol", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+			p, err := target.payload()
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(symbol) == "" || specPath == "" {
+				return fmt.Errorf("--symbol and --spec are required")
+			}
+			data, err := os.ReadFile(specPath)
+			if err != nil {
+				return err
+			}
+			if len(data) > 1<<20 {
+				return fmt.Errorf("rectangle spec exceeds 1 MiB")
+			}
+			var rectangle map[string]any
+			if err = json.Unmarshal(data, &rectangle); err != nil {
+				return err
+			}
+			if rectangle == nil {
+				return fmt.Errorf("rectangle spec must be an object")
+			}
+			p["symbolUuid"] = symbol
+			p["rectangle"] = rectangle
+			p["dryRun"] = dryRun
+			return dispatch(cfg, "library.cbb.symbol_rectangle_delete", *window, p, stdout, stderr)
+		}}
+		target.flags(c)
+		c.Flags().StringVar(&symbol, "symbol", "", "exact owned source CBB symbol UUID (required)")
+		c.Flags().StringVar(&specPath, "spec", "", "JSON rectangle inventory with id/x/y/width/height/rotation (required)")
+		c.Flags().BoolVar(&dryRun, "dry-run", false, "verify target and preservation inventory without deletion")
+		group.AddCommand(c)
+	}
 }
 func newSchCbbPlaceCmd(cfg *appConfig, stdout, stderr io.Writer, window *string) *cobra.Command {
 	target := new(cbbTarget)

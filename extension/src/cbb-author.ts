@@ -355,3 +355,61 @@ export async function cbbSymbolBuild(p: Payload): Promise<ActionResult> {
   return { result: { ...opened.result, createdPins, outlineId, saved, actualPins, verified: true, partial: false } };
  } catch (err) { return partial({ ...opened.result, createdPins, outlineId: outlineId ?? null }, err); }
 }
+
+/** Delete one explicitly inventoried rectangle in an owned source CBB symbol. */
+export async function cbbSymbolRectangleDelete(p: Payload): Promise<ActionResult> {
+ fields(p, ['uuid','libraryUuid','expectedName','symbolUuid','rectangle','dryRun']);
+ if (p.dryRun !== undefined && typeof p.dryRun !== 'boolean') fail('dryRun must be boolean.');
+ if (!p.rectangle || typeof p.rectangle !== 'object' || Array.isArray(p.rectangle)) fail('Exact rectangle geometry is required.');
+ const raw = p.rectangle as Payload;
+ fields(raw, ['id','x','y','width','height','rotation']);
+ const rectangle = {id:text(raw,'id'),x:raw.x,y:raw.y,width:raw.width,height:raw.height,rotation:raw.rotation};
+ if (![rectangle.x,rectangle.y,rectangle.width,rectangle.height,rectangle.rotation].every(v=>typeof v==='number'&&Number.isFinite(v))) fail('Exact finite rectangle geometry is required.');
+ const opened = await cbbSymbolOpen(Object.fromEntries(['uuid','libraryUuid','expectedName','symbolUuid'].map(k=>[k,p[k]])));
+ if (opened.result?.verified !== true) return opened;
+ const active = async () => {
+  const project = await eda.dmt_Project.getCurrentProjectInfo(), doc = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+  if (project?.uuid !== p.uuid || !doc || doc.uuid !== p.symbolUuid || doc.tabId !== opened.result?.tabId || doc.documentType !== 17) fail('Owned source symbol context changed; stop rectangle cleanup.');
+ };
+ const snapshot = async () => {
+  await active();
+  const pins=(await eda.sch_PrimitivePin.getAll()).map(pinState).sort((a,b)=>a.id.localeCompare(b.id));
+  if (pins.some(pin=>!pin.id||!pin.number||!pin.name||![pin.x,pin.y,pin.rotation,pin.length].every(Number.isFinite))) fail('Incomplete CBB pin preservation inventory.');
+  const ids=await eda.sch_PrimitivePolygon.getAllPrimitiveId(), circles=await eda.sch_PrimitiveCircle.getAllPrimitiveId();
+  if (!Array.isArray(ids)||!Array.isArray(circles)||circles.length) fail('Rectangle cleanup requires readable polygon inventory and no circles.');
+  const polygons=[];
+  for (const id of [...ids].sort()) {
+   const polygon=await eda.sch_PrimitivePolygon.get(id), line=polygon?.getState_Line();
+   if (!id||!Array.isArray(line)||line.some(v=>typeof v!=='number'||!Number.isFinite(v))) fail('Incomplete CBB outline preservation inventory.');
+   polygons.push({id,line});
+  }
+  const extra=await symbolExtraGraphics();
+  if (extra.arcs.length||extra.texts.length||extra.objects.length) fail('Rectangle cleanup does not support other extra graphic classes.');
+  const rectangles=extra.rectangles.sort((a,b)=>a.id.localeCompare(b.id));
+  if (new Set(pins.map(x=>x.id)).size!==pins.length||new Set(ids).size!==ids.length||new Set(rectangles.map(x=>x.id)).size!==rectangles.length) fail('Duplicate CBB preservation identities.');
+  await active();
+  return {pins,polygons,rectangles};
+ };
+ const before=await snapshot();
+ if (!before.rectangles.some(r=>JSON.stringify(r)===JSON.stringify(rectangle))) fail('Rectangle identity/geometry differs from the explicit fresh inventory.');
+ if (p.dryRun===true) return {result:{...opened.result,before,rectangle,dryRun:true,verified:true,partial:false}};
+ let deleteAttempted=false, saved=false;
+ try {
+  await active();
+  if(JSON.stringify(await snapshot())!==JSON.stringify(before)) fail('CBB symbol changed before rectangle deletion.');
+  await active();
+  deleteAttempted=true;
+  const accepted=await eda.sch_PrimitiveRectangle.delete([rectangle.id]);
+  await active();
+  if(accepted!==true) throw Error('Official rectangle deletion was not accepted.');
+  const expected={...before,rectangles:before.rectangles.filter(r=>r.id!==rectangle.id)};
+  const after=await snapshot();
+  if(JSON.stringify(after)!==JSON.stringify(expected)) throw Error('Rectangle survived or preserved CBB geometry changed.');
+  await active();
+  saved=await eda.sch_Document.save();
+  if(saved!==true) throw Error('CBB symbol save did not return true.');
+  const persisted=await snapshot();
+  if(JSON.stringify(persisted)!==JSON.stringify(expected)) throw Error('CBB geometry changed across save.');
+  return {result:{...opened.result,rectangle,before,after:persisted,deleteAttempted,saved,verified:true,partial:false}};
+ } catch(err){return partial({...opened.result,rectangle,before,deleteAttempted,saved},err);}
+}

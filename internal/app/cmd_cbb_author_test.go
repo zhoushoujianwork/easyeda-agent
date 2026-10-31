@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -50,7 +52,7 @@ func TestCbbAuthorRejectsIncompleteInput(t *testing.T) {
 	}
 }
 func TestCbbWritesRequireExplicitVerifiedResult(t *testing.T) {
-	for _, action := range []string{"library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "library.cbb.symbol_build", "schematic.cbb.place", "schematic.cbb.project_place"} {
+	for _, action := range []string{"library.cbb.create", "library.cbb.delete", "library.cbb.open", "library.cbb.symbol_open", "library.cbb.symbol_build", "library.cbb.symbol_rectangle_delete", "schematic.cbb.place", "schematic.cbb.project_place"} {
 		for _, result := range []map[string]any{{}, {"verified": false}, {"verified": true, "partial": true}} {
 			if libraryWriteResultError(action, result, []byte("original response")) == nil {
 				t.Fatalf("%s accepted %#v", action, result)
@@ -113,5 +115,26 @@ func TestSchCbbSourceProbeIsExplicitAndHasBoundedBudget(t *testing.T) {
 	defer captured.mu.Unlock()
 	if captured.action != "schematic.cbb.place" || captured.payload["allowSourceProjectProbe"] != true || captured.timeoutMs != 60000 {
 		t.Fatalf("request action=%s payload=%#v timeout=%d", captured.action, captured.payload, captured.timeoutMs)
+	}
+}
+
+func TestCbbRectangleDeleteDispatch(t *testing.T) {
+	spec := filepath.Join(t.TempDir(), "rectangle.json")
+	if err := os.WriteFile(spec, []byte(`{"id":"r","x":0,"y":0,"width":140,"height":140,"rotation":0}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, captured, cleanup := newCapturingDaemon(t)
+	defer cleanup()
+	var out bytes.Buffer
+	cmd := newLibCmd(cfg, &out, &out)
+	cmd.SetArgs([]string{"cbb", "symbol-rectangle-delete", "--uuid", "c", "--library", "l", "--expected-name", "EA_AGENT__TEST", "--symbol", "s", "--spec", spec, "--dry-run"})
+	var unverified *unverifiedLibraryWriteError
+	if err := cmd.Execute(); !errors.As(err, &unverified) {
+		t.Fatalf("accepted unverified rectangle response: %v", err)
+	}
+	captured.mu.Lock()
+	defer captured.mu.Unlock()
+	if captured.action != "library.cbb.symbol_rectangle_delete" || captured.payload["dryRun"] != true || captured.payload["symbolUuid"] != "s" {
+		t.Fatalf("wrong request: %s %#v", captured.action, captured.payload)
 	}
 }

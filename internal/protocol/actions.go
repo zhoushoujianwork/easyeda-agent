@@ -556,6 +556,10 @@ func AllActions() []ActionSpec {
 			Description: "One-shot geometry build of an explicitly selected, graph-proven owned CBB symbol. Dry-run exposes existing pin/outline inventory; writes require proven empty target. Verifies exact pin/outline data and boolean saved:true; partial outcomes retain created IDs without automatic rollback or retry.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "pins", "outline", "dryRun optional"}, Outputs: []string{"actualPins", "createdPins", "outlineId", "saved", "verified", "partial"}},
 
+		{Name: "library.cbb.symbol_rectangle_delete", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Delete one explicit exact-geometry rectangle in an owned source CBB symbol; verifies project/graph/type17, pin and polygon preservation, fresh absence and boolean save. No replay or rollback; dryRun is read-only.",
+			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "rectangle", "dryRun optional"}, Outputs: []string{"before", "after", "rectangle", "saved", "verified", "partial"}},
+
 		{Name: "schematic.cbb.place", Domain: DomainSchematic, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Place one exact agent-owned native CBB symbol once; requires explicit symbol variant and project/page. Verifies fresh instance identity, geometry and preservation of existing component geometry. If explicitly allowed after saving ALL documents, probes the source CBB project for exact symbol membership then returns to the verified unchanged target page before single creation. Partial/unknown never retries.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "projectUuid", "documentUuid", "x", "y", "rotation optional", "mirror optional", "allowSourceProjectProbe optional explicit true after saving ALL documents"}, Outputs: []string{"primitiveId", "state", "actualCbb", "actualSymbol", "sourceProbe", "verified", "partial"}},

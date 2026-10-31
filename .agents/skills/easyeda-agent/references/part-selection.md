@@ -330,3 +330,9 @@ KEY 接线后的平台展开网表也关联到内部按钮；内部全局电源�
 `sch check` 对已从展开网表中证实缺席的原生块实例按真实导线判断连接，不再误报
 `geom-net-mismatch`；未接端口仍报 floating，裸标记重叠不构成 CBB 接线。
 普通器件的几何/网表不一致检查保持有效。
+
+源 CBB 符号的默认 Rectangle 可用 `lib cbb symbol-rectangle-delete --symbol <uuid>
+--spec <rectangle.json> --dry-run` 精确预检；spec 必须逐字段采用新回读的
+`{id,x,y,width,height,rotation}`。去掉 `--dry-run` 仅删除该矩形，校验引脚与 polygon
+保持不变并显式保存。只支持已证明归属的个人库源符号，无重试/回退；其他图形类存在时拒绝。
+之后仍须关闭重开符号、新回读与导图，不能把删除成功替代持久化或视觉验收。

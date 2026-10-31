@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbPlace, cbbProjectPlace } from './cbb-author';
+import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbSymbolRectangleDelete, cbbPlace, cbbProjectPlace } from './cbb-author';
 const asset = { uuid:'c',libraryUuid:'l',name:'EA_AGENT__TEST',boards:[] };
 const identity = {uuid:'c',libraryUuid:'l',expectedName:asset.name};
 function setup(extra: any = {}) {
@@ -211,4 +211,57 @@ test('CBB source probe never creates when target geometry changed across project
  const state=probeSetup(true);try{const r=(await cbbPlace({...placement,allowSourceProjectProbe:true})).result;
  assert.equal(r?.partial,true);assert.equal(r?.primitiveId,null);assert.equal(r?.instanceCreateAttempted,false);assert.equal(state().writes,0);
  }finally{clear();}
+});
+
+const rectangleSpec={id:'default',x:0,y:0,width:140,height:140,rotation:0};
+function rectangleSetup(mode='ok'){
+ const state=buildSetup();let deleted=false,writes=0,saves=0;
+ const api=(globalThis as any).eda;
+ api.sch_PrimitiveRectangle={getAll:async()=>deleted?[]:[{getState_PrimitiveId:()=>rectangleSpec.id,getState_TopLeftX:()=>0,getState_TopLeftY:()=>0,getState_Width:()=>140,getState_Height:()=>140,getState_Rotation:()=>0}],delete:async(ids:string[])=>{assert.deepEqual(ids,['default']);writes++;if(mode==='throw')throw Error('lost');deleted=mode!=='noop';if(mode==='move')state().pins[0].getState_X=()=>999;return mode!=='rejected';}};
+ api.sch_Document.save=async()=>{saves++;return mode!=='save-false';};
+ return {state,counts:()=>({writes,saves})};
+}
+test('owned source rectangle cleanup previews then removes only exact target and preserves pins/outline',async()=>{
+ const {counts}=rectangleSetup();
+ try{
+  const api=(globalThis as any).eda, rectangles=api.sch_PrimitiveRectangle.getAll;
+  api.sch_PrimitiveRectangle.getAll=async()=>[];await cbbSymbolBuild(symbolSpec);api.sch_PrimitiveRectangle.getAll=rectangles;
+  const request={...identity,symbolUuid:'s',rectangle:rectangleSpec};
+  const preview=(await cbbSymbolRectangleDelete({...request,dryRun:true})).result;
+  assert.equal(preview?.verified,true);assert.deepEqual(counts(),{writes:0,saves:1});
+  const result=(await cbbSymbolRectangleDelete(request)).result;
+  assert.equal(result?.verified,true);assert.equal(result?.saved,true);assert.deepEqual((result?.after as any).rectangles,[]);
+  assert.deepEqual((result?.after as any).pins,(result?.before as any).pins);assert.deepEqual((result?.after as any).polygons,(result?.before as any).polygons);
+  assert.equal((result?.after as any).pins.length,1);assert.equal((result?.after as any).polygons.length,1);
+  assert.deepEqual(counts(),{writes:1,saves:2});
+ }finally{clear();}
+});
+test('rectangle cleanup rejects stale geometry, wrong symbol ownership and unknown spec keys before deletion',async()=>{
+ const {counts}=rectangleSetup();
+ try{for(const request of [{...identity,symbolUuid:'wrong',rectangle:rectangleSpec},{...identity,symbolUuid:'s',rectangle:{...rectangleSpec,width:141}},{...identity,symbolUuid:'s',rectangle:{...rectangleSpec,extra:1}},{...identity,symbolUuid:'s',rectangle:{id:'default'}}])await assert.rejects(cbbSymbolRectangleDelete(request));assert.deepEqual(counts(),{writes:0,saves:0});}finally{clear();}
+});
+test('rectangle delete rejection/noop/unknown/save refusal stays partial with no write replay',async()=>{
+ for(const mode of ['rejected','noop','throw','save-false']){
+  const {counts}=rectangleSetup(mode);
+  try{const result=(await cbbSymbolRectangleDelete({...identity,symbolUuid:'s',rectangle:rectangleSpec})).result;assert.equal(result?.verified,false);assert.equal(result?.partial,true);assert.equal(result?.deleteAttempted,true);assert.equal(counts().writes,1);}finally{clear();}
+ }
+});
+test('rectangle cleanup detects changed preserved pin and does not save corrupted geometry',async()=>{
+ const {state,counts}=rectangleSetup('move');
+ try{
+  // Build a real pin/outline fixture before installing the rectangle inventory.
+  (globalThis as any).eda.sch_PrimitiveRectangle.getAll=async()=>[];
+  await cbbSymbolBuild(symbolSpec);
+  let present=true;const api=(globalThis as any).eda;
+  api.sch_PrimitiveRectangle.getAll=async()=>present?[{getState_PrimitiveId:()=>'default',getState_TopLeftX:()=>0,getState_TopLeftY:()=>0,getState_Width:()=>140,getState_Height:()=>140,getState_Rotation:()=>0}]:[];
+  api.sch_PrimitiveRectangle.delete=async()=>{present=false;state().pins[0].getState_X=()=>999;return true;};
+  const before=counts().saves;
+  const result=(await cbbSymbolRectangleDelete({...identity,symbolUuid:'s',rectangle:rectangleSpec})).result;
+  assert.equal(result?.partial,true);assert.equal(counts().saves,before);
+ }finally{clear();}
+});
+test('rectangle cleanup refuses context drift between inventory and delete',async()=>{
+ const {counts}=rectangleSetup();let reads=0;
+ (globalThis as any).eda.sch_PrimitivePolygon.getAllPrimitiveId=async()=>{reads++;if(reads===2)(globalThis as any).eda.dmt_Project.getCurrentProjectInfo=async()=>({uuid:'changed'});return [];};
+ try{const result=(await cbbSymbolRectangleDelete({...identity,symbolUuid:'s',rectangle:rectangleSpec})).result;assert.equal(result?.partial,true);assert.deepEqual(counts(),{writes:0,saves:0});}finally{clear();}
 });
