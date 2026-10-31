@@ -5,11 +5,13 @@
 <h1 align="center">easyeda-agent</h1>
 
 <p align="center">
-  让 AI 直接操作嘉立创 EDA 专业版：读数据手册、画原理图、布局 PCB、整理丝印并完成检查。
+  嘉立创 EDA 专业版（EasyEDA Pro）的开源 AI 自动化工具：从数据手册、原理图到 PCB 布局与检查。
 </p>
 
 <p align="center">
-  <a href="https://github.com/zhoushoujianwork/easyeda-agent"><b>GitHub</b></a> ·
+  <a href="https://easyeda-agent.daboluo.cc"><b>项目官网</b></a> ·
+  <a href="https://eda.daboluo.cc/#desktop"><b>下载 Desktop 内测版</b></a> ·
+  <a href="https://github.com/zhoushoujianwork/easyeda-agent/releases"><b>Releases</b></a> ·
   <a href="https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector"><b>立创插件市场</b></a> ·
   <a href="docs/quick-start.md"><b>快速开始</b></a> ·
   <a href="docs/cli-STATUS.md"><b>CLI Status</b></a> ·
@@ -21,6 +23,26 @@
 `easyeda-agent` 是 EasyEDA Pro（嘉立创 EDA 专业版）的 AI 自动化层。你可以直接描述想做的
 电路或要修的问题，Agent 会读取真实工程数据，通过官方 `eda.*` API 完成操作，并在写入前后
 检查器件身份、引脚网络、几何、DRC 和保存状态。
+
+## 推荐体验：EdaDesk Desktop
+
+想在一个窗口里管理工程、与 AI 对话、查看原理图和 PCB？推荐先下载配套的
+**[EdaDesk Desktop 内测版 →](https://eda.daboluo.cc/#desktop)**。
+
+| 使用方式 | 适合谁 | 从哪里开始 |
+|---|---|---|
+| **EdaDesk Desktop** | 希望直接使用桌面工作台，集中查看工程、对话与工具执行 | [官网下载安装包与查看安装说明](https://eda.daboluo.cc/#desktop) |
+| **easyeda-agent CLI / Skill / MCP** | 已使用 Codex、Claude Code 等 AI 客户端，或需要脚本与工具集成 | [下方安装步骤](#安装与开始使用) · [快速开始](docs/quick-start.md) · [MCP 接入](mcp/README.md) |
+
+当前 Desktop **0.1.0 内测版**内置 easyeda-agent **1.16.0**，提供 **macOS Apple Silicon**
+和 **Windows x64** 安装包；文件托管在本项目的
+[GitHub Release](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.16.0#edadesk-desktop)，
+无需访问私有仓库即可下载。后续版本与支持平台以 [Desktop 官网](https://eda.daboluo.cc/) 为准。
+
+Desktop 源码暂不公开，开源时间待定；本仓库的 easyeda-agent 继续按下方开源许可提供。
+macOS 包尚未开发者签名和公证，Windows 包尚未签名或完成真机验收。
+可使用自行安装并登录的本机智能体或自定义模型；官方 Token 赠送与统一模型服务尚未开放，
+下载安装不代表获得额度。首次体验建议使用可丢弃的测试工程。
 
 ## 它能做什么
 
@@ -146,6 +168,8 @@ Agent 先在本地连接数据中核对器件、引脚和网络，再计算模�
 ![原理图实际 Apply 过程](docs/assets/access-control-sch-apply.gif)
 
 ## 安装与开始使用
+
+本节面向 CLI / Skill / MCP 用户；桌面工作台用户可先按 [Desktop 官网](https://eda.daboluo.cc/#desktop) 的说明安装。
 
 easyeda-agent 由三部分组成：`easyeda` CLI/daemon、运行在 EasyEDA 内的
 **EDA Agent Connector**，以及安装在 AI 客户端中的 `easyeda-agent` Skill。
