@@ -22,6 +22,7 @@
 
 - 仅使用用户已打开的内置浏览器 Web EDA，不启动或切换桌面版。`easyeda health` 的 `windows` 必须精确匹配目标工程和文档。
 - 工程写入必须来自可审计的参数数据，通过 Cobra 子命令、类型化动作或 `easyeda apply` 执行。禁止鼠标、键盘、画布、属性面板、工程树及其他 GUI 自动化编辑或验证工程；不得用 `debug.exec_js` 绕过缺失接口。
+- 宿主弹窗和进度条须主动检查；CLI 成功不证明界面无阻塞。已有授权操作所需的确认/取消可用浏览器处理，先识别完整文本、按钮、目标与影响，精确点击一次，再回到 typed 保存/重开/回读；这不授权 GUI 修改画布或用弹窗代替工程验收。详见 [弹窗恢复](.agents/skills/easyeda-agent/references/environment-setup.md#宿主弹窗与进度阻塞)。
 - 接口缺失、宿主持续加载或对象不可读时，停止现场写入，保留错误、输入及已知状态，标明 `planned` / `unsupported`，先修工具并验证。禁止用 GUI 刷新、重开工程或手工修改兜底。
 - 连接器代码改动由 Agent 自行热重载，不等用户卸载或重导入：先保存打开的文档，`node extension/scripts/hot-reload-server.mjs --keep`，再经 `easyeda debug exec` 运行 `extension/scripts/hot-reload-inject.js` 的 `hotReloadConnector`（旧包哈希取 `extension/build/dist/` 中已装版本），以 `health` 新 `windowId` 与 `connectorVersion` 为生效证据。仅限更新已安装且已授权的连接器，不得用于工程编辑；步骤见 [开发环境 §5](docs/dev-environment.md#5-hot-reload-the-connector-skip-uninstall--re-import)。
 - 同一窗口的类型化调用串行执行；子 Agent 只并行离线分析，或在主 Agent 停止访问该窗口时做只读核查。
