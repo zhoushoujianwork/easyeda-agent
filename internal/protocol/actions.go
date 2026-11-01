@@ -15,29 +15,30 @@ const (
 )
 
 type ActionSpec struct {
-	Name         string   `json:"name"`
-	Domain       Domain   `json:"domain"`
-	Phase        int      `json:"phase"`
-	Mutates      bool     `json:"mutates"`
-	NeedsWindow  bool     `json:"needsWindow"`
-	NeedsConfirm bool     `json:"needsConfirm"`
-	Description  string   `json:"description"`
-	Inputs       []string `json:"inputs,omitempty"`
-	Outputs      []string `json:"outputs,omitempty"`
-	VerifyWith   []string `json:"verifyWith,omitempty"`
+	Access       ActionAccess `json:"access"`
+	Name         string       `json:"name"`
+	Domain       Domain       `json:"domain"`
+	Phase        int          `json:"phase"`
+	Mutates      bool         `json:"mutates"`
+	NeedsWindow  bool         `json:"needsWindow"`
+	NeedsConfirm bool         `json:"needsConfirm"`
+	Description  string       `json:"description"`
+	Inputs       []string     `json:"inputs,omitempty"`
+	Outputs      []string     `json:"outputs,omitempty"`
+	VerifyWith   []string     `json:"verifyWith,omitempty"`
 }
 
 func AllActions() []ActionSpec {
 	return []ActionSpec{
 		{
-			Name:        "system.health",
+			Name: "system.health", Access: accessSystemRead,
 			Domain:      DomainSystem,
 			Phase:       1,
 			Description: "Check Go daemon and EasyEDA connector availability.",
 			Outputs:     []string{"daemon status", "connected windows", "active window"},
 		},
 		{
-			Name:        "system.notify",
+			Name: "system.notify", Access: accessEditorView,
 			Domain:      DomainSystem,
 			Phase:       1,
 			NeedsWindow: true,
@@ -46,7 +47,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"shown", "message", "type"},
 		},
 		{
-			Name:        "system.page_reload",
+			Name: "system.page_reload", Access: accessEditorLifecycle,
 			Domain:      DomainSystem,
 			Phase:       1,
 			NeedsWindow: true,
@@ -56,7 +57,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"system.health", "document.current"},
 		},
 		{
-			Name:        "project.current",
+			Name: "project.current", Access: accessProjectRead,
 			Domain:      DomainProject,
 			Phase:       1,
 			NeedsWindow: true,
@@ -65,7 +66,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"project uuid", "project name", "team/workspace context"},
 		},
 		{
-			Name:        "project.export_source",
+			Name: "project.export_source", Access: accessArtifact,
 			Domain:      DomainProject,
 			Phase:       1,
 			NeedsWindow: true,
@@ -74,7 +75,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"uuid", "fileType=epro2", "size", "artifact path/size/SHA-256"},
 		},
 		{
-			Name:        "project.find",
+			Name: "project.find", Access: accessWorkspaceRead,
 			Domain:      DomainProject,
 			Phase:       1,
 			NeedsWindow: true,
@@ -83,7 +84,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"presence (found|absent|unknown)", "matches with UUID/friendlyName/teamUuid", "enumeration.scope/complete/reason", "UUID/readability counts"},
 		},
 		{
-			Name:        "project.create",
+			Name: "project.create", Access: accessProjectLifecycle,
 			Domain:      DomainProject,
 			Phase:       1,
 			Mutates:     true,
@@ -93,7 +94,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"uuid", "friendlyName", "projectName", "created", "opened", "partial when creation succeeded but requested open failed"},
 		},
 		{
-			Name: "project.open", Domain: DomainProject, Phase: 1,
+			Name: "project.open", Access: accessProjectLifecycle, Domain: DomainProject, Phase: 1,
 			Mutates: true, NeedsWindow: true, NeedsConfirm: true,
 			Description: "Open a project through the official API and verify its identity. Can discard unsaved data: save all documents first and pass allowDiscardUnsaved:true. Optional schematic page waits for tree readiness and verifies page/project identity. No debug fallback.",
 			Inputs:      []string{"projectUuid", "allowDiscardUnsaved (required true)", "pageUuid optional"},
@@ -101,34 +102,34 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"project.current", "document.current"},
 		},
 		{
-			Name: "project.delete_preview", Domain: DomainProject, Phase: 1, NeedsWindow: true,
+			Name: "project.delete_preview", Access: accessWorkspaceRead, Domain: DomainProject, Phase: 1, NeedsWindow: true,
 			Description: "Read-only exact UUID/name/team/folder preflight for project deletion from a different reference project. Reports availability of the official internal deleteProject API; does not delete anything.",
 			Inputs:      []string{"projectUuid", "expectedFriendlyName", "expectedTeamUuid optional"},
 			Outputs:     []string{"target", "referenceProjectUuid", "inventoryCount", "supported", "preflightVerified"},
 		},
 		{
-			Name: "project.delete", Domain: DomainProject, Phase: 1, NeedsWindow: true, Mutates: true, NeedsConfirm: true,
+			Name: "project.delete", Access: accessProjectLifecycle, Domain: DomainProject, Phase: 1, NeedsWindow: true, Mutates: true, NeedsConfirm: true,
 			Description: "Delete one exact inactive project using the official internal SDK API, after UUID/name/team and inventory checks. Requires confirmDelete:true; attempts once, verifies target removal and unchanged reference. Unknown or partial results never authorize retry. No GUI/debug fallback.",
 			Inputs:      []string{"projectUuid", "expectedFriendlyName", "expectedTeamUuid", "confirmDelete:true"},
 			Outputs:     []string{"deleted", "verified", "partial", "removed", "referenceProjectUuid"},
 			VerifyWith:  []string{"project.find", "project.current"},
 		},
 		{
-			Name: "project.export", Domain: DomainProject, Phase: 1, NeedsWindow: true,
+			Name: "project.export", Access: accessArtifact, Domain: DomainProject, Phase: 1, NeedsWindow: true,
 			Description: "Export the active project as native epro2 bytes; checks project identity before and after export, bounds payload to 16 MiB. Save first. CLI validates ZIP/CRC and writes a new file; export does not verify restore.",
 			Inputs:      []string{"projectUuid"},
 			Outputs:     []string{"uuid", "format", "size", "base64"},
 			VerifyWith:  []string{"project.current"},
 		},
 		{
-			Name: "project.import", Domain: DomainProject, Phase: 1, Mutates: true, NeedsWindow: true,
+			Name: "project.import", Access: accessProjectLifecycle, Domain: DomainProject, Phase: 1, Mutates: true, NeedsWindow: true,
 			Description: "Import a native project file (epro2 or other EasyEDA Pro archive) as a NEW project via the @beta official importer; never writes into an existing project; the host may switch the window to the new project and reload (connector drops). teamUuid defaults to the active project's team. A timeout means the outcome is unknown: list projects before retrying. Content is not verified; open and read back the new project.",
 			Inputs:      []string{"fileName", "base64", "friendlyName", "teamUuid optional", "importOption optional (ImportDocument|ImportDocumentExtractLibraries)"},
 			Outputs:     []string{"uuid", "friendlyName", "teamUuid", "importOption", "bytes", "created", "verified", "contentVerified=false"},
 			VerifyWith:  []string{"project.find", "project.open"},
 		},
 		{
-			Name:        "document.current",
+			Name: "document.current", Access: accessDocumentRead,
 			Domain:      DomainDocument,
 			Phase:       1,
 			NeedsWindow: true,
@@ -136,20 +137,20 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"document uuid", "document type", "tab id"},
 		},
 		{
-			Name: "document.source.get", Domain: DomainDocument, Phase: 1, NeedsWindow: true,
+			Name: "document.source.get", Access: accessSourceRead, Domain: DomainDocument, Phase: 1, NeedsWindow: true,
 			Description: "Read the official Beta document source for an exact project/document. Only schematic and PCB documents; identity is checked before and after. Returns raw source, not an eprj3 project or validated design.",
 			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)"},
 			Outputs:     []string{"schemaVersion", "target", "availability", "source"},
 		},
 		{
-			Name: "document.source.roundtrip", Domain: DomainDocument, Phase: 1, NeedsWindow: true, Mutates: true,
+			Name: "document.source.roundtrip", Access: accessDedicatedDesign, Domain: DomainDocument, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Experimental same-source Beta setter probe. Requires an identity-bound snapshot and source equality under an explicit comparison rule (exact by default); writes only the freshly read unchanged source once. dochead-volatile-v1 permits only three observed SCH_PAGE header value tokens to vary and reports raw equality separately. Does not accept replacement design content, retry, rollback, certify persistence, or import eprj3. dryRun only reads and checks.",
 			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)", "snapshot (schemaVersion/projectUuid/documentUuid/documentType/source)", "dryRun optional", "comparison optional (exact or dochead-volatile-v1)"},
 			Outputs:     []string{"target", "comparison", "beforeSource", "afterSource", "rawBeforeEqualsSnapshot", "rawAfterEqualsBefore", "snapshotVolatile/beforeVolatile/afterVolatile (experimental rule only)", "writeAttempted", "written", "verified", "partial", "incomplete"},
 			VerifyWith:  []string{"document.source.get", "schematic.save / pcb.save", "document.close/open", "fresh object and connectivity readback"},
 		},
 		{
-			Name:        "document.open",
+			Name: "document.open", Access: accessEditorLifecycle,
 			Domain:      DomainDocument,
 			Phase:       1,
 			Mutates:     false,
@@ -159,7 +160,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"tab id"},
 		},
 		{
-			Name:        "document.close",
+			Name: "document.close", Access: accessEditorLifecycle,
 			Domain:      DomainDocument,
 			Phase:       1,
 			Mutates:     false,
@@ -171,7 +172,7 @@ func AllActions() []ActionSpec {
 		// ── view (editor canvas, document-agnostic — schematic & PCB) ──────
 		// All map to eda.dmt_EditorControl.* and act on the focused canvas.
 		{
-			Name:        "editor.panels",
+			Name: "editor.panels", Access: accessEditorView,
 			Domain:      DomainDocument,
 			Phase:       1,
 			NeedsWindow: true,
@@ -180,7 +181,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"left {requested,call,locked}", "right {requested,call,locked}", "stateReadable=false"},
 		},
 		{
-			Name:        "view.fit",
+			Name: "view.fit", Access: accessEditorView,
 			Domain:      DomainDocument,
 			Phase:       1,
 			NeedsWindow: true,
@@ -188,7 +189,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"region (left/right/top/bottom)"},
 		},
 		{
-			Name:        "view.zoom",
+			Name: "view.zoom", Access: accessEditorView,
 			Domain:      DomainDocument,
 			Phase:       1,
 			NeedsWindow: true,
@@ -197,7 +198,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"region (left/right/top/bottom)"},
 		},
 		{
-			Name:        "view.region",
+			Name: "view.region", Access: accessEditorView,
 			Domain:      DomainDocument,
 			Phase:       1,
 			NeedsWindow: true,
@@ -206,7 +207,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"ok"},
 		},
 		{
-			Name:        "schematic.pages.list",
+			Name: "schematic.pages.list", Access: accessProjectRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -214,7 +215,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"schematic uuid list", "schematic page uuid list"},
 		},
 		{
-			Name:        "schematic.page.open",
+			Name: "schematic.page.open", Access: accessProjectLifecycle,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     false,
@@ -227,7 +228,7 @@ func AllActions() []ActionSpec {
 		// All map to eda.dmt_Schematic.*. NOTE: EasyEDA Pro exposes no
 		// set-paper-size (A4/A3) API; the title block is the editable "图纸" surface.
 		{
-			Name:        "schematic.titleblock.get",
+			Name: "schematic.titleblock.get", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -236,7 +237,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"showTitleBlock", "titleBlockData (field keys + values)"},
 		},
 		{
-			Name:        "schematic.titleblock.modify",
+			Name: "schematic.titleblock.modify", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -247,7 +248,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.titleblock.get"},
 		},
 		{
-			Name:        "schematic.page.create",
+			Name: "schematic.page.create", Access: accessProjectLifecycle,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -258,7 +259,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.pages.list"},
 		},
 		{
-			Name:        "schematic.page.rename",
+			Name: "schematic.page.rename", Access: accessProjectLifecycle,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -268,7 +269,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"ok", "verified", "warning"},
 		},
 		{
-			Name:         "schematic.page.delete",
+			Name: "schematic.page.delete", Access: accessProjectLifecycle,
 			Domain:       DomainSchematic,
 			Phase:        1,
 			Mutates:      true,
@@ -279,7 +280,7 @@ func AllActions() []ActionSpec {
 			Outputs:      []string{"ok"},
 		},
 		{
-			Name:         "schematic.page.clear",
+			Name: "schematic.page.clear", Access: accessDesignWrite,
 			Domain:       DomainSchematic,
 			Phase:        1,
 			Mutates:      true,
@@ -291,7 +292,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"schematic.components.list"},
 		},
 		{
-			Name:        "schematic.rename",
+			Name: "schematic.rename", Access: accessProjectLifecycle,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -301,7 +302,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"ok"},
 		},
 		{
-			Name:        "schematic.components.list",
+			Name: "schematic.components.list", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     false,
@@ -311,7 +312,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"component primitives", "designator", "name", "pins", "pinsAvailable", "pinsError on pin-read failure", "bbox", "wires/wiresAvailable/wiresError", "pagePrimitives (all component/graphic IDs and native drawing state; excludes sheet autosave timestamps)", "connectivitySummary {scope,wires,buses,netflags,netports,netlabels,shortSymbols}"},
 		},
 		{
-			Name:        "schematic.attribute.inspect",
+			Name: "schematic.attribute.inspect", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     false,
@@ -321,7 +322,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"primitiveId", "identityBefore", "identityAfter", "getAll", "get", "reset"},
 		},
 		{
-			Name:        "schematic.attribute.move",
+			Name: "schematic.attribute.move", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -331,7 +332,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"ownerType", "verified", "partial", "preserved", "attempted", "moved", "before", "after", "requested", "identityBefore", "identityAfter", "errors"},
 		},
 		{
-			Name:        "schematic.designators.list",
+			Name: "schematic.designators.list", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     false,
@@ -340,7 +341,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"documentId", "count", "designators[] {id,parentId,key,value,visible,bbox,source}"},
 		},
 		{
-			Name:        "schematic.component.place",
+			Name: "schematic.component.place", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -351,7 +352,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.component.get"},
 		},
 		{
-			Name:        "schematic.component.modify",
+			Name: "schematic.component.modify", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -362,7 +363,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.component.get"},
 		},
 		{
-			Name:         "schematic.component.delete",
+			Name: "schematic.component.delete", Access: accessDesignWrite,
 			Domain:       DomainSchematic,
 			Phase:        1,
 			Mutates:      true,
@@ -374,7 +375,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"schematic.components.list"},
 		},
 		{
-			Name:         "schematic.primitives.delete",
+			Name: "schematic.primitives.delete", Access: accessDesignWrite,
 			Domain:       DomainSchematic,
 			Phase:        1,
 			Mutates:      true,
@@ -386,7 +387,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"schematic.components.list"},
 		},
 		{
-			Name:        "schematic.wire.create",
+			Name: "schematic.wire.create", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -397,7 +398,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.primitive.get"},
 		},
 		{
-			Name:        "schematic.group.move",
+			Name: "schematic.group.move", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -408,7 +409,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list"},
 		},
 		{
-			Name:        "schematic.netflag.create",
+			Name: "schematic.netflag.create", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -419,7 +420,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.export.image"},
 		},
 		{
-			Name:        "schematic.pin.set_no_connect",
+			Name: "schematic.pin.set_no_connect", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -430,7 +431,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list", "schematic.drc.check"},
 		},
 		{
-			Name:        "schematic.component.resolve_lcsc",
+			Name: "schematic.component.resolve_lcsc", Access: accessIsolatedDesign,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -441,7 +442,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list"},
 		},
 		{
-			Name:        "schematic.text.list",
+			Name: "schematic.text.list", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     false,
@@ -451,7 +452,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"count", "scope (activePage)", "texts[].primitiveId", "texts[].content", "texts[].x", "texts[].y", "texts[].rotation", "texts[].fontSize", "texts[].color"},
 		},
 		{
-			Name:        "schematic.text.move",
+			Name: "schematic.text.move", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -461,7 +462,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"moved[]", "verified", "partial", "notMoved[].primitiveId", "notMoved[].x", "notMoved[].y", "notMoved[].actual", "notMoved[].error"},
 		},
 		{
-			Name:        "schematic.visible_text.bboxes",
+			Name: "schematic.visible_text.bboxes", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     false,
@@ -471,7 +472,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"documentId", "count", "items[].id", "items[].kind (text|attribute)", "items[].bbox", "items[].parentId", "items[].key", "unmeasured[]"},
 		},
 		{
-			Name:        "schematic.image.create",
+			Name: "schematic.image.create", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -482,7 +483,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.image.list", "schematic.read"},
 		},
 		{
-			Name:        "schematic.image.list",
+			Name: "schematic.image.list", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -491,7 +492,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"count", "scope (activePage)", "images[].primitiveId", "images[].x", "images[].y", "images[].width", "images[].height", "images[].rotation", "images[].mirror", "images[].fileName", "images[].bbox"},
 		},
 		{
-			Name:        "schematic.image.modify",
+			Name: "schematic.image.modify", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -502,7 +503,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.image.list"},
 		},
 		{
-			Name:        "schematic.library.search",
+			Name: "schematic.library.search", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -511,7 +512,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"components[].libraryUuid", "components[].uuid", "components[].name", "components[].value", "components[].footprintName", "components[].lcsc", "components[].description"},
 		},
 		{
-			Name:        "schematic.library.get_by_lcsc",
+			Name: "schematic.library.get_by_lcsc", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -520,7 +521,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"components[].lcsc", "components[].libraryUuid", "components[].uuid", "components[].name", "components[].value", "components[].footprintName", "components[].description", "notFound"},
 		},
 		{
-			Name:        "library.list",
+			Name: "library.list", Access: accessLibraryRead,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			NeedsWindow: true,
@@ -528,7 +529,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"libraries", "personalLibraryUuid", "projectLibraryUuid", "systemLibraryUuid"},
 		},
 		{
-			Name:        "library.common.list",
+			Name: "library.common.list", Access: accessLibraryRead,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			NeedsWindow: true,
@@ -538,7 +539,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"library.device.get", "library.footprint.get"},
 		},
 		{
-			Name:        "library.footprint.create",
+			Name: "library.footprint.create", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -548,43 +549,43 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"uuid", "libraryUuid", "verified", "footprint"},
 			VerifyWith:  []string{"library.footprint.get"},
 		},
-		{Name: "library.cbb.search", Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
+		{Name: "library.cbb.search", Access: accessLibraryRead, Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
 			Description: "Read-only keyword search through official beta lib_Cbb.search. Explicit page/limit; no editor open, creation or fallback. Empty results only describe this query/library/page.",
 			Inputs:      []string{"query", "libraryUuid optional", "limit optional 1..100", "page optional positive integer"}, Outputs: []string{"items", "count", "source", "apiStatus"}},
-		{Name: "library.cbb.export_source", Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
+		{Name: "library.cbb.export_source", Access: accessLibraryRead, Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
 			Description: "Read-only official beta getCbbFileByCbbUuid export of exact library CBB as epro2, bounded to 16 MiB. Never opens a project or changes permissions; library module-download permission may be required.",
 			Inputs:      []string{"uuid", "libraryUuid"}, Outputs: []string{"uuid", "libraryUuid", "format", "size", "base64"}},
-		{Name: "library.cbb.create", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "library.cbb.create", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Create one agent-namespaced CBB in the personal writable library; exact identity readback, no retry or rollback on unknown outcome.",
 			Inputs:      []string{"name"}, Outputs: []string{"uuid", "libraryUuid", "name", "verified", "partial"}},
-		{Name: "library.cbb.delete", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "library.cbb.delete", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Delete one exact agent-owned personal CBB after name/identity verification; refuses the active CBB project. Requires accepted true and fresh absence.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName"}, Outputs: []string{"deleted", "verified", "partial"}},
-		{Name: "library.cbb.open", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true, NeedsConfirm: true,
+		{Name: "library.cbb.open", Access: accessEditorLifecycle, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true, NeedsConfirm: true,
 			Description: "Open one agent-owned CBB project through official beta API. Save ALL documents first; explicit allowProjectSwitch and matching fromProjectUuid required. May discard unsaved content; no automatic retry.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "fromProjectUuid", "allowProjectSwitch required true"}, Outputs: []string{"opened", "actual", "verified", "partial"}},
-		{Name: "library.cbb.symbol_open", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "library.cbb.symbol_open", Access: accessEditorLifecycle, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Open one explicitly selected owned CBB symbol through the official project-library opener. Requires active CBB project and exact schematic-graph membership; type 17 and focused UUID are read back. Missing libraryUuid/cbbUuid on a symbol record is not guessed.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "targetProjectUuid/importedSchematicUuid optional exact imported-variant pair"}, Outputs: []string{"tabId", "symbol", "actual", "membership", "extraGraphics", "verified", "partial"}},
-		{Name: "library.cbb.symbol_build", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "library.cbb.symbol_build", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "One-shot geometry build of an explicitly selected, graph-proven owned CBB symbol. Dry-run exposes existing pin/outline inventory; writes require proven empty target. Verifies exact pin/outline data and boolean saved:true; partial outcomes retain created IDs without automatic rollback or retry.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "pins", "outline", "dryRun optional"}, Outputs: []string{"actualPins", "createdPins", "outlineId", "saved", "verified", "partial"}},
 
-		{Name: "library.cbb.symbol_rectangle_delete", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "library.cbb.symbol_rectangle_delete", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Delete one explicit exact-geometry rectangle in an owned source CBB symbol; verifies project/graph/type17, pin and polygon preservation, fresh absence and boolean save. No replay or rollback; dryRun is read-only.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "rectangle", "dryRun optional"}, Outputs: []string{"before", "after", "rectangle", "saved", "verified", "partial"}},
 
-		{Name: "schematic.cbb.place", Domain: DomainSchematic, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "schematic.cbb.place", Access: accessProjectLifecycle, Domain: DomainSchematic, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Place one exact agent-owned native CBB symbol once; requires explicit symbol variant and project/page. Verifies fresh instance identity, geometry and preservation of existing component geometry. If explicitly allowed after saving ALL documents, probes the source CBB project for exact symbol membership then returns to the verified unchanged target page before single creation. Partial/unknown never retries.",
 			Inputs:      []string{"uuid", "libraryUuid", "expectedName", "symbolUuid", "projectUuid", "documentUuid", "x", "y", "rotation optional", "mirror optional", "allowSourceProjectProbe optional explicit true after saving ALL documents"}, Outputs: []string{"primitiveId", "state", "actualCbb", "actualSymbol", "sourceProbe", "verified", "partial"}},
-		{Name: "schematic.cbb.project_place", Domain: DomainSchematic, Phase: 1, NeedsWindow: true, Mutates: true,
+		{Name: "schematic.cbb.project_place", Access: accessDedicatedDesign, Domain: DomainSchematic, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Experimental single placement of an already imported current-project CBB, using official empty cbbUuid semantics. Proves exact CBB schematic/name/type17/project-library symbol membership. dryRun returns the variant without writing; execution requires its explicit symbol UUID. No cross-project import, replay or rollback. Fresh local symbol binding and geometry decide success.",
 			Inputs:      []string{"projectUuid", "documentUuid", "schematicUuid", "expectedName EA_AGENT__...", "symbolUuid required except dryRun", "x", "y", "dryRun optional", "viaSymbolApi optional explicit generic official symbol creation; still requires native block_symbol readback"}, Outputs: []string{"membership", "primitiveId", "binding", "verified", "partial"}},
-		{Name: "library.cbb.get", Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
+		{Name: "library.cbb.get", Access: accessLibraryRead, Domain: DomainLibrary, Phase: 1, NeedsWindow: true,
 			Description: "Read exact CBB asset through official beta lib_Cbb.get, including boards and schematic.cbbSymbol variants; never opens its project or picks the first variant.",
 			Inputs:      []string{"uuid", "libraryUuid optional"}, Outputs: []string{"cbb", "source", "apiStatus"}},
 		{
-			Name:        "library.footprint.get",
+			Name: "library.footprint.get", Access: accessLibraryRead,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			NeedsWindow: true,
@@ -593,7 +594,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"footprint"},
 		},
 		{
-			Name:        "library.footprint.copy",
+			Name: "library.footprint.copy", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -604,7 +605,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"library.footprint.get"},
 		},
 		{
-			Name:         "library.footprint.delete",
+			Name: "library.footprint.delete", Access: accessLibraryWrite,
 			Domain:       DomainLibrary,
 			Phase:        1,
 			Mutates:      true,
@@ -615,7 +616,7 @@ func AllActions() []ActionSpec {
 			Outputs:      []string{"uuid", "libraryUuid", "name", "deleted", "verified"},
 		},
 		{
-			Name:        "library.footprint.build",
+			Name: "library.footprint.build", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -625,7 +626,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"tabId", "created.pads", "created.lines", "verified", "partial/rollback on failure"},
 		},
 		{
-			Name:        "library.footprint.region_create",
+			Name: "library.footprint.region_create", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -636,7 +637,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"library.footprint.get"},
 		},
 		{
-			Name:        "library.symbol.create",
+			Name: "library.symbol.create", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -647,7 +648,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"library.symbol.get"},
 		},
 		{
-			Name:        "library.symbol.get",
+			Name: "library.symbol.get", Access: accessLibraryRead,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			NeedsWindow: true,
@@ -656,7 +657,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"symbol"},
 		},
 		{
-			Name:        "library.symbol.export_source",
+			Name: "library.symbol.export_source", Access: accessLibraryRead,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			NeedsWindow: true,
@@ -665,7 +666,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"uuid", "libraryUuid", "fileType=elibz2", "size", "artifact path/size/SHA-256"},
 		},
 		{
-			Name:        "library.symbol.build",
+			Name: "library.symbol.build", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -675,7 +676,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"tabId", "created.pins", "created.outline", "created.circles", "verified", "partial on failure"},
 		},
 		{
-			Name:         "library.symbol.delete",
+			Name: "library.symbol.delete", Access: accessLibraryWrite,
 			Domain:       DomainLibrary,
 			Phase:        1,
 			Mutates:      true,
@@ -686,7 +687,7 @@ func AllActions() []ActionSpec {
 			Outputs:      []string{"uuid", "libraryUuid", "name", "deleted", "verified"},
 		},
 		{
-			Name:        "library.model3d.create",
+			Name: "library.model3d.create", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -696,12 +697,12 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"uuid", "uuids", "libraryUuid", "name", "model", "verified", "partial on metadata failure"},
 			VerifyWith:  []string{"library.model3d.get"},
 		},
-		{Name: "library.model3d.get", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Description: "Read a 3D model library asset by UUID.", Inputs: []string{"uuid", "libraryUuid optional"}, Outputs: []string{"model"}},
-		{Name: "library.model3d.delete", Domain: DomainLibrary, Phase: 1, Mutates: true, NeedsWindow: true, NeedsConfirm: true, Description: "Delete one exact 3D model after UUID+library+expectedName preflight and verify absence.", Inputs: []string{"uuid", "libraryUuid", "expectedName"}, Outputs: []string{"uuid", "libraryUuid", "name", "deleted", "verified"}},
-		{Name: "library.model3d.search", Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Description: "Search existing 3D models by keyword, optionally within one exact library.", Inputs: []string{"query", "libraryUuid optional", "classification optional", "limit optional 1..100"}, Outputs: []string{"models", "count"}},
-		{Name: "library.model3d.copy", Domain: DomainLibrary, Phase: 1, Mutates: true, NeedsWindow: true, Description: "Copy an existing 3D model into a writable library under the EA_AGENT namespace and verify it by readback.", Inputs: []string{"uuid", "sourceLibraryUuid", "name", "scope/libraryUuid optional", "classification optional"}, Outputs: []string{"uuid", "libraryUuid", "name", "source", "model", "verified"}},
+		{Name: "library.model3d.get", Access: accessLibraryRead, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Description: "Read a 3D model library asset by UUID.", Inputs: []string{"uuid", "libraryUuid optional"}, Outputs: []string{"model"}},
+		{Name: "library.model3d.delete", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, Mutates: true, NeedsWindow: true, NeedsConfirm: true, Description: "Delete one exact 3D model after UUID+library+expectedName preflight and verify absence.", Inputs: []string{"uuid", "libraryUuid", "expectedName"}, Outputs: []string{"uuid", "libraryUuid", "name", "deleted", "verified"}},
+		{Name: "library.model3d.search", Access: accessLibraryRead, Domain: DomainLibrary, Phase: 1, NeedsWindow: true, Description: "Search existing 3D models by keyword, optionally within one exact library.", Inputs: []string{"query", "libraryUuid optional", "classification optional", "limit optional 1..100"}, Outputs: []string{"models", "count"}},
+		{Name: "library.model3d.copy", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, Mutates: true, NeedsWindow: true, Description: "Copy an existing 3D model into a writable library under the EA_AGENT namespace and verify it by readback.", Inputs: []string{"uuid", "sourceLibraryUuid", "name", "scope/libraryUuid optional", "classification optional"}, Outputs: []string{"uuid", "libraryUuid", "name", "source", "model", "verified"}},
 		{
-			Name:        "library.device.create",
+			Name: "library.device.create", Access: accessLibraryWrite,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			Mutates:     true,
@@ -712,7 +713,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"library.device.get"},
 		},
 		{
-			Name:        "library.device.get",
+			Name: "library.device.get", Access: accessLibraryRead,
 			Domain:      DomainLibrary,
 			Phase:       1,
 			NeedsWindow: true,
@@ -721,7 +722,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"device"},
 		},
 		{
-			Name:         "library.device.delete",
+			Name: "library.device.delete", Access: accessLibraryWrite,
 			Domain:       DomainLibrary,
 			Phase:        1,
 			Mutates:      true,
@@ -731,9 +732,9 @@ func AllActions() []ActionSpec {
 			Inputs:       []string{"uuid", "libraryUuid", "expectedName"},
 			Outputs:      []string{"uuid", "libraryUuid", "name", "deleted", "verified"},
 		},
-		{Name: "library.device.set_model3d", Domain: DomainLibrary, Phase: 1, Mutates: true, NeedsWindow: true, Description: "Bind, replace, or clear a 3D model on an existing Device via lib_Device.modify and exact association readback.", Inputs: []string{"uuid", "libraryUuid", "expectedName", "model3D {uuid,libraryUuid} OR clear=true"}, Outputs: []string{"uuid", "libraryUuid", "model3D", "cleared", "verified", "device"}},
+		{Name: "library.device.set_model3d", Access: accessLibraryWrite, Domain: DomainLibrary, Phase: 1, Mutates: true, NeedsWindow: true, Description: "Bind, replace, or clear a 3D model on an existing Device via lib_Device.modify and exact association readback.", Inputs: []string{"uuid", "libraryUuid", "expectedName", "model3D {uuid,libraryUuid} OR clear=true"}, Outputs: []string{"uuid", "libraryUuid", "model3D", "cleared", "verified", "device"}},
 		{
-			Name:        "schematic.rebind.footprint",
+			Name: "schematic.rebind.footprint", Access: accessIsolatedDesign,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -744,7 +745,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list", "schematic.drc.check"},
 		},
 		{
-			Name:        "schematic.rebind.symbol",
+			Name: "schematic.rebind.symbol", Access: accessIsolatedDesign,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -755,7 +756,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list", "schematic.drc.check"},
 		},
 		{
-			Name:        "schematic.component.replace",
+			Name: "schematic.component.replace", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -766,7 +767,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list", "schematic.drc.check"},
 		},
 		{
-			Name:        "schematic.power.connect_pin",
+			Name: "schematic.power.connect_pin", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -777,7 +778,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.drc.check"},
 		},
 		{
-			Name:        "schematic.pin.repair_marker",
+			Name: "schematic.pin.repair_marker", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -788,7 +789,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list", "schematic.check"},
 		},
 		{
-			Name:        "schematic.pin.disconnect",
+			Name: "schematic.pin.disconnect", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -799,7 +800,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.check"},
 		},
 		{
-			Name:        "schematic.drc.check",
+			Name: "schematic.drc.check", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -808,7 +809,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"passed", "nativePassed", "strict", "fatal nullable", "summary nullable", "violations", "countsAvailable", "detailsAvailable", "verdictSource optional"},
 		},
 		{
-			Name:        "schematic.check",
+			Name: "schematic.check", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -817,7 +818,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"passed", "summary", "findings"},
 		},
 		{
-			Name:        "schematic.bridgeCheck",
+			Name: "schematic.bridgeCheck", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -826,7 +827,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"passed", "bridges", "orphans", "trees"},
 		},
 		{
-			Name:        "schematic.read",
+			Name: "schematic.read", Access: accessDocumentRead,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			NeedsWindow: true,
@@ -835,7 +836,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"components[].primitiveId (mutation handle)", "components[]", "componentCount", "nets[]", "netCount", "floatingPins[]", "floatingPinCount", "check"},
 		},
 		{
-			Name:        "schematic.save",
+			Name: "schematic.save", Access: accessDedicatedDesign,
 			Domain:      DomainSchematic,
 			Phase:       1,
 			Mutates:     true,
@@ -844,7 +845,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"saved"},
 		},
 		{
-			Name:        "schematic.export.netlist",
+			Name: "schematic.export.netlist", Access: accessDocumentRead,
 			Domain:      DomainArtifact,
 			Phase:       1,
 			NeedsWindow: true,
@@ -853,7 +854,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"artifact id", "file path", "netlist type"},
 		},
 		{
-			Name:        "schematic.export.image",
+			Name: "schematic.export.image", Access: accessArtifact,
 			Domain:      DomainArtifact,
 			Phase:       1,
 			NeedsWindow: true,
@@ -863,7 +864,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"schematic.components.list"},
 		},
 		{
-			Name:        "schematic.export.bom",
+			Name: "schematic.export.bom", Access: accessArtifact,
 			Domain:      DomainArtifact,
 			Phase:       1,
 			NeedsWindow: true,
@@ -876,7 +877,7 @@ func AllActions() []ActionSpec {
 		// layout/routing feature. All read-only; mirrors the schematic read
 		// actions against the eda.pcb_* namespaces. See docs/cli/pcb.md.
 		{
-			Name:        "pcb.documents.list",
+			Name: "pcb.documents.list", Access: accessProjectRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -886,7 +887,7 @@ func AllActions() []ActionSpec {
 		{
 			// Project document management (dmt_Pcb), not a canvas edit: DomainBoard
 			// keeps it off PCB-window routing and the PCB stale-read guard.
-			Name:         "pcb.document.delete",
+			Name: "pcb.document.delete", Access: accessProjectLifecycle,
 			Domain:       DomainBoard,
 			Phase:        2,
 			Mutates:      true,
@@ -898,7 +899,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.documents.list"},
 		},
 		{
-			Name:        "pcb.components.list",
+			Name: "pcb.components.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -907,7 +908,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"components[].primitiveId", "components[].designator", "components[].layer", "components[].x", "components[].y", "components[].rotation", "components[].bbox", "components[].pads", "count"},
 		},
 		{
-			Name:        "pcb.layers.list",
+			Name: "pcb.layers.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -915,7 +916,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"layers", "currentLayer", "visibleLayers", "copperLayerCount", "count"},
 		},
 		{
-			Name:        "pcb.layers.set_current",
+			Name: "pcb.layers.set_current", Access: accessEditorView,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -926,7 +927,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.layers.list"},
 		},
 		{
-			Name:        "pcb.layers.visibility",
+			Name: "pcb.layers.visibility", Access: accessEditorView,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -937,7 +938,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.layers.list", "pcb.snapshot"},
 		},
 		{
-			Name:        "pcb.view.side",
+			Name: "pcb.view.side", Access: accessEditorView,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -948,7 +949,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.layers.list", "pcb.snapshot"},
 		},
 		{
-			Name:        "pcb.view.filter.get",
+			Name: "pcb.view.filter.get", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -956,7 +957,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"configuration", "readable", "writable=false", "componentAttributesVisible=null until a live fixture proves the raw key", "api getter/setter evidence"},
 		},
 		{
-			Name:        "pcb.stackup.set",
+			Name: "pcb.stackup.set", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -967,7 +968,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.layers.list"},
 		},
 		{
-			Name:        "pcb.silk.align",
+			Name: "pcb.silk.align", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -978,7 +979,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list", "pcb.snapshot"},
 		},
 		{
-			Name:        "pcb.silk.list",
+			Name: "pcb.silk.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -986,7 +987,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"texts[].primitiveId", "texts[].kind", "texts[].text", "texts[].layer", "texts[].mirror", "texts[].fontFamily", "texts[].fontSize", "texts[].componentId", "texts[].componentLayer", "texts[].x", "texts[].y", "count"},
 		},
 		{
-			Name:        "pcb.silk.add",
+			Name: "pcb.silk.add", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -997,7 +998,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list", "pcb.snapshot"},
 		},
 		{
-			Name:        "pcb.silk.set",
+			Name: "pcb.silk.set", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1008,7 +1009,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list"},
 		},
 		{
-			Name:        "pcb.silk.netnames",
+			Name: "pcb.silk.netnames", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1019,7 +1020,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list", "pcb.snapshot"},
 		},
 		{
-			Name:        "pcb.silk.label_pads",
+			Name: "pcb.silk.label_pads", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1030,30 +1031,30 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.snapshot"},
 		},
 		{
-			Name: "pcb.image.create", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
+			Name: "pcb.image.create", Access: accessDesignWrite, Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Embed a PNG/JPEG/SVG reference picture on DOCUMENT layer 13 using pcb_PrimitiveObject (data URI, not manufacturing geometry). Explicit physical dimensions in mil. Returns fresh geometry and partial status. PNG/JPEG/SVG rendering and save/reload live-verified on Web 4.1.60 / connector 1.8.2; mirror flips the rotated image around the anchor vertical axis.",
 			Inputs:      []string{"dataBase64", "fileName", "x (mil)", "y (mil)", "width (mil)", "height (mil)", "layer optional (13 only)", "rotation optional", "mirror optional"}, Outputs: []string{"primitiveId", "layer", "x", "y", "width", "height", "rotation", "mirror", "fileName", "bbox", "verified", "partial", "notApplied"},
 			VerifyWith: []string{"pcb.image.list"},
 		},
 		{
-			Name: "pcb.image.list", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: false,
+			Name: "pcb.image.list", Access: accessDocumentRead, Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: false,
 			Description: "Read embedded PCB objects by ID or all, including actual layers and bbox, without binary content. Does not enumerate polygon images.",
 			Inputs:      []string{"primitiveId optional"}, Outputs: []string{"images", "count"},
 		},
 		{
-			Name: "pcb.image.modify", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
+			Name: "pcb.image.modify", Access: accessDesignWrite, Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Modify geometry of a DOCUMENT-layer embedded reference picture; fresh readback reports partial writes. Refuses silk/copper objects.",
 			Inputs:      []string{"primitiveId", "x optional", "y optional", "width optional", "height optional", "rotation optional", "mirror optional"}, Outputs: []string{"primitiveId", "layer", "x", "y", "width", "height", "rotation", "mirror", "bbox", "verified", "partial", "notApplied"},
 			VerifyWith: []string{"pcb.image.list"},
 		},
 		{
-			Name: "pcb.image.delete", Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
+			Name: "pcb.image.delete", Access: accessDesignWrite, Domain: DomainPcb, Phase: 1, NeedsWindow: true, Mutates: true,
 			Description: "Delete only the specified DOCUMENT-layer embedded object and verify absence; refuses other layers.",
 			Inputs:      []string{"primitiveId"}, Outputs: []string{"primitiveId", "deleted", "verified", "partial"},
 			VerifyWith: []string{"pcb.image.list"},
 		},
 		{
-			Name:        "pcb.silk.import_svg",
+			Name: "pcb.silk.import_svg", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1064,7 +1065,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list", "pcb.snapshot"},
 		},
 		{
-			Name:        "pcb.nets.list",
+			Name: "pcb.nets.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1072,7 +1073,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"nets[].net", "nets[].length", "nets[].color", "count"},
 		},
 		{
-			Name:        "pcb.net_class.list",
+			Name: "pcb.net_class.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1080,7 +1081,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"classes[].name", "classes[].nets", "classes[].color", "netRules", "count"},
 		},
 		{
-			Name:        "pcb.net_class.create",
+			Name: "pcb.net_class.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1091,7 +1092,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.net_class.list"},
 		},
 		{
-			Name:        "pcb.report",
+			Name: "pcb.report", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1104,7 +1105,7 @@ func AllActions() []ActionSpec {
 		// pre-validates net names against the board and reads back after the
 		// write (`verified`) — the platform's boolean return is not proof.
 		{
-			Name:        "pcb.constraint.list",
+			Name: "pcb.constraint.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1112,7 +1113,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"differentialPairs[]", "equalLengthGroups[]", "count"},
 		},
 		{
-			Name:        "pcb.differential_pair.create",
+			Name: "pcb.differential_pair.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1123,7 +1124,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.constraint.list", "pcb.report"},
 		},
 		{
-			Name:        "pcb.differential_pair.delete",
+			Name: "pcb.differential_pair.delete", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1134,7 +1135,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.constraint.list"},
 		},
 		{
-			Name:        "pcb.differential_pair.rename",
+			Name: "pcb.differential_pair.rename", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1145,7 +1146,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.constraint.list"},
 		},
 		{
-			Name:        "pcb.equal_length_group.create",
+			Name: "pcb.equal_length_group.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1156,7 +1157,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.constraint.list", "pcb.report"},
 		},
 		{
-			Name:        "pcb.equal_length_group.add_nets",
+			Name: "pcb.equal_length_group.add_nets", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1167,7 +1168,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.constraint.list"},
 		},
 		{
-			Name:        "pcb.equal_length_group.delete",
+			Name: "pcb.equal_length_group.delete", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1182,7 +1183,7 @@ func AllActions() []ActionSpec {
 		// schematic), then get laid out with pcb.component.modify. See
 		// docs/cli/pcb.md.
 		{
-			Name:        "pcb.board.info",
+			Name: "pcb.board.info", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1193,7 +1194,7 @@ func AllActions() []ActionSpec {
 		// A Board groups exactly one schematic + one PCB; it is identified by
 		// NAME (not uuid). All map to eda.dmt_Board.*. Domain-agnostic routing.
 		{
-			Name:        "board.list",
+			Name: "board.list", Access: accessProjectRead,
 			Domain:      DomainBoard,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1201,7 +1202,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"boards (name + schematic + pcb)"},
 		},
 		{
-			Name:        "board.current",
+			Name: "board.current", Access: accessProjectRead,
 			Domain:      DomainBoard,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1209,7 +1210,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"linked", "board"},
 		},
 		{
-			Name:        "board.create",
+			Name: "board.create", Access: accessProjectLifecycle,
 			Domain:      DomainBoard,
 			Phase:       2,
 			Mutates:     true,
@@ -1220,7 +1221,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"board.list"},
 		},
 		{
-			Name:        "board.new_pcb",
+			Name: "board.new_pcb", Access: accessProjectLifecycle,
 			Domain:      DomainBoard,
 			Phase:       2,
 			Mutates:     true,
@@ -1231,7 +1232,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"board.list", "pcb.docs"},
 		},
 		{
-			Name:        "board.new",
+			Name: "board.new", Access: accessProjectLifecycle,
 			Domain:      DomainBoard,
 			Phase:       2,
 			Mutates:     true,
@@ -1242,7 +1243,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"board.list", "schematic.pages.list", "pcb.documents.list"},
 		},
 		{
-			Name:        "board.rename",
+			Name: "board.rename", Access: accessProjectLifecycle,
 			Domain:      DomainBoard,
 			Phase:       2,
 			Mutates:     true,
@@ -1252,7 +1253,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"ok", "verified", "hostReturned", "boards"},
 		},
 		{
-			Name:        "board.copy",
+			Name: "board.copy", Access: accessBoardCopy,
 			Domain:      DomainBoard,
 			Phase:       2,
 			Mutates:     true,
@@ -1263,7 +1264,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"board.list"},
 		},
 		{
-			Name:         "board.delete",
+			Name: "board.delete", Access: accessProjectLifecycle,
 			Domain:       DomainBoard,
 			Phase:        2,
 			Mutates:      true,
@@ -1275,7 +1276,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"board.list", "pcb.documents.list", "schematic.pages.list"},
 		},
 		{
-			Name:        "board.rebind",
+			Name: "board.rebind", Access: accessProjectLifecycle,
 			Domain:      DomainBoard,
 			Phase:       2,
 			Mutates:     true,
@@ -1286,7 +1287,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"board.list"},
 		},
 		{
-			Name:        "pcb.component.attrs_backfill",
+			Name: "pcb.component.attrs_backfill", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1297,7 +1298,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:         "pcb.import_changes",
+			Name: "pcb.import_changes", Access: accessDesignWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1309,7 +1310,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.components.list", "pcb.nets.list"},
 		},
 		{
-			Name:         "pcb.add_component",
+			Name: "pcb.add_component", Access: accessDesignWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1321,7 +1322,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.components.list", "pcb.nets.list", "pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.component.modify",
+			Name: "pcb.component.modify", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1332,7 +1333,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:        "pcb.component.lock",
+			Name: "pcb.component.lock", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1343,7 +1344,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:         "pcb.component.delete",
+			Name: "pcb.component.delete", Access: accessDesignWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1355,7 +1356,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.components.list"},
 		},
 		{
-			Name:         "pcb.page.clear",
+			Name: "pcb.page.clear", Access: accessDesignWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1370,7 +1371,7 @@ func AllActions() []ActionSpec {
 		// Read each component's bbox + anchor, compute, write absolute x/y.
 		// Operate on explicit primitiveIds only (never the canvas selection).
 		{
-			Name:        "pcb.align",
+			Name: "pcb.align", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1381,7 +1382,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:        "pcb.distribute",
+			Name: "pcb.distribute", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1392,7 +1393,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:        "pcb.grid_snap",
+			Name: "pcb.grid_snap", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1403,7 +1404,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:        "pcb.components.move",
+			Name: "pcb.components.move", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1414,7 +1415,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:        "pcb.components.arrange",
+			Name: "pcb.components.arrange", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1425,7 +1426,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.components.list"},
 		},
 		{
-			Name:        "pcb.drc.check",
+			Name: "pcb.drc.check", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1434,7 +1435,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"passed", "violations"},
 		},
 		{
-			Name:        "pcb.drc.rules",
+			Name: "pcb.drc.rules", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1442,7 +1443,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"rules"},
 		},
 		{
-			Name:        "pcb.drc.rules.set",
+			Name: "pcb.drc.rules.set", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1453,19 +1454,19 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.drc.rules", "pcb.net_class.list", "pcb.drc.check"},
 		},
 		{
-			Name: "pcb.config.get", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Name: "pcb.config.get", Access: accessDocumentRead, Domain: DomainPcb, Phase: 2, NeedsWindow: true,
 			Description: "Export current PCB ruleConfiguration (bare config), classes and netRules. Read-only; dimensions retain each rule's storage unit. Does not read global editor preferences.",
 			Outputs:     []string{"ruleConfiguration", "classes", "netRules", "configurationName"},
 		},
 		{
-			Name: "pcb.net.color.set", Domain: DomainPcb, Phase: 2, NeedsWindow: true, Mutates: true,
+			Name: "pcb.net.color.set", Access: accessDesignWrite, Domain: DomainPcb, Phase: 2, NeedsWindow: true, Mutates: true,
 			Description: "Set one existing net's RGB color from #RRGGBB, preserving the normalized alpha read from pcb_Net.getNetColor. dryRun returns before/requested; writes are read back and any failure or mismatch carries partial:true. Does not alter net class membership or routing.",
 			Inputs:      []string{"net", "color (#RRGGBB)", "dryRun optional"},
 			Outputs:     []string{"net", "before", "requested", "actual", "verified", "partial", "written/writeError/readbackError optional"},
 			VerifyWith:  []string{"pcb.nets.list"},
 		},
 		{
-			Name: "pcb.config.set", Domain: DomainPcb, Phase: 2, NeedsWindow: true, Mutates: true,
+			Name: "pcb.config.set", Access: accessLayoutWrite, Domain: DomainPcb, Phase: 2, NeedsWindow: true, Mutates: true,
 			Description: "Patch freshly read PCB rules, preserving unspecified fields: clearance edits Track-to-Track cells only; track updates existing layer tables or clones copyFrom into a new non-default rule; via updates diameter bounds; bind assigns a named track rule to an existing class and every member. Converts mil/mm into observed storage units, rejects unknown schemas and invalid ranges before writing. dryRun previews before/requested/changes. Re-reads before writing to detect concurrent changes; writes through the full rules writer with rollback and exact readback. Unverified outcomes carry partial:true. Save/reload/get is still required for persistence.",
 			Inputs:      []string{"kind (clearance|track|via|bind)", "unit optional (mil default|mm)", "name (for clearance/track/via)", "trackToTrack (clearance)", "min/default/max optional (track; at least one)", "copyFrom optional (required for a new track rule)", "minOuter/defaultOuter/maxOuter/minHole/defaultHole/maxHole optional (via; at least one)", "netClass/trackRule (bind)", "dryRun optional"},
 			Outputs:     []string{"before", "requested", "changes", "verified", "partial", "actual", "rollback/readback failure evidence when applicable"},
@@ -1476,7 +1477,7 @@ func AllActions() []ActionSpec {
 		// schematic wire/netflag creates. Bind to a net by NAME; pull layer ids
 		// from pcb.layers.list and net names from pcb.nets.list first.
 		{
-			Name:        "pcb.line.create",
+			Name: "pcb.line.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1487,7 +1488,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.via.create",
+			Name: "pcb.via.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1498,7 +1499,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.save",
+			Name: "pcb.save", Access: accessDedicatedDesign,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1508,50 +1509,50 @@ func AllActions() []ActionSpec {
 		},
 		// ─── Freerouting round-trip (export DSN → external router → import SES) ──
 		{
-			Name: "pcb.export.3d", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Name: "pcb.export.3d", Access: accessArtifact, Domain: DomainPcb, Phase: 2, NeedsWindow: true,
 			Description: "Export the active PCB through official beta get3DFile (OBJ or STEP). Read-only; preserves the returned file/container, capped at 20 MiB. Reports component model bindings, not guaranteed export coverage. STEP includes only STEP source models. CLI verifies artifact bytes and binds export to fresh before/after board readbacks.",
 			Inputs:      []string{"fileType optional (obj|step, default obj)", "fileName optional (basename)", "modelMode optional (Outfit|Parts)", "elements optional (official names, default Component Model)", "autoGenerateModels optional (default false)"},
 			Outputs:     []string{"artifactId", "fileType", "size", "exportContext", "models", "modelCoverage=binding-only"},
 		},
 		{
-			Name: "pcb.model3d.list", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Name: "pcb.model3d.list", Access: accessDocumentRead, Domain: DomainPcb, Phase: 2, NeedsWindow: true,
 			Description: "List every component on the active PCB with its bound 3D model (getState_Model3D), parsed placement (otherProperty[\"3D Model Transform\"]: size/rotation/offset XYZ in mil/deg, mapping inferred) and Height attribute. Unreadable components count as unknown, never dropped. Read-only.",
 			Outputs:     []string{"components[] {primitiveId, designator, layer, footprint, model|null, status bound|unbound|unknown, transform|null, transformStatus ok|missing|malformed|unknown, height}", "summary {total, bound, unbound, unknown}", "transformUnit=mil", "rotationUnit=deg", "transformMapping=inferred"},
 		},
 		{
-			Name: "pcb.model3d.set_transform", Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
+			Name: "pcb.model3d.set_transform", Access: accessDesignWrite, Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
 			Description: "Change named axes of one component's 3D model placement (otherProperty[\"3D Model Transform\"]), keeping every other axis. Exactly one designator match and a readable 9-number placement are required before writing. Writes only non-projected keys plus the re-asserted designator; a fresh readback must show the new placement, the same designator and no other attribute change, else partial with otherPropertyBefore (never retried). dryRun/noop never write.",
 			Inputs:      []string{"designator", "patch {size?,rotation?,offset?} each {x?,y?,z?} (mil / deg)", "dryRun optional"},
 			Outputs:     []string{"designator", "primitiveId", "before", "after", "transform", "verified", "partial", "noop", "dryRun", "problems", "otherPropertyBefore"},
 			VerifyWith:  []string{"pcb.model3d.list"},
 		},
 		{
-			Name: "pcb.model3d.bind", Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
+			Name: "pcb.model3d.bind", Access: accessDesignWrite, Domain: DomainPcb, Phase: 2, Mutates: true, NeedsWindow: true,
 			Description: "Bind or replace the library 3D model of ONE PCB component instance (no dedicated host setter: writes otherProperty[\"3D Model\"]=uuid|libraryUuid and [\"3D Model Title\"]). The model must exist (lib_3DModel.get) before writing; the Device library record and the placement are untouched. Verified by getState_Model3D plus a no-other-key-changed readback, else partial with otherPropertyBefore.",
 			Inputs:      []string{"designator", "model {uuid, libraryUuid}", "dryRun optional"},
 			Outputs:     []string{"designator", "primitiveId", "model", "previous", "verified", "partial", "noop", "dryRun", "problems", "otherPropertyBefore"},
 			VerifyWith:  []string{"pcb.model3d.list"},
 		},
 		{
-			Name: "pcb.export.3d_shell", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Name: "pcb.export.3d_shell", Access: accessArtifact, Domain: DomainPcb, Phase: 2, NeedsWindow: true,
 			Description: "Export the 3D shell (enclosure) designed on the active PCB through official beta get3DShellFile (STL/STEP/OBJ, 20 MiB cap). Read-only. Shell geometry is GUI-only (no primitive API accepts shell layers 53-55); an empty result is INVALID_STATE 'no 3D shell', not a retry.",
 			Inputs:      []string{"fileType optional (stl|step|obj, default stl)", "fileName optional (basename)"},
 			Outputs:     []string{"artifactId", "fileType", "fileName", "size", "exportContext"},
 		},
 		{
-			Name: "pcb.export.gerber", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Name: "pcb.export.gerber", Access: accessArtifact, Domain: DomainPcb, Phase: 2, NeedsWindow: true,
 			Description: "Read-only official beta Gerber ZIP export of the active PCB. Refuses empty/undefined files and unsupported APIs; preserves original bytes. CLI validates artifact integrity and enumerates archive entries. Export does not certify manufacturing readiness.",
 			Inputs:      []string{"fileName optional basename", "unit optional mm|inch (default mm)", "colorSilkscreen optional boolean (default false)", "digitalFormat optional {integerNumber:1..6,decimalNumber:1..6} (mm default 4:5, inch 3:6)"},
 			Outputs:     []string{"artifactId", "fileName", "fileType", "size", "unit", "exportContext", "digitalFormat"},
 		},
 		{
-			Name: "pcb.export.placement", Domain: DomainPcb, Phase: 2, NeedsWindow: true,
+			Name: "pcb.export.placement", Access: accessArtifact, Domain: DomainPcb, Phase: 2, NeedsWindow: true,
 			Description: "Read-only official beta Pick and Place file export. csv (default) or xlsx, mm (default) or mil. Refuses unsupported APIs and missing files; preserves original bytes. CLI validates integrity and reads designator/center/layer/rotation fields.",
 			Inputs:      []string{"fileName optional basename", "fileType optional csv|xlsx", "unit optional mm|mil"},
 			Outputs:     []string{"artifactId", "fileName", "fileType", "size", "unit", "exportContext"},
 		},
 		{
-			Name:        "pcb.export.dsn",
+			Name: "pcb.export.dsn", Access: accessArtifact,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1560,7 +1561,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"artifact id", "file path", "file name", "size", "keepouts (injected count)"},
 		},
 		{
-			Name:        "pcb.import_autoroute",
+			Name: "pcb.import_autoroute", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1570,7 +1571,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"imported", "format"},
 		},
 		{
-			Name:        "pcb.snapshot",
+			Name: "pcb.snapshot", Access: accessEditorView,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1580,7 +1581,7 @@ func AllActions() []ActionSpec {
 		},
 		// ─── PCB routing: list + rip-up (iterate/clear copper routing) ────
 		{
-			Name:        "pcb.line.list",
+			Name: "pcb.line.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1589,7 +1590,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"lines[].primitiveId", "lines[].net", "lines[].layer", "lines[].startX", "lines[].startY", "lines[].endX", "lines[].endY", "lines[].lineWidth", "lines[].locked", "count"},
 		},
 		{
-			Name:        "pcb.via.list",
+			Name: "pcb.via.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1598,7 +1599,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"vias[].primitiveId", "vias[].net", "vias[].x", "vias[].y", "vias[].holeDiameter", "vias[].diameter", "vias[].locked", "count"},
 		},
 		{
-			Name:         "pcb.route.rip_up",
+			Name: "pcb.route.rip_up", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1610,7 +1611,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.line.list", "pcb.via.list"},
 		},
 		{
-			Name:        "pcb.track.lock",
+			Name: "pcb.track.lock", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1621,7 +1622,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.line.list"},
 		},
 		{
-			Name:         "pcb.route.delete",
+			Name: "pcb.route.delete", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1633,7 +1634,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.line.list", "pcb.via.list", "pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.route.via_hop",
+			Name: "pcb.route.via_hop", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1644,7 +1645,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.drc.check", "pcb.via.list"},
 		},
 		{
-			Name:         "pcb.route.auto",
+			Name: "pcb.route.auto", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1656,7 +1657,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.drc.check", "pcb.line.list"},
 		},
 		{
-			Name:         "pcb.clear_routing",
+			Name: "pcb.clear_routing", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1669,7 +1670,7 @@ func AllActions() []ActionSpec {
 		// ─── PCB copper pour (铺铜) ───────────────────────────────────────
 		// Build polygon (pcb_MathPolygon.createPolygon) → pour.create → rebuild.
 		{
-			Name:        "pcb.pour.create",
+			Name: "pcb.pour.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1680,7 +1681,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.pour.list", "pcb.poured.list", "pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.pour.list",
+			Name: "pcb.pour.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1689,7 +1690,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"pours[].primitiveId", "pours[].net", "pours[].layer", "pours[].pourName", "pours[].priority", "pours[].lineWidth", "pours[].locked", "pours[].geometryAvailable", "pours[].source", "count"},
 		},
 		{
-			Name:        "pcb.poured.list",
+			Name: "pcb.poured.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1698,7 +1699,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"available", "poured[].primitiveId", "poured[].pourPrimitiveId", "poured[].net", "poured[].layer", "poured[].fills[].{id,lineWidth,fill,source,sourceUnits,lineWidthUnits,arcSweepUnits,nativeSourceUnits,nativeLineWidthUnits,geometryKind}", "count"},
 		},
 		{
-			Name:         "pcb.pour.delete",
+			Name: "pcb.pour.delete", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1710,7 +1711,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.pour.list"},
 		},
 		{
-			Name:        "pcb.pour.rebuild",
+			Name: "pcb.pour.rebuild", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1720,7 +1721,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"pours", "rebuilt"},
 		},
 		{
-			Name:        "pcb.beautify",
+			Name: "pcb.beautify", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1735,7 +1736,7 @@ func AllActions() []ActionSpec {
 		// wires/copper out) — antenna clearance, board-edge inset, mechanical
 		// exclusion. NOT net-bound filled copper (that's pcb.pour.create).
 		{
-			Name:        "pcb.region.create",
+			Name: "pcb.region.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1746,7 +1747,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.region.list", "pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.region.list",
+			Name: "pcb.region.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1755,7 +1756,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"regions[].primitiveId", "regions[].layer", "regions[].ruleType", "regions[].ruleTypeNames", "regions[].regionName", "regions[].lineWidth", "regions[].locked", "regions[].geometryAvailable", "regions[].source", "count"},
 		},
 		{
-			Name:         "pcb.region.delete",
+			Name: "pcb.region.delete", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1771,7 +1772,7 @@ func AllActions() []ActionSpec {
 		// patch, thermal copper, odd plane). DISTINCT from keep-out region (no
 		// net) AND from pour (覆铜, which reflows). Does NOT reflow around obstacles.
 		{
-			Name:        "pcb.fill.create",
+			Name: "pcb.fill.create", Access: accessLayoutWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1782,7 +1783,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.fill.list", "pcb.drc.check"},
 		},
 		{
-			Name:        "pcb.fill.list",
+			Name: "pcb.fill.list", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1791,7 +1792,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"fills[].primitiveId", "fills[].net", "fills[].layer", "fills[].fillMode", "fills[].lineWidth", "fills[].locked", "fills[].geometryAvailable", "fills[].source", "fills[].bbox (includeBBox)", "count"},
 		},
 		{
-			Name:         "pcb.fill.delete",
+			Name: "pcb.fill.delete", Access: accessLayoutWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1806,7 +1807,7 @@ func AllActions() []ActionSpec {
 		// The verified polygon source supports native ARC commands. Shape-generation
 		// recipes (rect/rounded-rect/circle/instrument) live in the CLI/skill.
 		{
-			Name:         "pcb.outline.set",
+			Name: "pcb.outline.set", Access: accessDesignWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1818,7 +1819,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.outline.get"},
 		},
 		{
-			Name:        "pcb.outline.get",
+			Name: "pcb.outline.get", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1826,7 +1827,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"outline", "segments (legacy lines)", "arcs/legacyArcs (legacy arc primitives)", "sourceSegments", "sourceArcs/nativeArcs (ARC tokens in selected polyline)", "bbox (rendered; includes stroke)", "points", "outlineFormat", "centerlineBBox", "width", "height", "radius", "lineWidth", "locked"},
 		},
 		{
-			Name:         "pcb.outline.clear",
+			Name: "pcb.outline.clear", Access: accessDesignWrite,
 			Domain:       DomainPcb,
 			Phase:        2,
 			Mutates:      true,
@@ -1837,7 +1838,7 @@ func AllActions() []ActionSpec {
 			VerifyWith:   []string{"pcb.outline.get"},
 		},
 		{
-			Name:        "pcb.origin.get",
+			Name: "pcb.origin.get", Access: accessDocumentRead,
 			Domain:      DomainPcb,
 			Phase:       2,
 			NeedsWindow: true,
@@ -1845,7 +1846,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"offsetX", "offsetY", "affectsGeometry=false", "note"},
 		},
 		{
-			Name:        "pcb.origin.set",
+			Name: "pcb.origin.set", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,
 			Mutates:     true,
@@ -1855,7 +1856,7 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"offsetX", "offsetY", "previous", "changed", "verified", "affectsGeometry=false", "note"},
 		},
 		{
-			Name:         "debug.exec_js",
+			Name: "debug.exec_js", Access: accessScript,
 			Domain:       DomainDebug,
 			Phase:        1,
 			Mutates:      true,

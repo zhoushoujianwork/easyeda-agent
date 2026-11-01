@@ -112,3 +112,22 @@ PCB 保持在 `pcb` 域。CLI → daemon → connector 是唯一运行链路，�
 --x ... --y ... --dry-run` 核对当前工程目录与原理图关联；执行必须明确传回读的本地 `--symbol`。
 默认通过官方通用 SYMBOL 入口创建 type 17 资产，并要求新回读为 `block_symbol` 与精确本地绑定。
 原库投影 UUID 不等于本地 UUID；专用接口仅在显式 `--via-symbol-api=false` 时用于诊断。
+
+## 动作权限契约
+
+`easyeda actions` 保持 JSON 数组输出，每条注册增加 `access`（`schemaVersion:1`）；原有字段保持兼容。
+
+| 字段 | 值与用途 |
+|---|---|
+| `scope` | `document` / `project` / `library` / `workspace` / `editor` / `artifact` / `system`，声明受影响对象 |
+| `effect` | `read` / `write` / `view` / `lifecycle` / `export` / `script`，不得从历史 `mutates` 猜测 |
+| `confirmation` | `none` / `design` / `layout` / `dedicated`；layout 包含设计确认并要求当前布局确认 |
+| `verification` | `none` / `save-reload` / `dedicated`；回读要求不等于已通过 |
+| `batch` | `allowed` / `isolated`；身份变化、生命周期等动作需独立批次 |
+| `adapter` | 可选特殊宿主适配器，目前仅 `board-copy`，未知值拒绝 |
+
+普通工程/文档/库读取可以按明确的读取类别自动发现；普通文档写入接入具体目标确认、源版本检查、保存重载与新回读。库资产写入、跨工程与文档生命周期、导出及脚本不能混入文档写入流程。`board.copy` 保留已有专用守卫，通过 `board-copy` 适配器接入。
+
+新增动作必须在 `internal/protocol/actions.go` 的同一条注册中声明 `Access`；目录覆盖测试会拒绝零值、未知类别及与 `mutates` 冲突的读写声明。消费者遇到未知版本、字段或矛盾声明应拒绝；旧 CLI 完全没有权限元数据时，可使用宿主冻结的旧白名单，但不得凭名称通配符开放新动作。权限声明改变后，已展示的确认必须作废并重新确认。
+
+CLI 目录只描述本二进制能力，不证明运行 daemon/连接器同版本、不代表普通人工门禁已批准，也不替代现场动作与保存重载证据。

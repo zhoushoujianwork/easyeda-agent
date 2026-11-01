@@ -1,6 +1,8 @@
 # CLI 与 Action 使用参考
 
 `easyeda <command> --help` 是命令签名，`easyeda actions` 是机器可读 typed action 目录。
+目录中的 `access.schemaVersion:1` 进一步声明作用范围、副作用、确认和回读要求；`mutates:false` 不能单独证明可按纯读取开放。新动作应在 CLI 同一条注册中声明权限，未知版本/类别停止调用，文档生命周期、库资产写入、导出和脚本仍走专用流程。权限描述不是用户确认或现场验收证据。
+
 本文件只保留调用边界；不复制全部命令和历史修复。原理图主流程见
 [schematic-data.md](schematic-data.md) 与 [auto-layout-sop.md](auto-layout-sop.md)。
 

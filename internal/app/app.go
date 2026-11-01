@@ -201,7 +201,8 @@ type ∈ info | success | warn | error | question.`,
 func newActionsCmd(stdout, _ io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "actions",
-		Short: "Print the typed action catalog as JSON",
+		Short: "Print the typed action catalog and access contracts as JSON",
+		Long:  "Print the offline typed action catalog, including access schema version, scope, effects, confirmation, verification and batch requirements. Access metadata describes capabilities; it does not grant user approval or prove live daemon/connector support.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			enc := json.NewEncoder(stdout)
