@@ -3141,6 +3141,120 @@ test('prim-delete: failed kind enumeration cannot prove notFound', async t => {
 	assert.deepEqual(res.result.unverified, { unknownKind: ['wire-maybe'] });
 });
 
+/** Synthetic native inventory; deleting a parent cascades to its owned attributes. */
+function guardedClearOwnedAttributeFixture() {
+	const state: Record<string, Array<Record<string, any>>> = {
+		components: [{ PrimitiveId: 'sheet-1', ComponentType: 'sheet', OtherProperty: { Title: 'Circuit' } }],
+		wires: [1, 2, 3].map(n => ({ PrimitiveId: `wire-${n}`, Line: [0, n * 10, 20, n * 10], Net: 'GND', Color: '#000', LineWidth: 1, LineType: 0 })),
+		texts: [{ PrimitiveId: 'text-1', X: 0, Y: 0, Content: 'Circuit', Rotation: 0, TextColor: '#000', FontName: 'Arial', FontSize: 10, Bold: false, Italic: false, UnderLine: false, AlignMode: 0 }],
+		rectangles: [{ PrimitiveId: 'rectangle-1', TopLeftX: 0, TopLeftY: 0, Width: 20, Height: 10, CornerRadius: 0, Rotation: 0, Color: '#000', FillColor: 'none', LineWidth: 1, LineType: 0, FillStyle: 0 }],
+		buses: [], arcs: [], circles: [], polygons: [], objects: [], attributes: [],
+	};
+	const attribute = (id: string, parent: unknown, key = 'Name') => ({
+		PrimitiveId: id, X: 0, Y: 0, Rotation: 0, Color: '#000', FontName: 'Arial', FontSize: 10,
+		Bold: false, Italic: false, UnderLine: false, AlignMode: 0, FillColor: 'none',
+		Key: key, Value: 'GND', KeyVisible: false, ValueVisible: true, ParentPrimitiveId: parent,
+	});
+	for (const wire of state.wires) {
+		for (const key of ['Name', 'Relevance']) state.attributes.push(attribute(`${wire.PrimitiveId}-${key}`, wire.PrimitiveId, key));
+	}
+	for (const parent of ['sheet-1', 'text-1', 'rectangle-1']) state.attributes.push(attribute(`${parent}-Name`, parent));
+	const primitive = (record: Record<string, any>) => new Proxy({}, { get: (_target, prop) =>
+		typeof prop === 'string' && prop.startsWith('getState_') ? () => record[prop.slice(9)] : undefined });
+	const deleteCalls: string[][] = [];
+	const remove = async (ids: string[]) => {
+		deleteCalls.push([...ids]);
+		for (const [kind, records] of Object.entries(state)) state[kind] = records.filter(record => !ids.includes(record.PrimitiveId));
+		state.attributes = state.attributes.filter(record => !ids.includes(record.ParentPrimitiveId));
+		return true;
+	};
+	const klass = (kind: string) => ({ getAll: async () => state[kind].map(primitive), delete: remove });
+	const eda = {
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => ({ uuid: 'page', tabId: 'page@project' }) },
+		sch_PrimitiveComponent: klass('components'), sch_PrimitiveWire: klass('wires'),
+		sch_PrimitiveText: klass('texts'), sch_PrimitiveRectangle: klass('rectangles'),
+		sch_PrimitiveBus: klass('buses'), sch_PrimitiveArc: klass('arcs'),
+		sch_PrimitiveCircle: klass('circles'), sch_PrimitivePolygon: klass('polygons'),
+		sch_PrimitiveObject: klass('objects'),
+		sch_PrimitiveAttribute: {
+			getAll: async (parent?: string) => state.attributes.filter(a => parent === undefined || a.ParentPrimitiveId === parent).map(primitive),
+			getAllPrimitiveId: async () => state.attributes.map(a => a.PrimitiveId),
+			get: async (id: string) => { const found = state.attributes.find(a => a.PrimitiveId === id); return found ? primitive(found) : undefined; },
+		},
+	};
+	return { eda, state, attribute, deleteCalls };
+}
+
+test('ordinary guarded clear plans and deletes wires with Name/Relevance and graphic-owned attributes, preserving sheet', async t => {
+	const fx = guardedClearOwnedAttributeFixture();
+	(globalThis as any).eda = fx.eda;
+	t.after(() => { delete (globalThis as any).eda; });
+	const before: any = await runAction('schematic.components.list', { includePagePrimitives: true });
+	assert.equal(before.result.pagePrimitives.attributes.length, 9);
+	const expectedPagePrimitives = JSON.stringify(before.result.pagePrimitives);
+	const planned: any = await runAction('schematic.page.clear', { dryRun: true, expectedPagePrimitives });
+	assert.equal(planned.result.total, 5);
+	assert.deepEqual(planned.result.deletedIds.wires, ['wire-1', 'wire-2', 'wire-3']);
+	assert.deepEqual(planned.result.deletedIds.texts, ['text-1']);
+	assert.deepEqual(planned.result.deletedIds.rectangles, ['rectangle-1']);
+	assert.equal(fx.deleteCalls.length, 0);
+	const cleared: any = await runAction('schematic.page.clear', { expectedPagePrimitives });
+	assert.equal(cleared.result.total, 5);
+	assert.equal(cleared.result.remaining, 0);
+	assert.ok(fx.deleteCalls.length > 0, 'the typed clear must execute deletion');
+	const after: any = await runAction('schematic.components.list', { includePagePrimitives: true });
+	assert.deepEqual(after.result.pagePrimitives.components, before.result.pagePrimitives.components);
+	assert.deepEqual(after.result.pagePrimitives.attributes, before.result.pagePrimitives.attributes.filter((a: any) => a.ParentPrimitiveId === 'sheet-1'));
+	for (const [kind, records] of Object.entries(after.result.pagePrimitives)) {
+		if (kind !== 'components' && kind !== 'attributes') assert.deepEqual(records, [], `${kind} must independently read empty`);
+	}
+	const empty: any = await runAction('schematic.page.clear', {
+		dryRun: true, requireCompleteInventory: true, expectedPagePrimitives: JSON.stringify(after.result.pagePrimitives),
+	});
+	assert.equal(empty.result.total, 0);
+});
+
+for (const parent of ['missing-parent', '', null, 17, 'wire-1-Name']) {
+	test(`ordinary guarded clear refuses orphan attribute parent ${JSON.stringify(parent)} before deletion`, async t => {
+		const fx = guardedClearOwnedAttributeFixture();
+		fx.state.attributes.push(fx.attribute('orphan-1', parent));
+		(globalThis as any).eda = fx.eda;
+		t.after(() => { delete (globalThis as any).eda; });
+		const before: any = await runAction('schematic.components.list', { includePagePrimitives: true });
+		await assert.rejects(() => runAction('schematic.page.clear', { expectedPagePrimitives: JSON.stringify(before.result.pagePrimitives) }),
+			/ordinary clear cannot prove removal of 1 orphan attributes and 0 embedded objects/);
+		await assert.rejects(() => runAction('schematic.page.clear', { dryRun: true, requireCompleteInventory: true }), /1 orphan attributes/);
+		assert.equal(fx.deleteCalls.length, 0);
+	});
+}
+
+for (const changed of ['wire', 'attribute']) {
+	test(`ordinary guarded clear refuses ${changed} drift with legitimate wire-owned attributes before deletion`, async t => {
+		const fx = guardedClearOwnedAttributeFixture();
+		(globalThis as any).eda = fx.eda;
+		t.after(() => { delete (globalThis as any).eda; });
+		const before: any = await runAction('schematic.components.list', { includePagePrimitives: true });
+		const expectedPagePrimitives = JSON.stringify(before.result.pagePrimitives);
+		if (changed === 'wire') fx.state.wires[0].LineWidth = 2;
+		else fx.state.attributes[0].Value = 'CHANGED';
+		await assert.rejects(() => runAction('schematic.page.clear', { expectedPagePrimitives }), /No primitives deleted: page drawing\/object state differs/);
+		assert.equal(fx.deleteCalls.length, 0);
+	});
+}
+
+test('ordinary guarded clear still refuses embedded objects with valid owned attributes before deletion', async t => {
+	const fx = guardedClearOwnedAttributeFixture();
+	fx.state.objects.push({ PrimitiveId: 'object-1', Content: 'data', StartX: 0, StartY: 0, Width: 10, Height: 10, Rotation: 0, Mirror: false, FileName: 'image.svg' });
+	fx.state.attributes.push(fx.attribute('object-name', 'object-1'));
+	(globalThis as any).eda = fx.eda;
+	t.after(() => { delete (globalThis as any).eda; });
+	const before: any = await runAction('schematic.components.list', { includePagePrimitives: true });
+	await assert.rejects(() => runAction('schematic.page.clear', { expectedPagePrimitives: JSON.stringify(before.result.pagePrimitives) }),
+		/ordinary clear cannot prove removal of 0 orphan attributes and 1 embedded objects/);
+	await assert.rejects(() => runAction('schematic.page.clear', { dryRun: true, requireCompleteInventory: true }), /1 embedded objects remain/);
+	assert.equal(fx.deleteCalls.length, 0);
+});
+
 test('guarded schematic clear refuses changed wire, flag and graphic before deletion', async () => {
 	const state: any = {
 		part: { PrimitiveId: 'part-1', ComponentType: 'part', Designator: 'R1', UniqueId: 'gge1', Name: 'R', SubPartName: 'device.1', AddIntoBom: false, AddIntoPcb: true, Manufacturer: '', ManufacturerId: '', Supplier: '', SupplierId: '', OtherProperty: {}, Component: {}, Symbol: {}, Footprint: {}, X: 0, Y: 0, Rotation: 0, Mirror: false },

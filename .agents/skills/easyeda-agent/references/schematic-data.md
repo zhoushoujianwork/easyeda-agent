@@ -803,6 +803,11 @@ dev.8 开发入口为 `compose --replace --preserve-instances`：只接受同页
 限制与局部恢复条件见 [原理图清理说明](schematic.md)。已完全匹配的验证分支、真实零导线/零图形的
 未布线复用分支不依赖该清理步骤，须按各自 fresh 守卫核对，不能把有残留的快照改称未布线。
 
+普通受保护清页前，`dryRun:true` 配合 `expectedPagePrimitives` 核对完整快照并列出删除计划；
+非空删除计划不等于清理失败。导线及其他已枚举原生图元所属属性不算孤立属性，真正孤立属性和
+嵌入对象仍受完整保护。清理后须独立新回读，再以 `dryRun:true, requireCompleteInventory:true`
+检查剩余清单：删除计划须为 0，且无孤立属性或嵌入对象；默认允许保留图框及其属性。
+
 ```bash
 # 离线检查输入并计算布局
 easyeda sch compose --from composition.json --out composition-plan.json

@@ -2499,9 +2499,13 @@ async function readSchPagePrimitiveState(): Promise<Record<string, Array<Record<
 }
 
 function independentSchPagePrimitives(page: Record<string, Array<Record<string, unknown>>>): { orphanAttributes: Array<string>; objects: Array<string> } {
-	const parents = new Set([...page.components, ...(page.pins ?? [])].map(c => String(c.primitiveId)));
+	// Attributes can belong to any enumerated native primitive, including wires
+	// and graphics. Attributes themselves never establish a valid parent.
+	const parents = new Set(Object.entries(page).filter(([kind]) => kind !== 'attributes')
+		.flatMap(([, primitives]) => primitives.map(p => p.primitiveId))
+		.filter((id): id is string => typeof id === 'string' && id.length > 0));
 	return {
-		orphanAttributes: page.attributes.filter(a => !parents.has(String(a.ParentPrimitiveId))).map(a => String(a.primitiveId)),
+		orphanAttributes: page.attributes.filter(a => typeof a.ParentPrimitiveId !== 'string' || !parents.has(a.ParentPrimitiveId)).map(a => String(a.primitiveId)),
 		objects: page.objects.map(o => String(o.primitiveId)),
 	};
 }
