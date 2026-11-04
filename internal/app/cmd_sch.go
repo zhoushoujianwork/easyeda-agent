@@ -125,6 +125,7 @@ func newSchCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Schematic operations",
 	}
 	sch.PersistentFlags().StringVar(&window, "window", "", "EasyEDA window ID")
+	sch.AddCommand(newSchTextCmd(cfg, &window, stdout, stderr))
 	sch.AddCommand(newSchCbbPlaceCmd(cfg, stdout, stderr, &window))
 	sch.AddCommand(newSchCbbProjectPlaceCmd(cfg, stdout, stderr, &window))
 	sch.AddCommand(newSchConnectivityCmd(cfg, &window, stdout, stderr))

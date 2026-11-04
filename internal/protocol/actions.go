@@ -452,6 +452,14 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"count", "scope (activePage)", "texts[].primitiveId", "texts[].content", "texts[].x", "texts[].y", "texts[].rotation", "texts[].fontSize", "texts[].color"},
 		},
 		{
+			Name: "schematic.text.create", Access: accessDesignWrite,
+			Domain: DomainSchematic, Phase: 1, Mutates: true, NeedsWindow: true,
+			Description: "Create one free text on the active real schematic page using the official API exactly once. Freeze document identity and verify a stable new ID by fresh getAll readback. Partial or unknown writes must never be retried or automatically deleted. Not persistence verification.",
+			Inputs:      []string{"content (required, nonblank, no NUL, at most 16000 Unicode characters)", "x (required finite raw units)", "y (required finite raw units)", "rotation (0|90|180|270, default 0)", "fontSize (optional positive finite raw units)"},
+			Outputs:     []string{"primitiveId", "knownID", "attempted", "verified", "partial", "requested", "after", "identityBefore", "identityAfter", "errors[]"},
+			VerifyWith:  []string{"schematic.text.list"},
+		},
+		{
 			Name: "schematic.text.move", Access: accessDesignWrite,
 			Domain:      DomainSchematic,
 			Phase:       1,

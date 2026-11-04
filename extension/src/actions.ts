@@ -1,3 +1,4 @@
+import { createSchematicText } from './schematic-text-create';
 import { cbbCreate, cbbDelete, cbbOpen, cbbSymbolOpen, cbbSymbolBuild, cbbSymbolRectangleDelete, cbbPlace, cbbProjectPlace } from './cbb-author';
 import { libraryCbbSearch, libraryCbbGet, libraryCbbExportSource } from './library-cbb';
 import { projectOpen, projectExport, projectImport } from './project-transfer';
@@ -16334,6 +16335,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.component.replace': schematicComponentReplace,
 	'schematic.component.resolve_lcsc': schematicComponentResolveLcsc,
 	'schematic.text.list': schematicTextList,
+	'schematic.text.create': createSchematicText,
 	'schematic.text.move': schematicTextMove,
 	'schematic.visible_text.bboxes': schematicVisibleTextBBoxes,
 	'pcb.documents.list': pcbDocumentsList,
@@ -16466,6 +16468,12 @@ export async function runAction(
 	// target merely because the ambient samples happen to agree.
 	if (identityError === undefined && result.context !== after) {
 		identityError = mutationContextError({ ...result.context, tabId: result.context?.tabId ?? after.tabId }, after);
+	}
+	if (action === 'schematic.text.create' && identityError !== undefined) {
+		const evidence = result.result as Record<string, unknown>;
+		evidence.verified = false;
+		evidence.partial = true;
+		evidence.errors = [...(Array.isArray(evidence.errors) ? evidence.errors : []), identityError];
 	}
 	result.mutationContext = { ...before };
 	result.mutationContextAvailable = identityError === undefined;
