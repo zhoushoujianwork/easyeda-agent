@@ -2,6 +2,9 @@ package protocol
 
 import "time"
 
+// The SDK hydrates library metadata even when pins are omitted. Full component
+// inventories need a larger budget; wire guards read only geometry instead.
+const SchematicComponentsReadBudget = 150 * time.Second
 const SchematicGeometryReadBudget = 20 * time.Second
 const SchematicWirePublicationBudget = 2 * time.Second
 
@@ -11,7 +14,7 @@ func SchematicGeometryOverhead(action string, actionBudget time.Duration) time.D
 	if !SchematicGeometryGuarded(action) {
 		return 0
 	}
-	readBudget := SchematicGeometryReadTimeout(actionBudget)
+	readBudget := SchematicGeometryReadTimeout(action, actionBudget)
 	overhead := 2 * readBudget
 	if readBudget > 0 && (action == "schematic.wire.create" || action == "schematic.power.connect_pin") {
 		overhead += SchematicWirePublicationBudget
@@ -20,7 +23,7 @@ func SchematicGeometryOverhead(action string, actionBudget time.Duration) time.D
 }
 
 // Honor deliberately short caller budgets (including diagnostic deadlines).
-func SchematicGeometryReadTimeout(actionBudget time.Duration) time.Duration {
+func SchematicGeometryReadTimeout(action string, actionBudget time.Duration) time.Duration {
 	// A deadline shorter than the response grace is an end-to-end probe, not a
 	// request for extra execution time. Preserve its explicit fail-fast contract.
 	if actionBudget > 0 && actionBudget <= DispatchResponseGrace {
@@ -28,6 +31,10 @@ func SchematicGeometryReadTimeout(actionBudget time.Duration) time.Duration {
 	}
 	if actionBudget > 0 && actionBudget < SchematicGeometryReadBudget {
 		return actionBudget
+	}
+	if action == "schematic.pin.repair_marker" {
+		// Marker repair verifies a complete scene fingerprint, including markers.
+		return SchematicComponentsReadBudget
 	}
 	return SchematicGeometryReadBudget
 }
