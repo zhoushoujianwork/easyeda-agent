@@ -89,16 +89,31 @@ func geometryFailure(req protocol.Request, phase string, applied bool, findings 
 	return &r
 }
 
+// An unreadable snapshot is not evidence that the design violates geometry.
+// Retain mutation provenance so callers still refuse unsafe retries.
+func geometryReadFailure(req protocol.Request, phase string, applied bool, err error) *protocol.Response {
+	r := geometryFailure(req, phase, applied, nil, err.Error())
+	r.Error.Code = "SCHEMATIC_GEOMETRY_READ_FAILED"
+	r.Error.Message = "schematic geometry could not be read (" + phase + ")"
+	return r
+}
+
 func (s *Server) readSchematicGeometry(ctx context.Context, req protocol.Request, dispatch dispatchFn, suffix string) (*protocol.Response, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	read := req
 	read.ID = req.ID + "-geometry-" + suffix
-	read.Action = "schematic.components.list"
-	readBudget := protocol.SchematicGeometryReadTimeout(time.Duration(req.TimeoutMs) * time.Millisecond)
+	read.Action = "schematic.geometry.read"
+	readBudget := protocol.SchematicGeometryReadTimeout(req.Action, time.Duration(req.TimeoutMs)*time.Millisecond)
 	read.TimeoutMs = int((readBudget + protocol.DispatchResponseGrace) / time.Millisecond)
-	read.Payload = map[string]any{"includeBBox": true, "includePins": true, "includePinNets": false, "includeWires": true}
+	read.Payload = nil
+	// Marker repair compares a complete scene fingerprint, including marker
+	// positions and names. It needs the full snapshot, unlike wire/body checks.
+	if req.Action == "schematic.pin.repair_marker" {
+		read.Action = "schematic.components.list"
+		read.Payload = map[string]any{"includeBBox": true, "includePins": true, "includePinNets": false, "includeWires": true}
+	}
 	ctx, cancel := context.WithTimeout(ctx, readBudget)
 	defer cancel()
 	started := time.Now().UTC()
@@ -136,7 +151,7 @@ func (s *Server) forwardSchematicGeometry(ctx context.Context, req protocol.Requ
 	}
 	before, err := s.readSchematicGeometry(ctx, req, dispatch, "before")
 	if err != nil {
-		return geometryFailure(req, "preflight", false, nil, err.Error()), nil
+		return geometryReadFailure(req, "preflight", false, err), nil
 	}
 	baseline := schguard.AnalyzeWireGeometry(before.Result)
 	addingWire := req.Action == "schematic.wire.create" || req.Action == "schematic.power.connect_pin"
@@ -190,7 +205,11 @@ func (s *Server) forwardSchematicGeometry(ctx context.Context, req protocol.Requ
 		observations = append(observations, observation)
 		if err != nil {
 			observation["error"] = err.Error()
-			return failReadback(nil, err.Error())
+			failed := geometryReadFailure(req, "readback", true, err)
+			failed.Result["actionResult"] = res.Result
+			guard := failed.Result["geometryGuard"].(map[string]any)
+			guard["readbackAttempts"], guard["observations"] = len(observations), observations
+			return failed, nil
 		}
 		observation["seq"], observation["seqAbandoned"] = after.Seq, after.SeqAbandoned
 		if wires, ok := after.Result["wires"].([]any); ok {
