@@ -27,6 +27,11 @@ easyeda sch list --project <project> --doc <page-uuid> \
 easyeda sch sheet-geometry --project <project> --doc <page-uuid> --json
 ```
 
+只需检查当前页器件边界、引脚和导线时，使用 `easyeda sch geometry --project <project>`。
+它读取全部 part 的 bbox / 世界坐标引脚及全部导线；不读取库身份、网络编译、非 part 标记或图页属性，
+不能代替重建、换件或连通性导出所需的完整快照。每次重新读取，不缓存，不省略碰撞或导线拓扑检查。
+NC 设置按当前页唯一位号定位后只读取目标器件；重复位号或目标不在当前页即拒绝，先切换到确切图页。
+
 - 每次读写绑定 `--project` 与 `--doc`，同名页使用 UUID。`--doc` 会确认并激活目标页；
   `windowId` 会随连接器重连改变，通常按工程路由更稳。
 - `sch connectivity --all-pages` 逐页激活并恢复起始页。普通 `sch list --all-pages`

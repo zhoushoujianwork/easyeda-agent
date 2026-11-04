@@ -355,7 +355,10 @@ CLI 直接验证该实时身份，不依赖名称枚举。不能将未经回读�
 ### 读取预算与未知写入状态
 
 CLI 在统一派发入口为 `document.open` / `schematic.page.open` 提供至少 30 秒的 daemon 等待窗口，
-为 `schematic.components.list` 的 `includePins:true` 提供至少 150 秒；HTTP 预算另含现有 2 秒响应宽限。
+为完整的 `schematic.components.list` 提供至少 150 秒（SDK 即使不读引脚也会加载库元数据）；HTTP 预算另含现有 2 秒响应宽限。
+普通几何守卫改用 `schematic.geometry.read`，按需读取当前页所有 part 的 bbox、世界坐标引脚和全部导线，不加载器件库或编译网表；每轮仍为 20 秒，写前写后检查和拓扑判据不变。
+标记修复依赖包含标记的完整场景指纹，仍读完整清单并采用 150 秒预算。
+`SCHEMATIC_GEOMETRY_READ_FAILED` 表示读取证据失败，不等同于几何违规；检查 `mutationApplied` / `partial`，写后失败不能盲目重放。
 这些预算覆盖普通命令、布局与 Apply 调用，不改变明确小于默认 20 秒的诊断请求。
 预算增加不代表解决宿主节流，也不保证迟到写入取消。打开文档报错后，`--doc` 会只读核实目标 UUID；
 不能确认目标时仍失败。zone-arrange 修复连接失败后立即停止，不因超时或回滚文案重发写入；
