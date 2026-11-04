@@ -1235,6 +1235,43 @@ export const schematicDesignatorsList: Handler = async () => {
 	}
 };
 
+// Wire guards consume part bodies, world-space pins and wire topology only.
+// SDK component.getAll() additionally hydrates three library records per object;
+// none of that metadata participates in these checks.
+export const schematicGeometryRead: Handler = async () => {
+	const kind = 'part' as Parameters<typeof eda.sch_PrimitiveComponent.getAllPrimitiveId>[0];
+	const ids = await eda.sch_PrimitiveComponent.getAllPrimitiveId(kind, false);
+	if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Part inventory is unavailable or invalid.');
+	}
+	const attributes = await eda.sch_PrimitiveAttribute.getAll();
+	if (!Array.isArray(attributes)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Part attributes are unavailable.');
+	const designators = new Map<string, string>();
+	for (const attribute of attributes) {
+		if (attribute.getState_Key() === 'Designator') {
+			designators.set(attribute.getState_ParentPrimitiveId(), attribute.getState_Value());
+		}
+	}
+	const components: Array<Record<string, unknown>> = [];
+	for (const primitiveId of ids) {
+		const bbox = await eda.sch_Primitive.getPrimitivesBBox([primitiveId]);
+		const pins = await eda.sch_PrimitiveComponent.getAllPinsByPrimitiveId(primitiveId);
+		if (!bbox || !Array.isArray(pins)) {
+			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Geometry unavailable for part ${primitiveId}.`);
+		}
+		components.push({ primitiveId, componentType: 'part', designator: designators.get(primitiveId), bbox,
+			pins: pins.map(pin => ({ ...serializePin(pin), net: null })), pinsAvailable: true });
+	}
+	const rawWires = await eda.sch_PrimitiveWire.getAll();
+	if (!Array.isArray(rawWires)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Wire inventory is unavailable.');
+	const wires = collectWireSegments(rawWires).map(serializeWireSegment);
+	const afterIds = await eda.sch_PrimitiveComponent.getAllPrimitiveId(kind, false);
+	if (!Array.isArray(afterIds) || afterIds.length !== ids.length || new Set(afterIds).size !== ids.length || afterIds.some(id => !ids.includes(id))) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Part inventory changed during geometry read.');
+	}
+	return { result: { scope: 'active-page-part-geometry', components, count: components.length, wires, wiresAvailable: true } };
+};
+
 export const schematicComponentsList: Handler = async (payload) => {
 	const allPages = optionalBoolean(payload, 'allPages') === true;
 	const includePins = optionalBoolean(payload, 'includePins') === true;
@@ -1447,7 +1484,7 @@ export const schematicComponentsList: Handler = async (payload) => {
 			const rawWires = await eda.sch_PrimitiveWire.getAll();
 			if (!Array.isArray(rawWires)) throw new Error('Wire API did not return an array.');
 			for (const s of collectWireSegments(rawWires)) {
-				wires.push({ x0: s.seg[0], y0: s.seg[1], x1: s.seg[2], y1: s.seg[3], net: s.net, primitiveId: s.wirePrimitiveId, segmentIndex: s.segmentIndex, rawLine: s.rawLine, rawEncoding: s.rawEncoding });
+				wires.push(serializeWireSegment(s));
 			}
 			wiresAvailable = true;
 		} catch (err) {
@@ -3787,21 +3824,21 @@ export const schematicPinSetNoConnect: Handler = async (payload) => {
 	// Default to setting the flag; only an explicit false clears it.
 	const value = optionalBoolean(payload, 'noConnected') === false ? false : true;
 
-	let components;
-	try {
-		components = await eda.sch_PrimitiveComponent.getAll(undefined, true);
+	const ids = await eda.sch_PrimitiveComponent.getAllPrimitiveId(undefined, false);
+	const attributes = await eda.sch_PrimitiveAttribute.getAll();
+	if (!Array.isArray(ids) || !Array.isArray(attributes)) {
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Current-page component inventory is unavailable.');
 	}
-	catch (err) {
-		throw edaError(err, 'Failed to read schematic components.');
-	}
-	const target = (components ?? []).find(c => c.getState_Designator() === designator);
-	if (!target) {
+	const targets = new Set(attributes.filter(a => a.getState_Key() === 'Designator'
+		&& a.getState_Value() === designator && ids.includes(a.getState_ParentPrimitiveId()))
+		.map(a => a.getState_ParentPrimitiveId()));
+	if (targets.size !== 1) {
 		throw new ActionError(
 			ErrorCodes.EDA_CALL_FAILED,
-			`No component with designator "${designator}" on the schematic.`,
+			`Expected one current-page component with designator "${designator}"; found ${targets.size}.`,
 		);
 	}
-	const cid = target.getState_PrimitiveId();
+	const cid = [...targets][0];
 
 	let component: SchComponent | undefined;
 	try {
@@ -4265,6 +4302,11 @@ interface NetlistComponentInfo {
 // use normalizeWirePoints, whose vertices describe a single requested path.
 export function collectWireSegments(wires: Parameters<typeof readObservedWireSegments>[0]): Array<CheckWireSegment> {
 	return readObservedWireSegments(wires);
+}
+
+function serializeWireSegment(s: CheckWireSegment) {
+	return { x0: s.seg[0], y0: s.seg[1], x1: s.seg[2], y1: s.seg[3], net: s.net,
+		primitiveId: s.wirePrimitiveId, segmentIndex: s.segmentIndex, rawLine: s.rawLine, rawEncoding: s.rawEncoding };
 }
 
 /** A whole primitive with no real geometry: every observed segment is zero-length.
@@ -16271,6 +16313,7 @@ const HANDLERS: Record<string, Handler> = {
 	'schematic.titleblock.get': schematicTitleBlockGet,
 	'schematic.titleblock.modify': schematicTitleBlockModify,
 	'schematic.components.list': schematicComponentsList,
+	'schematic.geometry.read': schematicGeometryRead,
 	'schematic.attribute.inspect': schematicAttributeInspect,
 	'schematic.attribute.move': payload => moveSchematicAttribute(payload, attribute => schAttributeStateRecord(attribute, readCurrentNativePageAttributes)),
 	'schematic.designators.list': schematicDesignatorsList,
