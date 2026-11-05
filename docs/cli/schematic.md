@@ -171,3 +171,12 @@ connect/autoconnect 只有端点挂 netflag/netport 一种表达;同模块内「
 这边是「AI 操作原理图」的功能域视角。改动原理图相关命令后请同步本文。*
 
 1.4 不再提供独立 `sch note` 命令,也不以 Notes 的存在或归属阻塞检查。模块框标题由呈现数据转换生成,粉色字高 0.2 inch(20单位),方框使用虚线。标题放在上方或下方的合法空档,不固定保留顶部标题带。数据字段与转换验收见[模块框与标题](../schematic-frame-conversion.md)。普通文字读取仍使用 `sch text-list`。
+
+
+### 自由说明文字创建（未发布、未现场验证）
+
+`sch text create --content "模块说明" --x 0 --y 20 [--font-size 10] [--rotation 0]`
+通过 typed `schematic.text.create` 单次创建并新鲜回读；不确定或 partial 结果非零退出，保留已知 ID，
+禁止自动重试或自动删除。输入限制、单位、保存重载回读与测试清理步骤见公开 Skill 的
+[创建自由说明文字](../../.agents/skills/easyeda-agent/references/schematic-placement.md#创建自由说明文字)。
+既有 `sch text-list` 与 `schematic.text.move` 保持原契约。
