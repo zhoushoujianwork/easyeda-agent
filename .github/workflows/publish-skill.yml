@@ -3,7 +3,8 @@ name: Publish skill to skillhub.cn
 # 什么时候跑
 #   • release: published —— `make release VERSION=vX.Y.Z` 里的 `gh release create`
 #     会发出这个事件,于是发版顺带把 skill 推到 skillhub.cn,不用改 release 目标。
-#   • workflow_dispatch —— CI 挂了/后补版本时手动补发,手填版本号。
+#   • workflow_dispatch —— CI 挂了/后补版本时手动补发,只收稳定数字三段版本。
+#   DEV/rc 等预发布不得推到正式 hub；在 publish job 启动前拒绝，不读取 token。
 #
 # token: 只读 secrets.SKILLHUB_TOKEN(skh_ 开头)。skillhub CLI **原生读同名环境变量**
 #   (优先级 --token > SKILLHUB_TOKEN > ~/.skillhub/credentials.json),所以这里
@@ -14,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "版本号(带不带 v 前缀都行,如 v1.0.3 或 1.0.3)"
+        description: "稳定版本号(如 v1.0.3 或 1.0.3；不允许 dev/rc/build 后缀)"
         required: true
         type: string
 
@@ -27,7 +28,34 @@ permissions:
   contents: read
 
 jobs:
+  # job 条件不支持正则：先在不引用 secrets 的 job 中检查完整版本格式。
+  validate-version:
+    runs-on: ubuntu-latest
+    outputs:
+      stable: ${{ steps.version.outputs.stable }}
+    steps:
+      - name: Check stable version before starting publish
+        id: version
+        env:
+          RAW: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
+        run: |
+          if [[ "$RAW" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::仅允许稳定数字三段版本；跳过正式 hub 发布。"
+          fi
+
   publish:
+    needs: validate-version
+    # release 必须已正式发布且无预发布后缀；手动补发同样须先通过严格版本检查。
+    if: >-
+      needs.validate-version.outputs.stable == 'true' &&
+      ((github.event_name == 'release' &&
+        github.event.release.draft == false &&
+        github.event.release.prerelease == false &&
+        !contains(github.event.release.tag_name, '-')) ||
+       github.event_name == 'workflow_dispatch')
     name: Validate and publish easyeda-agent skill
     runs-on: ubuntu-latest
     steps:
@@ -46,8 +74,8 @@ jobs:
             exit 1
           fi
           VERSION="${RAW#v}"
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
-            echo "::error::版本号 '$RAW' 不是合法 SemVer。skillhub 只收 x.y.z(可带 -rc.1 / +build 后缀)。"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::版本号 '$RAW' 不是允许的稳定版本。正式 hub 只收 x.y.z，不允许预发布或 build 后缀。"
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
