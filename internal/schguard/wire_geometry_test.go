@@ -3,6 +3,7 @@ package schguard
 import (
 	"encoding/json"
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -33,6 +34,23 @@ func TestWireGeometryOutwardDoglegAndBranch(t *testing.T) {
 	} {
 		if f := AnalyzeWireGeometry(scene(0, wires...)); len(f) != 0 {
 			t.Fatalf("legal fanout rejected: %+v", f)
+		}
+	}
+}
+
+func TestWireGeometryNeedsNoLibraryIdentityOrMarkerInventory(t *testing.T) {
+	for _, w := range []any{wire(20, 0, 30, 0), wire(20, 0, 15, 0), wire(-20, 0, 20, 0)} {
+		full := scene(0, w)
+		part := full["components"].([]any)[0].(map[string]any)
+		part["device"], part["symbol"], part["footprint"] = "library-device", "library-symbol", "library-footprint"
+		full["components"] = append(full["components"].([]any), map[string]any{"componentType": "netflag", "primitiveId": "flag"})
+		want := AnalyzeWireGeometry(full)
+		lean := map[string]any{"wires": full["wires"], "components": []any{map[string]any{
+			"primitiveId": part["primitiveId"], "componentType": "part", "designator": part["designator"],
+			"bbox": part["bbox"], "pins": part["pins"], "pinsAvailable": true,
+		}}}
+		if got := AnalyzeWireGeometry(lean); !reflect.DeepEqual(got, want) {
+			t.Fatalf("geometry-only evidence changed findings: got %+v want %+v", got, want)
 		}
 	}
 }

@@ -644,6 +644,15 @@ not permission to substitute a similar symbol.`,
 		sch.AddCommand(c)
 	}
 
+	sch.AddCommand(&cobra.Command{
+		Use: "geometry", Short: "Read active-page part bodies, pins and wires without library metadata",
+		Args: cobra.NoArgs,
+		Long: "Read all current-page part body boxes, world-space pins and wire topology. This is geometry evidence only; use sch list for complete component identities, markers, properties or rebuild snapshots.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return dispatch(cfg, "schematic.geometry.read", window, nil, stdout, stderr)
+		},
+	})
+
 	// ── attribute-inspect ────────────────────────────────────────────────
 	{
 		var primitiveID string

@@ -34,7 +34,7 @@ func geometryDispatcher(before, after map[string]any, writes *int, switchDoc boo
 		seq++
 		n := seq
 		r := &protocol.Response{OK: true, Seq: &n, SeqAbandoned: &abandoned, Context: &protocol.Context{ProjectUUID: "p1", DocumentUUID: "d1", DocumentType: "schematic"}}
-		if req.Action == "schematic.components.list" {
+		if req.Action == "schematic.geometry.read" {
 			r.Result = before
 			if *writes > 0 {
 				r.Result = after
@@ -64,6 +64,44 @@ func TestSchematicGeometryRefusesRawWireBeforeDispatch(t *testing.T) {
 }
 
 func ptrRequest(req protocol.Request) *protocol.Request { return &req }
+
+func TestSchematicGeometryReadFailurePreservesMutationState(t *testing.T) {
+	for _, phase := range []string{"preflight", "readback"} {
+		t.Run(phase, func(t *testing.T) {
+			writes, reads := 0, 0
+			fixture := geometryFixture(t)
+			base := geometryDispatcher(fixture, fixture, &writes, false)
+			dispatch := func(ctx context.Context, req protocol.Request) (*protocol.Response, error) {
+				if req.Action == "schematic.geometry.read" {
+					reads++
+					if phase == "preflight" || reads == 2 {
+						return nil, context.DeadlineExceeded
+					}
+				}
+				return base(ctx, req)
+			}
+			res, err := New(Options{}).forwardSchematicGeometry(context.Background(), geometryRequest(`[[590,1020],[620,1020]]`), dispatch)
+			if err != nil || res.OK || res.Error.Code != "SCHEMATIC_GEOMETRY_READ_FAILED" || res.Error.Detail != context.DeadlineExceeded.Error() {
+				t.Fatalf("lost observation error: res=%+v err=%v", res, err)
+			}
+			applied := phase == "readback"
+			guard := res.Result["geometryGuard"].(map[string]any)
+			if guard["mutationApplied"] != applied || guard["phase"] != phase || guard["findings"] != nil {
+				t.Fatalf("incorrect geometry evidence: %+v", guard)
+			}
+			wantWrites, wantReads := 0, 1
+			if applied {
+				wantWrites, wantReads = 1, 2
+				if res.Result["partial"] != true || guard["readbackAttempts"] != 1 {
+					t.Fatalf("lost post-mutation provenance: %+v", res.Result)
+				}
+			}
+			if writes != wantWrites || reads != wantReads {
+				t.Fatalf("unexpected replay: writes=%d reads=%d", writes, reads)
+			}
+		})
+	}
+}
 
 func TestSchematicGeometryReadbackCannotReportAPISuccess(t *testing.T) {
 	for _, scenario := range []string{"valid", "bad-after", "wrong-doc", "missing-inventory", "missing-rotation", "not-landed"} {
@@ -155,7 +193,7 @@ func TestSchematicGeometryHTTPActionCannotBypassPreflight(t *testing.T) {
 	if result.OK || result.Error == nil || result.Error.Code != "SCHEMATIC_GEOMETRY_INVALID" {
 		t.Fatalf("raw action bypassed: %+v", result)
 	}
-	if action := <-seen; action != "schematic.components.list" {
+	if action := <-seen; action != "schematic.geometry.read" {
 		t.Fatalf("write dispatched before validation: %s", action)
 	}
 	select {
