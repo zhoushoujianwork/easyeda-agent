@@ -2356,11 +2356,14 @@ function installNoConnectStub(initial: Record<string, boolean>) {
 	};
 
 	(globalThis as any).eda = {
+		sch_PrimitiveAttribute: { getAll: async () => [{
+			getState_Key: () => 'Designator', getState_Value: () => 'U1', getState_ParentPrimitiveId: () => componentId,
+		}] },
 		sch_PrimitiveComponent: {
-			getAll: async () => [{
-				getState_Designator: () => 'U1',
-				getState_PrimitiveId: () => componentId,
-			}],
+			getAllPrimitiveId: async (kind: unknown, allPages: boolean) => {
+				assert.equal(allPages, false);
+				return [componentId];
+			},
 			get: async (id: string) => {
 				getCalls.push(id);
 				return id === componentId ? component : undefined;

@@ -128,8 +128,11 @@ EasyEDA Pro stores every installed extension in the browser's **IndexedDB**,
 not on disk. This is true for both the web editor and the Electron desktop
 client (the desktop app is a Chromium webview).
 
-- **Database**: `User_<teamUuid>_v6` (the `teamUuid` is the one returned by
-  `easyeda project info`).
+- **Database**: `User_<ownerUuid>_v6`. Inspect the existing names with
+  `indexedDB.databases()` first: the desktop client can use the logged-in user's
+  UUID rather than the project's `teamUuid`. Supply that existing owner UUID as
+  `TEAM`; the injector still requires the exact installed connector UUID, version,
+  permissions and bundle hash, and never creates a database.
 - **Object stores**:
   - `extensionsIndex` — one record per extension, keyed by `uuid`. Fields:
     `config` (the parsed `extension.json`), `isEnable`,

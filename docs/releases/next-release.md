@@ -1,3 +1,44 @@
+# v1.17.0 发布准备（尚未发布）
+
+当前正式版仍为 [v1.16.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.16.0)。
+原理图文本创建已在 [v1.17.0-dev.1](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.17.0-dev.1)
+开发预览发布；该预览不是正式 v1.17.0。此次功能整合以 dev 为候选来源，正式发布仍须从经确认的 main 固定提交构建。
+
+## 候选范围
+
+- PR #300：新增 `sch geometry` / `schematic.geometry.read`，只读取当前页 part 几何与导线，
+  避免普通导线守卫加载全量器件库；NC 按当前页 ID 与位号唯一定位，保留完整读取与 marker 指纹路径。
+- 几何读取失败区分 `SCHEMATIC_GEOMETRY_READ_FAILED`，保留写入阶段与 `mutationApplied/partial`；
+  完整器件读取使用统一预算，显式短诊断预算保持。
+- 原理图中文、多行说明文字创建与按稳定 ID 回读；未知或部分写入失败，不自动重放或删除。
+- 清页库存识别导线等原生对象所属属性；所有类型化动作声明权限契约，
+  新的几何读取动作按 `accessDocumentRead` 纳入宿主能力发现。
+- Windows 本地 Skill 归档子路径校验与 CLI 安装错误上下文；DEV 预发布不触发正式 SkillHub 发布。
+
+连接器运行时相对 v1.16.0 有变化，下一正式版建议 v1.17.0。
+合并候选使用独立 `1.17.0-dev.2` 元数据，避免复用已发布 dev.1 的版本身份；没有发布新标签或资产。
+
+## 集成与验证边界
+
+PR #300 的精确 head `6fc7af0c` 已通过 GitHub CI 的 CLI/connector/Skill、PCB solver
+和 Windows/macOS/Linux native install surface 五项任务，并合入 main。
+该检查只覆盖 PR 自身。合入 dev 后的自动验证：Go 6094 项通过、1 项跳过（16 个测试包通过、
+2 个包无测试），go vet 通过；Connector 全量 1379 项、TypeScript 检查和 MCP 10 项通过。
+Agent 协作检查、192 文件 Skill 包、规则夹具、模块目录与 123 项发布脚本检查通过。
+本地开发候选的完整资产构建与安装/升级冒烟仍待执行；这些自动检查不替代现场验收。
+文本功能分支的内容已经通过 PR #301 进入 dev；同补丁的原始分支按等价补丁核对，
+历史工作区不重复引入旧实现。
+
+本轮未更新正式 CLI、daemon 或 EDA 连接器。浏览器控制宿主不可用，
+合并候选的真实几何读取、文本创建、NC 写入，以及保存、重载、新回读仍待现场验收。
+PR 作者的现场读取记录不替代当前候选的现场验收；Windows 自动安装的 Access denied
+仍是作者报告的未解决边界，本机和 CI 的归档/安装冒烟通过不代表该现场故障已解决。
+
+正式 v1.17.0 尚未批准发布；中版本验收材料、现场流程和独立复核须依仓库规则完成。
+完整设计 E2E 未执行，不沿用 v1.16.0 的有限验收授权，也不填写通过结论。
+
+---
+
 # v1.16.0 发布准备
 
 候选基于已合并的 `origin/main`（`a0aa9620`），不纳入本地 dev 上的其他开发提交。

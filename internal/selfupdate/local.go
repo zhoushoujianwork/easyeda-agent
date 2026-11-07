@@ -127,7 +127,7 @@ func ReadLocalBundle(dir string) (*LocalBundle, error) {
 			return nil, e
 		}
 		name := strings.TrimPrefix(h.Name, SkillName+"/")
-		if name == h.Name || name == "." || name == ".version" || strings.Contains(name, `\`) || filepath.IsAbs(name) || filepath.Clean(name) != name || name == ".." || strings.HasPrefix(name, "../") || h.Typeflag != tar.TypeReg {
+		if name == h.Name || name == "." || name == ".version" || strings.Contains(name, `\`) || filepath.IsAbs(name) || filepath.ToSlash(filepath.Clean(name)) != name || name == ".." || strings.HasPrefix(name, "../") || h.Typeflag != tar.TypeReg {
 			return nil, fmt.Errorf("unsafe skill entry: %s", h.Name)
 		}
 		if _, exists := b.Skill[name]; exists {
@@ -214,19 +214,19 @@ func (b *LocalBundle) Install(binary string, log io.Writer) (retErr error) {
 	}
 	stage, err := os.CreateTemp(filepath.Dir(binary), ".easyeda-local-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("create local CLI stage: %w", err)
 	}
 	stageName := stage.Name()
 	defer os.Remove(stageName)
 	if _, err = stage.Write(b.Binary); err != nil {
 		stage.Close()
-		return err
+		return fmt.Errorf("write local CLI stage: %w", err)
 	}
 	if err = stage.Close(); err != nil {
-		return err
+		return fmt.Errorf("close local CLI stage: %w", err)
 	}
 	if err = os.Chmod(stageName, 0755); err != nil {
-		return err
+		return fmt.Errorf("chmod local CLI stage: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -37,7 +37,7 @@ func TestSchematicWirePublicationHTTPReadsOnly(t *testing.T) {
 			seq++
 			n, abandoned := seq, 0
 			result := map[string]any{"primitiveId": "wire"}
-			if req.Action == "schematic.components.list" {
+			if req.Action == "schematic.geometry.read" {
 				result = before
 				if writes.Load() > 0 && reads.Add(1) > 1 {
 					result = after
@@ -102,7 +102,7 @@ func TestSchematicWirePublicationReadback(t *testing.T) {
 				n, abandoned := seq, 0
 				res := &protocol.Response{OK: true, Seq: &n, SeqAbandoned: &abandoned,
 					Context: &protocol.Context{ProjectUUID: "p1", DocumentUUID: "d1", DocumentType: "schematic"}}
-				if req.Action != "schematic.components.list" {
+				if req.Action != "schematic.geometry.read" {
 					writes++
 					res.Result = map[string]any{"primitiveId": "bdee3961676b43e4", "line": []any{[]any{205., 685., 185., 685.}}}
 					if scenario == "wrong-write-doc" {
@@ -191,7 +191,7 @@ func TestSchematicConnectPinPublicationAndUnverifiedWrite(t *testing.T) {
 				n, abandoned := seq, 0
 				res := &protocol.Response{OK: true, Seq: &n, SeqAbandoned: &abandoned,
 					Context: &protocol.Context{ProjectUUID: "p1", DocumentUUID: "d1", DocumentType: "schematic"}}
-				if req.Action == "schematic.components.list" {
+				if req.Action == "schematic.geometry.read" {
 					res.Result = before
 					if writes > 0 {
 						reads++
