@@ -19,6 +19,7 @@ easyeda <domain> <action> [flags]
 | `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型；`cbb search/get` 只读检索原生复用块身份与变体，`cbb export-source` 导出原生归档 |
 | `easyeda daemon` | 守护进程管理（start / stop / restart / health；restart 与 start 同为前台阻塞） |
 | `easyeda daemon serve-isolated --port <端口> --state-dir <新绝对目录>` | 临时验收服务；不替换既有实例，不写共享 PID/审计，不自动保存或同步 Skill；端口占用直接失败 |
+| `easyeda daemon serve-owned --port <端口> --owner-id <UUID>` | 应用直接子进程；固定 loopback 端口、stdin EOF/error 优雅退出，健康回包含归属与随机实例 ID；不复用/替换占用端口、不写共享 PID、不同步 Skill |
 | `easyeda project delete --project-uuid <UUID> --expected-name <名称>` | 先 `--dry-run` 预检，实际删除加 `--expected-team <预检团队> --yes`；拒绝参考工程，缺少官方 internal API 即停止，未知结果不重试 |
 | `easyeda web` | Web 编辑器页面生命周期；`reload` 与 `doc reload` 区分，保存后等待新连接和同一文档可读 |
 | `easyeda audit` | 操作日志查看 |
@@ -28,6 +29,13 @@ easyeda <domain> <action> [flags]
 | `easyeda skill` | Skill 管理（status / sync）与离线阶段正文读取（read）；`update` 已含同步能力 |
 | `easyeda skill read --stage <阶段>` | 从同一个实际 Skill 根目录读取入口和该阶段必需章节全文，返回 CLI/Skill 版本、路径和逐章/整体 SHA256；章节缺失、越根或不可读即失败，无 EDA 调用 |
 | `easyeda debug` | 逃生舱（exec-js 等开发/调试命令） |
+
+## daemon 生命周期身份核对
+
+`daemon stop` 可附加 `--expected-pid`、`--expected-version`、`--expected-instance-id`；
+版本和实例字段要求正数预期 PID，同次 live health 核对不符即拒绝停止。
+这是旧式 OS 信号停止前的额外检查，不能保证 legacy daemon 在检查与信号间的原子身份绑定。
+托管宿主正常退出应关闭已持有的直接子进程 stdin；外部实例仍保留显式升级与保存确认。
 
 ## 设计图交付接口
 
