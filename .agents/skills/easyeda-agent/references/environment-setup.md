@@ -207,6 +207,23 @@ easyeda daemon start
 EasyEDA daemon；端口被其他程序占用时按报错处理，不向后寻找另一个 daemon 端口。
 自定义 `--ports` 时还须同步连接器 `daemonPorts` 配置。
 
+EdaDesk 等宿主可使用显式的应用托管入口：
+
+```sh
+easyeda daemon serve-owned --port 60833 --owner-id 75d0f0d8-9dd4-4c11-a4f7-606fa1a7b6cd
+```
+
+由宿主生成每次启动的新 UUID，并以直接子进程持有 stdin 管道；正常退出或宿主崩溃关闭管道后，
+daemon 优雅退出。`health.lifecycle` 返回 `mode=stdin`、`ownerId` 和随机 `instanceId`，须连同直接
+子进程 PID、固定端点核对，不能只看 PID 推断归属。它不接管占用端口、不写共享 PID、不同步 Skill，
+默认防抖自动保存仍为 3 秒（`--autosave-debounce 0` 可关闭）。stdin 管道不能接 `/dev/null` 或提前结束。
+不支持此命令的旧 CLI 须先通过宿主升级流程更新，不能降级为常驻后台模式。
+
+关闭托管管道前仍须完成工程操作与保存/关闭确认；服务退出不证明远端编辑动作已结束。
+外部或旧实例不因宿主启动自动归属，迁移仍走显式确认。已有 `daemon stop` 可增加
+`--expected-pid <PID> --expected-version <精确版本>`，新版身份还可增加 `--expected-instance-id <ID>`，
+健康身份不符则拒绝；此核对不消除 legacy OS 信号停止的竞态，正常托管退出应使用已持有的管道。
+
 ```bash
 easyeda health --project "<project>"
 easyeda doc ls --project "<project>"

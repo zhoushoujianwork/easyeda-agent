@@ -30,6 +30,7 @@ func newDaemonCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	}
 	d.AddCommand(
 		newDaemonServeIsolatedCmd(stdout),
+		newDaemonServeOwnedCmd(stdout),
 		newDaemonStartCmd(cfg, stdout, stderr),
 		newDaemonStopCmd(cfg, stdout),
 		newDaemonRestartCmd(cfg, stdout, stderr),

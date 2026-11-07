@@ -18,12 +18,21 @@ import (
 // talking to an easyeda-agent daemon rather than some other local server.
 const Service = "easyeda-agent"
 
+// Lifecycle identifies an opt-in service owned through a live stdin pipe.
+// These public identifiers describe ownership; they are not authentication secrets.
+type Lifecycle struct {
+	Mode       string `json:"mode"`
+	OwnerID    string `json:"ownerId"`
+	InstanceID string `json:"instanceId"`
+}
+
 // Options configures a daemon Server.
 type Options struct {
 	Host      string
 	PortStart int
 	PortEnd   int
 	Version   string
+	Lifecycle *Lifecycle
 
 	// ArtifactDir is the FALLBACK directory for inline artifact bytes from the
 	// connector, used only when a request carries no outputDir. The CLI sends its
@@ -142,6 +151,10 @@ func (s *Server) logf(format string, args ...any) {
 
 // New builds a Server. It does not bind a port until Run is called.
 func New(opts Options) *Server {
+	if opts.Lifecycle != nil {
+		lifecycle := *opts.Lifecycle
+		opts.Lifecycle = &lifecycle
+	}
 	s := &Server{
 		opts:             opts,
 		hub:              newHub(),
@@ -158,12 +171,13 @@ func New(opts Options) *Server {
 }
 
 type health struct {
-	PID     int      `json:"pid"`
-	Service string   `json:"service"`
-	Version string   `json:"version"`
-	Status  string   `json:"status"`
-	Port    int      `json:"port"`
-	Windows []Window `json:"windows"`
+	PID       int        `json:"pid"`
+	Service   string     `json:"service"`
+	Version   string     `json:"version"`
+	Status    string     `json:"status"`
+	Port      int        `json:"port"`
+	Windows   []Window   `json:"windows"`
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
 	// WriteHealth is the rolling per-window forwarded-action failure window
 	// (writehealth.go): degraded=true flags a connector that is failing under
 	// load (REPORT round2 新 3 — clients should insert light reads and verify
@@ -195,6 +209,7 @@ func (s *Server) routes(port int) *http.ServeMux {
 			Status:      "ok",
 			Port:        port,
 			Windows:     s.hub.listAnnotated(s.opts.Version),
+			Lifecycle:   s.opts.Lifecycle,
 			WriteHealth: s.writeHealth.all(),
 			Autosave:    s.autosave.snapshot(),
 		})

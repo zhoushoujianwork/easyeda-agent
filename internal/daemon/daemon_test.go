@@ -43,6 +43,24 @@ func TestHealthHandler(t *testing.T) {
 	if body.Windows == nil {
 		t.Fatal("windows should be an empty array, not null")
 	}
+	if body.Lifecycle != nil {
+		t.Fatal("ordinary service must not declare application ownership")
+	}
+}
+
+func TestHealthOwnedLifecycleIsFixedForServer(t *testing.T) {
+	identity := &Lifecycle{Mode: "stdin", OwnerID: "owner-one", InstanceID: "instance-one"}
+	srv := New(Options{Lifecycle: identity})
+	identity.OwnerID = "mutated-owner"
+	rec := httptest.NewRecorder()
+	srv.routes(60833).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	var body health
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Lifecycle == nil || body.Lifecycle.OwnerID != "owner-one" || body.Lifecycle.InstanceID != "instance-one" || body.Lifecycle.Mode != "stdin" {
+		t.Fatalf("wrong lifecycle: %+v", body.Lifecycle)
+	}
 }
 
 func TestHealthHandlerRejectsNonGet(t *testing.T) {
