@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-11-07
+
+- 整合 PR #300：新增 `sch geometry` / `schematic.geometry.read`，按需读取当前页 part 几何与导线；NC 按当前页 ID 与位号唯一定位，保留完整器件读取与 marker 指纹路径。几何读取失败独立报告 `SCHEMATIC_GEOMETRY_READ_FAILED`，保留 `mutationApplied/partial`，完整读取使用统一预算，显式短诊断预算仍有效。
+- 新增原理图中文、多行说明文字创建与稳定 ID 回读；未知或部分写入失败时不自动重放或删除。类型化动作通过能力发现提供 `scope/effect/confirmation/verification/batch` 契约，几何读取声明只读 access。
+- 清页保留器件物理引脚，属性按原生对象归属识别；图签字段显隐按真实状态声明，必填值不得隐藏来规避检查，受保护 sheet 属性文字按完整原状态校验后仅修改 `x/y`。
+- `sch compose schema` 从真实输入类型导出 schema；`skill read` 按阶段提供实际正文、版本与 SHA256，缺章或路径越界时拒绝。schema 和正文读取不代表设计正确或规则已执行。
+- `project delete` 按 UUID、名称、team 与库存预检并拒绝当前活动工程；经明确确认后仅调用一次官方内部 API，再以新回读核验。宿主不支持时明确拒绝，不盲目重放不确定的删除。
+- 新增 `daemon serve-isolated`，使用显式测试端口和全新绝对路径状态目录，隔离 PID、审计与资产；端口占用时拒绝启动，不替换现有实例。
+- 长操作保留 FIFO 串行执行，WebSocket 消息回调不等待动作完成，避免阻塞心跳处理；`debug logs` 只读返回带 `[easyeda-agent]` 标记的连接器日志，日志不可读、结构或元数据缺测时报错。
+- 修复 Windows 本地 Skill 归档子路径分隔符校验，保留目录穿越、绝对路径、重复项与哈希检查；CLI 安装错误补充具体阶段上下文，DEV 预发布不触发正式 SkillHub 发布。
+- 新增应用托管 `daemon serve-owned --port N --owner-id UUID`：使用显式 loopback 端口，stdin 关闭或读取失败时退出；端口占用时拒绝启动，不替换已有实例、不写共享 PID 文件、不同步 Skill。
+- health 暴露可选 lifecycle 身份；`daemon stop` 可检查预期 PID、版本和实例。这些检查不构成原子停止协议，仍保留 OS signal 停止的非原子边界；托管宿主正常退出应关闭自己持有的 stdin 管道。
+- 用户已于 2026-11-07 明确批准正式 v1.17.0；本条记录正式版元数据准备，现场验收范围确定、独立复核与实际资产发布仍待完成，不代表完整设计验收通过或已经发布。
+
 ## [1.17.0-dev.3] - 2026-11-07
 
 - 合并应用托管 daemon：`daemon serve-owned` 使用显式 loopback 端口和宿主 UUID；stdin 管道关闭或读取失败时退出，端口占用时拒绝启动，不替换已有实例、不写共享 PID 文件。
