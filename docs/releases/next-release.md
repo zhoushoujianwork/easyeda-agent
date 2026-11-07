@@ -14,11 +14,27 @@
 - 清页库存识别导线等原生对象所属属性；所有类型化动作声明权限契约，
   新的几何读取动作按 `accessDocumentRead` 纳入宿主能力发现。
 - Windows 本地 Skill 归档子路径校验与 CLI 安装错误上下文；DEV 预发布不触发正式 SkillHub 发布。
+- 应用托管 daemon：新增 `daemon serve-owned --port N --owner-id UUID`，固定 loopback 端口，
+  stdin 关闭或读取失败时退出；不替换占用端口、不写共享 PID 文件、不同步 Skill。
+  health 暴露可选 lifecycle 身份，`daemon stop` 可核对预期 PID、版本和实例；
+  这些检查不构成原子停止协议，托管宿主正常退出使用已持有的 stdin 管道。
 
 连接器运行时相对 v1.16.0 有变化，下一正式版建议 v1.17.0。
-合并候选使用独立 `1.17.0-dev.2` 元数据，避免复用已发布 dev.1 的版本身份；没有发布新标签或资产。
+最新合并候选使用独立 `1.17.0-dev.3` 元数据；dev.2 的源码与制品记录保留，
+避免复用既有候选的版本身份。没有发布新标签或资产。
 
 ## 集成与验证边界
+
+### dev.3 托管 daemon 整合
+
+功能提交 `dc7ff861557862092b1596b299d63d0847033fcd` 已合入 dev，普通 daemon 生命周期默认行为保持。
+合并后的 Go 全量 6104 项通过、1 项跳过（16 个测试包通过、2 个包无测试），go vet 通过；
+覆盖真实子进程管道 EOF、父进程崩溃、双实例身份独立、占用端口拒绝及预期身份不匹配拒绝停止。
+Agent/Skill 检查与 dev.3 版本一致性检查通过。本地候选构建另行核验；
+Windows 实机及 Desk 安装尚未验证，不将原提交的临时构建或 dev.2 的结果当作 dev.3 完整验收。
+生产端点保持原状态。
+
+### dev.2 冻结验证记录
 
 PR #300 的精确 head `6fc7af0c` 已通过 GitHub CI 的 CLI/connector/Skill、PCB solver
 和 Windows/macOS/Linux native install surface 五项任务，并合入 main。

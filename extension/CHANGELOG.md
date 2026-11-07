@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.17.0-dev.3] - 2026-11-07
+
+- 合并应用托管 daemon：`daemon serve-owned` 使用显式 loopback 端口和宿主 UUID；stdin 管道关闭或读取失败时退出，端口占用时拒绝启动，不替换已有实例、不写共享 PID 文件。
+- health 新增可选 lifecycle 身份；`daemon stop` 支持预期 PID、版本和实例检查，仍保留旧实例 OS signal 停止的非原子边界。托管宿主正常关闭应结束自己持有的 stdin 管道。
+- 继承 dev.2 的原理图几何读取、中文多行文本创建与清页修复；此为本地开发候选，Windows 实机、Desk 安装及真实 EDA 保存重载尚未验收。
+
 ## [1.17.0-dev.2] - 2026-11-07
 
 - 合并 PR #300：新增按需原理图几何读取、NC 唯一目标定位、读取失败的 mutationApplied/partial 语义，以及 Windows 本地归档路径修复；完整器件读取和 marker 指纹路径保持。
