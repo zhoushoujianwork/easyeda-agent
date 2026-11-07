@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 3,
+  "version": "v1.17.0",
+  "result": "pass",
+  "independentReview": "pass",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.17.0",
+    "date": "2026-11-07",
+    "summary": "用户在明确收到现场未执行及范围选项后要求直接发布；本版仅以已完成软件自动验证和独立复核为验收范围，真实EDA现场验收及完整设计E2E延期。"
+  },
+  "sha256": {
+    "test-report.md": "f23a32934de02a0146a9a45e59bf8b15b2862cf7fdf4855945aa79137c7ee252",
+    "baseline.md": "cab7fcc16f0c52565e696c45cbac4da149da430e448dcd40f4cddf8c907c8a55",
+    "test-cases.md": "567c243d796be82140b5ea9444c454f501093f093a0ba459e83d0b90bfc767e8"
+  }
+}
