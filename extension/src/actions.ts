@@ -8055,34 +8055,46 @@ async function resolvePlacedDevice(
 		return undefined;
 	};
 
+	// One shared read-only budget: fast failures may use exact fallbacks, but
+	// an exhausted lookup must never resume this caller when its API lands late.
+	const deadline = Date.now() + 7000;
+	const failures: string[] = [];
+	const lookup = async <T>(stage: string, read: () => Promise<T>): Promise<T> => {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) throw new Error(`${stage}: identity lookup total budget exhausted (7000ms)`);
+		try { return await withTimeout(read(), Math.min(7000, remaining), `${stage}: identity lookup timed out within total 7000ms budget`); }
+		catch (err) { throw new Error(`${stage}: ${describeThrown(err)}`); }
+	};
 	const supplierId = typeof snapshot.supplierId === 'string' ? snapshot.supplierId : '';
 	if (/^C\d+$/.test(supplierId)) {
 		try {
-			const raw = (await eda.lib_Device.getByLcscIds([supplierId], undefined, true)) as unknown as Array<Record<string, unknown>>;
+			const raw = (await lookup('identity.lcsc', () => eda.lib_Device.getByLcscIds([supplierId], undefined, true))) as unknown as Array<Record<string, unknown>>;
 			const r = finish(Array.isArray(raw) ? raw : [], 'lcsc');
-			if (r) return r;
+			if (r) return !r.device && failures.length ? { ...r, reason: `${r.reason}; prior lookup failures: ${failures.join('; ')}` } : r;
 		}
-		catch { /* fall through to the MPN chain */ }
+		catch (err) { failures.push(describeThrown(err)); }
 	}
 	const mpn = typeof snapshot.manufacturerId === 'string' ? snapshot.manufacturerId : '';
 	if (mpn) {
 		let raw: Array<Record<string, unknown>> = [];
-		try { raw = (await eda.lib_Device.search(mpn)) as unknown as Array<Record<string, unknown>>; }
-		catch { /* handled below */ }
+		try { raw = (await lookup('identity.mpn', () => eda.lib_Device.search(mpn))) as unknown as Array<Record<string, unknown>>; }
+		catch (err) { failures.push(describeThrown(err)); }
 		const r = finish((Array.isArray(raw) ? raw : []).filter(h => h.manufacturerId === mpn), 'mpn');
-		if (r) return r;
+		if (r) return !r.device && failures.length ? { ...r, reason: `${r.reason}; prior lookup failures: ${failures.join('; ')}` } : r;
 	}
 	// Imported (Altium/KiCad) devices live in the project library under their
 	// device name, with no C-number and no online-searchable MPN.
 	const name = typeof snapshot.name === 'string' ? snapshot.name : '';
 	if (name && !name.startsWith('={')) {
 		let raw: Array<Record<string, unknown>> = [];
-		try { raw = (await eda.lib_Device.search(name, 'project')) as unknown as Array<Record<string, unknown>>; }
-		catch { /* handled below */ }
+		try { raw = (await lookup('identity.project-name', () => eda.lib_Device.search(name, 'project'))) as unknown as Array<Record<string, unknown>>; }
+		catch (err) { failures.push(describeThrown(err)); }
 		const r = finish((Array.isArray(raw) ? raw : []).filter(h => h.name === name), 'project-name');
-		if (r) return r;
+		if (r) return !r.device && failures.length ? { ...r, reason: `${r.reason}; prior lookup failures: ${failures.join('; ')}` } : r;
 	}
-	return { reason: 'no exact LCSC/MPN/project-name library match' };
+	return { reason: failures.length
+		? `identity library lookup failed; ${failures.join('; ')}`
+		: 'no exact LCSC/MPN/project-name library match' };
 }
 
 async function resolvePlacedDeviceIdentity(
@@ -8269,14 +8281,14 @@ const schematicComponentReplace: Handler = async (payload) => {
 	else if (lcsc) {
 		let raw: Array<Record<string, unknown>>;
 		try {
-			raw = (await eda.lib_Device.getByLcscIds([lcsc], undefined, true)) as unknown as Array<Record<string, unknown>>;
+			raw = (await withTimeout(eda.lib_Device.getByLcscIds([lcsc], undefined, true), 7000, 'replace.target.lcsc timed out after 7000ms; no canvas write attempted.')) as unknown as Array<Record<string, unknown>>;
 		}
 		catch (err) {
-			throw edaError(err, `Failed to resolve LCSC id "${lcsc}".`);
+			throw edaError(err, `replace.target.lcsc: Failed to resolve LCSC id "${lcsc}"; no canvas write attempted.`);
 		}
 		const hits = (Array.isArray(raw) ? raw : []).filter(r => typeof r.uuid === 'string' && typeof r.libraryUuid === 'string');
 		if (hits.length === 0) {
-			throw new ActionError(ErrorCodes.INVALID_STATE, `LCSC id "${lcsc}" did not resolve to any library device.`);
+			throw new ActionError(ErrorCodes.INVALID_STATE, `LCSC id "${lcsc}" did not resolve to any library device; no canvas write attempted.`);
 		}
 		if (hits.length > 1) {
 			const uuids = hits.map(h => h.uuid).join(', ');
@@ -8290,16 +8302,16 @@ const schematicComponentReplace: Handler = async (payload) => {
 	else {
 		let raw: Array<NamedLibItem>;
 		try {
-			raw = (await eda.lib_Device.search(query as string)) as unknown as Array<NamedLibItem>;
+			raw = (await withTimeout(eda.lib_Device.search(query as string), 7000, 'replace.target.query timed out after 7000ms; no canvas write attempted.')) as unknown as Array<NamedLibItem>;
 		}
 		catch (err) {
-			throw edaError(err, `Failed to search the device library for "${query}".`);
+			throw edaError(err, `replace.target.query: Failed to search the device library for "${query}"; no canvas write attempted.`);
 		}
 		const match = pickNamedCandidate(query as string, Array.isArray(raw) ? raw : []);
 		if (match.kind === 'none') {
 			throw new ActionError(
 				ErrorCodes.INVALID_STATE,
-				`No device named "${query}" found. Use schematic.library.search to explore candidates, then pass "deviceUuid" or "lcsc".`,
+				`No device named "${query}" found; no canvas write attempted. Use schematic.library.search to explore candidates, then pass "deviceUuid" or "lcsc".`,
 			);
 		}
 		if (match.kind === 'ambiguous') {
