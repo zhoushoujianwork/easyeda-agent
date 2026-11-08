@@ -46758,13 +46758,13 @@
   ],
   "copperLayers": 6,
   "rules": {
-    "clearanceMil": 157.48,
-    "trackWidthMil": 185.04,
-    "powerWidthMil": 185.04,
-    "trackWidthMinMil": 185.04,
-    "viaDrillMil": 236.22,
-    "viaDiameterMil": 393.7,
-    "copperToEdgeMil": 236.22,
+    "clearanceMil": 4,
+    "trackWidthMil": 4.7,
+    "powerWidthMil": 20,
+    "trackWidthMinMil": 4.7,
+    "viaDrillMil": 6,
+    "viaDiameterMil": 10,
+    "copperToEdgeMil": 6,
     "source": "live"
   },
   "partial": [

@@ -78,7 +78,7 @@ PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令�
 | 能力 | 命令 | 说明 |
 |---|---|---|
 | 叠层 | `pcb stackup` | 2–32 铜层 + 内层类型(信号↔内电层) |
-| 规则 | `pcb drc-rules` / `drc-rules-set --from` / `net-class list/create` / `net-classes` | 完整规则与真实 EasyEDA 网络类可写入、回读和失败回滚；复数 `net-classes` 是路由器的启发式线宽表，不能冒充持久化网络类 |
+| 规则 | `pcb drc-rules` / `drc-rules-set --from` / `net-class list/create` / `net-classes` | 完整规则与真实 EasyEDA 网络类可写入、回读和失败回滚；路由器读规则时按每条规则自报的 `unit`（mm/mil）换算，未知单位回退 JLC 基线而不再猜（#303）；复数 `net-classes` 是路由器的启发式线宽表，不能冒充持久化网络类 |
 | 检查 | `pcb drc` / `pcb check` / `pcb net-path` | 官方 DRC + 重建的逐项检查 + 指定焊盘间的只读铜路径证据；dangling pad anchor 按 shape/rotation，legacy 尺寸只用保守几何并在 `limitations` 说明(报错带 `[规范 §N]` 指向手册章节) |
 | 历史流程记录 | `workflow status/advance` | 兼容读取/记录 `outline_confirmed`、`pre_route_passed`、`post_route_checked`；typed action 不再据此拒绝执行 |
 

@@ -319,11 +319,12 @@ func analyzeLayoutScore(snap *boardSnapshot, s *spec.Spec, opts layoutScoreOpts)
 	minGap := opts.minGap
 	if minGap <= 0 {
 		minGap = rules.clearanceMil
-		// 合理性上限：装配间距阈值取自 DRC clearance 规则,但有些板的规则集里
-		// 被选中的 clearance 是板框/禁布类的大值(五板校准实锤:K230/RK3568 读到
-		// 157.48mil=4mm、MIPI 236.22mil=6mm → 全板 2793 对"过近",clearance 恒 0)。
-		// 器件贴装间距不可能以毫米计 —— 超过 20mil 即判定拿错了规则,退回规范
-		// §3.4 的 SMD-SMD 装配下限。显式 --min-gap 不受此限(用户说了算)。
+		// 合理性上限：装配间距阈值取自 DRC clearance 规则。2026-08 五板校准时
+		// K230/RK3568 曾读到 157.48mil、MIPI 236.22mil，当时按"拿错规则"退回
+		// 装配下限；根因已查明是规则 `unit:"mil"` 的值被当成 mm 又乘 39.37
+		// (#303，pcb_rules.go 已按每条规则自报单位换算)。此上限保留：真正声明
+		// ≥20mil 的装配/禁布规则仍不适合当贴装间距，退回规范 §3.4 的 SMD-SMD
+		// 装配下限。显式 --min-gap 不受此限(用户说了算)。
 		if minGap > 20 {
 			minGap = sgAssemblyGapFloorMil
 		}

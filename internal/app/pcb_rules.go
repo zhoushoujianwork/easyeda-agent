@@ -1,5 +1,7 @@
 package app
 
+import "strings"
+
 // pcb_rules.go — read the board's LIVE DRC rules (clearance / track width / via)
 // and normalize them to mil, so the daemon-side heuristics (route-short,
 // auto-place, pour, via-stitch) conform to the board's spec instead of hardcoding
@@ -106,6 +108,31 @@ func asFloatOK(v any) (float64, bool) {
 	}
 }
 
+// ruleLengthUnit reads the unit a live rule object declares for its own length
+// values (the host exposes it on every rule as `unit`: "mm" or "mil"). Values in
+// the rule are expressed in that unit — it is per rule, so a board can mix a
+// metric track rule with an imperial spacing table.
+func ruleLengthUnit(rule any) string {
+	s, _ := mnav(rule, "unit").(string)
+	return strings.ToLower(strings.TrimSpace(s))
+}
+
+// ruleLengthToMil converts one live rule length to mil using that rule's declared
+// unit. It refuses (ok=false) unknown/missing units instead of guessing: assuming
+// mm for a host that stores mil turned a 6mil clearance into 236mil and a 10mil
+// track into 394mil (#303, every consumer — route-short / pcb check — inherited
+// the false rule). The caller then keeps its own fallback for that field.
+func ruleLengthToMil(rule any, v float64) (float64, bool) {
+	switch ruleLengthUnit(rule) {
+	case "mil":
+		return v, true
+	case "mm":
+		return v * mmToMil, true
+	default:
+		return 0, false
+	}
+}
+
 // firstDataEntry pulls the first record out of a `data` node that may be a
 // map keyed "1"/"2"/… or a JSON array.
 func firstDataEntry(v any) map[string]any {
@@ -130,10 +157,14 @@ func firstDataEntry(v any) map[string]any {
 }
 
 // parsePcbRules extracts clearance/width/via (mil) from a pcb.drc.rules result.
-// Paths (from the live ceshi dump), values in mm → converted to mil:
-//   - track width: rules.config.Physics.Track.copperThickness1oz.form.data[0].{defaultValue,minValue}
-//   - via:         rules.config.Physics."Via Size".viaSize.form.{viaInnerdiameterDefault,viaOuterdiameterDefault}
-//   - clearance:   rules.config.Spacing."Safe Spacing".copperThickness1oz.tables."1".content[0][0]  (Track↔Track)
+// Paths (from the live ceshi dump); each value is expressed in the unit the
+// enclosing rule object declares (`unit`: "mm" or "mil"), never in a fixed unit:
+//   - track width: rules.config.Physics.Track.copperThickness1oz.{unit,form.data[0].{defaultValue,minValue}}
+//   - via:         rules.config.Physics."Via Size".viaSize.{unit,form.{viaInnerdiameterDefault,viaOuterdiameterDefault}}
+//   - clearance:   rules.config.Spacing."Safe Spacing".copperThickness1oz.{unit,tables."1".content[0][0]}  (Track↔Track)
+//
+// A rule whose unit is missing/unknown leaves its fields at the fallback baseline
+// (see ruleLengthToMil) — guessing mm was the #303 double-conversion bug.
 func parsePcbRules(result map[string]any) pcbRules {
 	r := defaultPcbRules()
 	cfg := mnav(result, "rules", "config")
@@ -143,24 +174,34 @@ func parsePcbRules(result map[string]any) pcbRules {
 	got := false
 
 	// Track width (default + min).
-	if d1 := firstDataEntry(mnav(cfg, "Physics", "Track", "copperThickness1oz", "form", "data")); d1 != nil {
+	trackRule := mnav(cfg, "Physics", "Track", "copperThickness1oz")
+	if d1 := firstDataEntry(mnav(trackRule, "form", "data")); d1 != nil {
 		if v, ok := asFloatOK(d1["defaultValue"]); ok && v > 0 {
-			r.trackWidthMil = round2(v * mmToMil)
-			got = true
+			if mil, ok := ruleLengthToMil(trackRule, v); ok {
+				r.trackWidthMil = round2(mil)
+				got = true
+			}
 		}
 		if v, ok := asFloatOK(d1["minValue"]); ok && v > 0 {
-			r.trackWidthMinMil = round2(v * mmToMil)
+			if mil, ok := ruleLengthToMil(trackRule, v); ok {
+				r.trackWidthMinMil = round2(mil)
+			}
 		}
 	}
 
 	// Via drill + diameter.
-	if form := mnav(cfg, "Physics", "Via Size", "viaSize", "form"); form != nil {
+	viaRule := mnav(cfg, "Physics", "Via Size", "viaSize")
+	if form := mnav(viaRule, "form"); form != nil {
 		if v, ok := asFloatOK(mnav(form, "viaInnerdiameterDefault")); ok && v > 0 {
-			r.viaDrillMil = round2(v * mmToMil)
-			got = true
+			if mil, ok := ruleLengthToMil(viaRule, v); ok {
+				r.viaDrillMil = round2(mil)
+				got = true
+			}
 		}
 		if v, ok := asFloatOK(mnav(form, "viaOuterdiameterDefault")); ok && v > 0 {
-			r.viaDiameterMil = round2(v * mmToMil)
+			if mil, ok := ruleLengthToMil(viaRule, v); ok {
+				r.viaDiameterMil = round2(mil)
+			}
 		}
 	}
 
@@ -168,7 +209,8 @@ func parsePcbRules(result map[string]any) pcbRules {
 	// Track, SMD Pad, TH Pad, …). Preserve the pair dimension: live JLCEDA rules
 	// commonly use 4mil for Track↔Track and 6mil for Track↔SMD-Pad. Routing uses
 	// the binding pad value, but `pcb check` must not apply it to Track↔Track.
-	if content, ok := mnav(cfg, "Spacing", "Safe Spacing", "copperThickness1oz", "tables", "1", "content").([]any); ok && len(content) > 0 {
+	spacingRule := mnav(cfg, "Spacing", "Safe Spacing", "copperThickness1oz")
+	if content, ok := mnav(spacingRule, "tables", "1", "content").([]any); ok && len(content) > 0 {
 		var trackTrack, trackPad float64
 		if row0, ok := content[0].([]any); ok && len(row0) > 0 {
 			if v, ok := asFloatOK(row0[0]); ok && v > 0 {
@@ -182,14 +224,20 @@ func parsePcbRules(result map[string]any) pcbRules {
 				}
 			}
 		}
+		trackTrackOK := false
 		if trackTrack > 0 {
-			r.clearanceTrackTrackMil = round2(trackTrack * mmToMil)
-			got = true
+			if mil, ok := ruleLengthToMil(spacingRule, trackTrack); ok {
+				r.clearanceTrackTrackMil = round2(mil)
+				trackTrackOK = true
+				got = true
+			}
 		}
 		if trackPad > 0 {
-			r.clearanceMil = round2(trackPad * mmToMil)
-			got = true
-		} else if trackTrack > 0 {
+			if mil, ok := ruleLengthToMil(spacingRule, trackPad); ok {
+				r.clearanceMil = round2(mil)
+				got = true
+			}
+		} else if trackTrackOK {
 			// Older/smaller matrices may expose only Track↔Track. Keep consumers
 			// usable without inventing a less conservative pad rule.
 			r.clearanceMil = r.clearanceTrackTrackMil
@@ -200,15 +248,16 @@ func parsePcbRules(result map[string]any) pcbRules {
 	// Copper-to-edge — Board Outline ↔ Copper/Plane Zone from the same Safe Spacing
 	// matrix, located by the row/col labels (robust to matrix size). This is the
 	// pour pull-back / inset floor (ceshi live = 10mil; JLCPCB fab min = 8mil).
-	ss := mnav(cfg, "Spacing", "Safe Spacing", "copperThickness1oz")
-	labels := asStrSlice(mnav(ss, "row"))
-	if content, ok := mnav(ss, "tables", "1", "content").([]any); ok {
+	labels := asStrSlice(mnav(spacingRule, "row"))
+	if content, ok := mnav(spacingRule, "tables", "1", "content").([]any); ok {
 		bo := indexOf(labels, "Board Outline")
 		cz := indexOf(labels, "Copper/Plane Zone")
 		if bo >= 0 && bo < len(content) {
 			if row, ok := content[bo].([]any); ok && cz >= 0 && cz < len(row) {
 				if v, ok := asFloatOK(row[cz]); ok && v > 0 {
-					r.copperToEdgeMil = round2(v * mmToMil)
+					if mil, ok := ruleLengthToMil(spacingRule, v); ok {
+						r.copperToEdgeMil = round2(mil)
+					}
 				}
 			}
 		}

@@ -215,3 +215,14 @@ exact 数字」；那种写法在这里是毒药：度量本来就是要被校�
 
 **仍在队列**:异网 fit-option 堆叠豁免(需 BOM)、`partition` 无 spec 粒度、
 K230 `edge-io` 16(板框 ARC 弧线解析)、routable 曲线用已布通率替代 ratsnest。
+
+## 2026-11-08 更正：157/236mil 不是「拿错规则」，是单位二次换算
+
+上面第二轮校准第 1 条把 K230/RK3568 的 157.48mil、MIPI 的 236.22mil 判成
+「规则集里选错了板框/禁布规则」。实际根因是 `pcb.drc.rules` 的规则对象自带
+`unit`（该板为 `mil`），旧解析一律当 mm 再乘 39.37：6mil→236.22、10mil→393.7。
+[#303](https://github.com/zhoushoujianwork/easyeda-agent/issues/303) 修复后按每条
+规则自报单位换算，三块板的快照规则已回填为真实值（K230 4mil 间距、RK3568 4mil、
+MIPI 6mil；线宽/孔径同步还原）。`pcb_layoutscore` 的 `>20mil` 兜底保留，用于真正
+声明大间距的规则；它不再是这三块板的主要路径。历史分数与结论按当时记录保留，
+不据此重签校准证据。
