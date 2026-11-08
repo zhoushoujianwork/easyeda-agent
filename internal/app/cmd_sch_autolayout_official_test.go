@@ -426,6 +426,15 @@ func TestOfficialAutolayoutPostCheckFailsClosed(t *testing.T) {
 			want: "invalid or missing floatingPins",
 		},
 		{
+			name: "legacy connector missing wireContacts only",
+			check: func() string {
+				// Keep every other field of the complete clean response: an old
+				// connector's missing measurement must not silently become zero.
+				return strings.Replace(officialCheckResponse(0), `"wireContacts":0,`, "", 1)
+			},
+			want: "invalid or missing wireContacts",
+		},
+		{
 			name: "rendered overlap",
 			postComponents: func() string {
 				return officialComponentsResponse(`

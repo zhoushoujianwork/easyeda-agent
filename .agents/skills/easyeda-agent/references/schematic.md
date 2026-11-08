@@ -282,6 +282,10 @@ ERROR，保留器件/引脚/线段证据。允许先向外再折线；不二次�
 且 X 不参与线岛合并。`wire-contact` 与这条豁免使用同一份剔除整条零长度导线后的线段：几何、网络名、`primitiveId` 和 `segmentIndex` 必须来自同一记录。折线内部相邻段共享顶点不是异网接触。finding 带 `segments` 与接触点 `at`，`summary.wireContacts` 计数；`sch check --json` 保留这两项。零长度导线只由连接器的 `zero-length-wire`（warn）计一次，几何守卫不再把同一图元再报成大写 `ERROR`。Designator 对导线的遮挡按官方原始编码解析；`flat-segments`
 中的四坐标记录彼此独立，禁止把相邻记录尾首连接成不存在的斜线。
 
+`wireContacts` / `segments` 诊断需配套新版连接器；旧连接器缺少计数不表示已排除接触，
+普通 `sch check` 的历史兼容解析可能显示 0，不能据此验收。官方自动布局会明确拒绝缺少
+`wireContacts` 的检查响应，不把缺测当作通过。
+
 完整 compose 源与最终 Apply 守卫必须保留核心/外围 ownership。外围需沿真实导线和
 必要的串联外围链连到本区核心；本区核心和外围共享的非电源/地信号脚还必须在同一导线岛。
 跨区同名端口不建立这条实体连接，第三器件的存在不豁免本区专属支路。
