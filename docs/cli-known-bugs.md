@@ -101,6 +101,7 @@ NC 清除本次成功也不关闭 #257 的间歇问题；严格基础准入仍�
 
 | Bug | 影响判断 | 当前使用方式 |
 |---|---|---|
+| v1.15.0 `wire-contact` 下标错位 | 过滤掉整条零长度导线后，几何与网名仍共用一个下标。互不相交的带网名折线会报异网接触，报出的网络对随前导零长度条数平移；真实接触也可能落到被跳过的下标上。`sch check --json` 当时还丢掉 `segments`。 | 含本修复的连接器以同一线段记录判断，`summary.wireContacts` 与 `segments`/`at` 一起返回。v1.15.0 上不要把 `wire-contact` 当作短路证据，改看 `sch bridge-check` 和回读几何。离线回归覆盖前导零长度条数与真实 T 接；界面拖动压扁导线的现场步骤未重跑。 |
 | [#258：规则首次初始化出现微小差异](https://github.com/zhoushoujianwork/easyeda-agent/issues/258) | 暂定 P3：已观察差值 0.0000006 mm 很小，但非请求字段变化与校验失败仍需定位。 | 展示完整差分，保留 verified:false；已冻结自定义规则的后续操作单独验证。 |
 | [#55：旧版页面改名被拒绝](https://github.com/zhoushoujianwork/easyeda-agent/issues/55) | Web 4.1.78 / 本地 `1.15.1-dev.5` 定向复验不再复现：单次调用 true、fresh 名称匹配，保存真实重载后保持。 | 临时页已删除、原页清单和 components/pins/wires 回读恢复；旧 4.1.60/4.1.71 失败保留。未跑 B00–B10 全集，不推定具体上游修复版本；仍要求 true + fresh 名称。 |
 | [#260：区域/铺铜边界线宽 1→0.2 mil](https://github.com/zhoushoujianwork/easyeda-agent/issues/260) | 暂定 P2：显式参数未兑现，B08 失败；未证明电气损坏程度或三个对象类型同源。 | dev.11 已能 fresh 检出并停止依赖；宽度本身未修复。保留 ID，精确清理并保存重载核对。 |

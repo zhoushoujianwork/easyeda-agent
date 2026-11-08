@@ -27,7 +27,10 @@ import (
 //	geom-net-mismatch   WARN  wire touches pin but netlist puts it on no net
 //	net-marker-mismatch WARN  netflag/port/label name ≠ the wire's net name
 //	multi-net-wire      WARN  one wire primitive carrying multiple net names
-//	wire-crossing       WARN  two wires cross mid-segment
+//	wire-contact        ERROR foreign endpoint/T/collinear contact (same-primitive
+//	                          bends excluded). Finding carries segments and at.
+//	wire-crossing       WARN  two wires cross mid-segment; level is info when the
+//	                          bare interior X is fully witnessed, error otherwise
 //	wire-over-pin       WARN  a wire body runs through a pin it doesn't end on
 //	zero-length-wire    WARN  degenerate zero-length segment
 //	dangling-wire       WARN  wire end anchored to nothing (incl. orphan stubs)
@@ -76,9 +79,10 @@ type checkFinding struct {
 	PinDetails        []checkPinDetail `json:"pinDetails,omitempty"`
 	// Count 是规则专属槽:floating-pin=悬空脚数 / multi-net-wire=异名数 /
 	// polarity-convention-outlier=同页多数派票数(majorityCount)。
-	Count   int         `json:"count,omitempty"`
-	Message string      `json:"message,omitempty"`
-	At      *checkPoint `json:"at,omitempty"`
+	Count    int               `json:"count,omitempty"`
+	Message  string            `json:"message,omitempty"`
+	At       *checkPoint       `json:"at,omitempty"`
+	Segments []checkSegmentRef `json:"segments,omitempty"`
 	// Geometric marker rules (issues #146/#147/#148), computed Go-side from the
 	// components.list bboxes/anchors — the electrical check never sees them.
 	ComponentType    string            `json:"componentType,omitempty"`    // primary primitive's type
@@ -92,12 +96,19 @@ type checkFinding struct {
 	OverlapY         float64           `json:"overlapY,omitempty"`
 }
 
+type checkSegmentRef struct {
+	PrimitiveId  string `json:"primitiveId"`
+	SegmentIndex int    `json:"segmentIndex"`
+	RawEncoding  string `json:"rawEncoding,omitempty"`
+}
+
 type checkSummary struct {
 	FloatingPins           int `json:"floatingPins"`
 	ComponentsWithFloating int `json:"componentsWithFloating"`
 	GeomNetMismatches      int `json:"geomNetMismatches"`
 	NetMarkerMismatches    int `json:"netMarkerMismatches"`
 	MultiNetWires          int `json:"multiNetWires"`
+	WireContacts           int `json:"wireContacts"`
 	WireCrossings          int `json:"wireCrossings"`
 	WireOverPins           int `json:"wireOverPins"`
 	ZeroLengthWires        int `json:"zeroLengthWires"`
@@ -248,8 +259,8 @@ func checkLevelTag(level string) string {
 
 func renderCheckReport(rep checkReport, w io.Writer) {
 	s := rep.Summary
-	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d geom-net mismatch(es), %d net-marker mismatch(es), %d multi-net wire(s), %d wire-crossing(s), %d wire-over-pin(s), %d zero-length wire(s), %d dangling wire(s), %d duplicate-net-marker(s), %d titleblock-overlap(s), %d out-of-sheet, %d marker-overlap(s), %d missing-deliverable(partition/titleblock), %d folded-net-label(s), %d redundant-net-marker(s), %d reversed-net-flag(s), %d polarity-convention outlier(s)\n",
-		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.GeomNetMismatches, s.NetMarkerMismatches, s.MultiNetWires, s.WireCrossings, s.WireOverPins, s.ZeroLengthWires, s.DanglingWires, s.DuplicateNetMarkers, s.TitleblockOverlaps, s.OutOfSheet, s.MarkerOverlaps, s.MissingPartitions, s.FoldedNetLabels, s.RedundantNetMarkers, s.ReversedNetFlags, s.PolarityConventionOutliers)
+	fmt.Fprintf(w, "sch check: %d finding(s) — %d floating pin(s)/%d comp, %d geom-net mismatch(es), %d net-marker mismatch(es), %d multi-net wire(s), %d wire-contact(s), %d wire-crossing(s), %d wire-over-pin(s), %d zero-length wire(s), %d dangling wire(s), %d duplicate-net-marker(s), %d titleblock-overlap(s), %d out-of-sheet, %d marker-overlap(s), %d missing-deliverable(partition/titleblock), %d folded-net-label(s), %d redundant-net-marker(s), %d reversed-net-flag(s), %d polarity-convention outlier(s)\n",
+		s.Total, s.FloatingPins, s.ComponentsWithFloating, s.GeomNetMismatches, s.NetMarkerMismatches, s.MultiNetWires, s.WireContacts, s.WireCrossings, s.WireOverPins, s.ZeroLengthWires, s.DanglingWires, s.DuplicateNetMarkers, s.TitleblockOverlaps, s.OutOfSheet, s.MarkerOverlaps, s.MissingPartitions, s.FoldedNetLabels, s.RedundantNetMarkers, s.ReversedNetFlags, s.PolarityConventionOutliers)
 
 	for _, f := range rep.Findings {
 		tag := checkLevelTag(f.Level)
@@ -315,6 +326,9 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 		// Geometry touches the pin but the authoritative netlist has no net for it —
 		// recompile the netlist, or fix the wire so it electrically connects.
 		fmt.Fprintln(w, "→ geom-net mismatch: wire touches pin but netlist has no net — recompile netlist, or fix the stub so it truly connects")
+	}
+	if s.WireContacts > 0 {
+		fmt.Fprintln(w, "→ wire-contact: 导网导线的端点、T 接或共线重叠是真实电气接触 - 拉开或改走; 无接点交叉不在此列")
 	}
 	if s.WireCrossings > 0 || s.WireOverPins > 0 {
 		fmt.Fprintln(w, "→ routing: reroute crossings in clear channels (L-bends); never run a wire through a pin")

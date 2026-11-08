@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `schematic.check` 的 `wire-contact` 和无接点交叉豁免改为只读剔除整条零长度导线后的同一线段记录。此前几何用过滤数组、网名用全量数组的同一下标，页面上互不相交的带网名折线会按前导零长度导线的条数错报或漏报异网接触。折线自身相邻段不再当成异网接触。finding 带接触点 `at` 与 `segments`，`summary.wireContacts` 计数。几何守卫不再重复上报连接器已经计过的同一条零长度导线，并改用小写 `error`。离线回归覆盖前导零长度条数 0–5 与真实 T 接；界面拖动把导线压成零长度的现场步骤未在本变更中重跑。
+
 ## [1.17.0] - 2026-11-07
 
 - 整合 PR #300：新增 `sch geometry` / `schematic.geometry.read`，按需读取当前页 part 几何与导线；NC 按当前页 ID 与位号唯一定位，保留完整器件读取与 marker 指纹路径。几何读取失败独立报告 `SCHEMATIC_GEOMETRY_READ_FAILED`，保留 `mutationApplied/partial`，完整读取使用统一预算，显式短诊断预算仍有效。

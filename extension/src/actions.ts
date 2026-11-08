@@ -41,6 +41,7 @@ import {
 	readObservedWireSegments,
 	resolvePinNetFromWires,
 	WIRE_CONTACT_EPS,
+	wireContactAnchor,
 	wirePointOnSegment,
 	type ObservedWireSegment,
 } from './schematic-wire-topology';
@@ -4243,7 +4244,7 @@ interface CheckPinDetail {
 
 // One reconstructed design-check finding. Reuses the DRC severity buckets.
 interface CheckFinding {
-	type: string; // 'floating-pin' | 'geom-net-mismatch' | 'wire-crossing' | 'wire-over-pin' | 'net-marker-mismatch' | 'multi-net-wire' | 'zero-length-wire' | 'dangling-wire' | 'polarity-convention-outlier'
+	type: string; // 'floating-pin' | 'geom-net-mismatch' | 'wire-contact' | 'wire-crossing' | 'wire-over-pin' | 'net-marker-mismatch' | 'multi-net-wire' | 'zero-length-wire' | 'dangling-wire' | 'polarity-convention-outlier'
 	level: DrcSeverity;
 	designator?: string;
 	primitiveId?: string; // owning component (floating-pin / wire-over-pin)
@@ -4338,6 +4339,11 @@ function isWhollyDegenerateWire(own: CheckWireSegment[]): boolean {
  * — even though `zero-length-wire` was already a documented WARN rule that the code
  * could never reach. Dropping them here, at one shared point, is what lets that
  * existing rule report them instead of aborting the run.
+ * 
+ * The result is shorter than the input whenever a wholly degenerate primitive is
+ * removed. Geometry, net name and primitive identity for one contact pair must
+ * all come from this array, Pairing its index with the unfiltered collection
+ * classifies one segment and then names a different wire.
  */
 export function connectivityWireSegments(segments: CheckWireSegment[]): CheckWireSegment[] {
 	const byWire = new Map<string, CheckWireSegment[]>();
@@ -4761,10 +4767,10 @@ const schematicCheck: Handler = async (payload) => {
 	// pin→net witnesses on BOTH physical islands. A name alone is not proof.
 	if ([...allPins, ...connectionMarkers].some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) throw new Error('Incomplete check anchor coordinates.');
 	const crossingAnchors = [...allPins, ...connectionMarkers];
-	const physicalIslands = physicalWireIslands(wireSegs, crossingAnchors);
+	const physicalIslands = physicalWireIslands(connectivitySegs, crossingAnchors);
 	const verifiedSegments = new Set<number>();
 	for (const island of physicalIslands) {
-		const own = island.map(i => wireSegs[i]);
+		const own = island.map(i => connectivitySegs[i]);
 		const onIsland = (p: { x: number; y: number }) => own.some(w => wirePointOnSegment(p, w.seg));
 		const witnesses = allPins.filter(p => p.designator && onIsland(p));
 		const markers = connectionMarkers.filter(onIsland);
@@ -4785,25 +4791,32 @@ const schematicCheck: Handler = async (payload) => {
 	}
 	const CROSS_CAP = 50;
 	let crossingTotal = 0;
-	for (let i = 0; i < segs.length; i++) {
-		for (let j = i + 1; j < segs.length; j++) {
-			const relation = classifyWireContact(segs[i], segs[j]);
-			const a = wireSegs[i], b = wireSegs[j];
-			if ((relation === 'endpoint-touch' || relation === 'collinear-overlap') && a.net && b.net && a.net !== b.net) {
-				findings.push({ type: 'wire-contact', level: 'error', nets: [a.net, b.net],
+	let wireContacts = 0;
+	for (let i = 0; i < connectivitySegs.length; i++) {
+		for (let j = i + 1; j < connectivitySegs.length; j++) {
+			const a = connectivitySegs[i], b = connectivitySegs[j];
+			const relation = classifyWireContact(a.seg, b.seg);
+			if (a.wirePrimitiveId !== b.wirePrimitiveId
+				&& (relation === 'endpoint-touch' || relation === 'collinear-overlap')
+				&& a.net && b.net && a.net !== b.net) {
+				wireContacts++;
+				findings.push({
+					type: 'wire-contact', level: 'error', nets: [a.net, b.net],
+					at: wireContactAnchor(a.seg, b.seg) ?? undefined,
 					message: '异网导线存在端点/T接/共线重叠的真实电气接触',
-					segments: [a, b].map(s => ({ primitiveId: s.wirePrimitiveId, segmentIndex: s.segmentIndex, rawEncoding: s.rawEncoding })) });
+					segments: [a, b].map(s => ({ primitiveId: s.wirePrimitiveId, segmentIndex: s.segmentIndex, rawEncoding: s.rawEncoding }))
+				});
 			}
 			if (relation !== 'proper-cross') continue;
 			crossingTotal++;
 			if (findings.filter(f => f.type === 'wire-crossing').length >= CROSS_CAP) continue;
-			const anchorAtCrossing = [...crossingAnchors, ...wireEndpoints].some(p => wirePointOnSegment(p, segs[i]) && wirePointOnSegment(p, segs[j]));
+			const anchorAtCrossing = [...crossingAnchors, ...wireEndpoints].some(p => wirePointOnSegment(p, a.seg) && wirePointOnSegment(p, b.seg));
 			const verified = !anchorAtCrossing && verifiedSegments.has(i) && verifiedSegments.has(j);
 			findings.push({
 				type: 'wire-crossing',
 				level: verified ? 'info' : 'error',
 				count: 1,
-				at: segIntersection(segs[i], segs[j]) ?? undefined,
+				at: segIntersection(a.seg, b.seg) ?? undefined,
 				segments: [a, b].map(s => ({ primitiveId: s.wirePrimitiveId, segmentIndex: s.segmentIndex, rawEncoding: s.rawEncoding })),
 				message: verified
 					? '已验证无接点正交内部交叉：原始段端不在交点、无引脚/标记，两个物理线岛的逐pin网络证据完整'
@@ -4932,6 +4945,7 @@ const schematicCheck: Handler = async (payload) => {
 		geomNetMismatches,
 		netMarkerMismatches,
 		multiNetWires,
+		wireContacts,
 		wireCrossings: crossingTotal,
 		wireOverPins: overPinTotal,
 		zeroLengthWires,
