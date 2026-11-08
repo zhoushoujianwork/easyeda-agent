@@ -359,6 +359,11 @@ with --spec stackup.layers refuses before routing; no default layer count is ass
 				out["copperLayerCount"] = copper
 				out["copperLayerCountSource"] = copperSrc
 			}
+			if !skipPower || !skipDiff {
+				if _, err := fetchPcbRules(cfg, *window); err != nil {
+					return err
+				}
+			}
 			// ── 1. power ───────────────────────────────────────────────────
 			// Only post-power reads may opt into observing this command's writes.
 			powerWrote := false
@@ -423,7 +428,10 @@ with --spec stackup.layers refuses before routing; no default layer count is ass
 					"pcb.line.list", *window, nil); err == nil {
 					routed = parseRoutedNets(lr.Result)
 				}
-				rules := fetchPcbRules(staleReadOptIn(cfg, rcAfterPower("线宽/间距规则")), *window)
+				rules, ruleErr := fetchPcbRules(staleReadOptIn(cfg, rcAfterPower("线宽/间距规则")), *window)
+				if ruleErr != nil {
+					return ruleErr
+				}
 				opt := defaultRtOptions()
 				opt.signalWidth = rules.clampWidth(rules.trackWidthMil)
 				opt.netClassWidths = netClassWidthTable(rules)

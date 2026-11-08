@@ -199,7 +199,11 @@ func runPcbMountHoles(cfg *appConfig, window string, dia, inset, clearance float
 	if verr != nil {
 		vias = nil
 	}
-	copperBand := math.Max(fetchPcbRules(cfg, window).clearanceMil, 8)
+	rules, ruleErr := fetchPcbRules(cfg, window)
+	if ruleErr != nil {
+		return ruleErr
+	}
+	copperBand := math.Max(rules.clearanceMil, 8)
 
 	plan, err := planMountHoles(board, strings.Split(cornersCSV, ","), dia, inset, clearance, comps, existing, tracks, vias, copperBand)
 	if err != nil {

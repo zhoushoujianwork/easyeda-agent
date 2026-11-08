@@ -1569,7 +1569,10 @@ high-current 0.5mm (19.69mil) — not mil fragments like 10/15/20.`,
 			Example: `  easyeda pcb net-classes            # human table
   easyeda pcb net-classes --json     # {role: {mil, mm}}`,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				rules := fetchPcbRules(cfg, window)
+				rules, ruleErr := fetchPcbRules(cfg, window)
+				if ruleErr != nil {
+					return ruleErr
+				}
 				table := netClassWidthTable(rules)
 				notes := map[string]string{
 					roleSignal:      "logic/analog signal (live default)",
@@ -2359,7 +2362,11 @@ that net on other layers are kept (GND on TOP then BOTTOM is two calls).`,
 				// ~8mil; ceshi live ~10mil) instead of a fixed 20 — the real
 				// Board-Outline-to-Copper clearance. --inset still overrides. (#32)
 				if !cmd.Flags().Changed("inset") {
-					inset = fetchPcbRules(cfg, window).copperToEdgeMil
+					rules, ruleErr := fetchPcbRules(cfg, window)
+					if ruleErr != nil {
+						return ruleErr
+					}
+					inset = rules.copperToEdgeMil
 				}
 				if strings.TrimSpace(net) == "" {
 					return fmt.Errorf("--net must not be empty (a pour must bind to a net; a netless pour is dead copper)")
@@ -2637,7 +2644,10 @@ onto the new vias.`,
 				}
 				// Via sizes default to the board's live rule (JLCPCB fab: 2L 0.4/0.8mm,
 				// 4L 0.3/0.6mm); --hole/--diameter override. (#32)
-				vsRules := fetchPcbRules(cfg, window)
+				vsRules, ruleErr := fetchPcbRules(cfg, window)
+				if ruleErr != nil {
+					return ruleErr
+				}
 				vHole, vDia := hole, diameter
 				if vHole == 0 {
 					vHole = vsRules.viaDrillMil
@@ -2722,7 +2732,10 @@ read back the vias and run pcb pour-rebuild plus the official DRC.`,
 					y0, y1 = y1, y0
 				}
 				effectiveRect := [4]float64{x0 - margin, y0 - margin, x1 + margin, y1 + margin}
-				vfRules := fetchPcbRules(cfg, window)
+				vfRules, ruleErr := fetchPcbRules(cfg, window)
+				if ruleErr != nil {
+					return ruleErr
+				}
 				vHole, vDia := hole, diameter
 				if vHole == 0 {
 					vHole = vfRules.viaDrillMil
@@ -3196,7 +3209,10 @@ This is a SEED, not a final layout — verify with 'pcb drc'.
 						assemblyGap = st.Assembly.MinGapMil
 					}
 				}
-				apRules := fetchPcbRules(cfg, window)
+				apRules, ruleErr := fetchPcbRules(cfg, window)
+				if ruleErr != nil {
+					return ruleErr
+				}
 				opt.gap = math.Max(assemblyGap, apRules.clearanceMil*2+apRules.trackWidthMil+6)
 				opt.pitch = math.Max(assemblyGap*0.7, apRules.clearanceMil+apRules.trackWidthMil)
 				if mainPins > 0 {
@@ -3539,7 +3555,10 @@ emits a chord-approximated fillet (native arcs do not commit on this build).
 				// POWER stays wider (current capacity — the fab reference's recommended
 				// power width, ≥ signal), both clamped ≥ the legal minimum. Overrides
 				// via --width-signal/--width-power. (#22, power/signal split #corrected)
-				rules := fetchPcbRules(cfg, window)
+				rules, ruleErr := fetchPcbRules(cfg, window)
+				if ruleErr != nil {
+					return ruleErr
+				}
 				opt.signalWidth = rules.clampWidth(rules.trackWidthMil)
 				opt.powerWidth = rules.clampWidth(rules.powerWidthMil)
 				// Role→width ladder seeded from the live rules (pcb_netclass.go):

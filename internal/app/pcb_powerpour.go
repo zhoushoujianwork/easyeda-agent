@@ -174,7 +174,11 @@ func runPowerPour(cfg *appConfig, window, gndLayersSpec, railsMode string, margi
 		return err
 	}
 	if inset <= 0 {
-		inset = fetchPcbRules(cfg, window).copperToEdgeMil
+		rules, ruleErr := fetchPcbRules(cfg, window)
+		if ruleErr != nil {
+			return ruleErr
+		}
+		inset = rules.copperToEdgeMil
 	}
 	outline, err := outlineRect(cfg, window, inset)
 	if err != nil {

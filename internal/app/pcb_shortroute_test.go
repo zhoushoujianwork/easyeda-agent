@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -545,5 +546,35 @@ func TestPlanShortRoutes_MultilayerFinePitch(t *testing.T) {
 	}
 	if !sawTrunk {
 		t.Error("no layer-2 trunk found")
+	}
+}
+
+func TestPlanShortRoutes_RuleUnitEquivalence(t *testing.T) {
+	var wantSegs []rtSeg
+	var wantVias []rtVia
+	var wantDiags []rtNetDiag
+	for i, unit := range []string{"mm", "mil"} {
+		rules, err := parsePcbRules(ruleUnitFixture(unit, unit, unit))
+		if err != nil {
+			t.Fatal(err)
+		}
+		opt := defaultRtOptions()
+		opt.signalWidth = rules.clampWidth(rules.trackWidthMil)
+		opt.powerWidth = rules.clampWidth(rules.powerWidthMil)
+		opt.netClassWidths = netClassWidthTable(rules)
+		opt.clearance = rules.clearanceMil
+		opt.viaDia = rules.viaDiameterMil
+		opt.viaHole = rules.viaDrillMil
+		segs, vias, diags := planShortRoutes(routeBoard(), map[string]bool{}, opt)
+		if i == 0 {
+			wantSegs, wantVias, wantDiags = segs, vias, diags
+			if len(segs) == 0 {
+				t.Fatal("fixture routes nothing")
+			}
+			continue
+		}
+		if !reflect.DeepEqual(segs, wantSegs) || !reflect.DeepEqual(vias, wantVias) || !reflect.DeepEqual(diags, wantDiags) {
+			t.Fatalf("mil routing differs: segs=%+v vias=%+v diags=%+v", segs, vias, diags)
+		}
 	}
 }

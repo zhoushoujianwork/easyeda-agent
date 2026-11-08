@@ -4,6 +4,18 @@
 此前基础 CLI 集中检查已收尾；日常可用范围和新发布验收进度见 [CLI Status](cli-STATUS.md)，本页维护问题细节。
 各轮现场依据见[历史证据索引](reviews/README.md)及对应 issue。
 
+## PCB 规则显式 mil 被重复转换（#303）
+
+[#303](https://github.com/zhoushoujianwork/easyeda-agent/issues/303) 报告 Windows
+EasyEDA Pro 4.1.60 中规则被放大，导致 `route-short --dry-run` 无安全路径及
+`pcb check` 净距误报。旧读取端固定按 mm 转 mil，忽略规则节点单位；显式 mil
+合成输入已离线复现净距 235.6mil、默认线宽 393.7mil 的重复转换。
+当前源码按 Track / Via Size / Safe Spacing 各自的显式 mm/mil 单位转换；有可读
+正数却无有效单位时返回路径错误，依赖调用停止，快照规则标 unknown 并记录原因。
+`--width 10` 不覆盖净距，不应作为绕过方式；真实净距拒绝逻辑保持。
+修复边界为 offline-verified，尚未获得该 Windows 场景的原始规则回包或完成现场
+复验；本结论不关闭现场缺口，也不表示任何版本已经发布。
+
 ## 连续 PCB 修改后宿主白屏 / connector 离线
 
 [#286](https://github.com/zhoushoujianwork/easyeda-agent/issues/286)：macOS 宿主连续修改后白屏，

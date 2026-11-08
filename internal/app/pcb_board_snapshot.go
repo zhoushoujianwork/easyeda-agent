@@ -962,8 +962,11 @@ func fetchBoardSnapshot(cfg *appConfig, window string, opts boardSnapshotOpts) (
 		snap.Availability["rules"] = "unknown"
 		rres, rerr := capture.read(cfg, "pcb.drc.rules", window, nil)
 		if rerr == nil && rres != nil {
-			parsed := parsePcbRules(rres.Result)
-			if parsed.source == "live" {
+			parsed, parseErr := parsePcbRules(rres.Result)
+			if parseErr != nil {
+				snap.note("live DRC rules unreadable (%v)", parseErr)
+			}
+			if parseErr == nil && parsed.source == "live" {
 				snap.Rules = rulesToBoard(parsed)
 				snap.Availability["rules"] = "available"
 			}

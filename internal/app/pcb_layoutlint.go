@@ -909,7 +909,11 @@ func runPcbLayoutLint(cfg *appConfig, window string, minGapMil float64, asJSON b
 
 	// Default min-gap = the board's track-to-pad clearance (live rule) if not set.
 	if minGapMil <= 0 {
-		minGapMil = fetchPcbRules(cfg, window).clearanceMil
+		rules, ruleErr := fetchPcbRules(cfg, window)
+		if ruleErr != nil {
+			return ruleErr
+		}
+		minGapMil = rules.clearanceMil
 	}
 
 	rep := analyzePcbLayout(comps, pads, outline, minGapMil)

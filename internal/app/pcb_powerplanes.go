@@ -82,7 +82,10 @@ func runPowerPlanes(cfg *appConfig, window string, gndLayer, powerLayer int, gnd
 	if verr != nil {
 		boardVias = nil
 	}
-	rules := fetchPcbRules(cfg, window)
+	rules, ruleErr := fetchPcbRules(cfg, window)
+	if ruleErr != nil {
+		return ruleErr
+	}
 	slots, slerr := fetchPcbSlots(cfg, window)
 	if slerr != nil {
 		slots = nil

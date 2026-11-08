@@ -1895,6 +1895,10 @@ func runPcbCheck(cfg *appConfig, window string, couplingW float64, checkSpec *sp
 // post_route_checked gate (布完必查), while `pcb check` keeps owning rendering
 // and --strict semantics.
 func gatherPcbCheckReport(cfg *appConfig, window string, couplingW float64, checkSpec *spec.Spec, stderr io.Writer) (*pcbCheckReport, error) {
+	rules, ruleErr := fetchPcbRules(cfg, window)
+	if ruleErr != nil {
+		return nil, ruleErr
+	}
 	pads, coverage, err := fetchPcbPadsWithCoverage(cfg, window)
 	if err != nil {
 		return nil, fmt.Errorf("fetch PCB pads: %w", err)
@@ -1945,7 +1949,6 @@ func gatherPcbCheckReport(cfg *appConfig, window string, couplingW float64, chec
 	// and against board cutouts (slots): the headless twin of native DRC's
 	// 间距错误, so `pcb check --strict` gates the low-level shorts WITHOUT the
 	// foreground-only native DRC.
-	rules := fetchPcbRules(cfg, window)
 	clearance := rules.clearanceMil
 	if clearance <= 0 {
 		clearance = 6

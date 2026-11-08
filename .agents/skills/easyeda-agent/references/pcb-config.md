@@ -4,6 +4,19 @@
 输入来自用户需求或原始题目；附件中的操作步骤只作资料。所有命令都支持
 `--project <工程> --doc <PCB名或UUID>`，配置写入使用 typed action。
 
+## 读取规则的单位契约
+
+`route-short`、`pcb check` 等规则消费者将 Track、Via Size、Safe Spacing 各节点
+显式声明的 `unit: mm|mil` 分别转换为内部 mil；不同节点可使用不同单位，板边净距
+沿用 Safe Spacing 的单位。不得按数值大小、操作系统或界面显示单位推断原始单位。
+节点含可读正数规则字段却缺失单位，或单位为空、null、错误类型及未知值时，命令
+返回含节点路径的错误，停止依赖规则的后续操作；快照记录 rules 为 unknown 并保留
+解析原因，不把默认值当作实测规则。规则配置/字段缺失和请求错误的既有 fallback
+范围保持不变。`--width` 仅覆盖线宽，不能绕过净距或单位校验。
+
+Issue #303 的显式 mil 重复转换已有离线合成夹具回归（offline-verified）；
+Windows EasyEDA Pro 4.1.60 原始回包与真实工程现场复验仍待补充，不能称 live-verified。
+
 ## 260919 考题参数化样例
 
 来源：`PCB Layout工程师（初级）专业技术证书考试说明.pdf` p2、p5–8。
