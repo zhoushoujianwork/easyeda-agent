@@ -72,6 +72,10 @@ make dev                 # air live-reload; leave running in a terminal
 The daemon listens on `127.0.0.1:60832-60841` (`0xEDA0`-`0xEDA9`) and speaks the handshake in
 [connector-contract.md](connector-contract.md).
 
+普通命令发现已运行 daemon 时，仅正式 release CLI 可自动替换较旧、且 health 未声明 `lifecycle` 的 legacy 实例。`-dev.N`、git-describe 与源码开发 CLI 不自动替换；任何 `lifecycle` 字段（包括未知、不完整或 null）以及不可读 health 均不作为自动替换依据。自动替换还要求 health 提供有效正整数 `pid`，并从停止前同一份完整 health 绑定 PID 与版本交给现有停止身份复核；这不构成原子停止协议。`EASYEDA_NO_AUTOSTART` 优先禁止隐式启动与替换；缺失 daemon 时既有 release / `-dev.N` 自动启动策略、显式 daemon 命令及人工 update 不变。
+
+旧版未声明 `lifecycle` 的 isolated 服务无法从 legacy 实例区分；隔离验收应显式设置 `EASYEDA_NO_AUTOSTART=1`，不能据此守卫宣称所有历史 isolated 实例均受保护。
+
 ## 2. Open a project (this step is manual)
 
 The connector activates via `onStartupFinished`, which only fires once a

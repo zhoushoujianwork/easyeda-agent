@@ -151,6 +151,30 @@ func staleInstalledDaemon(daemonVersion, cliVersion string) bool {
 	return installedBuild(daemonVersion) && installedBuild(cliVersion) && selfupdate.SemverLess(daemonVersion, cliVersion)
 }
 
+// automaticDaemonReplacementAllowed is deliberately stricter than missing-daemon
+// startup. Presence of lifecycle, even null or incomplete, is not legacy proof.
+func automaticDaemonReplacementAllowed(raw []byte, cliVersion string) bool {
+	if !releaseVersionPattern.MatchString(cliVersion) {
+		return false
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || fields == nil {
+		return false
+	}
+	if _, present := fields["lifecycle"]; present {
+		return false
+	}
+	var h struct {
+		Service string `json:"service"`
+		Version string `json:"version"`
+		PID     int    `json:"pid"`
+	}
+	if json.Unmarshal(raw, &h) != nil || h.Service != "easyeda-agent" || h.PID <= 0 {
+		return false
+	}
+	return staleInstalledDaemon(h.Version, cliVersion)
+}
+
 // daemonVersionAt reads the version an identified daemon reports on port.
 func daemonVersionAt(cfg *appConfig, port int) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -170,17 +194,38 @@ func healthVersion(raw []byte) string {
 	return h.Version
 }
 
+// Lifecycle effects are replaceable in tests so discovery regressions cannot
+// signal a process or spawn a real daemon.
+var restartDaemonStop = stopLocalDaemonMatching
+var restartDaemonStart = startDaemonBackgroundFrom
+
 // restartInstalledDaemon replaces the identified daemon on port with exe ("" =
 // this binary) in the background. still re-checks the live version right before
 // stopping, so two CLIs that saw the same stale daemon do not stop each other's
 // fresh replacement. Startup flags of the old process are not inherited.
-func restartInstalledDaemon(cfg *appConfig, port int, exe string, still func(version string) bool, stderr io.Writer) error {
-	if v, ok := daemonVersionAt(cfg, port); ok && !still(v) {
+func restartInstalledDaemon(cfg *appConfig, port int, exe string, still func(version string) bool, stderr io.Writer, automaticGuard ...func([]byte) bool) error {
+	var expected daemonStopExpectation
+	if len(automaticGuard) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		scan := scanHealth(ctx, hostPortOptions{host: cfg.host, portStart: port, portEnd: port})
+		if scan.Found == nil || !automaticGuard[0](scan.Found.Raw) || !still(healthVersion(scan.Found.Raw)) {
+			return nil
+		}
+		var identity struct {
+			PID     int    `json:"pid"`
+			Version string `json:"version"`
+		}
+		if json.Unmarshal(scan.Found.Raw, &identity) != nil || identity.PID <= 0 {
+			return nil
+		}
+		expected = daemonStopExpectation{PID: identity.PID, Version: identity.Version}
+	} else if v, ok := daemonVersionAt(cfg, port); ok && !still(v) {
 		return nil
 	}
-	if err := stopLocalDaemon(cfg.host, port, stderr); err != nil {
+	if err := restartDaemonStop(cfg.host, port, stderr, expected); err != nil {
 		return err
 	}
-	_, err := startDaemonBackgroundFrom(cfg, stderr, exe)
+	_, err := restartDaemonStart(cfg, stderr, exe)
 	return err
 }
