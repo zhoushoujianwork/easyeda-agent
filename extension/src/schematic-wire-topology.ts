@@ -84,15 +84,20 @@ export function isDegenerateWireSegment(s: WireSegment): boolean {
 	return classifyWireSegment(s) === 'degenerate';
 }
 
+/** Axis code  shared by contact classification and the contact anchor.
+ * 0 horizontal, 1vertical, -2 zero-length, -1 non-orthagonal or non-finite
+ */
+function segmentContactAxis(s: WireSegment): number {
+	const e = WIRE_CONTACT_EPS;
+	if (!s.every(Number.isFinite)) return -1;
+	const h = Math.abs(s[1] - s[3]) <= e, v = Math.abs(s[0] - s[2]) <= e;
+	if (h && v) return -2; // zero-length: spans nothing, contats nothing
+	return h === v ? -1 : h ? 0 : 1;
+}
+
 export function classifyWireContact(a: WireSegment, b: WireSegment): WireContact {
 	const e = WIRE_CONTACT_EPS;
-	const axis = (s: WireSegment): number => {
-		if (!s.every(Number.isFinite)) return -1;
-		const h = Math.abs(s[1] - s[3]) <= e, v = Math.abs(s[0] - s[2]) <= e;
-		if (h && v) return -2; // zero-length: spans nothing, contacts nothing
-		return h === v ? -1 : h ? 0 : 1;
-	};
-	const aa = axis(a), bb = axis(b);
+	const aa = segmentContactAxis(a), bb = segmentContactAxis(b);
 	// A zero-length record cannot touch anything, however it is paired. Saying
 	// 'disjoint' here (instead of letting it fall into 'unknown') is what keeps one
 	// stray degenerate segment from taking `sch check` / `bridge-check` down for a
@@ -113,6 +118,25 @@ export function classifyWireContact(a: WireSegment, b: WireSegment): WireContact
 	// than introducing a second radial endpoint tolerance at a noisy corner.
 	const endOn = (s: WireSegment, other: WireSegment) => wirePointOnSegment({x:s[0],y:s[1]}, other) || wirePointOnSegment({x:s[2],y:s[3]}, other);
 	return endOn(a,b) || endOn(b,a) ? 'endpoint-touch' : 'proper-cross';
+}
+
+export function wireContactAnchor(a: WireSegment, b: WireSegment): WireAnchor | null {
+	const relation = classifyWireContact(a, b);
+	if (relation !== 'endpoint-touch' && relation !== 'collinear-overlap') return null;
+	const aa = segmentContactAxis(a), bb = segmentContactAxis(b);
+	if (aa < 0 || bb < 0) return null;
+	const round2 = (n: number) => Math.round(n * 100) / 100;
+	if (aa === bb) {
+		const fixed = aa === 0 ? 1 : 0, moving = 1 - fixed;
+		const lo = Math.max(Math.min(a[moving], a[moving + 2]), Math.min(b[moving], b[moving + 2]));
+		const hi = Math.min(Math.max(a[moving], a[moving + 2]), Math.max(b[moving], b[moving + 2]));
+		const coords = [0, 0];
+		coords[fixed] = a[fixed];
+		coords[moving] = (lo + hi) / 2;
+		return { x: round2(coords[0]), y: round2(coords[1]) };
+	}
+	const h = aa === 0 ? a : b, v = aa === 1 ? a : b;
+	return { x: round2(v[0]), y: round2(h[1]) };
 }
 
 /** Return segment indices per physical island. Anchors at a bare X contact both

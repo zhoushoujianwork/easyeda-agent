@@ -9,7 +9,7 @@ beforeEach(t => {
 	(t as import('node:test').TestContext).after(() => { globals.window = previous; });
 });
 import { collectWireSegments, connectivityWireSegments, planSchDeleteCascadeTrees, runAction, schematicComponentsList, schematicPinDisconnect } from './actions';
-import { classifyWireContact, classifyWireSegment, isDegenerateWireSegment, parseObservedWireLine, physicalWireIslands, type WireSegment } from './schematic-wire-topology';
+import { classifyWireContact, classifyWireSegment, isDegenerateWireSegment, parseObservedWireLine, physicalWireIslands, wireContactAnchor, type WireSegment } from './schematic-wire-topology';
 
 const H: WireSegment = [-20, 0, 20, 0];
 const V: WireSegment = [0, -20, 0, 20];
@@ -67,10 +67,38 @@ test('contact matrix is invariant under reversal, rotation and translation; name
 		const pair = [transform(a),transform(b)];
 		assert.equal(classifyWireContact(pair[0],pair[1]), relation);
 		assert.equal(physicalWireIslands(pair.map(seg => ({seg}))).length, count);
+		const anchor = wireContactAnchor(pair[0], pair[1]);
+		if (relation === 'endpoint-touch' || relation === 'collinear-overlap') assert.ok(anchor);
+		else assert.equal(anchor, null);
 	}
 	assert.equal(physicalWireIslands([{seg:H},{seg:V}], [{x:0,y:0}]).length,1);
 	assert.equal(classifyWireContact([0,0,1,1],H),'unknown');
 	assert.throws(() => physicalWireIslands([{seg:[0,0,1,1]}]));
+});
+
+// wire-contact 的 at 必须落在真实接触点上，否则报告只能再反查一次坐标。
+// 共线重叠取交集中点，不是任一段的端点；端到端相接取共享端点。
+test('wire-contact anchor names the actual touch point, not a segment end', () => {
+	// T: vertical arm ends on the horizontal body → its x, the horizontal's y.
+	assert.deepEqual(wireContactAnchor([-20,0,20,0],[10,-20,10,0]),{x:10,y:0});
+	// L: the shared endpoint.
+	assert.deepEqual(wireContactAnchor([0,0,20,0],[20,0,20,20]),{x:20,y:0});
+	// Collinear partial overlap [4,6] → midpoint 5.
+	assert.deepEqual(wireContactAnchor([0,0,10,0],[4,0,6,0]),{x:5,y:0});
+	// Collinear containment [2,10] → midpoint 6.
+	assert.deepEqual(wireContactAnchor([0,0,10,0],[2,0,30,0]),{x:6,y:0});
+	// End-to-end collinear touch is a point, not the start of either span.
+	assert.deepEqual(wireContactAnchor([0,0,10,0],[10,0,20,0]),{x:10,y:0});
+	// Identical overlap → its midpoint.
+	assert.deepEqual(wireContactAnchor([0,0,20,0],[0,0,20,0]),{x:10,y:0});
+	// Vertical collinear overlap [4,6] → midpoint 5.
+	assert.deepEqual(wireContactAnchor([0,0,0,10],[0,4,0,6]),{x:0,y:5});
+	// Reversing either segment must not move the anchor.
+	assert.deepEqual(wireContactAnchor([10,0,0,0],[6,0,4,0]),{x:5,y:0});
+	// No contact → no anchor: disjoint, zero-length, non-orthogonal.
+	assert.equal(wireContactAnchor([0,0,10,0],[20,0,30,0]),null);
+	assert.equal(wireContactAnchor([0,0,0,0],[0,0,10,0]),null);
+	assert.equal(wireContactAnchor([0,0,1,1],[0,0,10,0]),null);
 });
 
 // ─── Zero-length wire regression (live B04_2_1, 2026-09-20) ───────────────
@@ -122,8 +150,9 @@ test('real B04_2_1 shape: one zero-length primitive among real stubs no longer a
 	// Pre-fix this threw `Unknown wire contact.` and took check + bridge-check down.
 	assert.equal(physicalWireIslands([...real, ...zero]).length,2);
 
-	// connectivityWireSegments removes the degenerate primitive and keeps real
-	// segment indices aligned for the reporting that follows.
+	// connectivityWireSegments removes the degenerate primitive. Its array index
+	// is no longer the unfiltered index; reporting must read net and id from
+	// this filtered element, not from wireSegs[i].
 	const kept = connectivityWireSegments([...real, ...zero]);
 	assert.deepEqual(kept.map(s => s.seg), real.map(s => s.seg));
 	assert.equal(kept.length,3);
@@ -279,7 +308,113 @@ for (const opts of [{missingNetlist:true},{markerAtCross:true}]) test(`check doe
 test('check preserves foreign T contact error; unreadable anchors fail instead of proving empty',async t=>{
 	installScene(t,{tee:true});
 	const out:any=await runAction('schematic.check',{});
-	assert.ok(out.result.findings.some((f:any)=>f.type==='wire-contact'&&f.level==='error'));
+	const contact=out.result.findings.find((f:any)=>f.type==='wire-contact'&&f.level==='error');
+	assert.ok(contact);
+	assert.deepEqual(contact.nets,['A','B']);
+	assert.deepEqual(contact.segments.map((s:any)=>s.primitiveId),['h','v']);
+	assert.deepEqual(contact.at,{x:0,y:0});
+	assert.equal(out.result.summary.wireContacts,1);
+});
+
+test('a zero-length wire ahead of a real T still names that T, not the shifted pair',async t=>{
+	installScene(t);
+	const api=(globalThis as any).eda;
+	api.sch_PrimitiveComponent.getAll=async()=>[];
+	api.sch_PrimitiveWire.getAll=async()=>[
+		wire('zero',[120,300,120,300],''),
+		wire('h',[0,0,40,0],'NET_A'),
+		wire('v',[0,0,0,40],'NET_B'),
+	];
+	const out:any=await runAction('schematic.check',{});
+	const contacts=out.result.findings.filter((f:any)=>f.type==='wire-contact');
+	assert.equal(contacts.length,1);
+	assert.deepEqual(contacts[0].nets,['NET_A','NET_B']);
+	assert.deepEqual(contacts[0].segments.map((s:any)=>s.primitiveId),['h','v']);
+	assert.deepEqual(contacts[0].segments.map((s:any)=>s.segmentIndex),[0,0]);
+	assert.deepEqual(contacts[0].at,{x:0,y:0});
+	assert.equal(out.result.summary.wireContacts,1);
+	assert.equal(out.result.summary.zeroLengthWires,1);
+});
+
+test('leading zero-length wires do not manufacture wire-contact or revoke a verified bare X',async t=>{
+	installScene(t);
+	const api=(globalThis as any).eda;
+	const original=api.sch_PrimitiveWire.getAll;
+	api.sch_PrimitiveWire.getAll=async()=>[wire('zero',[120,300,120,300],''),...await original()];
+	const out:any=await runAction('schematic.check',{});
+	assert.equal(out.result.summary.zeroLengthWires,1);
+	assert.equal(out.result.summary.wireContacts,0);
+	assert.equal(out.result.findings.filter((f:any)=>f.type==='wire-contact').length,0);
+	assert.equal(out.result.findings.find((f:any)=>f.type==='wire-crossing')?.level,'info');
+	assert.deepEqual(out.result.findings.find((f:any)=>f.type==='wire-crossing').segments.map((s:any)=>s.primitiveId),['h','v']);
+});
+
+test('disjoint named corners stay free of wire-contact for every leading zero-length count',async t=>{
+	installScene(t);
+	const api=(globalThis as any).eda;
+	api.sch_PrimitiveComponent.getAll=async()=>[];
+	const corner=(id:string,net:string,x:number)=>wire(id,[x,400,x+20,400,x+20,400,x+20,420],net);
+	for (const k of [0,1,2,3,4,5]) {
+		api.sch_PrimitiveWire.getAll=async()=>[
+			...Array.from({length:k},(_,i)=>wire(`z${i}`,[120,300,120,300],'')),
+			corner('a','NET_A',40),corner('b','NET_B',140),corner('c','NET_C',240),
+		];
+		const out:any=await runAction('schematic.check',{});
+		const contacts=out.result.findings.filter((f:any)=>f.type==='wire-contact');
+		assert.deepEqual(contacts.map((f:any)=>f.nets),[],`k=${k} nets ${JSON.stringify(contacts.map((f:any)=>f.nets))}`);
+		assert.equal(out.result.summary.wireContacts,0,`k=${k}`);
+		assert.equal(out.result.summary.zeroLengthWires,k,`k=${k}`);
+	}
+});
+
+test('collinear foreign overlap reports one contact at the overlap midpoint; same net does not',async t=>{
+	installScene(t);
+	const api=(globalThis as any).eda;
+	api.sch_PrimitiveComponent.getAll=async()=>[];
+	api.sch_PrimitiveWire.getAll=async()=>[wire('a',[0,0,40,0],'NET_A'),wire('b',[20,0,60,0],'NET_B')];
+	const out:any=await runAction('schematic.check',{});
+	const contacts=out.result.findings.filter((f:any)=>f.type==='wire-contact');
+	assert.equal(contacts.length,1);
+	assert.deepEqual(contacts[0].nets,['NET_A','NET_B']);
+	assert.deepEqual(contacts[0].at,{x:30,y:0});
+	assert.deepEqual(contacts[0].segments.map((s:any)=>s.primitiveId),['a','b']);
+	assert.ok(contacts[0].segments.every((s:any)=>s.rawEncoding==='flat-segments'));
+	assert.equal(out.result.summary.wireContacts,1);
+
+	// Same net: physically one net, not a short.
+	api.sch_PrimitiveWire.getAll=async()=>[wire('a',[0,0,40,0],'NET_A'),wire('b',[20,0,60,0],'NET_A')];
+	const same:any=await runAction('schematic.check',{});
+	assert.equal(same.result.findings.filter((f:any)=>f.type==='wire-contact').length,0);
+	assert.equal(same.result.summary.wireContacts,0);
+});
+
+test('every foreign contact pair is one finding and one summary count',async t=>{
+	installScene(t);
+	const api=(globalThis as any).eda;
+	api.sch_PrimitiveComponent.getAll=async()=>[];
+	api.sch_PrimitiveWire.getAll=async()=>[
+		wire('a1',[0,0,20,0],'NET_A'),wire('b1',[10,0,10,-20],'NET_B'),
+		wire('a2',[0,20,20,20],'NET_A'),wire('b2',[10,20,10,40],'NET_B'),
+	];
+	const out:any=await runAction('schematic.check',{});
+	const contacts=out.result.findings.filter((f:any)=>f.type==='wire-contact');
+	assert.equal(contacts.length,2);
+	assert.deepEqual(contacts.map((f:any)=>f.at),[{x:10,y:0},{x:10,y:20}]);
+	assert.equal(out.result.summary.wireContacts,2);
+	assert.equal(out.result.summary.total,out.result.findings.length);
+});
+
+test('one primitive carrying two named segments is a bend, not a foreign contact',async t=>{
+	installScene(t);
+	const api=(globalThis as any).eda;
+	api.sch_PrimitiveComponent.getAll=async()=>[];
+	// The host can merge records of one polyline under one primitive id; the
+	// primitive-id guard keeps its own bend out of the foreign-contact rule even
+	// when the two records carry different net names.
+	api.sch_PrimitiveWire.getAll=async()=>[wire('bent',[0,0,20,0],'NET_A'),wire('bent',[20,0,20,20],'NET_B')];
+	const out:any=await runAction('schematic.check',{});
+	assert.equal(out.result.findings.filter((f:any)=>f.type==='wire-contact').length,0);
+	assert.equal(out.result.summary.wireContacts,0);
 });
 
 for (const sameNet of [false,true]) test(`bridge keeps X as two real islands, sameNet=${sameNet}`,async t=>{
