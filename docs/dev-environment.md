@@ -143,6 +143,22 @@ client (the desktop app is a Chromium webview).
     is `<uuid>|dist/index.js`.
   - `extensionsUserConfig`, `standaloneScript`.
 
+### 固定修订的本地 DEV 工具包
+
+无需改动原仓版本文件，可从 `dev` 历史的完整提交 SHA 构建独立工具包：
+
+```bash
+python3 scripts/build-local-snapshot.py --version 1.17.1-dev.1 --revision <完整40位SHA> --out <绝对输出目录>
+```
+
+脚本只提取固定修订到临时源码副本，在副本注入 connector/npm/Skill 版本与 changelog，
+共享现有 `extension/node_modules` 依赖后执行 `make local-build` 及原有资产校验。
+不安装、不启动 daemon、不发布；输出目录已存在时拒绝覆盖，失败不暴露半包。
+`local-dev.json` 的 `sourceDirty:false` 指固定修订快照，不描述调用者工作目录；
+未提交文件不进入构建。`versionInjected:true` 表明 DEV 版本由构建副本注入，原提交并不自带此版本。
+完整多平台资产和校验清单保留，另将 metadata 的 SHA256 加入 `checksums.txt`。
+缺少已有依赖时直接失败，不自动安装。
+
 ### The trick
 
 Overwrite the `<uuid>|dist/index.js` record with a freshly-built bundle, bump
