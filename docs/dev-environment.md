@@ -158,6 +158,8 @@ python3 scripts/build-local-snapshot.py --version 1.17.1-dev.1 --revision <完�
 未提交文件不进入构建。`versionInjected:true` 表明 DEV 版本由构建副本注入，原提交并不自带此版本。
 完整多平台资产和校验清单保留，另将 metadata 的 SHA256 加入 `checksums.txt`。
 缺少已有依赖时直接失败，不自动安装。
+离线 smoke 仅在显式 `--local-dev` 下接受可选的 `local-dev.json`，并校验其 SHA256、固定修订及版本元数据；没有该文件的普通本地构建仍兼容。
+该校验只证明本地候选包完整性，不代表正式发布或现场 EDA 验收通过。
 
 ### The trick
 

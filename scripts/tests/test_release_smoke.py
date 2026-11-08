@@ -1,4 +1,5 @@
 import contextlib
+import errno
 import hashlib
 import importlib.util
 import io
@@ -66,6 +67,89 @@ class ReleaseSmokeTests(unittest.TestCase):
         (self.root / "easyeda_windows_amd64.exe").write_bytes(b"corrupted")
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):
             smoke.check_assets(self.root)
+
+    def metadata(self, value=None):
+        value = value if value is not None else {
+            "schemaVersion": 1, "kind": "local-dev", "version": "1.18.0-dev.1",
+            "sourceRevision": "a" * 40, "sourceBranch": "dev",
+            "sourceDirty": False, "versionInjected": True}
+        path = self.root / "local-dev.json"
+        path.write_text(json.dumps(value))
+        self.checksums()
+        with (self.root / "checksums.txt").open("a") as stream:
+            stream.write(f"{smoke.digest(path)}  local-dev.json\n")
+        return value
+
+    def test_local_snapshot_and_legacy_assets(self):
+        self.assets()
+        self.assertEqual(smoke.check_assets(self.root, "v1.18.0-dev.1", True), list(smoke.ASSETS))
+        self.metadata()
+        self.assertEqual(smoke.check_assets(self.root, "v1.18.0-dev.1", True),
+                         [*smoke.ASSETS, "local-dev.json"])
+        for tag, local in [("v1.18.0-dev.1", False), ("v1.18.1", False),
+                           ("v1.18.1", True), (None, True)]:
+            with self.subTest(tag=tag, local=local), self.assertRaises(ValueError):
+                smoke.check_assets(self.root, tag, local)
+        self.checksums()  # Even unlisted metadata must be rejected in release mode.
+        with self.assertRaises(ValueError):
+            smoke.check_assets(self.root, "v1.18.1")
+
+    def test_invalid_local_metadata_with_valid_hash(self):
+        self.assets()
+        baseline = self.metadata()
+        changes = {"schemaVersion": [True, 1.0, 2], "kind": ["release"],
+                   "version": ["1.18.0-dev.2"], "sourceRevision": ["A" * 40, "a" * 39, 1],
+                   "sourceBranch": ["main"], "sourceDirty": [0, True],
+                   "versionInjected": [1, False]}
+        for key, values in changes.items():
+            for value in values:
+                with self.subTest(key=key, value=value):
+                    self.metadata(dict(baseline, **{key: value}))
+                    with self.assertRaises(ValueError):
+                        smoke.check_assets(self.root, "v1.18.0-dev.1", True)
+        self.metadata([])
+        with self.assertRaises(ValueError):
+            smoke.check_assets(self.root, "v1.18.0-dev.1", True)
+
+    def test_local_metadata_integrity_and_manifest(self):
+        self.assets()
+        path = self.root / "local-dev.json"
+        for fault in ["unlisted", "missing", "empty", "symlink", "dangling", "corrupt", "duplicate", "unknown"]:
+            with self.subTest(fault=fault):
+                if path.is_symlink() or path.exists():
+                    path.unlink()
+                self.metadata()
+                manifest = self.root / "checksums.txt"
+                if fault == "unlisted":
+                    self.checksums()
+                elif fault in {"missing", "symlink", "dangling"}:
+                    path.unlink()
+                    if fault != "missing":
+                        try:
+                            path.symlink_to(self.root / ("install.sh" if fault == "symlink" else "absent"))
+                        except OSError as error:
+                            if os.name == "nt" and (error.errno in {errno.EACCES, errno.EPERM}
+                                                    or getattr(error, "winerror", None) == 1314):
+                                self.skipTest("Windows runner lacks symbolic-link creation privileges")
+                            raise
+                elif fault == "empty":
+                    path.write_bytes(b"")
+                elif fault == "corrupt":
+                    path.write_text("{}")
+                else:
+                    with manifest.open("a") as stream:
+                        stream.write(manifest.read_text().splitlines()[-1] + "\n" if fault == "duplicate"
+                                     else "0" * 64 + "  unknown.json\n")
+                with self.assertRaises(ValueError):
+                    smoke.check_assets(self.root, "v1.18.0-dev.1", True)
+
+    def test_local_metadata_symlink_rejection_without_os_privileges(self):
+        self.assets()
+        self.metadata()
+        original = Path.is_symlink
+        with patch.object(Path, "is_symlink", lambda path: path.name == "local-dev.json" or original(path)):
+            with self.assertRaisesRegex(ValueError, "missing/empty asset: local-dev.json"):
+                smoke.check_assets(self.root, "v1.18.0-dev.1", True)
 
     def test_minor_release_checks_attached_evidence(self):
         self.assets()

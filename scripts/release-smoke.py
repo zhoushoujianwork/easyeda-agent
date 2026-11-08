@@ -88,10 +88,18 @@ def basic_scope(manifest):
     return True
 
 
-def check_assets(directory, tag=None):
+def check_assets(directory, tag=None, local_dev=False):
     match = re.fullmatch(r"v(\d+)\.([1-9]\d*)\.0", tag or "")
     minor = bool(match and (int(match.group(1)), int(match.group(2))) >= (1, 6))
     assets = (*ASSETS, EVIDENCE_ASSET) if minor else ASSETS
+    metadata = directory / "local-dev.json"
+    has_metadata = metadata.exists() or metadata.is_symlink()
+    if local_dev:
+        require(re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+-dev\.[1-9][0-9]*", tag or "") is not None,
+                "local-dev assets require an exact DEV tag")
+    require(not has_metadata or local_dev, "local-dev.json requires explicit local-dev mode")
+    if has_metadata:
+        assets = (*assets, "local-dev.json")
     expected = {}
     for line in (directory / "checksums.txt").read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  (\S+)", line)
@@ -104,6 +112,18 @@ def check_assets(directory, tag=None):
         path = directory / name
         require(path.is_file() and not path.is_symlink() and path.stat().st_size > 0, f"missing/empty asset: {name}")
         require(digest(path) == checksum, f"checksum mismatch: {name}")
+    if has_metadata:
+        data = json.loads(metadata.read_text(encoding="utf-8"))
+        require(isinstance(data, dict), "local-dev metadata must be an object")
+        require(type(data.get("schemaVersion")) is int and data["schemaVersion"] == 1
+                and data.get("kind") == "local-dev"
+                and data.get("version") == tag[1:]
+                and isinstance(data.get("sourceRevision"), str)
+                and re.fullmatch(r"[0-9a-f]{40}", data["sourceRevision"]) is not None
+                and data.get("sourceBranch") == "dev"
+                and data.get("sourceDirty") is False
+                and data.get("versionInjected") is True,
+                "invalid local-dev metadata")
     if minor:
         with zipfile.ZipFile(directory / EVIDENCE_ASSET) as archive:
             require(archive.namelist() == list(EVIDENCE_FILES), "acceptance evidence archive files differ")
@@ -342,7 +362,7 @@ def main():
             work = Path(temporary)
             if args.assets:
                 assets = args.assets.resolve()
-                report["assetsIntegrityVerified"] = check_assets(assets, args.version)
+                report["assetsIntegrityVerified"] = check_assets(assets, args.version, local_dev=args.local_dev)
                 report["connector"] = check_connector(assets / "easyeda-agent-connector.eext", args.version[1:])
                 skill, modes = extract_skill(assets / "skills.tar.gz", work / "archive")
                 report["packagedSkill"] = check_skill(skill, args.version[1:], modes)
