@@ -829,6 +829,7 @@ func schCheckReport(cfg *appConfig, win, expectedUUID string) (checkReport, erro
 		"geomNetMismatches",
 		"netMarkerMismatches",
 		"multiNetWires",
+		"wireContacts",
 		"wireCrossings",
 		"wireOverPins",
 		"zeroLengthWires",

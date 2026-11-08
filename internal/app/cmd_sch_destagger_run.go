@@ -33,6 +33,7 @@ type destaggerElectrical struct {
 	GeomNetMismatches   int `json:"geomNetMismatches"`
 	NetMarkerMismatches int `json:"netMarkerMismatches"`
 	MultiNetWires       int `json:"multiNetWires"`
+	WireContacts        int `json:"wireContacts"`
 	WireCrossings       int `json:"wireCrossings"`
 	WireOverPins        int `json:"wireOverPins"`
 	ZeroLengthWires     int `json:"zeroLengthWires"`
@@ -46,6 +47,7 @@ func electricalOf(s checkSummary) destaggerElectrical {
 		GeomNetMismatches:   s.GeomNetMismatches,
 		NetMarkerMismatches: s.NetMarkerMismatches,
 		MultiNetWires:       s.MultiNetWires,
+		WireContacts:        s.WireContacts,
 		WireCrossings:       s.WireCrossings,
 		WireOverPins:        s.WireOverPins,
 		ZeroLengthWires:     s.ZeroLengthWires,
@@ -68,6 +70,7 @@ func (before destaggerElectrical) regressions(after destaggerElectrical) []strin
 	cmp("geomNetMismatches", before.GeomNetMismatches, after.GeomNetMismatches)
 	cmp("netMarkerMismatches", before.NetMarkerMismatches, after.NetMarkerMismatches)
 	cmp("multiNetWires", before.MultiNetWires, after.MultiNetWires)
+	cmp("wireContacts", before.WireContacts, after.WireContacts)
 	cmp("wireCrossings", before.WireCrossings, after.WireCrossings)
 	cmp("wireOverPins", before.WireOverPins, after.WireOverPins)
 	cmp("zeroLengthWires", before.ZeroLengthWires, after.ZeroLengthWires)

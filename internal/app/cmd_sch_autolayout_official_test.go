@@ -48,7 +48,7 @@ func officialCheckResponse(dangling int) string {
 	}
 	return officialTestOK(fmt.Sprintf(`{"passed":%t,"summary":{
 		"floatingPins":0,"componentsWithFloating":0,"geomNetMismatches":0,
-		"netMarkerMismatches":0,"multiNetWires":0,"wireCrossings":0,
+		"netMarkerMismatches":0,"multiNetWires":0,"wireContacts":0,"wireCrossings":0,
 		"wireOverPins":0,"zeroLengthWires":0,"danglingWires":%d,"total":%d
 	},"findings":[%s]}`,
 		dangling == 0, dangling, dangling, strings.Join(findings, ",")))

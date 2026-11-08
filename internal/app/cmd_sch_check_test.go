@@ -381,3 +381,71 @@ func TestRenderCheck_PolarityConventionOutlier(t *testing.T) {
 		}
 	}
 }
+
+// wire-contact is the rule issue #299 fixed: geometry, net names and primitive ids
+// must come from one record, findings must carry `segments` + `at`, and
+// `sch check --json` must keep those fields (it used to drop `segments`, the one
+// field that could prove which pair was compared).
+func TestParseAndRenderCheck_WireContact(t *testing.T) {
+	result := map[string]any{
+		"passed": false,
+		"summary": map[string]any{
+			"wireContacts": float64(2),
+			"total":        float64(2),
+		},
+		"findings": []any{
+			map[string]any{
+				"type":  "wire-contact",
+				"level": "error",
+				"nets":  []any{"NET_A", "NET_B"},
+				"at":    map[string]any{"x": float64(30), "y": float64(0)},
+				"segments": []any{
+					map[string]any{"primitiveId": "a", "segmentIndex": float64(0), "rawEncoding": "flat-segments"},
+					map[string]any{"primitiveId": "b", "segmentIndex": float64(1), "rawEncoding": "flat-segments"},
+				},
+				"message": "异网导线存在端点/T接/共线重叠的真实电气接触",
+			},
+			map[string]any{"type": "wire-contact", "level": "error", "nets": []any{"NET_B", "NET_C"}},
+		},
+	}
+	rep, err := parseCheckReport(result)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if rep.Summary.WireContacts != 2 {
+		t.Errorf("summary wireContacts=%d, want 2: %+v", rep.Summary.WireContacts, rep.Summary)
+	}
+	f := rep.Findings[0]
+	if len(f.Segments) != 2 || f.Segments[0].PrimitiveId != "a" || f.Segments[0].SegmentIndex != 0 ||
+		f.Segments[0].RawEncoding != "flat-segments" || f.Segments[1].PrimitiveId != "b" || f.Segments[1].SegmentIndex != 1 {
+		t.Errorf("segments lost in parse: %+v", f.Segments)
+	}
+	if f.At == nil || f.At.X != 30 || f.At.Y != 0 {
+		t.Errorf("contact anchor lost in parse: %+v", f.At)
+	}
+
+	var buf bytes.Buffer
+	renderCheckReport(rep, &buf)
+	out := buf.String()
+	for _, want := range []string{"2 wire-contact(s)", "nets=[NET_A,NET_B]", "@(30.00,0.00)", "→ wire-contact"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render missing %q\n--- output ---\n%s", want, out)
+		}
+	}
+
+	// JSON contract: segments keep the documented lowercase key, not the Go field
+	// name, and the per-rule count stays in the summary.
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	encoded := string(b)
+	for _, want := range []string{`"wireContacts":2`, `"segments"`, `"rawEncoding":"flat-segments"`} {
+		if !strings.Contains(encoded, want) {
+			t.Errorf("json missing %q: %s", want, encoded)
+		}
+	}
+	if strings.Contains(encoded, "RawEncoding") {
+		t.Errorf("json leaked the Go field name instead of rawEncoding: %s", encoded)
+	}
+}

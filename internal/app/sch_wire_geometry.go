@@ -2,6 +2,9 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
+
 	"github.com/zhoushoujianwork/easyeda-agent/internal/schguard"
 )
 
@@ -36,5 +39,41 @@ func schWireGeometryFindings(result map[string]any, wires []schGroupWire) []chec
 	b, _ := json.Marshal(findings)
 	var out []checkFinding
 	_ = json.Unmarshal(b, &out)
+	for i := range out {
+		out[i].Level = strings.ToLower(out[i].Level)
+	}
+	return out
+}
+
+func zeroLengthIdentity(f checkFinding) string {
+	if f.Type != "zero-length-wire" {
+		return ""
+	}
+	if f.WirePrimitiveId != "" {
+		return "id:" + f.WirePrimitiveId
+	}
+	if f.At != nil {
+		return fmt.Sprintf("at:%.4f,%.4f", f.At.X, f.At.Y)
+	}
+	return ""
+}
+
+func dropDuplicateZeroLengthFindings(existing, extra []checkFinding) []checkFinding {
+	seen := map[string]struct{}{}
+	for _, f := range existing {
+		if k := zeroLengthIdentity(f); k != "" {
+			seen[k] = struct{}{}
+		}
+	}
+	out := make([]checkFinding, 0, len(extra))
+	for _, f := range extra {
+		if k := zeroLengthIdentity(f); k != "" {
+			if _, ok := seen[k]; ok {
+				continue
+			}
+			seen[k] = struct{}{}
+		}
+		out = append(out, f)
+	}
 	return out
 }

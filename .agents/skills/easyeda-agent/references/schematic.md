@@ -279,7 +279,7 @@ ERROR，保留器件/引脚/线段证据。允许先向外再折线；不二次�
 
 严格内部 X 的无接点豁免按物理线岛取证：宿主 wire net 为空时，只有该岛上的逐 pin
 官方网表和明确 marker 唯一证明同一非空网络才可记 INFO；缺证据或冲突仍为 ERROR，
-且 X 不参与线岛合并。Designator 对导线的遮挡按官方原始编码解析；`flat-segments`
+且 X 不参与线岛合并。`wire-contact` 与这条豁免使用同一份剔除整条零长度导线后的线段：几何、网络名、`primitiveId` 和 `segmentIndex` 必须来自同一记录。折线内部相邻段共享顶点不是异网接触。finding 带 `segments` 与接触点 `at`，`summary.wireContacts` 计数；`sch check --json` 保留这两项。零长度导线只由连接器的 `zero-length-wire`（warn）计一次，几何守卫不再把同一图元再报成大写 `ERROR`。Designator 对导线的遮挡按官方原始编码解析；`flat-segments`
 中的四坐标记录彼此独立，禁止把相邻记录尾首连接成不存在的斜线。
 
 完整 compose 源与最终 Apply 守卫必须保留核心/外围 ownership。外围需沿真实导线和
