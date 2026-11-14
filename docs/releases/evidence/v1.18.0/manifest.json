@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 3,
+  "version": "v1.18.0",
+  "result": "pass",
+  "independentReview": "pass",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.18.0",
+    "date": "2026-11-14",
+    "summary": "用户在获知连接器运行时变化须升中版本、且完整点灯板 E2E 未执行后，选择 schema 3 定向修复范围：以全量自动回归和 #299、#303 现场定向验收为准，完整设计 E2E 延期；#299 拖动与 #303 单位切换由 Agent 应用户要求经 GUI 制造前置条件。"
+  },
+  "sha256": {
+    "test-report.md": "9744345c61e97bf167439e50f82b2e4aaf09b429ebbebfca74b5cb06896c7bb7",
+    "baseline.md": "b89a7b67936ebee0f6579d05a4e1e09a58665e46a3facfc4aa027d8c05466465",
+    "test-cases.md": "ac3d3b393954842e63a2e17e8ef274e45003132be4ab99980f41625d6d532fd8"
+  }
+}

@@ -1,3 +1,11 @@
+# v1.18.0 准备中（未发布）
+
+v1.17.0 之后的修复改动了连接器运行时（#299 wire-contact、器件替换查询预算），按版本规则升为中版本 v1.18.0。
+用户于 2026-11-14 选择 schema 3 定向修复范围：全量自动回归，加上 #299、#303 在 EasyEDA Pro 4.1.100 中的
+现场定向验收；完整设计 E2E 延期。验收材料与独立复核见 [v1.18.0 证据](evidence/v1.18.0/test-report.md)，
+变更见 `extension/CHANGELOG.md` 的 `[1.18.0]`。版本元数据已同步；尚未执行 `make release`，
+仍须用户批准具体版本后才能创建标签与发布。
+
 # v1.17.0 已发布
 
 当前正式版为 [v1.17.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.17.0)。
