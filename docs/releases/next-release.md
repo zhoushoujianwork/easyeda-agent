@@ -1,10 +1,24 @@
-# v1.18.0 准备中（未发布）
+# v1.18.0 已发布
 
-v1.17.0 之后的修复改动了连接器运行时（#299 wire-contact、器件替换查询预算），按版本规则升为中版本 v1.18.0。
-用户于 2026-11-14 选择 schema 3 定向修复范围：全量自动回归，加上 #299、#303 在 EasyEDA Pro 4.1.100 中的
-现场定向验收；完整设计 E2E 延期。验收材料与独立复核见 [v1.18.0 证据](evidence/v1.18.0/test-report.md)，
-变更见 `extension/CHANGELOG.md` 的 `[1.18.0]`。版本元数据已同步；尚未执行 `make release`，
-仍须用户批准具体版本后才能创建标签与发布。
+当前正式版为 [v1.18.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.18.0)。
+v1.17.0 之后的修复改动了连接器运行时（#299 wire-contact、器件替换查询预算），按版本规则升为中版本。
+用户于 2026-11-14 选择 schema 3 定向修复范围并批准发布：全量自动回归，加上 #299、#303 在 EasyEDA Pro 4.1.100
+中的现场定向验收；完整设计 E2E 延期 follow-up。验收材料与独立复核见 [v1.18.0 证据](evidence/v1.18.0/test-report.md)，
+变更见 `extension/CHANGELOG.md` 的 `[1.18.0]`。
+
+## 正式发布结果
+
+- 2026-11-14 06:13:34 UTC 发布，非草稿、非预发布，GitHub Latest 指向本版。附注标签绑定 main 提交
+  `af76cd7ea73cd9789a68782cb4ad18d921fd0074`；该提交 [main CI](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/43564572849) 五项任务全部通过。
+- 正式包在该提交的独立干净 clone 中由 `make release` 构建，二进制 build info 为 `vcs.modified=false`。
+  macOS arm64 SHA256 为 `07370894b62c78c4f48c2d6f5f72e954a4559a8e237c5428190632c53ae46f7f`。
+- 发布后匿名下载全部 11 个附件，SHA256 与 `checksums.txt` 逐项一致，`checksums.txt` 与本地构建逐字节相同。
+- 隔离目录安装冒烟：main 上的 `install.sh` 与 Release 附件相同；全新安装的 CLI 与附件逐字节相同，192 个 Skill 文件逐字节一致
+  （另有安装器写入的 `.version`）；v1.17.0 基线经安装脚本升级到 v1.18.0，二进制与 Skill 文件集合同上。未重启用户 daemon。
+- SkillHub [自动发布任务](https://github.com/zhoushoujianwork/easyeda-agent/actions/runs/43565283532) 成功，回执 `skillId=163177 status=None`，
+  待平台审核，不称前台已更新。ClawHub 提交回执成功，但公开查询暂查不到 1.18.0、latest 仍为 1.17.0，不称已公开上线。
+  立创连接器市场未在本轮更新。
+- 未完成：#303 报告的 Windows 4.1.60 环境未复验；完整设计 E2E 仍为 not-run。
 
 # v1.17.0 已发布
 
