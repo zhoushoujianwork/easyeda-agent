@@ -200,7 +200,7 @@ preserve/reuse-unwired 编译路径可使用其已有的完整零绘图证明：
 证明期间没有切到其他页再切回（ABA），也不证明落盘。
 
 后台 autosave 仅使用上述认证身份，按文档防抖，并在连接器保存执行前检查期望身份。
-`document.source.roundtrip` 是已知的文档域写动作，由认证身份的文档类型选择 schematic/PCB save；
+`document.source.roundtrip` 与 `document.source.restore` 是已知的文档域写动作，由认证身份的文档类型选择 schematic/PCB save；
 dry-run 不触发保存，其他 project/debug/view 泛域动作不据活动页推断保存目标。探针仍须单独
 执行 typed save 并保留保存重载证据，后台安全网不能替代这一检查点。
 显式保存成功也只能按认证的保存归属取消该文档的旧 timer；新编辑的 timer 继续保留。

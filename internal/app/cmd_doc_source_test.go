@@ -566,3 +566,52 @@ func TestDocumentSourceRoundtripCLIDryRunRequiresExactAfterBefore(t *testing.T) 
 	}
 	assertFailedSourceEvidence(t, out)
 }
+
+func restoreSource(client, updateTime, body string) string {
+	return `{"type":"DOCHEAD"}||{"docType":"SCH_PAGE","client":"` + client + `","uuid":"0123456789abcdef","updateTime":` + updateTime + `,"version":"` + updateTime + `","editVersion":"4.1.60"}|` + "\n" + body
+}
+
+func restoreSnapshot(t *testing.T, source string) *documentSourceSnapshot {
+	t.Helper()
+	snapshot, err := sourceSnapshotFromResult(map[string]any{
+		"verified": true, "partial": false, "incomplete": false, "schemaVersion": 1, "target": documentSourceTarget{"p", "0123456789abcdef", "schematic"},
+		"availability": map[string]bool{"getDocumentSource": true, "setDocumentSource": true}, "source": source,
+	}, "p", "0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
+func TestDocumentSourceRestoreEvidenceIsRederivedFromOriginalStrings(t *testing.T) {
+	to := restoreSnapshot(t, restoreSource("aaaaaaaaaaaaaaaa", "1791126900000", "R1\n"))
+	expected := restoreSnapshot(t, restoreSource("bbbbbbbbbbbbbbbb", "1791126950000", "R1\nR2\n"))
+	report := func(after string, dryRun bool) map[string]any {
+		return map[string]any{"schemaVersion": 1, "target": to.Target, "identityAfter": to.Target, "comparison": documentSourceComparisonDOCHEADV1,
+			"availability": map[string]bool{"getDocumentSource": true, "setDocumentSource": true},
+			"beforeSource": restoreSource("cccccccccccccccc", "1791126960000", "R1\nR2\n"), "afterSource": after,
+			"dryRun": dryRun, "writeAttempted": !dryRun, "written": !dryRun, "verified": true, "partial": false, "incomplete": false}
+	}
+	restored := restoreSource("dddddddddddddddd", "1791126970000", "R1\n")
+	if failures := sourceRestoreErrors(report(restored, false), to, expected, false); len(failures) != 0 {
+		t.Fatalf("valid restore rejected: %v", failures)
+	}
+	// The connector claims verified, but the page still holds the edited body.
+	if failures := sourceRestoreErrors(report(restoreSource("dddddddddddddddd", "1791126970000", "R1\nR2\n"), false), to, expected, false); len(failures) == 0 {
+		t.Fatal("accepted a restore whose readback is not the snapshot")
+	}
+	// The page moved on after --expected was taken.
+	drifted := report(restored, false)
+	drifted["beforeSource"] = restoreSource("cccccccccccccccc", "1791126960000", "R1\nR2\nR3\n")
+	if failures := sourceRestoreErrors(drifted, to, expected, false); len(failures) == 0 {
+		t.Fatal("accepted a restore over unrecorded edits")
+	}
+	dry := report("", true)
+	dry["afterSource"] = dry["beforeSource"]
+	if failures := sourceRestoreErrors(dry, to, expected, true); len(failures) != 0 {
+		t.Fatalf("valid dry run rejected: %v", failures)
+	}
+	if failures := sourceRestoreErrors(nil, to, expected, false); len(failures) == 0 {
+		t.Fatal("accepted missing evidence")
+	}
+}

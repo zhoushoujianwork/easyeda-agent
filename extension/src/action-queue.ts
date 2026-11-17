@@ -305,5 +305,5 @@ export function isBypassAction(action: string): boolean {
 
 /** Whole-document writes retain FIFO even after their response budget expires. */
 export function mustHoldAfterAbandon(action: string): boolean {
-	return action === 'document.source.roundtrip';
+	return action === 'document.source.roundtrip' || action === 'document.source.restore';
 }

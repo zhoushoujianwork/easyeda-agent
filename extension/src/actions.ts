@@ -9,7 +9,7 @@ import { pcbModel3dBind, pcbModel3dList, pcbModel3dSetTransform } from './pcb-mo
 import { PROJECTED_STATE_KEYS } from './projected-keys';
 import { moveSchematicAttribute } from './schematic-attribute-move';
 import { readConnectorLogs } from './connector-logs';
-import { documentSourceGet, documentSourceRoundtrip } from './document-source';
+import { documentSourceGet, documentSourceRestore, documentSourceRoundtrip } from './document-source';
 import { applyAndVerifyPourOrder, preparePourOrder, PourOrderError, verifyPourOrderReadback, type PourOrderVerification } from './pcb-pour-order';
 import { listSystemCommonLibrary } from './common-library';
 import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
@@ -16327,6 +16327,7 @@ const HANDLERS: Record<string, Handler> = {
 	'document.current': documentCurrent,
 	'document.source.get': documentSourceGet,
 	'document.source.roundtrip': documentSourceRoundtrip,
+	'document.source.restore': documentSourceRestore,
 	'document.open': documentOpen,
 	'document.close': documentClose,
 	'view.fit': viewFit,

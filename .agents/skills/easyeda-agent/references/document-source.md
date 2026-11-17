@@ -47,6 +47,24 @@ false；显式保存、typed 重载、fresh 源码和全部对象/引脚网络�
 保持设计，实际结果仍须对账；它不证明生成器、自动布局/布线、eprj3 folder 同步或 Web 工程导入可用。尚未完成
 现场核查时保持 `offline-verified`，记录缺口；原始响应留本地忽略的 artifacts。
 
+## 旧快照写回（实验性回退）
+
+`restore` 把同一原理图页的一份较早快照写回一次，用于整页回退。它与 roundtrip 的区别是
+setter 收到的是快照而不是 fresh 源码，因此必须同时给出“当前页”的快照作为写前检查：
+
+```sh
+easyeda doc source get --window <window> --project-uuid <project> --document-uuid <doc> --out now.json
+easyeda doc source restore --window <window> --to before.json --expected now.json --out restore.json --dry-run
+easyeda doc source restore --window <window> --to before.json --expected now.json --out restore.json
+```
+
+- fresh 源码须与 `--expected` 在 `dochead-volatile-v1` 下相等，否则写前拒绝；没有记录过的修改不会被覆盖。
+  `now.json` 同时是撤销这次回退的唯一依据，必须保留。
+- 仅支持原理图页，setter 只调用一次；不重试、不自动回滚、不保存、不重载。
+- `verified` 只表示写后 fresh 源码在该规则下等于快照。回退后此前读到的图元 ID 全部作废，
+  后续写入前必须重新回读；连接关系对账、typed 保存、重载后回读仍须单独执行。
+- 状态为 `planned`：只有离线测试，尚无现场证据。未现场验证前仅用于专用测试工程。
+
 ## Web 4.1.60 现场结论
 
 本地候选 `1.9.1-dev.2` 已在专用 Web 工程验证以下有限范围，不能据此扩大到其他宿主版本或设计：

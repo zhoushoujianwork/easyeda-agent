@@ -90,7 +90,7 @@ omit the availability flag. It retains the reason in response warnings,
 request for the certified document. These samples cannot detect an ABA page
 switch between the two observations and do not prove persistence; explicit
 save/reload/readback remains required. The typed `document.source.roundtrip`
-writer uses the certified document type to select its autosave action; dry-run
+and `document.source.restore` writers use the certified document type to select its autosave action; dry-run
 and other generic-domain actions do not infer a save target.
 
 ## Error

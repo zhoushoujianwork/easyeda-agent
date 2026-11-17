@@ -150,6 +150,13 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"document.source.get", "schematic.save / pcb.save", "document.close/open", "fresh object and connectivity readback"},
 		},
 		{
+			Name: "document.source.restore", Access: accessDedicatedDesign, Domain: DomainDocument, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Experimental whole-page rollback: write one earlier source snapshot of the same schematic page back, once. The fresh source must equal the caller's expected current snapshot under dochead-volatile-v1, so unrecorded edits are never overwritten. Schematic only. Primitive IDs read before the restore are stale afterwards. No retry, no automatic rollback, no persistence claim; keep the returned beforeSource. dryRun only reads and checks.",
+			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)", "snapshot (source to write: schemaVersion/projectUuid/documentUuid/documentType/source)", "expected (current page snapshot, same shape)", "dryRun optional"},
+			Outputs:     []string{"target", "comparison", "beforeSource", "afterSource", "alreadyAtSnapshot", "snapshotVolatile/beforeVolatile/afterVolatile", "writeAttempted", "written", "verified", "partial", "incomplete"},
+			VerifyWith:  []string{"document.source.get", "schematic.read", "schematic.save", "document.close/open", "fresh object and connectivity readback"},
+		},
+		{
 			Name: "document.open", Access: accessEditorLifecycle,
 			Domain:      DomainDocument,
 			Phase:       1,

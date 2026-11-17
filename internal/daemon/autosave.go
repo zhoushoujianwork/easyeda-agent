@@ -64,6 +64,12 @@ func requestMutates(req *protocol.Request) bool {
 	return req != nil && mutatesAction[req.Action] && !isDryRunRequest(req)
 }
 
+// sourceWriter names the document-domain actions that write a whole page whose
+// save target is the certified document type, not the action's own domain.
+func sourceWriter(action string) bool {
+	return action == "document.source.roundtrip" || action == "document.source.restore"
+}
+
 // saveActionForDocType returns the typed save action for a documentType, or ""
 // when none exists. Schematic and PCB both have a typed save; a PCB-mutating
 // action therefore arms a debounced pcb.save the same way a schematic edit arms
@@ -325,7 +331,7 @@ func certifiedAutosaveTarget(req *protocol.Request, resp *protocol.Response) (au
 	}
 	// This typed source writer is the one document-domain action with a known
 	// document save target. Do not infer autosave for other generic domains.
-	if req.Action == "document.source.roundtrip" {
+	if sourceWriter(req.Action) {
 		target.SaveAction = saveActionForDocType(target.Context.DocumentType)
 	}
 	if resp.MutationContextAvailable == nil {
@@ -357,7 +363,7 @@ func (s *Server) maybeAutosave(req *protocol.Request, resp *protocol.Response, s
 		return
 	}
 	action := saveActionForDocType(docTypeForAction(req.Action))
-	if action == "" && req.Action != "document.source.roundtrip" {
+	if action == "" && !sourceWriter(req.Action) {
 		return
 	}
 	if req.Action == action {
