@@ -1217,6 +1217,10 @@ func postAction(cfg *appConfig, action, window string, payload any, timeout time
 		}
 	}
 
+	// After the page is pinned and before anything is sent: record the page as
+	// it is now, once per page per process, so this command can be rolled back.
+	autoCheckpoint(cfg, action, window, payload)
+
 	portStart, portEnd, err := cfg.portRange()
 	if err != nil {
 		return nil, err
