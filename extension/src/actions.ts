@@ -15144,7 +15144,14 @@ export const pcbRouteRipUp: Handler = async (payload) => {
 		throw edaError(err, 'Failed to read tracks/arcs/vias for rip-up.');
 	}
 
-	// Never touch locked primitives (e.g. a locked board outline).
+	// Never touch locked primitives (e.g. a locked board outline), but COUNT the
+	// locked copper the filter matched: a scoped rip-up that deleted nothing because
+	// everything was locked must say so instead of returning a silent requested:0.
+	const skippedLocked = {
+		lines: (lines ?? []).filter(l => (!want || want.has(l.getState_Net())) && onCopper(l.getState_Layer()) && l.getState_PrimitiveLock()).length,
+		arcs: (arcs ?? []).filter(a => (!want || want.has(a.getState_Net())) && onCopper(a.getState_Layer()) && a.getState_PrimitiveLock()).length,
+		vias: (vias ?? []).filter(v => (!want || want.has(v.getState_Net())) && v.getState_PrimitiveLock()).length,
+	};
 	const lineIds = (lines ?? [])
 		.filter(l => (!want || want.has(l.getState_Net())) && onCopper(l.getState_Layer()) && !l.getState_PrimitiveLock())
 		.map(l => l.getState_PrimitiveId());
@@ -15175,7 +15182,8 @@ export const pcbRouteRipUp: Handler = async (payload) => {
 	const arcsRes = await ripDelete('arcs', arcIds, ids => eda.pcb_PrimitiveArc.delete(ids));
 	const viasRes = await ripDelete('vias', viaIds, ids => eda.pcb_PrimitiveVia.delete(ids));
 
-	return { result: { nets: nets ?? 'all', lines: linesRes, arcs: arcsRes, vias: viasRes } };
+	const skippedLockedTotal = skippedLocked.lines + skippedLocked.arcs + skippedLocked.vias;
+	return { result: { nets: nets ?? 'all', lines: linesRes, arcs: arcsRes, vias: viasRes, skippedLocked, skippedLockedTotal } };
 };
 
 const pcbClearRouting: Handler = async (payload) => {

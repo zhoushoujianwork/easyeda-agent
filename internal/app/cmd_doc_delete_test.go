@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -217,5 +218,31 @@ func TestPcbRipUp_EmptyNetRefusedNotWidenedToAll(t *testing.T) {
 	}
 	if _, ok := cap.payload["net"]; ok {
 		t.Fatalf("all rip-up must not send a net filter: %v", cap.payload)
+	}
+}
+
+// pcb rip-up: locked copper is never deleted but never silent either.
+func TestRipUpLockedOutcome(t *testing.T) {
+	res := func(requested, skipped int) map[string]any {
+		return map[string]any{"lines": map[string]any{"requested": float64(requested), "ok": true},
+			"arcs": map[string]any{"requested": float64(0)}, "vias": map[string]any{"requested": float64(0)},
+			"skippedLockedTotal": float64(skipped)}
+	}
+	var errBuf bytes.Buffer
+	if err := ripUpLockedOutcome(res(0, 287), []string{"3.3V_8311", "BLE_3V3"}, &errBuf); err == nil ||
+		!strings.Contains(err.Error(), "287") || !strings.Contains(err.Error(), "track-lock --unlock --net 3.3V_8311,BLE_3V3") {
+		t.Fatalf("scoped all-locked rip-up must fail naming the unlock step, got %v", err)
+	}
+	errBuf.Reset()
+	if err := ripUpLockedOutcome(res(5, 3), []string{"GND"}, &errBuf); err != nil || !strings.Contains(errBuf.String(), "left 3 locked") {
+		t.Fatalf("partial rip-up must succeed and report locked leftovers: err=%v stderr=%q", err, errBuf.String())
+	}
+	errBuf.Reset()
+	if err := ripUpLockedOutcome(res(0, 12), nil, &errBuf); err != nil || !strings.Contains(errBuf.String(), "left 12 locked") {
+		t.Fatalf("whole-board rip-up keeps locked copper by design and reports it: err=%v stderr=%q", err, errBuf.String())
+	}
+	errBuf.Reset()
+	if err := ripUpLockedOutcome(res(4, 0), []string{"GND"}, &errBuf); err != nil || errBuf.Len() != 0 {
+		t.Fatalf("nothing locked: no error, no note: err=%v stderr=%q", err, errBuf.String())
 	}
 }

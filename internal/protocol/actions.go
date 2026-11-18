@@ -1629,9 +1629,9 @@ func AllActions() []ActionSpec {
 			Mutates:      true,
 			NeedsWindow:  true,
 			NeedsConfirm: true,
-			Description:  "Rip up copper routing (delete tracks + arcs + vias) — reliable hand-rolled rip-up (getAll → filter → delete) on the stable primitive APIs. Pass net (string or string[]) to rip up only those nets; omit to rip up ALL routing. Deletes COPPER layers ONLY (TOP/BOTTOM/INNER) — never silkscreen/assembly/mechanical artwork, the board outline, or locked primitives. The iteration primitive: rip_up → re-route. delete() is a batch boolean, so results report requested counts + ok, not an assumed deleted count.",
+			Description:  "Rip up copper routing (delete tracks + arcs + vias) — reliable hand-rolled rip-up (getAll → filter → delete) on the stable primitive APIs. Pass net (string or string[]) to rip up only those nets; omit to rip up ALL routing. Deletes COPPER layers ONLY (TOP/BOTTOM/INNER) — never silkscreen/assembly/mechanical artwork, the board outline, or locked primitives (matched locked copper is counted in skippedLocked; unlock with pcb.track.lock first). The iteration primitive: rip_up → re-route. delete() is a batch boolean, so results report requested counts + ok, not an assumed deleted count.",
 			Inputs:       []string{"net optional (string or string[]); omit = all"},
-			Outputs:      []string{"nets", "lines{requested,ok}", "arcs{requested,ok}", "vias{requested,ok}"},
+			Outputs:      []string{"nets", "lines{requested,ok}", "arcs{requested,ok}", "vias{requested,ok}", "skippedLocked{lines,arcs,vias}", "skippedLockedTotal"},
 			VerifyWith:   []string{"pcb.line.list", "pcb.via.list"},
 		},
 		{
