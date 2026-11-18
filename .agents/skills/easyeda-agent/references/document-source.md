@@ -82,11 +82,13 @@ easyeda doc source restore --window <window> --to before.json --expected now.jso
 
 ```sh
 easyeda sch checkpoint list --window <window>
+easyeda sch checkpoint list --project-uuid <project>    # 离线列出该工程所有图页的检查点
 easyeda sch checkpoint restore <checkpoint-id> --window <window> --dry-run
 easyeda sch checkpoint restore <checkpoint-id> --window <window>
 ```
 
 - 检查点是“该命令执行之前”的页面。回退到它会撤销这条命令及之后的全部命令，不能只抽掉中间一步。
+- `list` 与 `restore` 默认针对当前激活的图页；带 `--doc <图页>` 时先切到该页并回读确认，再读取或回退。
 - 回退前先把当前页记为新检查点，结果里的 `undoCheckpoint` 就是撤销这次回退的入口。
 - 回退成功按内容判定：每个图元的类型与 ID、除库元数据 `attrs` 外的全部字段、每条属性的值都与
   检查点一致才算 `verified`。源码逐字是否相等另报 `sourceEqual`。宿主重建器件时新增的库属性计入

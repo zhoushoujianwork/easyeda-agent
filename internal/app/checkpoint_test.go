@@ -78,6 +78,20 @@ func TestCheckpointStoreRebuildsEveryStateFromFullAndDeltas(t *testing.T) {
 	if _, err = store.source(listed, "missing"); err == nil {
 		t.Fatal("accepted an unknown checkpoint id")
 	}
+	other, _ := openCheckpointStore(filepath.Dir(filepath.Dir(store.dir)), "p", "e")
+	if _, err = other.add(checkpointEntry{Project: "p", Document: "e"}, states[0]); err != nil {
+		t.Fatal(err)
+	}
+	all, err := projectCheckpoints(filepath.Dir(filepath.Dir(store.dir)), "p")
+	if err != nil || len(all) != len(states)+1 || all[len(all)-1].Document != "e" {
+		t.Fatalf("project listing: %d entries, err=%v", len(all), err)
+	}
+	if none, err := projectCheckpoints(t.TempDir(), "p"); err != nil || len(none) != 0 {
+		t.Fatalf("empty project listing: %v %v", none, err)
+	}
+	if _, err = projectCheckpoints(t.TempDir(), "../p"); err == nil {
+		t.Fatal("listed a path-like project id")
+	}
 	if _, err = openCheckpointStore(t.TempDir(), "../p", "d"); err == nil {
 		t.Fatal("accepted a path-like project id")
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -117,6 +118,11 @@ func compareSources(checkpoint, page string) (sourceDifference, error) {
 // activeSchematicPage is the page a checkpoint command acts on: the one the
 // window shows right now, read live.
 func activeSchematicPage(cfg *appConfig, window string) (project, document string, err error) {
+	// --doc names the page a caller means; bring it forward rather than act on
+	// whichever page happens to be in front.
+	if err = ensureActiveDoc(cfg, window); err != nil {
+		return "", "", err
+	}
 	cur, err := requestAction(cfg, "document.current", window, nil)
 	if err != nil {
 		return "", "", err
@@ -125,6 +131,31 @@ func activeSchematicPage(cfg *appConfig, window string) (project, document strin
 		return "", "", fmt.Errorf("the active document is not a schematic page with readable identity; open the page first")
 	}
 	return cur.Context.ProjectUUID, cur.Context.DocumentUUID, nil
+}
+
+// projectCheckpoints lists every page's checkpoints of one project, oldest
+// first, straight from the store: no editor is involved.
+func projectCheckpoints(root, project string) ([]checkpointEntry, error) {
+	if !checkpointUUID.MatchString(project) {
+		return nil, fmt.Errorf("checkpoint target is not a plain project id")
+	}
+	pages, err := os.ReadDir(filepath.Join(root, project))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	out := []checkpointEntry{}
+	for _, page := range pages {
+		if !page.IsDir() || !checkpointUUID.MatchString(page.Name()) {
+			continue
+		}
+		entries, err := (&checkpointStore{dir: filepath.Join(root, project, page.Name())}).entries()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, entries...)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
 
 func newSchCheckpointCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
@@ -136,10 +167,17 @@ func newSchCheckpointCmd(cfg *appConfig, window *string, stdout, stderr io.Write
 			"Schematic pages only. Pages added or deleted by a command are not restored."}
 	var project, document string
 	list := &cobra.Command{Use: "list", Short: "List the checkpoints of the active page, oldest first", Args: cobra.NoArgs,
-		Example: "  easyeda sch checkpoint list --window W\n  easyeda sch checkpoint list --project-uuid P --document-uuid D",
+		Example: "  easyeda sch checkpoint list --window W\n  easyeda sch checkpoint list --project-uuid P --document-uuid D\n  easyeda sch checkpoint list --project-uuid P   # every page of the project",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if (project == "") != (document == "") {
-				return fmt.Errorf("--project-uuid and --document-uuid go together")
+			if project == "" && document != "" {
+				return fmt.Errorf("--document-uuid needs --project-uuid")
+			}
+			if project != "" && document == "" {
+				entries, err := projectCheckpoints(defaultCheckpointDir(), project)
+				if err != nil {
+					return err
+				}
+				return writeJSON(stdout, map[string]any{"project": project, "count": len(entries), "checkpoints": entries})
 			}
 			if project == "" {
 				w, err := resolveTargetWindow(cfg, *window)
@@ -163,7 +201,7 @@ func newSchCheckpointCmd(cfg *appConfig, window *string, stdout, stderr io.Write
 			}
 			return writeJSON(stdout, map[string]any{"project": project, "document": document, "count": len(entries), "checkpoints": entries})
 		}}
-	list.Flags().StringVar(&project, "project-uuid", "", "read a page's history without a connected editor")
+	list.Flags().StringVar(&project, "project-uuid", "", "read recorded history without a connected editor; alone it lists every page of the project")
 	list.Flags().StringVar(&document, "document-uuid", "", "schematic page UUID (with --project-uuid)")
 
 	var dryRun bool
