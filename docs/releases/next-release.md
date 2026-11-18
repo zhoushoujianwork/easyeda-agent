@@ -1,8 +1,11 @@
-# v1.18.1 准备中（ALCY-7，未发布）
+# v1.18.1 已发布（ALCY-7）
 
 仅提升 PR #311 的可布性检查及 Skill 变更，连接器运行时未变化，按 patch 版本发布。
-发布目标、候选来源、验证缺口和回退入口见 [v1.18.1 发布准备](release-1.18.1.md)。
-dev 合并已完成；正式发布 PR 的独立复核、制品验证及 GitHub Release 发布尚未完成。
+发布版本、固定提交、下载及安装验证、市场状态和回退入口见 [v1.18.1 发布记录](release-1.18.1.md)。
+[v1.18.1](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.18.1) 于 2026-11-18 16:28:05 UTC
+正式发布，GitHub Latest 已指向本版。main merge `dff86156cbde28e65d83dfe893f1b53f87d967b6` 的 CI、
+十项公开附件校验及本机隔离联网安装/升级均通过；真实四层板复验与完整设计 E2E 仍未执行。
+SkillHub/ClawHub 已提交，公开市场当前仍为 1.18.0，不将提交回执写成前台已更新。
 
 # v1.18.0 已发布
 
