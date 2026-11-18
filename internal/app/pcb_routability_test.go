@@ -367,19 +367,115 @@ func TestRoutabilityLargePadExitIsMeasuredFromPadEdge(t *testing.T) {
 	}
 }
 
-// Review round 1, item 5: a reachable same-net via is a layer change, while an
-// other-net via in the same place still blocks (see the via scenarios above).
-func TestRoutabilityReachableSameNetViaIsTransition(t *testing.T) {
+// Review rounds 1 (item 5) and 2 (item 3): a reachable same-net via or
+// through-hole pad is a layer change only with proof it is plated and spans the
+// source layer; unproven evidence is unverified, never pass.
+func TestRoutabilityReachableSameNetTransitionNeedsProof(t *testing.T) {
+	sameNetVia := []any{map[string]any{"primitiveId": "via-sig3", "net": "SIG3", "x": 200.0, "y": 186.0, "holeDiameter": 12.0, "diameter": 24.0}}
+	// Four copper layers: the via readback has no type or layer span, so a
+	// blind/buried via cannot be excluded.
 	s := routabilityPocketFixture()
-	s.Copper.Vias = []any{map[string]any{"primitiveId": "via-sig3", "net": "SIG3", "x": 200.0, "y": 186.0, "holeDiameter": 12.0, "diameter": 24.0}}
-	rep, _ := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	s.Copper.Vias = sameNetVia
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
 	p := routabilityPad(t, rep, "J1.3")
-	// The via fills the pocket: no new via fits and no track exits, so the
-	// pass rests on the existing transition alone.
-	if p.Status != "pass" || p.ViaSites != 0 || len(p.EscapeDirections) != 0 || len(p.ExistingTransitions) != 1 || p.ExistingTransitions[0].ID != "via-sig3" {
-		t.Fatalf("reachable same-net via should pass as a transition: %+v", p)
+	// J1.2/J1.4 (other nets) stay trapped by the via, so the report fails.
+	if err == nil || rep.Status != "fail" || p.Status != "unverified" || len(p.ExistingTransitions) != 0 || len(p.UnverifiedTransitions) != 1 || rep.Summary.Unverified != 1 {
+		t.Fatalf("4-layer same-net via must be unverified: %s %+v", rep.Status, p)
 	}
 	if routabilityHasBlocker(p, "via", "via-sig3") {
 		t.Fatalf("same-net transition listed as blocker: %+v", p.Blockers)
+	}
+	// When the unproven transition is the only way out for every pad that
+	// lacks an exit, the report is incomplete, not pass.
+	for i := range s.Components[0].Pads {
+		if n := s.Components[0].Pads[i].Number; n == "2" || n == "4" {
+			s.Components[0].Pads[i].Net = "SIG3"
+		}
+	}
+	rep, err = analyzePCBRoutability(s, defaultRoutabilityOptions())
+	if err == nil || rep.Status != "incomplete" || rep.Summary.Unverified != 3 || rep.Summary.Trapped != 0 {
+		t.Fatalf("unproven-only escape must be incomplete: %s %+v", rep.Status, rep.Summary)
+	}
+	// Two copper layers: every via is TOP-BOTTOM, so the via is proven. The
+	// via fills the pocket, so the pass rests on the transition alone.
+	s.CopperLayers = 2
+	rep, err = analyzePCBRoutability(s, defaultRoutabilityOptions())
+	p = routabilityPad(t, rep, "J1.3")
+	if err != nil || rep.Status != "pass" || p.ViaSites != 0 || len(p.EscapeDirections) != 0 || len(p.ExistingTransitions) != 1 || p.ExistingTransitions[0].ID != "via-sig3" {
+		t.Fatalf("2-layer same-net via should pass as a transition: %s %+v", rep.Status, p)
+	}
+
+	hole := func(metal *bool, drill any) *boardSnapshot {
+		s := routabilityPocketFixture()
+		s.Components = append(s.Components, boardComp{ID: "h1", Designator: "H1", X: 200, Y: 186, Layer: 1, Pads: []boardPad{{ID: "h1-1", Number: "1", Net: "SIG3", Layer: pcbLayerMulti, X: 200, Y: 186, W: 24, H: 24, Shape: []any{"ELLIPSE", 24.0, 24.0}, Hole: drill, Metallization: metal}}})
+		return s
+	}
+	yes, no := true, false
+	// Non-plated drill: connects nothing, so J1.3 is plainly trapped.
+	rep, _ = analyzePCBRoutability(hole(&no, []any{"ROUND", 12.0, 12.0}), defaultRoutabilityOptions())
+	if p := routabilityPad(t, rep, "J1.3"); rep.Status != "fail" || p.Status != "trapped" || len(p.ExistingTransitions)+len(p.UnverifiedTransitions) != 0 || !routabilityHasBlocker(p, "pad", "H1.1") {
+		t.Fatalf("non-plated hole must not be a transition: %s %+v", rep.Status, p)
+	}
+	// Unknown metallization: unverified (neighbours stay trapped by H1).
+	rep, _ = analyzePCBRoutability(hole(nil, []any{"ROUND", 12.0, 12.0}), defaultRoutabilityOptions())
+	if p := routabilityPad(t, rep, "J1.3"); p.Status != "unverified" || len(p.UnverifiedTransitions) != 1 || p.UnverifiedTransitions[0].Ref != "H1.1" {
+		t.Fatalf("unknown metallization must be unverified: %s %+v", rep.Status, p)
+	}
+	// Proven plated through hole: pass on the transition alone.
+	rep, _ = analyzePCBRoutability(hole(&yes, []any{"ROUND", 12.0, 12.0}), defaultRoutabilityOptions())
+	if p := routabilityPad(t, rep, "J1.3"); p.Status != "pass" || len(p.ExistingTransitions) != 1 || p.ExistingTransitions[0].Ref != "H1.1" {
+		t.Fatalf("plated through hole should be a transition: %s %+v", rep.Status, p)
+	}
+}
+
+// Review round 2, item 1: a board slot is not copper-free space for vias or
+// tracks; its edge keeps the cutout clearance.
+func TestRoutabilitySlotBlocksViaSites(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Copper.Fills = []any{map[string]any{"primitiveId": "slot-1", "layer": float64(pcbLayerMulti), "geometryAvailable": true, "fillMode": "solid", "lineWidth": 0.0, "source": []any{160.0, 168.0, "L", 240.0, 168.0, 240.0, 211.0, 160.0, 211.0}}}
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	p := routabilityPad(t, rep, "J1.3")
+	if err == nil || rep.Status != "fail" || p.Status != "trapped" || p.ViaSites != 0 || !routabilityHasBlocker(p, "slot", "slot-1") {
+		t.Fatalf("slot must block pocket vias: %s %+v", rep.Status, p)
+	}
+	// Unknown cutout stroke/fill semantics is incomplete, not free space.
+	s.Copper.Fills[0].(map[string]any)["fillMode"] = "unknown"
+	if rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions()); err == nil || rep.Status != "incomplete" {
+		t.Fatalf("unknown cutout semantics must be incomplete: %s", rep.Status)
+	}
+}
+
+// Review round 2, item 2: copper extends half the pour stroke width beyond
+// the polygon outline.
+func TestRoutabilityPourStrokeWidthCounts(t *testing.T) {
+	pour := func(width any) *boardSnapshot {
+		s := routabilityPocketFixture()
+		s.Copper.Poured = []any{map[string]any{"primitiveId": "pour-vbat", "net": "VBAT", "layer": float64(1), "fills": []any{map[string]any{"id": "vbat-fill", "fill": true, "lineWidth": width, "source": []any{100.0, 152.0, "L", 300.0, 152.0, 300.0, 100.0, 100.0, 100.0}}}}}
+		return s
+	}
+	// Outline top edge y=152; with an 80 mil stroke the copper reaches y=192.
+	rep, err := analyzePCBRoutability(pour(80.0), defaultRoutabilityOptions())
+	p := routabilityPad(t, rep, "J1.3")
+	if err == nil || rep.Status != "fail" || p.ViaSites != 0 || !routabilityHasBlocker(p, "copper", "vbat-fill") {
+		t.Fatalf("stroked pour must reach the pocket: %s %+v", rep.Status, p)
+	}
+	if rep, err := analyzePCBRoutability(pour(0.0), defaultRoutabilityOptions()); err != nil || rep.Status != "pass" {
+		t.Fatalf("unstroked pour above the pocket should not trap: %s %v", rep.Status, err)
+	}
+	if rep, err := analyzePCBRoutability(pour(nil), defaultRoutabilityOptions()); err == nil || rep.Status != "incomplete" {
+		t.Fatalf("unknown stroke width must be incomplete: %s", rep.Status)
+	}
+}
+
+// Review round 2, item 4: the nearest via site is the Euclidean nearest legal
+// grid point, not the first one found in flood order.
+func TestRoutabilityNearestViaSiteIsEuclidean(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Components = []boardComp{{ID: "u1", Designator: "U1", X: 200, Y: 200, Layer: 1, Pads: []boardPad{{ID: "u1-1", Number: "1", Net: "A", Layer: 1, X: 200, Y: 200, W: 60, H: 60, Shape: []any{"RECT", 60.0, 60.0, 0.0}}}}}
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	p := routabilityPad(t, rep, "U1.1")
+	// Via edge needs 6 mil from the 30 mil half-width pad: centre 30+6+12 = 48.
+	if err != nil || p.NearestViaSite == nil || p.NearestViaDistMil > 48+1e-6 || p.ViaSites != pcbRoutabilityViaSiteCap || !p.ViaSitesCapped {
+		t.Fatalf("nearest via should be 48 mil away with the cap reached: %+v %v", p, err)
 	}
 }
