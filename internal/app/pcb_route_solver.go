@@ -193,7 +193,11 @@ func pcbBoardCopperExtras(snap *boardSnapshot, contours func(any) ([][][2]float6
 		if !ok {
 			return out, fmt.Errorf("static fills[%d] is not an object", i)
 		}
-		layer := int(asFloat(m["layer"]))
+		layerN, ok := asFloatOK(m["layer"])
+		if !ok || !allFinite(layerN) || layerN != math.Trunc(layerN) {
+			return out, fmt.Errorf("static fill %d layer is unknown", i)
+		}
+		layer := int(layerN)
 		if !netPathCopperLayer(layer) && layer != pcbLayerMulti {
 			continue
 		}
@@ -223,9 +227,20 @@ func pcbBoardCopperExtras(snap *boardSnapshot, contours func(any) ([][][2]float6
 		if !ok {
 			return out, fmt.Errorf("materialized poured[%d] is not an object", i)
 		}
+		pouredID := strings.TrimSpace(asString(m["primitiveId"]))
+		if pouredID == "" {
+			return out, fmt.Errorf("materialized poured[%d] primitiveId is unknown", i)
+		}
+		layerN, ok := asFloatOK(m["layer"])
+		if !ok || !allFinite(layerN) || layerN != math.Trunc(layerN) || !netPathCopperLayer(int(layerN)) {
+			return out, fmt.Errorf("materialized poured %s layer is unknown/unsupported", pouredID)
+		}
+		if strings.TrimSpace(asString(m["net"])) == "" {
+			return out, fmt.Errorf("materialized poured %s net is unknown", pouredID)
+		}
 		fills, ok := m["fills"].([]any)
 		if !ok {
-			return out, fmt.Errorf("materialized poured %s fills are unknown", asString(m["primitiveId"]))
+			return out, fmt.Errorf("materialized poured %s fills are unknown", pouredID)
 		}
 		for j, rawFill := range fills {
 			fill, ok := rawFill.(map[string]any)
@@ -242,9 +257,9 @@ func pcbBoardCopperExtras(snap *boardSnapshot, contours func(any) ([][][2]float6
 			}
 			id := strings.TrimSpace(asString(fill["id"]))
 			if id == "" {
-				id = fmt.Sprintf("%s:%d", asString(m["primitiveId"]), j)
+				id = fmt.Sprintf("%s:%d", pouredID, j)
 			}
-			area := pcbCopperArea{ID: id, Kind: "poured copper", Net: asString(m["net"]), Layer: int(asFloat(m["layer"]))}
+			area := pcbCopperArea{ID: id, Kind: "poured copper", Net: asString(m["net"]), Layer: int(layerN)}
 			stroke := pcbStrokedArea{area: area, width: width, filled: filled}
 			var err error
 			if filled {

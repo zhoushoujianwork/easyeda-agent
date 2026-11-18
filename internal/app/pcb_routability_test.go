@@ -539,3 +539,53 @@ func TestRoutabilityPlatedHoleNeedsValidDrill(t *testing.T) {
 		}
 	}
 }
+
+// Review round 4: copper whose layer is missing or malformed is unknown
+// copper, never removed from the obstacle set. Command-level, both inputs.
+func TestRoutabilityCopperLayerMustBeMeasured(t *testing.T) {
+	poly := []any{150.0, 155.0, "L", 250.0, 155.0, 250.0, 215.0, 150.0, 215.0}
+	for _, kind := range []string{"static", "poured"} {
+		for _, layer := range []any{1.0, nil, "1", 1.5} {
+			s := routabilityPocketFixture()
+			object := map[string]any{"primitiveId": "power", "net": "VBAT"}
+			if layer != nil {
+				object["layer"] = layer
+			}
+			if kind == "static" {
+				object["geometryAvailable"], object["fillMode"], object["lineWidth"], object["source"] = true, "solid", 0.0, poly
+				s.Copper.Fills = []any{object}
+			} else {
+				object["fills"] = []any{map[string]any{"id": "island", "fill": true, "lineWidth": 0.0, "source": poly}}
+				s.Copper.Poured = []any{object}
+			}
+			dir := t.TempDir()
+			board, out := filepath.Join(dir, "board.json"), filepath.Join(dir, "report.json")
+			raw, _ := json.Marshal(s)
+			if err := os.WriteFile(board, raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stdout, stderr bytes.Buffer
+			cmd := newPcbRoutabilityCmd(&stdout, &stderr)
+			cmd.SetArgs([]string{"--board", board, "--out", out})
+			execErr := cmd.Execute()
+			var rep pcbRoutabilityReport
+			blob, err := os.ReadFile(out)
+			if err != nil || json.Unmarshal(blob, &rep) != nil {
+				t.Fatalf("%s layer=%v: report unreadable: %v", kind, layer, err)
+			}
+			want := "incomplete"
+			if layer == 1.0 {
+				want = "fail" // measured TOP copper traps J1.2–J1.4
+			}
+			if rep.Status != want || execErr == nil {
+				t.Fatalf("%s layer=%v: status=%s err=%v trapped=%v, want %s with non-zero exit", kind, layer, rep.Status, execErr, rep.Trapped, want)
+			}
+		}
+	}
+	// A poured layer that is not copper is unsupported, not ignored.
+	s := routabilityPocketFixture()
+	s.Copper.Poured = []any{map[string]any{"primitiveId": "power", "net": "VBAT", "layer": 3.0, "fills": []any{map[string]any{"id": "island", "fill": true, "lineWidth": 0.0, "source": poly}}}}
+	if rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions()); err == nil || rep.Status != "incomplete" {
+		t.Fatalf("non-copper poured layer must be incomplete: %s", rep.Status)
+	}
+}
