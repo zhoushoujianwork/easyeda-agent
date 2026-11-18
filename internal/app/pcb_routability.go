@@ -56,19 +56,22 @@ type pcbRoutabilityBlocker struct {
 }
 
 type pcbRoutabilityPad struct {
-	Pad               string                  `json:"pad"`
-	Net               string                  `json:"net"`
-	Layer             int                     `json:"layer"`
-	X                 float64                 `json:"x"`
-	Y                 float64                 `json:"y"`
-	Status            string                  `json:"status"` // pass | trapped
-	ViaSites          int                     `json:"viaSites"`
-	ViaSitesCapped    bool                    `json:"viaSitesCapped,omitempty"`
-	NearestViaSite    *[2]float64             `json:"nearestViaSite,omitempty"`
-	NearestViaDistMil float64                 `json:"nearestViaDistanceMil,omitempty"`
-	EscapeDirections  []string                `json:"escapeDirections"`
-	ReachableAreaMil2 float64                 `json:"reachableAreaMil2"`
-	Blockers          []pcbRoutabilityBlocker `json:"blockers,omitempty"`
+	Pad               string      `json:"pad"`
+	Net               string      `json:"net"`
+	Layer             int         `json:"layer"`
+	X                 float64     `json:"x"`
+	Y                 float64     `json:"y"`
+	Status            string      `json:"status"` // pass | trapped
+	ViaSites          int         `json:"viaSites"`
+	ViaSitesCapped    bool        `json:"viaSitesCapped,omitempty"`
+	NearestViaSite    *[2]float64 `json:"nearestViaSite,omitempty"`
+	NearestViaDistMil float64     `json:"nearestViaDistanceMil,omitempty"`
+	EscapeDirections  []string    `json:"escapeDirections"`
+	ReachableAreaMil2 float64     `json:"reachableAreaMil2"`
+	// ExistingTransitions are same-net vias / through-hole pads the track flood
+	// reaches; each is layer-change evidence without a new via.
+	ExistingTransitions []pcbRoutabilityBlocker `json:"existingTransitions,omitempty"`
+	Blockers            []pcbRoutabilityBlocker `json:"blockers,omitempty"`
 }
 
 type pcbRoutabilityReport struct {
@@ -93,7 +96,8 @@ func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbR
 	rep := pcbRoutabilityReport{SchemaVersion: 1, Status: "incomplete", Trapped: []string{}, Pads: []pcbRoutabilityPad{}, Parameters: pcbRoutabilityParameters{StepMil: opt.StepMil, RadiusMil: opt.RadiusMil}, Limitations: []string{
 		"Local necessary condition per pad: neighbouring pads may share one channel; a pass does not reserve capacity or prove whole-net routing.",
 		"Via sites are counted up to 32 in flood order (nearest track path first); viaSitesCapped marks more.", "Track flood uses the minimum track width on the pad's own copper layer at a fixed grid; via sites are sampled on the same grid, so a fail means no witness at this resolution.",
-		"Via sites are checked against every pad, every via and TOP/BOTTOM copper/keepouts; inner-layer copper (plane anti-pads, inner tracks) is not evaluated.",
+		"Via sites are checked against every pad, every via and the copper/keepouts on every copper layer that carries any; negative plane-layer copper (automatic anti-pads) is not modelled.",
+		"Escape radius is measured from the source pad's copper edge; same-net vias or through-hole pads the flood reaches count as existing layer changes.",
 		"Through-hole pads already reach every layer and are not flooded.",
 	}}
 	rep.BoardSemanticSHA256, _ = moduleCheckSemanticSHA256(snap)
@@ -104,13 +108,29 @@ func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbR
 	if !allFinite(opt.StepMil, opt.RadiusMil) || opt.StepMil < 0.5 || opt.StepMil > 10 || opt.RadiusMil < 4*opt.StepMil || opt.RadiusMil/opt.StepMil > 400 {
 		return incomplete("routability requires 0.5 <= step <= 10 mil and 4*step <= radius <= 400*step")
 	}
+	// Every component and pad must be captured: a missing pad list would
+	// silently remove obstacles, and a component filter does not narrow that.
+	if coverage := snap.geometryCoverage(false); !coverage.Complete {
+		return incomplete("board geometry capture is incomplete: " + strings.Join(coverage.Limitations, "; "))
+	}
 	ctx, _, err := preparePCBRouteGeometry(snap)
 	if err != nil {
 		return incomplete(err.Error())
 	}
 	r := snap.Rules
+	// "live" only says some rule field was read; defaults for the fields used
+	// here would make the check pass on invented numbers.
+	var unmeasured []string
+	for _, field := range []string{pcbRuleFieldClearance, pcbRuleFieldClearanceTrackTrack, pcbRuleFieldTrackWidthMin, pcbRuleFieldViaDrill, pcbRuleFieldViaDiameter, pcbRuleFieldCopperToEdge} {
+		if !containsString(r.Measured, field) {
+			unmeasured = append(unmeasured, field)
+		}
+	}
+	if len(unmeasured) > 0 {
+		return incomplete("routability requires rules measured from the board, missing: " + strings.Join(unmeasured, ", ") + " (re-capture with a current pcb dump)")
+	}
 	if !allFinite(r.ViaDrillMil, r.ViaDiameterMil) || r.ViaDrillMil <= 0 || r.ViaDiameterMil <= r.ViaDrillMil {
-		return incomplete("routability requires measured via drill/diameter rules")
+		return incomplete("routability requires valid via drill/diameter rules")
 	}
 	rep.Parameters.TrackWidthMil, rep.Parameters.ClearanceMil = r.TrackWidthMinMil, r.ClearanceMil
 	rep.Parameters.ViaDiameterMil, rep.Parameters.ViaDrillMil = r.ViaDiameterMil, r.ViaDrillMil
@@ -232,8 +252,11 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64) (
 	rules := ctx.snap.Rules
 	name := pad.Designator + "." + pad.Number
 	out := pcbRoutabilityPad{Pad: name, Net: pad.Net, Layer: pad.Layer, X: pad.X, Y: pad.Y, EscapeDirections: []string{}}
+	// The escape radius is measured from the pad's copper edge: wandering
+	// across a large source pad is not an exit.
+	halfDiag := math.Max(math.Hypot(pad.W, pad.H), math.Hypot(pad.ShapeW, pad.ShapeH)) / 2
 	margin := math.Max(rules.ViaDiameterMil, rules.TrackWidthMinMil)/2 + math.Max(rules.ClearanceMil, rules.ClearanceTrackTrackMil) + rules.CopperToEdgeMil + step
-	local := ctx.localize(pad.X, pad.Y, radius+margin)
+	local := ctx.localize(pad.X, pad.Y, halfDiag+radius+margin)
 	demand := pcbEscapeDemand{Net: pad.Net, Layer: pad.Layer, WidthMil: rules.TrackWidthMinMil}
 	track, err := local.clear(demand, nil)
 	if err != nil {
@@ -243,10 +266,25 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64) (
 	if err != nil {
 		return out, fmt.Errorf("pad %s via model: %w", name, err)
 	}
-	n := int(math.Floor(radius / step))
+	n := int(math.Ceil((halfDiag + radius) / step))
 	point := func(i, j int) [2]float64 { return [2]float64{pad.X + float64(i)*step, pad.Y + float64(j)*step} }
-	inside := func(i, j int) bool { return i*i+j*j <= n*n }
 	type node struct{ i, j int }
+	gaps := map[node]float64{}
+	gap := func(k node) float64 {
+		if g, ok := gaps[k]; ok {
+			return g
+		}
+		p := point(k.i, k.j)
+		g, err := pcbExactPadSegmentGap(pad, p, p)
+		if err != nil {
+			g = math.Inf(1)
+		}
+		gaps[k] = g
+		return g
+	}
+	inside := func(k node) bool {
+		return k.i >= -n && k.i <= n && k.j >= -n && k.j <= n && gap(k) <= radius+netPathGeomEps
+	}
 	seen := map[node]bool{{0, 0}: true}
 	queue := []node{{0, 0}}
 	var reachable []node
@@ -256,12 +294,12 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64) (
 			cur := queue[0]
 			queue = queue[1:]
 			reachable = append(reachable, cur)
-			if math.Hypot(float64(cur.i), float64(cur.j)) > float64(n-1) {
+			if gap(cur) > radius-step {
 				exits[pcbRoutabilityOctant(cur.i, cur.j)] = true
 			}
 			for _, d := range pcbRoutabilityDirections {
 				next := node{cur.i + d.di, cur.j + d.dj}
-				if seen[next] || !inside(next.i, next.j) || !track(point(cur.i, cur.j), point(next.i, next.j)) {
+				if seen[next] || !inside(next) || !track(point(cur.i, cur.j), point(next.i, next.j)) {
 					continue
 				}
 				seen[next] = true
@@ -273,6 +311,32 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64) (
 	for _, d := range pcbRoutabilityDirections {
 		if exits[d.name] {
 			out.EscapeDirections = append(out.EscapeDirections, d.name)
+		}
+	}
+	// Existing same-net through copper the flood reaches is already a layer
+	// change: a pre-routed via or another through-hole pad of this net.
+	for _, v := range local.vias {
+		if v.Net != pad.Net {
+			continue
+		}
+		for _, cur := range reachable {
+			p := point(cur.i, cur.j)
+			if math.Hypot(p[0]-v.X, p[1]-v.Y) <= v.Dia/2+netPathGeomEps {
+				out.ExistingTransitions = append(out.ExistingTransitions, pcbRoutabilityBlocker{Kind: "via", ID: v.ID, Net: v.Net})
+				break
+			}
+		}
+	}
+	for _, other := range local.allPads {
+		if other.Net != pad.Net || other.Layer != pcbLayerMulti {
+			continue
+		}
+		for _, cur := range reachable {
+			p := point(cur.i, cur.j)
+			if g, err := pcbExactPadSegmentGap(other, p, p); err == nil && g <= netPathGeomEps {
+				out.ExistingTransitions = append(out.ExistingTransitions, pcbRoutabilityBlocker{Kind: "pad", ID: other.ID, Ref: other.Designator + "." + other.Number, Net: other.Net, Layer: other.Layer})
+				break
+			}
 		}
 	}
 	for _, cur := range reachable {
@@ -291,7 +355,7 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64) (
 			out.NearestViaSite, out.NearestViaDistMil = &site, dist
 		}
 	}
-	if out.ViaSites > 0 || len(out.EscapeDirections) > 0 {
+	if out.ViaSites > 0 || len(out.EscapeDirections) > 0 || len(out.ExistingTransitions) > 0 {
 		out.Status = "pass"
 		return out, nil
 	}
@@ -306,7 +370,7 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64) (
 		a := point(cur.i, cur.j)
 		for _, d := range pcbRoutabilityDirections {
 			next := node{cur.i + d.di, cur.j + d.dj}
-			if seen[next] || !inside(next.i, next.j) {
+			if seen[next] || !inside(next) {
 				continue
 			}
 			local.routabilityBlockers(blockers, pad, pad.Layer, rules.TrackWidthMinMil, a, point(next.i, next.j), false)
@@ -333,14 +397,14 @@ func pcbRoutabilityOctant(i, j int) string {
 }
 
 // routabilityBlockers records objects closer than the rule margin to the probed
-// track segment (layer > 0) or through-via disk (via == true, all copper layers
-// for pads/vias, TOP/BOTTOM for tracks/areas). The source pad itself is never a
+// track segment (layer > 0) or through-via disk (via == true, every copper
+// layer). The source pad itself is never a
 // blocker: a via-in-pad is excluded by policy, not by another object.
 func (ctx *pcbEscapeContext) routabilityBlockers(into map[string]pcbRoutabilityBlocker, source pcbPadP, layer int, width float64, a, z [2]float64, via bool) {
 	r := ctx.snap.Rules
 	onLayer := func(l int) bool {
 		if via {
-			return l == 1 || l == 2 || l == pcbLayerMulti
+			return netPathCopperLayer(l) || l == pcbLayerMulti
 		}
 		return l == layer || l == pcbLayerMulti
 	}

@@ -521,6 +521,10 @@ type boardRules struct {
 	ViaDiameterMil         float64 `json:"viaDiameterMil"`
 	CopperToEdgeMil        float64 `json:"copperToEdgeMil"`
 	Source                 string  `json:"source"` // live | fallback
+	// Measured lists rule fields read from the board (pcbRuleField*); absent in
+	// snapshots that predate per-field provenance, which therefore prove nothing
+	// field by field.
+	Measured []string `json:"measured,omitempty"`
 }
 
 func rulesToBoard(r pcbRules) *boardRules {
@@ -530,6 +534,7 @@ func rulesToBoard(r pcbRules) *boardRules {
 		PowerWidthMil: r.powerWidthMil, TrackWidthMinMil: r.trackWidthMinMil,
 		ViaDrillMil: r.viaDrillMil, ViaDiameterMil: r.viaDiameterMil,
 		CopperToEdgeMil: r.copperToEdgeMil, Source: r.source,
+		Measured: append([]string(nil), r.measured...),
 	}
 }
 
@@ -549,6 +554,7 @@ func (b *boardRules) toPcbRules() pcbRules {
 		powerWidthMil: b.PowerWidthMil, trackWidthMinMil: b.TrackWidthMinMil,
 		viaDrillMil: b.ViaDrillMil, viaDiameterMil: b.ViaDiameterMil,
 		copperToEdgeMil: b.CopperToEdgeMil, source: b.Source,
+		measured: append([]string(nil), b.Measured...),
 	}
 }
 

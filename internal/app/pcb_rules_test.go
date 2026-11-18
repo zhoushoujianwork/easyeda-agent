@@ -183,7 +183,7 @@ func TestParsePcbRules_InvalidUnits(t *testing.T) {
 func TestParsePcbRules_MissingFieldsRetainFallback(t *testing.T) {
 	result := map[string]any{"rules": map[string]any{"config": map[string]any{"Physics": map[string]any{"Track": map[string]any{"copperThickness1oz": map[string]any{"unit": "unknown"}}}}}}
 	got, err := parsePcbRules(result)
-	if err != nil || got != defaultPcbRules() {
+	if err != nil || !reflect.DeepEqual(got, defaultPcbRules()) {
 		t.Fatalf("got %+v err=%v", got, err)
 	}
 }
@@ -206,7 +206,9 @@ func TestParsePcbRules_ExactMilAndClamp(t *testing.T) {
 	}
 	want := defaultPcbRules()
 	want.source = "live"
-	if got != want || got.clampWidth(2) != 5 || got.clampWidth(10) != 10 {
+	// Every field came from the board rule, so each is recorded as measured.
+	want.measured = []string{pcbRuleFieldTrackWidth, pcbRuleFieldTrackWidthMin, pcbRuleFieldViaDrill, pcbRuleFieldViaDiameter, pcbRuleFieldClearanceTrackTrack, pcbRuleFieldClearance, pcbRuleFieldCopperToEdge}
+	if !reflect.DeepEqual(got, want) || got.clampWidth(2) != 5 || got.clampWidth(10) != 10 {
 		t.Fatalf("got %+v want %+v", got, want)
 	}
 }

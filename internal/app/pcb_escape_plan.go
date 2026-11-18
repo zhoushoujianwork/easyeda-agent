@@ -420,14 +420,42 @@ func (ctx *pcbEscapeContext) viaClear(v pcbModuleVia, routes []pcbModuleRoute, p
 	return err == nil && clear(v.X, v.Y)
 }
 
+// viaCopperLayers is TOP, BOTTOM and every other copper layer with measured
+// tracks, arcs, areas or keepouts.
+func (ctx *pcbEscapeContext) viaCopperLayers() []int {
+	seen := map[int]bool{1: true, 2: true}
+	layers := []int{1, 2}
+	add := func(layer int) {
+		if netPathCopperLayer(layer) && !seen[layer] {
+			seen[layer] = true
+			layers = append(layers, layer)
+		}
+	}
+	for _, t := range ctx.tracks {
+		add(t.Layer)
+	}
+	for _, a := range ctx.arcs {
+		add(a.Layer)
+	}
+	for _, a := range ctx.areas {
+		add(a.Layer)
+	}
+	for _, b := range ctx.bans {
+		add(b.Layer)
+	}
+	sort.Ints(layers)
+	return layers
+}
+
 // viaSiteChecker builds the exact through-via site test once so callers that
 // probe many sites (routability flood) do not rebuild per-layer clearance
-// closures for every point. TOP/BOTTOM copper only; see viaClear callers.
+// closures for every point. A through via crosses every copper layer, so each
+// layer that carries copper is checked.
 func (ctx *pcbEscapeContext) viaSiteChecker(net string, diameter float64, routes []pcbModuleRoute, planned []pcbModuleVia) (func(x, y float64) bool, error) {
 	radius := diameter / 2
 	rules := ctx.snap.Rules
 	var layers []func([2]float64, [2]float64) bool
-	for _, layer := range []int{1, 2} {
+	for _, layer := range ctx.viaCopperLayers() {
 		clear, err := ctx.clear(pcbEscapeDemand{Net: net, Layer: layer, WidthMil: diameter}, routes)
 		if err != nil {
 			return nil, err
