@@ -38,5 +38,5 @@
 标签绑定 `af76cd7ea73cd9789a68782cb4ad18d921fd0074`；保留该标签、Release 和全部历史资产。
 本次不替换用户正在运行的 CLI、daemon 或连接器。
 若新版本分发或安装验证失败，停止扩大发布，保留失败证据；用户可使用旧版固定资产和
-`EASYEDA_VERSION=v1.18.0 sh install.sh` 回退 CLI/Skill，连接器仍可保留同 minor 的旧运行时。
+`EASYEDA_VERSION=v1.18.0 bash ./install.sh` 回退 CLI/Skill，连接器仍可保留同 minor 的旧运行时。
 不删除已发布版本，不修改历史证据，不以上传成功替代下载验证。
