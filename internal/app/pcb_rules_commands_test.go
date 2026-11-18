@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -79,7 +80,7 @@ func TestFetchPcbRulesRequestErrorKeepsFallback(t *testing.T) {
 		response["error"] = map[string]any{"code": "EDA_API_ERROR", "message": "injected rules request failure"}
 	})
 	got, err := fetchPcbRules(cfg, "window")
-	if err != nil || got != defaultPcbRules() {
+	if err != nil || !reflect.DeepEqual(got, defaultPcbRules()) {
 		t.Fatalf("request fallback changed: %+v err=%v", got, err)
 	}
 }

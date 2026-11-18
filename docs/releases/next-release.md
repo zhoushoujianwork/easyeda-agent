@@ -1,10 +1,18 @@
-# v1.18.0 准备中（未发布）
+# v1.18.1 准备中（ALCY-7，未发布）
+
+仅提升 PR #311 的可布性检查及 Skill 变更，连接器运行时未变化，按 patch 版本发布。
+发布目标、候选来源、验证缺口和回退入口见 [v1.18.1 发布准备](release-1.18.1.md)。
+dev 合并已完成；正式发布 PR 的独立复核、制品验证及 GitHub Release 发布尚未完成。
+
+# v1.18.0 已发布
 
 v1.17.0 之后的修复改动了连接器运行时（#299 wire-contact、器件替换查询预算），按版本规则升为中版本 v1.18.0。
 用户于 2026-11-14 选择 schema 3 定向修复范围：全量自动回归，加上 #299、#303 在 EasyEDA Pro 4.1.100 中的
 现场定向验收；完整设计 E2E 延期。验收材料与独立复核见 [v1.18.0 证据](evidence/v1.18.0/test-report.md)，
-变更见 `extension/CHANGELOG.md` 的 `[1.18.0]`。版本元数据已同步；尚未执行 `make release`，
-仍须用户批准具体版本后才能创建标签与发布。
+变更见 `extension/CHANGELOG.md` 的 `[1.18.0]`。
+GitHub Release 于 2026-11-14 06:13:34 UTC 正式发布，非草稿、非预发布，
+标签绑定 `af76cd7ea73cd9789a68782cb4ad18d921fd0074`；
+[v1.18.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.18.0) 为本次准备前的 Latest 与回退版本。
 
 # v1.17.0 已发布
 
