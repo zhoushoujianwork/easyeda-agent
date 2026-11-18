@@ -182,6 +182,9 @@ fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未�
 - 当前 board/layout 输入哈希、器件总数以及全部成员的 anchor、角度、层和锁定状态；
 - 第 2 轮 fresh 整板预览，以及固定坐标、板内/禁区、重叠、间距和关键模块关系的事实结果；
 - 两轮 review manifest；若曾修正，记录计数清零和重新开始的证据；
+- 第 2 轮 fresh dump 上的 `pcb routability --board board.json --out routability.json` 结果：
+  `trapped` 非空（某焊盘既无合法过孔位又无走线出口）属于布局 finding，按报告的阻挡对象挪开
+  去耦/ESD、背面大焊盘或局部铜后重算，不能请求确认；`incomplete` 说明输入不全，不能当通过；
 - 为后续走线保留的出口/通道和仍需用户取舍的项目，不用综合分数替用户作决定；
 - 当前版本的未完成项。存在机械违规、缺测或保存重载失败时，不请求把它当成完成态确认。
 
