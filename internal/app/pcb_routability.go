@@ -126,7 +126,10 @@ func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbR
 	if coverage := snap.geometryCoverage(false); !coverage.Complete {
 		return incomplete("board geometry capture is incomplete: " + strings.Join(coverage.Limitations, "; "))
 	}
-	ctx, _, err := preparePCBRouteGeometry(snap)
+	// Fill and poured copper come only from pcbBoardCopperExtras, which keeps
+	// stroke widths and open/closed unfilled paths; the polygon-only area
+	// parser would turn a hollow outline into a solid block.
+	ctx, _, err := preparePCBRouteGeometryAreas(snap, false)
 	if err != nil {
 		return incomplete(err.Error())
 	}
@@ -291,6 +294,32 @@ func (ctx *pcbEscapeContext) localize(cx, cy, reach float64) *pcbEscapeContext {
 	return out
 }
 
+// pcbRoutabilityPlatedDrillIssue explains why a captured pad drill does not
+// prove a plated through connection ("" = proven). The connector returns the
+// SDK tuple [kind, width, height] in 10 mil units; only shapes with a known
+// meaning are accepted, both sizes must be finite and positive, and the drill
+// must leave copper around it (smaller than the measured pad on both axes).
+func pcbRoutabilityPlatedDrillIssue(raw any, pad pcbPadP) string {
+	t, ok := raw.([]any)
+	if !ok || len(t) != 3 {
+		return "drill not captured as [kind, width, height]"
+	}
+	kind, _ := t[0].(string)
+	if kind != "ROUND" && kind != "SLOT" {
+		return fmt.Sprintf("drill kind %v is not a supported plated-hole shape", t[0])
+	}
+	w, wok := asFloatOK(t[1])
+	h, hok := asFloatOK(t[2])
+	if !wok || !hok || !allFinite(w, h) || w <= 0 || h <= 0 {
+		return "drill size is missing, zero or not finite"
+	}
+	wMil, hMil := w*10, h*10
+	if wMil >= pad.ShapeW-netPathGeomEps || hMil >= pad.ShapeH-netPathGeomEps {
+		return fmt.Sprintf("drill %.2fx%.2f mil leaves no copper on the %.2fx%.2f mil pad", wMil, hMil, pad.ShapeW, pad.ShapeH)
+	}
+	return ""
+}
+
 func pcbRoutabilityPadKey(designator, number, id string) string {
 	return designator + "." + number + "|" + id
 }
@@ -396,10 +425,14 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64, c
 		switch {
 		case known && raw.Metallization != nil && !*raw.Metallization:
 			// A non-plated hole connects nothing; it is not a transition.
-		case known && raw.Metallization != nil && *raw.Metallization && raw.Hole != nil:
-			out.ExistingTransitions = append(out.ExistingTransitions, t)
+		case !known || raw.Metallization == nil:
+			out.UnverifiedTransitions = append(out.UnverifiedTransitions, pcbRoutabilityTransition{t, "metallization not captured"})
 		default:
-			out.UnverifiedTransitions = append(out.UnverifiedTransitions, pcbRoutabilityTransition{t, "drill/metallization not captured"})
+			if reason := pcbRoutabilityPlatedDrillIssue(raw.Hole, other); reason != "" {
+				out.UnverifiedTransitions = append(out.UnverifiedTransitions, pcbRoutabilityTransition{t, reason})
+			} else {
+				out.ExistingTransitions = append(out.ExistingTransitions, t)
+			}
 		}
 	}
 	// Probe via candidates nearest first (Euclidean from the pad centre), so

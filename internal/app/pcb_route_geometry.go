@@ -8,6 +8,14 @@ import (
 // Host geometry adapter shared by escape reservations and offline path solving.
 // It performs no IO and refuses missing inventories or unsupported pad shapes.
 func preparePCBRouteGeometry(snap *boardSnapshot) (*pcbEscapeContext, string, error) {
+	return preparePCBRouteGeometryAreas(snap, true)
+}
+
+// preparePCBRouteGeometryAreas with materializedAreas=false leaves static fills
+// and poured copper out of ctx.areas: the caller must model them itself (as
+// routability does with pcbBoardCopperExtras, which keeps stroke widths and
+// unfilled paths that the polygon-only area parser cannot represent).
+func preparePCBRouteGeometryAreas(snap *boardSnapshot, materializedAreas bool) (*pcbEscapeContext, string, error) {
 	unknown := func(msg string) (*pcbEscapeContext, string, error) { return nil, "incomplete", fmt.Errorf("%s", msg) }
 	if snap == nil || snap.Rules == nil || snap.Rules.Source != "live" || snap.Outline == nil || snap.Outline.Source != "polygon" || len(snap.Outline.Points) < 3 {
 		return unknown("escape proof requires live rules and exact polygon board outline")
@@ -55,9 +63,11 @@ func preparePCBRouteGeometry(snap *boardSnapshot) (*pcbEscapeContext, string, er
 	if err != nil {
 		return unknown(err.Error())
 	}
-	ctx.areas, err = parseCopperAreaObstacles(snap.Copper.Fills, snap.Copper.Poured)
-	if err != nil {
-		return unknown(err.Error())
+	if materializedAreas {
+		ctx.areas, err = parseCopperAreaObstacles(snap.Copper.Fills, snap.Copper.Poured)
+		if err != nil {
+			return unknown(err.Error())
+		}
 	}
 	for _, raw := range snap.Copper.Regions {
 		m, ok := raw.(map[string]any)

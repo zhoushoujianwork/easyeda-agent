@@ -141,12 +141,13 @@ func preparePCBRouteRequest(in pcbRouteRequest, snap *boardSnapshot) (pcbrouting
 	}, "", nil
 }
 
-// pcbStrokedArea is materialized copper whose boundary is drawn with a stroke:
-// copper extends width/2 beyond the contour. An unfilled area is only its
-// stroked outline (e.g. thermal spokes); its closing edge is kept, which can
-// only over-estimate copper.
+// pcbStrokedArea is materialized copper drawn with a stroke: copper extends
+// width/2 beyond its geometry. A filled area is its polygon (area.Contours)
+// plus the stroke; an unfilled one (e.g. a thermal spoke or a hollow outline)
+// is only its stroked paths, open or closed exactly as captured.
 type pcbStrokedArea struct {
 	area   pcbCopperArea
+	paths  []pcbSourcePath // unfilled only
 	width  float64
 	filled bool
 }
@@ -156,9 +157,14 @@ func (s pcbStrokedArea) segmentDistance(a, z [2]float64) float64 {
 		return copperAreaSegmentDistance(s.area, a, z) - s.width/2
 	}
 	best := math.Inf(1)
-	for _, contour := range s.area.Contours {
-		for i, p := range contour {
-			q := contour[(i+1)%len(contour)]
+	for _, path := range s.paths {
+		n := len(path.points)
+		edges := n - 1
+		if path.closed {
+			edges = n
+		}
+		for i := 0; i < edges; i++ {
+			p, q := path.points[i], path.points[(i+1)%n]
 			best = math.Min(best, segSegDist(a[0], a[1], z[0], z[1], p[0], p[1], q[0], q[1]))
 		}
 	}
@@ -234,15 +240,26 @@ func pcbBoardCopperExtras(snap *boardSnapshot, contours func(any) ([][][2]float6
 			if !ok || !allFinite(width) || width < 0 {
 				return out, fmt.Errorf("poured polygon stroke width unknown or unsupported")
 			}
-			cs, err := contours(fill["source"])
-			if err != nil {
-				return out, err
-			}
 			id := strings.TrimSpace(asString(fill["id"]))
 			if id == "" {
 				id = fmt.Sprintf("%s:%d", asString(m["primitiveId"]), j)
 			}
-			out.strokes = append(out.strokes, pcbStrokedArea{area: pcbCopperArea{ID: id, Kind: "poured copper", Net: asString(m["net"]), Layer: int(asFloat(m["layer"])), Contours: cs}, width: width, filled: filled})
+			area := pcbCopperArea{ID: id, Kind: "poured copper", Net: asString(m["net"]), Layer: int(asFloat(m["layer"]))}
+			stroke := pcbStrokedArea{area: area, width: width, filled: filled}
+			var err error
+			if filled {
+				if stroke.area.Contours, err = contours(fill["source"]); err != nil {
+					return out, err
+				}
+			} else {
+				if width <= 0 {
+					return out, fmt.Errorf("unfilled poured path %s needs a positive stroke width", id)
+				}
+				if stroke.paths, err = polygonSourcePaths(fill["source"]); err != nil {
+					return out, fmt.Errorf("unfilled poured path %s: %w", id, err)
+				}
+			}
+			out.strokes = append(out.strokes, stroke)
 		}
 	}
 	return out, nil

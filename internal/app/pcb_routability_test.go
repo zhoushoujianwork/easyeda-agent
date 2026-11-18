@@ -412,17 +412,17 @@ func TestRoutabilityReachableSameNetTransitionNeedsProof(t *testing.T) {
 	}
 	yes, no := true, false
 	// Non-plated drill: connects nothing, so J1.3 is plainly trapped.
-	rep, _ = analyzePCBRoutability(hole(&no, []any{"ROUND", 12.0, 12.0}), defaultRoutabilityOptions())
+	rep, _ = analyzePCBRoutability(hole(&no, []any{"ROUND", 1.2, 1.2}), defaultRoutabilityOptions())
 	if p := routabilityPad(t, rep, "J1.3"); rep.Status != "fail" || p.Status != "trapped" || len(p.ExistingTransitions)+len(p.UnverifiedTransitions) != 0 || !routabilityHasBlocker(p, "pad", "H1.1") {
 		t.Fatalf("non-plated hole must not be a transition: %s %+v", rep.Status, p)
 	}
 	// Unknown metallization: unverified (neighbours stay trapped by H1).
-	rep, _ = analyzePCBRoutability(hole(nil, []any{"ROUND", 12.0, 12.0}), defaultRoutabilityOptions())
+	rep, _ = analyzePCBRoutability(hole(nil, []any{"ROUND", 1.2, 1.2}), defaultRoutabilityOptions())
 	if p := routabilityPad(t, rep, "J1.3"); p.Status != "unverified" || len(p.UnverifiedTransitions) != 1 || p.UnverifiedTransitions[0].Ref != "H1.1" {
 		t.Fatalf("unknown metallization must be unverified: %s %+v", rep.Status, p)
 	}
 	// Proven plated through hole: pass on the transition alone.
-	rep, _ = analyzePCBRoutability(hole(&yes, []any{"ROUND", 12.0, 12.0}), defaultRoutabilityOptions())
+	rep, _ = analyzePCBRoutability(hole(&yes, []any{"ROUND", 1.2, 1.2}), defaultRoutabilityOptions())
 	if p := routabilityPad(t, rep, "J1.3"); p.Status != "pass" || len(p.ExistingTransitions) != 1 || p.ExistingTransitions[0].Ref != "H1.1" {
 		t.Fatalf("plated through hole should be a transition: %s %+v", rep.Status, p)
 	}
@@ -477,5 +477,65 @@ func TestRoutabilityNearestViaSiteIsEuclidean(t *testing.T) {
 	// Via edge needs 6 mil from the 30 mil half-width pad: centre 30+6+12 = 48.
 	if err != nil || p.NearestViaSite == nil || p.NearestViaDistMil > 48+1e-6 || p.ViaSites != pcbRoutabilityViaSiteCap || !p.ViaSitesCapped {
 		t.Fatalf("nearest via should be 48 mil away with the cap reached: %+v %v", p, err)
+	}
+}
+
+// Review round 3, item 1: unfilled poured copper (connector thermal spokes,
+// hollow outlines) is only its stroked path, never a solid area.
+func TestRoutabilityUnfilledPourIsStrokedPath(t *testing.T) {
+	pour := func(width any, source []any) *boardSnapshot {
+		s := routabilityPocketFixture()
+		s.Copper.Poured = []any{map[string]any{"primitiveId": "power", "net": "VBAT", "layer": 1.0, "fills": []any{map[string]any{"id": "path", "lineWidth": width, "fill": false, "geometryKind": "stroked-thermal-spoke-path", "source": source}}}}
+		return s
+	}
+	// Two-point spoke exactly as pcb.poured.list returns it (nested path).
+	if rep, err := analyzePCBRoutability(pour(10.0, []any{[]any{100.0, 200.0, "L", 300.0, 400.0}}), defaultRoutabilityOptions()); err != nil || rep.Status != "pass" || rep.Summary.Checked == 0 {
+		t.Fatalf("two-point spoke must parse and stay out of the pocket: %s %v", rep.Status, err)
+	}
+	// Closed hollow perimeter around the pocket, far from every via site.
+	perimeter := []any{70.0, 60.0, "L", 330.0, 60.0, 330.0, 300.0, 70.0, 300.0, 70.0, 60.0}
+	if rep, err := analyzePCBRoutability(pour(10.0, perimeter), defaultRoutabilityOptions()); err != nil || rep.Status != "pass" {
+		t.Fatalf("hollow outline must not act as solid copper: %s %v %v", rep.Status, err, rep.Trapped)
+	}
+	// A hollow outline whose stroke really runs through the pocket blocks it,
+	// and is reported by its id on TOP.
+	through := []any{140.0, 186.0, "L", 260.0, 186.0, 260.0, 380.0, 140.0, 380.0, 140.0, 186.0}
+	rep, err := analyzePCBRoutability(pour(30.0, through), defaultRoutabilityOptions())
+	p := routabilityPad(t, rep, "J1.3")
+	if err == nil || rep.Status != "fail" || p.Status != "trapped" || !routabilityHasBlocker(p, "copper", "path") {
+		t.Fatalf("stroke through the pocket must trap J1.3: %s %+v", rep.Status, p)
+	}
+	// An unfilled path without a positive stroke width has unknown copper.
+	if rep, err := analyzePCBRoutability(pour(0.0, perimeter), defaultRoutabilityOptions()); err == nil || rep.Status != "incomplete" {
+		t.Fatalf("zero-width unfilled path must be incomplete: %s", rep.Status)
+	}
+}
+
+// Review round 3, item 2: a plated hole proves a layer change only with a
+// valid measured drill that leaves copper on the pad.
+func TestRoutabilityPlatedHoleNeedsValidDrill(t *testing.T) {
+	plated := true
+	for _, tc := range []struct {
+		name  string
+		drill any
+		want  string
+	}{
+		{"missing size", []any{"ROUND"}, "unverified"},
+		{"zero size", []any{"ROUND", 0.0, 0.0}, "unverified"},
+		{"not finite tuple", []any{"ROUND", "x", 1.2}, "unverified"},
+		{"unknown kind", []any{"OVAL?", 1.2, 1.2}, "unverified"},
+		{"drill wider than pad", []any{"ROUND", 2.4, 2.4}, "unverified"},
+		{"valid plated hole", []any{"ROUND", 1.2, 1.2}, "pass"},
+	} {
+		s := routabilityPocketFixture()
+		s.Components = append(s.Components, boardComp{ID: "h1", Designator: "H1", Layer: 1, Pads: []boardPad{{ID: "h", Number: "1", Net: "SIG3", Layer: pcbLayerMulti, X: 200, Y: 186, W: 24, H: 24, Shape: []any{"ELLIPSE", 24.0, 24.0}, Hole: tc.drill, Metallization: &plated}}})
+		rep, _ := analyzePCBRoutability(s, defaultRoutabilityOptions())
+		p := routabilityPad(t, rep, "J1.3")
+		if p.Status != tc.want || p.ViaSites != 0 || len(p.EscapeDirections) != 0 {
+			t.Fatalf("%s: J1.3 = %s, want %s (%+v)", tc.name, p.Status, tc.want, p)
+		}
+		if tc.want == "unverified" && (len(p.UnverifiedTransitions) != 1 || p.UnverifiedTransitions[0].Reason == "") {
+			t.Fatalf("%s: unverified transition must carry a reason: %+v", tc.name, p)
+		}
 	}
 }
