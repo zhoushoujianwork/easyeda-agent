@@ -3035,6 +3035,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	pcb.AddCommand(newPcbRouteCriticalCmd(cfg, &window, stdout, stderr))
 	// ── dump: 板级几何快照（金标准 fixture 的生成器，#167 LEARNING 层）─────────
 	pcb.AddCommand(newPcbDumpCmd(cfg, &window, stdout, stderr))
+	pcb.AddCommand(newPcbPlanApplyCmd(cfg, &window, stdout, stderr))
 	// ── layout-score: 多维布局打分 + 归因梯度（#167）──────────────────────────
 	pcb.AddCommand(newPcbLayoutScoreCmd(cfg, &window, stdout, stderr))
 	// ── floorplan: 从 S0 flow 推布局骨架（只读规划，#167 ACHIEVE 层）──────────
