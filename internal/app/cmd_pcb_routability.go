@@ -20,15 +20,19 @@ func newPcbRoutabilityCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Find pads with no legal via site and no track escape before routing (offline, read-only)",
 		Long: `Pre-routing escape check over a fresh 'pcb dump --include-copper' snapshot.
 For every netted SMD pad, flood its own copper layer with a minimum-width track
-(live rules, exact pad/copper/keepout geometry, board edge) out to --radius and
-sample legal through-via sites (clearance to every pad, via and TOP/BOTTOM
-copper; never in a pad). A pad with neither a via site nor a track reaching the
-radius is "trapped" and is listed with the pads, tracks, vias, copper, keepouts
-or board edge bounding its reachable region. Passing pads report via-site count,
-nearest site and escape directions.
+(measured rules, exact pad/copper/keepout geometry, board edge) out to --radius
+beyond the pad's copper edge, and sample legal through-via sites (clearance to
+every pad, every via and the copper/keepouts of every copper layer the via
+crosses; never in a pad). Same-net vias or through-hole pads the flood reaches
+count as existing layer changes. A pad with no via site, no track reaching the
+radius and no existing layer change is "trapped" and is listed with the pads,
+tracks, vias, copper, keepouts or board edge bounding its reachable region.
+Passing pads report via-site count, nearest site, escape directions and
+existing transitions.
 
-Exit code is non-zero for fail (any trapped pad) or incomplete (missing rules,
-outline, copper inventory or pad geometry — never treated as pass). Pass is a
+Exit code is non-zero for fail (any trapped pad) or incomplete (component or pad
+capture incomplete, outline or copper inventory unknown, or a used rule field not
+measured from the board — never treated as pass). Pass is a
 local necessary condition: it does not reserve shared channels or prove the
 board routes. Run before layout confirmation and again after critical nets
 are pre-routed; re-run after any geometry or rule change.`,
@@ -84,7 +88,7 @@ are pre-routed; re-run after any geometry or rule change.`,
 	cmd.Flags().StringVar(&boardPath, "board", "", "fresh pcb dump --include-copper JSON")
 	cmd.Flags().StringVar(&outPath, "out", "", "routability report JSON path")
 	cmd.Flags().Float64Var(&opt.StepMil, "step", pcbRoutabilityDefaultStepMil, "flood grid step in mil (0.5..10); finer finds narrower channels")
-	cmd.Flags().Float64Var(&opt.RadiusMil, "radius", pcbRoutabilityDefaultRadiusMil, "escape radius in mil: a track reaching it counts as an escape")
+	cmd.Flags().Float64Var(&opt.RadiusMil, "radius", pcbRoutabilityDefaultRadiusMil, "escape radius in mil beyond the pad copper edge: a track reaching it counts as an escape")
 	cmd.Flags().StringArrayVar(&opt.Components, "component", nil, "only check pads of this designator (repeatable); obstacles still include the whole board")
 	return cmd
 }

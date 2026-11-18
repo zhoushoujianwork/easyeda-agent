@@ -36,7 +36,8 @@ func routabilityPocketFixture() *boardSnapshot {
 		Components:   []boardComp{j1, d1, c1},
 		CopperLayers: 4,
 		Outline:      &boardOutline{Source: "polygon", Format: "polyline", BBox: layoutBBox{MinX: 0, MinY: 0, MaxX: 400, MaxY: 400}, Points: [][2]float64{{0, 0}, {400, 0}, {400, 400}, {0, 400}}},
-		Rules:        &boardRules{Source: "live", ClearanceMil: 6, TrackWidthMinMil: 4, CopperToEdgeMil: 10, ViaDiameterMil: 24, ViaDrillMil: 12},
+		Rules: &boardRules{Source: "live", ClearanceMil: 6, ClearanceTrackTrackMil: 6, TrackWidthMinMil: 4, CopperToEdgeMil: 10, ViaDiameterMil: 24, ViaDrillMil: 12,
+			Measured: []string{pcbRuleFieldClearance, pcbRuleFieldClearanceTrackTrack, pcbRuleFieldTrackWidthMin, pcbRuleFieldViaDrill, pcbRuleFieldViaDiameter, pcbRuleFieldCopperToEdge}},
 		Copper: &boardCopperSnapshot{Availability: map[string]string{"routing": "available", "vias": "available", "pours": "available", "poured": "available", "regions": "available", "fills": "available"},
 			ArcsAvailable: &available, Lines: []any{}, Arcs: []any{}, Vias: []any{}, Pours: []any{}, Poured: []any{}, Regions: []any{}, Fills: []any{}},
 	}
@@ -229,5 +230,156 @@ func TestRoutabilityCommandIsReadOnlyAndReportsBlockers(t *testing.T) {
 	cmd.SetArgs([]string{"--board", board, "--out", board})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("output aliasing the input must be rejected")
+	}
+}
+
+// Review round 1, item 1: an incomplete component/pad capture must never pass,
+// even when the filter selects a different, fully captured component.
+func TestRoutabilityIncompleteCaptureIsIncomplete(t *testing.T) {
+	tests := map[string]func(*boardSnapshot){
+		"components unavailable": func(s *boardSnapshot) {
+			s.ComponentsAvailability = "unavailable"
+			s.Components = nil
+		},
+		"one pad list unavailable": func(s *boardSnapshot) {
+			s.Components[2].Availability = map[string]string{"pads": "unavailable"}
+			s.Components[2].Pads = nil
+		},
+	}
+	for name, mutate := range tests {
+		for _, filter := range [][]string{nil, {"J1"}} {
+			s := routabilityPocketFixture()
+			mutate(s)
+			opt := defaultRoutabilityOptions()
+			opt.Components = filter
+			rep, err := analyzePCBRoutability(s, opt)
+			if err == nil || rep.Status != "incomplete" {
+				t.Fatalf("%s filter=%v: got %s err=%v", name, filter, rep.Status, err)
+			}
+		}
+	}
+}
+
+// Review round 1, item 2: a through via crosses inner layers too.
+func TestRoutabilityViaSitesCheckInnerLayerCopper(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Copper.Lines = []any{map[string]any{"primitiveId": "trk-vbat-in", "net": "VBAT", "layer": float64(15), "startX": 140.0, "startY": 186.0, "endX": 260.0, "endY": 186.0, "lineWidth": 30.0}}
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	if err == nil || rep.Status != "fail" {
+		t.Fatalf("inner-layer track must block pocket vias: %s %v", rep.Status, err)
+	}
+	p := routabilityPad(t, rep, "J1.3")
+	if p.Status != "trapped" || p.ViaSites != 0 || !routabilityHasBlocker(p, "track", "trk-vbat-in") {
+		t.Fatalf("J1.3 should be trapped by the inner track: %+v", p)
+	}
+	for _, b := range p.Blockers {
+		if b.ID == "trk-vbat-in" && b.Layer != 15 {
+			t.Fatalf("inner blocker must keep its layer: %+v", b)
+		}
+	}
+	// An inner track that leaves the pocket free keeps the via site legal.
+	s.Copper.Lines = []any{map[string]any{"primitiveId": "trk-vbat-in", "net": "VBAT", "layer": float64(15), "startX": 140.0, "startY": 330.0, "endX": 260.0, "endY": 330.0, "lineWidth": 30.0}}
+	if rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions()); err != nil || rep.Status != "pass" {
+		t.Fatalf("distant inner track should not trap: %s %v", rep.Status, err)
+	}
+}
+
+// Review round 1, item 3: rule provenance is per field, from parser to check.
+func TestRoutabilityRequiresMeasuredRuleFields(t *testing.T) {
+	// Only the track default width is present: the parser marks the board as
+	// "live" but every field routability uses is still a default.
+	partial := ruleUnitFixture("mil", "mil", "mil")
+	cfg := mnav(partial, "rules", "config").(map[string]any)
+	firstDataEntry(mnav(cfg, "Physics", "Track", "copperThickness1oz", "form", "data"))["defaultValue"] = 10.0
+	delete(cfg, "Spacing")
+	delete(mnav(cfg, "Physics").(map[string]any), "Via Size")
+	parsed, err := parsePcbRules(partial)
+	if err != nil || parsed.source != "live" {
+		t.Fatalf("fixture premise: partial rule should parse as live: %+v %v", parsed, err)
+	}
+	s := routabilityPocketFixture()
+	s.Rules = rulesToBoard(parsed)
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	if err == nil || rep.Status != "incomplete" || !strings.Contains(rep.Reason, "viaDiameter") {
+		t.Fatalf("partially defaulted rules must be incomplete: %s %s", rep.Status, rep.Reason)
+	}
+	// Snapshots that predate per-field provenance prove nothing field by field.
+	s = routabilityPocketFixture()
+	s.Rules.Measured = nil
+	if rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions()); err == nil || rep.Status != "incomplete" {
+		t.Fatalf("legacy rules must be incomplete: %s", rep.Status)
+	}
+	// A complete rule survives the snapshot JSON round trip and is accepted.
+	full := ruleUnitFixture("mil", "mil", "mil")
+	fcfg := mnav(full, "rules", "config")
+	d := firstDataEntry(mnav(fcfg, "Physics", "Track", "copperThickness1oz", "form", "data"))
+	d["defaultValue"], d["minValue"] = 10.0, 4.0
+	via := mnav(fcfg, "Physics", "Via Size", "viaSize", "form").(map[string]any)
+	via["viaInnerdiameterDefault"], via["viaOuterdiameterDefault"] = 12.0, 24.0
+	rows := mnav(fcfg, "Spacing", "Safe Spacing", "copperThickness1oz", "tables", "1", "content").([]any)
+	rows[0].([]any)[0], rows[1].([]any)[0], rows[3].([]any)[2] = 6.0, 6.0, 10.0
+	parsed, err = parsePcbRules(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s = routabilityPocketFixture()
+	s.Rules = rulesToBoard(parsed)
+	s = cloneEscapeSnapshot(s)
+	if rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions()); err != nil || rep.Status != "pass" {
+		t.Fatalf("fully measured rules should be accepted: %s %v", rep.Status, err)
+	}
+}
+
+// Review round 1, item 4: an exit must leave the source pad's copper.
+func TestRoutabilityLargePadExitIsMeasuredFromPadEdge(t *testing.T) {
+	rect := func(id, net string, x, y, w, h float64) boardPad {
+		return boardPad{ID: id, Number: id, Net: net, Layer: 1, X: x, Y: y, W: w, H: h, Shape: []any{"RECT", w, h, 0.0}}
+	}
+	build := func(open bool) *boardSnapshot {
+		s := routabilityPocketFixture()
+		s.Components = []boardComp{{ID: "u9", Designator: "U9", X: 600, Y: 600, Layer: 1, Pads: []boardPad{rect("1", "BIG", 600, 600, 220, 220)}}}
+		walls := boardComp{ID: "w", Designator: "W1", X: 600, Y: 600, Layer: 1}
+		// Other-net walls 8 mil from every side (too close for a 4 mil track at
+		// 6 mil clearance) and 40 mil thick, closing the corners as well.
+		walls.Pads = append(walls.Pads, rect("n", "WN", 600, 600-110-8-20, 316, 40), rect("w", "WW", 600-110-8-20, 600, 40, 316), rect("e", "WE", 600+110+8+20, 600, 40, 316))
+		if !open {
+			walls.Pads = append(walls.Pads, rect("s", "WS", 600, 600+110+8+20, 316, 40))
+		}
+		s.Components = append(s.Components, walls)
+		s.Outline.Points = [][2]float64{{0, 0}, {1200, 0}, {1200, 1200}, {0, 1200}}
+		return s
+	}
+	opt := defaultRoutabilityOptions()
+	opt.Components = []string{"U9"}
+	rep, err := analyzePCBRoutability(build(false), opt)
+	if err == nil || rep.Status != "fail" {
+		t.Fatalf("sealed large pad must be trapped: %s %v", rep.Status, err)
+	}
+	if p := routabilityPad(t, rep, "U9.1"); len(p.EscapeDirections) != 0 || p.ViaSites != 0 {
+		t.Fatalf("no exit may be claimed inside the source pad: %+v", p)
+	}
+	rep, err = analyzePCBRoutability(build(true), opt)
+	if err != nil || rep.Status != "pass" {
+		t.Fatalf("opened side should release the pad: %s %v", rep.Status, err)
+	}
+	if p := routabilityPad(t, rep, "U9.1"); !containsString(p.EscapeDirections, "+Y") {
+		t.Fatalf("open side must be reported as the escape: %+v", p.EscapeDirections)
+	}
+}
+
+// Review round 1, item 5: a reachable same-net via is a layer change, while an
+// other-net via in the same place still blocks (see the via scenarios above).
+func TestRoutabilityReachableSameNetViaIsTransition(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Copper.Vias = []any{map[string]any{"primitiveId": "via-sig3", "net": "SIG3", "x": 200.0, "y": 186.0, "holeDiameter": 12.0, "diameter": 24.0}}
+	rep, _ := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	p := routabilityPad(t, rep, "J1.3")
+	// The via fills the pocket: no new via fits and no track exits, so the
+	// pass rests on the existing transition alone.
+	if p.Status != "pass" || p.ViaSites != 0 || len(p.EscapeDirections) != 0 || len(p.ExistingTransitions) != 1 || p.ExistingTransitions[0].ID != "via-sig3" {
+		t.Fatalf("reachable same-net via should pass as a transition: %+v", p)
+	}
+	if routabilityHasBlocker(p, "via", "via-sig3") {
+		t.Fatalf("same-net transition listed as blocker: %+v", p.Blockers)
 	}
 }
