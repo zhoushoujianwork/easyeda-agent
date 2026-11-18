@@ -186,3 +186,36 @@ func TestBoardRenameHostRefusalFailsDispatch(t *testing.T) {
 		}
 	}
 }
+
+// pcb rip-up: only an absent --net means "all routing"; an empty one is refused
+// before any daemon call instead of widening into a whole-board rip-up.
+func TestPcbRipUp_EmptyNetRefusedNotWidenedToAll(t *testing.T) {
+	pcb := func(cfg *appConfig) *cobra.Command { return newPcbCmd(cfg, &bytes.Buffer{}, &bytes.Buffer{}) }
+	for _, args := range [][]string{
+		{"rip-up", "--net", ""},
+		{"rip-up", "--net", ","},
+		{"rip-up", "--net", "GND", "--net", " "},
+	} {
+		cap, err := runCapturedCmd(t, pcb, args...)
+		if err == nil {
+			t.Fatalf("%q: expected an error", args)
+		}
+		if cap.action != "" {
+			t.Fatalf("%q: dispatched %q despite an empty net", args, cap.action)
+		}
+	}
+	cap, err := runCapturedCmd(t, pcb, "rip-up", "--net", "GND,VBAT")
+	if err != nil || cap.action != "pcb.route.rip_up" {
+		t.Fatalf("scoped rip-up: action=%q err=%v", cap.action, err)
+	}
+	if got, ok := cap.payload["net"].([]any); !ok || len(got) != 2 || got[0] != "GND" || got[1] != "VBAT" {
+		t.Fatalf("scoped rip-up payload: %v", cap.payload)
+	}
+	cap, err = runCapturedCmd(t, pcb, "rip-up")
+	if err != nil || cap.action != "pcb.route.rip_up" {
+		t.Fatalf("all rip-up: action=%q err=%v", cap.action, err)
+	}
+	if _, ok := cap.payload["net"]; ok {
+		t.Fatalf("all rip-up must not send a net filter: %v", cap.payload)
+	}
+}

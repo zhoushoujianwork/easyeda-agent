@@ -5273,3 +5273,13 @@ test('pcbRouteRipUp: skips footprint-embedded vias, deletes standalone ones', as
 	assert.equal(res.result.vias.requested, 1);
 	delete (globalThis as any).eda;
 });
+
+test('pcbRouteRipUp: an empty or malformed net filter is refused, never widened to all routing', async () => {
+	let read = 0;
+	(globalThis as any).eda = new Proxy({}, { get: () => ({ getAll: async () => { read++; return []; }, delete: async () => { throw new Error('must not delete'); } }) });
+	for (const net of ['', ' ', [], [''], ['GND', ''], 123, [1]]) {
+		await assert.rejects(() => pcbRouteRipUp({ net } as any), /omit net to rip up all routing/);
+	}
+	assert.equal(read, 0);
+	delete (globalThis as any).eda;
+});

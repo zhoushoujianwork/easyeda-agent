@@ -15116,11 +15116,17 @@ const pcbTrackLock: Handler = async (payload) => {
 };
 
 export const pcbRouteRipUp: Handler = async (payload) => {
-	// Optional net filter (string or string[]); no net → rip up ALL routing.
+	// Optional net filter (string or string[]); only an ABSENT net means "rip up ALL
+	// routing". A present but empty, blank or malformed filter is refused rather than
+	// widened into a whole-board rip-up.
 	const rawNet = payload.net ?? payload.nets;
 	let nets: Array<string> | null = null;
-	if (typeof rawNet === 'string') nets = [rawNet];
-	else if (Array.isArray(rawNet) && rawNet.every(n => typeof n === 'string')) nets = rawNet as Array<string>;
+	if (rawNet !== undefined && rawNet !== null) {
+		const list = typeof rawNet === 'string' ? [rawNet] : rawNet;
+		if (!Array.isArray(list) || list.length === 0 || !list.every(n => typeof n === 'string' && n.trim() !== ''))
+			throw new Error('pcb.route.rip_up: net must be a non-empty net name or a non-empty list of them; omit net to rip up all routing.');
+		nets = list as Array<string>;
+	}
 	const want = nets ? new Set(nets) : null;
 
 	// COPPER layers only: TOP=1, BOTTOM=2, INNER_1..30 = 15..44. This excludes the

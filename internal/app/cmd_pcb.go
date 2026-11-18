@@ -1849,7 +1849,18 @@ pours reflow under the new clearance.`,
   easyeda pcb rip-up            # rip up ALL routing (board outline + locked survive)`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				payload := map[string]any{}
-				if len(nets) > 0 {
+				// "All routing" is only ever the absence of --net. A --net that
+				// resolves to nothing (an empty shell variable, "", ",") must not
+				// silently widen into a whole-board rip-up.
+				if cmd.Flags().Changed("net") {
+					for _, n := range nets {
+						if strings.TrimSpace(n) == "" {
+							return fmt.Errorf("--net contains an empty net name; refusing to rip up (omit --net entirely to rip up all routing)")
+						}
+					}
+					if len(nets) == 0 {
+						return fmt.Errorf("--net was given but names no net; refusing to rip up (omit --net entirely to rip up all routing)")
+					}
 					payload["net"] = nets
 				}
 				return dispatch(cfg, "pcb.route.rip_up", window, payload, stdout, stderr)
