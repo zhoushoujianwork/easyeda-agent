@@ -3042,6 +3042,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	// ── layout-plan: 按模块生成参数化布局候选（纯离线，不写 EDA）─────────────
 	pcb.AddCommand(newPcbLayoutPlanCmd(stdout, stderr))
 	pcb.AddCommand(newPcbEscapePlanCmd(stdout, stderr))
+	pcb.AddCommand(newPcbRoutabilityCmd(stdout, stderr))
 	pcb.AddCommand(newPcbSilkPlanCmd(stdout))
 	for _, c := range newPcbPadEntryCmds(stdout) {
 		pcb.AddCommand(c)

@@ -87,6 +87,10 @@ type pcbEscapeContext struct {
 	vias      []pcbViaP
 	areas     []pcbCopperArea
 	bans      []pcbCopperArea
+	// slots and strokes are filled only by callers that load
+	// pcbBoardCopperExtras (routability); escape-plan leaves them empty.
+	slots   []pcbCopperArea
+	strokes []pcbStrokedArea
 }
 
 func pcbEscapeIntentHash(in pcbRoutingIntent) string {
@@ -331,6 +335,16 @@ func (ctx *pcbEscapeContext) clear(d pcbEscapeDemand, routes []pcbModuleRoute, p
 				return false
 			}
 		}
+		for _, slot := range ctx.slots {
+			if copperAreaSegmentDistance(slot, a, z) < d.WidthMil/2+pcbSlotClearanceMil(ctx.snap.Rules)-netPathGeomEps {
+				return false
+			}
+		}
+		for _, stroke := range ctx.strokes {
+			if stroke.area.Net != d.Net && stroke.area.Layer == d.Layer && stroke.segmentDistance(a, z) < d.WidthMil/2+ctx.snap.Rules.ClearanceMil-netPathGeomEps {
+				return false
+			}
+		}
 		return true
 	}, nil
 }
@@ -407,37 +421,93 @@ func pcbEscapeEntryInsideMeasuredPad(ctx *pcbEscapeContext, d pcbEscapeDemand, p
 }
 
 func (ctx *pcbEscapeContext) viaClear(v pcbModuleVia, routes []pcbModuleRoute, planned []pcbModuleVia) bool {
-	p := [2]float64{v.X, v.Y}
-	radius := v.DiameterMil / 2
-	rules := ctx.snap.Rules
-	if !allFinite(v.X, v.Y, v.HoleMil, v.DiameterMil) || v.HoleMil <= 0 || v.DiameterMil <= v.HoleMil || !ctx.snap.Outline.containsPoint(v.X, v.Y) || ctx.snap.Outline.distToEdge(v.X, v.Y) < radius+rules.CopperToEdgeMil-netPathGeomEps {
+	if !allFinite(v.X, v.Y, v.HoleMil, v.DiameterMil) || v.HoleMil <= 0 || v.DiameterMil <= v.HoleMil {
 		return false
 	}
-	// Explicitly includes same-net pads: ordinary escape vias are never in-pad.
-	for _, pad := range ctx.allPads {
-		distance, err := pcbExactPadSegmentGap(pad, p, p)
-		if err != nil || distance < radius+rules.ClearanceMil-netPathGeomEps {
-			return false
-		}
-	}
-	for _, via := range ctx.vias {
-		if math.Hypot(via.X-v.X, via.Y-v.Y) < radius+via.Dia/2+rules.ClearanceMil-netPathGeomEps {
-			return false
-		}
-	}
+	var others []pcbModuleVia
 	for _, via := range planned {
-		if via.ID != v.ID && math.Hypot(via.X-v.X, via.Y-v.Y) < radius+via.DiameterMil/2+rules.ClearanceMil-netPathGeomEps {
-			return false
+		if via.ID != v.ID {
+			others = append(others, via)
 		}
 	}
-	for _, layer := range []int{1, 2} {
-		d := pcbEscapeDemand{Net: v.Net, Layer: layer, WidthMil: v.DiameterMil}
-		clear, err := ctx.clear(d, routes)
-		if err != nil || !clear(p, p) {
-			return false
+	clear, err := ctx.viaSiteChecker(v.Net, v.DiameterMil, routes, others)
+	return err == nil && clear(v.X, v.Y)
+}
+
+// viaCopperLayers is TOP, BOTTOM and every other copper layer with measured
+// tracks, arcs, areas or keepouts.
+func (ctx *pcbEscapeContext) viaCopperLayers() []int {
+	seen := map[int]bool{1: true, 2: true}
+	layers := []int{1, 2}
+	add := func(layer int) {
+		if netPathCopperLayer(layer) && !seen[layer] {
+			seen[layer] = true
+			layers = append(layers, layer)
 		}
 	}
-	return true
+	for _, t := range ctx.tracks {
+		add(t.Layer)
+	}
+	for _, a := range ctx.arcs {
+		add(a.Layer)
+	}
+	for _, a := range ctx.areas {
+		add(a.Layer)
+	}
+	for _, b := range ctx.bans {
+		add(b.Layer)
+	}
+	for _, st := range ctx.strokes {
+		add(st.area.Layer)
+	}
+	sort.Ints(layers)
+	return layers
+}
+
+// viaSiteChecker builds the exact through-via site test once so callers that
+// probe many sites (routability flood) do not rebuild per-layer clearance
+// closures for every point. A through via crosses every copper layer, so each
+// layer that carries copper is checked.
+func (ctx *pcbEscapeContext) viaSiteChecker(net string, diameter float64, routes []pcbModuleRoute, planned []pcbModuleVia) (func(x, y float64) bool, error) {
+	radius := diameter / 2
+	rules := ctx.snap.Rules
+	var layers []func([2]float64, [2]float64) bool
+	for _, layer := range ctx.viaCopperLayers() {
+		clear, err := ctx.clear(pcbEscapeDemand{Net: net, Layer: layer, WidthMil: diameter}, routes)
+		if err != nil {
+			return nil, err
+		}
+		layers = append(layers, clear)
+	}
+	return func(x, y float64) bool {
+		p := [2]float64{x, y}
+		if !allFinite(x, y) || !ctx.snap.Outline.containsPoint(x, y) || ctx.snap.Outline.distToEdge(x, y) < radius+rules.CopperToEdgeMil-netPathGeomEps {
+			return false
+		}
+		// Explicitly includes same-net pads: ordinary escape vias are never in-pad.
+		for _, pad := range ctx.allPads {
+			distance, err := pcbExactPadSegmentGap(pad, p, p)
+			if err != nil || distance < radius+rules.ClearanceMil-netPathGeomEps {
+				return false
+			}
+		}
+		for _, via := range ctx.vias {
+			if math.Hypot(via.X-x, via.Y-y) < radius+via.Dia/2+rules.ClearanceMil-netPathGeomEps {
+				return false
+			}
+		}
+		for _, via := range planned {
+			if math.Hypot(via.X-x, via.Y-y) < radius+via.DiameterMil/2+rules.ClearanceMil-netPathGeomEps {
+				return false
+			}
+		}
+		for _, clear := range layers {
+			if !clear(p, p) {
+				return false
+			}
+		}
+		return true
+	}, nil
 }
 
 // Try only measured TOP -> BOTTOM -> TOP witnesses. Both vias must clear all

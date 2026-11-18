@@ -25,7 +25,21 @@ type pcbRules struct {
 	viaDiameterMil         float64 // via outer diameter
 	copperToEdgeMil        float64 // copper/plane-zone → board-outline clearance (pour inset floor)
 	source                 string  // "live" | "fallback"
+	// measured names the fields read from the board rule (pcbRuleField*).
+	// "live" means at least one field was read; consumers that must not run
+	// on defaults check the exact fields they use.
+	measured []string
 }
+
+const (
+	pcbRuleFieldClearance           = "clearance"
+	pcbRuleFieldClearanceTrackTrack = "clearanceTrackTrack"
+	pcbRuleFieldTrackWidth          = "trackWidth"
+	pcbRuleFieldTrackWidthMin       = "trackWidthMin"
+	pcbRuleFieldViaDrill            = "viaDrill"
+	pcbRuleFieldViaDiameter         = "viaDiameter"
+	pcbRuleFieldCopperToEdge        = "copperToEdge"
+)
 
 // defaultPcbRules is the daemon's fallback baseline — a sane seed when the live
 // rule is missing or a path can't be read. Values are the DOUBLE-LAYER row of the
@@ -175,10 +189,12 @@ func parsePcbRules(result map[string]any) (pcbRules, error) {
 	if d1 := firstDataEntry(mnav(cfg, "Physics", "Track", "copperThickness1oz", "form", "data")); d1 != nil {
 		if v, ok := asFloatOK(d1["defaultValue"]); ok && v > 0 {
 			r.trackWidthMil = round2(v * trackScale)
+			r.measured = append(r.measured, pcbRuleFieldTrackWidth)
 			got = true
 		}
 		if v, ok := asFloatOK(d1["minValue"]); ok && v > 0 {
 			r.trackWidthMinMil = round2(v * trackScale)
+			r.measured = append(r.measured, pcbRuleFieldTrackWidthMin)
 		}
 	}
 
@@ -186,10 +202,12 @@ func parsePcbRules(result map[string]any) (pcbRules, error) {
 	if form := mnav(cfg, "Physics", "Via Size", "viaSize", "form"); form != nil {
 		if v, ok := asFloatOK(mnav(form, "viaInnerdiameterDefault")); ok && v > 0 {
 			r.viaDrillMil = round2(v * viaScale)
+			r.measured = append(r.measured, pcbRuleFieldViaDrill)
 			got = true
 		}
 		if v, ok := asFloatOK(mnav(form, "viaOuterdiameterDefault")); ok && v > 0 {
 			r.viaDiameterMil = round2(v * viaScale)
+			r.measured = append(r.measured, pcbRuleFieldViaDiameter)
 		}
 	}
 
@@ -213,10 +231,12 @@ func parsePcbRules(result map[string]any) (pcbRules, error) {
 		}
 		if trackTrack > 0 {
 			r.clearanceTrackTrackMil = round2(trackTrack * spacingScale)
+			r.measured = append(r.measured, pcbRuleFieldClearanceTrackTrack)
 			got = true
 		}
 		if trackPad > 0 {
 			r.clearanceMil = round2(trackPad * spacingScale)
+			r.measured = append(r.measured, pcbRuleFieldClearance)
 			got = true
 		} else if trackTrack > 0 {
 			// Older/smaller matrices may expose only Track↔Track. Keep consumers
@@ -238,6 +258,7 @@ func parsePcbRules(result map[string]any) (pcbRules, error) {
 			if row, ok := content[bo].([]any); ok && cz >= 0 && cz < len(row) {
 				if v, ok := asFloatOK(row[cz]); ok && v > 0 {
 					r.copperToEdgeMil = round2(v * spacingScale)
+					r.measured = append(r.measured, pcbRuleFieldCopperToEdge)
 				}
 			}
 		}

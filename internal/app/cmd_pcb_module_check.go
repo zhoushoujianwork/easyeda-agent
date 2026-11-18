@@ -3042,15 +3042,41 @@ func sameBBox(a, b layoutBBox) bool {
 	return math.Abs(a.MinX-b.MinX) <= netPathGeomEps && math.Abs(a.MinY-b.MinY) <= netPathGeomEps && math.Abs(a.MaxX-b.MaxX) <= netPathGeomEps && math.Abs(a.MaxY-b.MaxY) <= netPathGeomEps
 }
 
+// pcbSourcePath is one parsed source path. closed reports that the source
+// returned to its start point (the duplicate closing vertex is removed).
+type pcbSourcePath struct {
+	points [][2]float64
+	closed bool
+}
+
+// polygonSourceContours parses a filled polygon source: every path is a
+// closed contour of at least three vertices.
 func polygonSourceContours(raw any) ([][][2]float64, error) {
+	paths, err := polygonSourcePaths(raw)
+	if err != nil {
+		return nil, err
+	}
+	out := make([][][2]float64, 0, len(paths))
+	for _, path := range paths {
+		if len(path.points) < 3 {
+			return nil, fmt.Errorf("polygon has fewer than 3 vertices")
+		}
+		out = append(out, path.points)
+	}
+	return out, nil
+}
+
+// polygonSourcePaths parses the same source grammar without requiring a
+// polygon: a stroked path may be open and may have only two points.
+func polygonSourcePaths(raw any) ([]pcbSourcePath, error) {
 	a, ok := raw.([]any)
 	if !ok || len(a) == 0 {
 		return nil, fmt.Errorf("polygon source is not an array")
 	}
 	if _, nested := a[0].([]any); nested {
-		var out [][][2]float64
+		var out []pcbSourcePath
 		for _, item := range a {
-			c, err := polygonSourceContours(item)
+			c, err := polygonSourcePaths(item)
 			if err != nil {
 				return nil, err
 			}
@@ -3116,13 +3142,15 @@ func polygonSourceContours(raw any) ([][][2]float64, error) {
 			return nil, fmt.Errorf("polygon command %q is unsupported for emptiness proof", command)
 		}
 	}
+	closed := false
 	if len(points) > 1 && math.Hypot(points[0][0]-points[len(points)-1][0], points[0][1]-points[len(points)-1][1]) <= netPathGeomEps {
 		points = points[:len(points)-1]
+		closed = true
 	}
-	if len(points) < 3 {
-		return nil, fmt.Errorf("polygon has fewer than 3 vertices")
+	if len(points) < 2 {
+		return nil, fmt.Errorf("path has fewer than 2 points")
 	}
-	return [][][2]float64{points}, nil
+	return []pcbSourcePath{{points: points, closed: closed}}, nil
 }
 
 func complexPolygonOccupiesRect(raw any, rect layoutBBox) (bool, error) {

@@ -100,56 +100,11 @@ func preparePCBRouteRequest(in pcbRouteRequest, snap *boardSnapshot) (pcbrouting
 	// These stricter capability checks are local to the new command. Existing
 	// planners retain their own contracts. In particular, never turn arc chords,
 	// thermal-spoke strokes or missing cutout geometry into free space.
-	var slots []pcbCopperArea
-	type strokedArea struct {
-		area  pcbCopperArea
-		width float64
+	extras, err := pcbBoardCopperExtras(snap, pcbRouteExactContours, false)
+	if err != nil {
+		return fail("incomplete", err.Error())
 	}
-	var strokes []strokedArea
-	for _, raw := range snap.Copper.Fills {
-		m := raw.(map[string]any) // checked by preparePCBRouteGeometry
-		layer := int(asFloat(m["layer"]))
-		if !netPathCopperLayer(layer) && layer != pcbLayerMulti {
-			continue
-		}
-		if m["geometryAvailable"] != true {
-			return fail("incomplete", "fill/cutout geometry is unknown")
-		}
-		stroke, ok := asFloatOK(m["lineWidth"])
-		if !ok || !allFinite(stroke) || stroke < 0 || m["fillMode"] != "solid" {
-			return fail("incomplete", "fill/cutout needs known solid fill mode and nonnegative stroke width")
-		}
-		contours, err := pcbRouteExactContours(m["source"])
-		if err != nil {
-			return fail("incomplete", err.Error())
-		}
-		if layer == pcbLayerMulti {
-			if stroke != 0 {
-				return fail("incomplete", "stroked cutout boundary is unsupported")
-			}
-			slots = append(slots, pcbCopperArea{Contours: contours})
-		} else {
-			strokes = append(strokes, strokedArea{area: pcbCopperArea{Net: asString(m["net"]), Layer: layer, Contours: contours}, width: stroke})
-		}
-	}
-	for _, raw := range snap.Copper.Poured {
-		m := raw.(map[string]any)
-		for _, rawFill := range m["fills"].([]any) {
-			fill := rawFill.(map[string]any)
-			if fill["fill"] != true {
-				return fail("incomplete", "poured fill/stroke semantics unknown or unsupported")
-			}
-			width, ok := asFloatOK(fill["lineWidth"])
-			if !ok || !allFinite(width) || width < 0 {
-				return fail("incomplete", "poured polygon stroke width unknown or unsupported")
-			}
-			contours, err := pcbRouteExactContours(fill["source"])
-			if err != nil {
-				return fail("incomplete", err.Error())
-			}
-			strokes = append(strokes, strokedArea{area: pcbCopperArea{Net: asString(m["net"]), Layer: int(asFloat(m["layer"])), Contours: contours}, width: width})
-		}
-	}
+	slots, strokes := extras.slots, extras.strokes
 	for _, raw := range snap.Copper.Regions {
 		m := raw.(map[string]any)
 		for _, rule := range m["ruleType"].([]any) {
@@ -173,17 +128,156 @@ func preparePCBRouteRequest(in pcbRouteRequest, snap *boardSnapshot) (pcbrouting
 			return false
 		}
 		for _, slot := range slots {
-			if copperAreaSegmentDistance(slot, a, z) < in.WidthMil/2+math.Max(8, math.Max(snap.Rules.ClearanceMil, snap.Rules.CopperToEdgeMil))-netPathGeomEps {
+			if copperAreaSegmentDistance(slot, a, z) < in.WidthMil/2+pcbSlotClearanceMil(snap.Rules)-netPathGeomEps {
 				return false
 			}
 		}
 		for _, stroke := range strokes {
-			if stroke.area.Net != in.Net && stroke.area.Layer == in.Layer && copperAreaSegmentDistance(stroke.area, a, z) < in.WidthMil/2+stroke.width/2+snap.Rules.ClearanceMil-netPathGeomEps {
+			if stroke.area.Net != in.Net && stroke.area.Layer == in.Layer && stroke.segmentDistance(a, z) < in.WidthMil/2+snap.Rules.ClearanceMil-netPathGeomEps {
 				return false
 			}
 		}
 		return true
 	}, "", nil
+}
+
+// pcbStrokedArea is materialized copper drawn with a stroke: copper extends
+// width/2 beyond its geometry. A filled area is its polygon (area.Contours)
+// plus the stroke; an unfilled one (e.g. a thermal spoke or a hollow outline)
+// is only its stroked paths, open or closed exactly as captured.
+type pcbStrokedArea struct {
+	area   pcbCopperArea
+	paths  []pcbSourcePath // unfilled only
+	width  float64
+	filled bool
+}
+
+func (s pcbStrokedArea) segmentDistance(a, z [2]float64) float64 {
+	if s.filled {
+		return copperAreaSegmentDistance(s.area, a, z) - s.width/2
+	}
+	best := math.Inf(1)
+	for _, path := range s.paths {
+		n := len(path.points)
+		edges := n - 1
+		if path.closed {
+			edges = n
+		}
+		for i := 0; i < edges; i++ {
+			p, q := path.points[i], path.points[(i+1)%n]
+			best = math.Min(best, segSegDist(a[0], a[1], z[0], z[1], p[0], p[1], q[0], q[1]))
+		}
+	}
+	return best - s.width/2
+}
+
+type pcbBoardExtras struct {
+	slots   []pcbCopperArea // MULTI-layer cutouts: no copper on any layer
+	strokes []pcbStrokedArea
+}
+
+// pcbSlotClearanceMil is copper-to-cutout spacing: never below the board-edge
+// rule, the copper clearance or the 8 mil milling floor.
+func pcbSlotClearanceMil(r *boardRules) float64 {
+	return math.Max(8, math.Max(r.ClearanceMil, r.CopperToEdgeMil))
+}
+
+// pcbBoardCopperExtras reads the slot cutouts and stroke widths that
+// parseCopperAreaObstacles drops. Unknown stroke width, fill semantics or
+// cutout geometry is an error (incomplete), never free space. allowUnfilled
+// admits poured outline strokes such as thermal spokes.
+func pcbBoardCopperExtras(snap *boardSnapshot, contours func(any) ([][][2]float64, error), allowUnfilled bool) (pcbBoardExtras, error) {
+	var out pcbBoardExtras
+	for i, raw := range snap.Copper.Fills {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			return out, fmt.Errorf("static fills[%d] is not an object", i)
+		}
+		layerN, ok := asFloatOK(m["layer"])
+		if !ok || !allFinite(layerN) || layerN != math.Trunc(layerN) {
+			return out, fmt.Errorf("static fill %d layer is unknown", i)
+		}
+		layer := int(layerN)
+		if !netPathCopperLayer(layer) && layer != pcbLayerMulti {
+			continue
+		}
+		if m["geometryAvailable"] != true {
+			return out, fmt.Errorf("fill/cutout geometry is unknown")
+		}
+		stroke, ok := asFloatOK(m["lineWidth"])
+		if !ok || !allFinite(stroke) || stroke < 0 || m["fillMode"] != "solid" {
+			return out, fmt.Errorf("fill/cutout needs known solid fill mode and nonnegative stroke width")
+		}
+		cs, err := contours(m["source"])
+		if err != nil {
+			return out, err
+		}
+		id := asString(m["primitiveId"])
+		if layer == pcbLayerMulti {
+			if stroke != 0 {
+				return out, fmt.Errorf("stroked cutout boundary is unsupported")
+			}
+			out.slots = append(out.slots, pcbCopperArea{ID: id, Kind: "slot", Layer: layer, Contours: cs})
+		} else {
+			out.strokes = append(out.strokes, pcbStrokedArea{area: pcbCopperArea{ID: id, Kind: "static fill", Net: asString(m["net"]), Layer: layer, Contours: cs}, width: stroke, filled: true})
+		}
+	}
+	for i, raw := range snap.Copper.Poured {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			return out, fmt.Errorf("materialized poured[%d] is not an object", i)
+		}
+		pouredID := strings.TrimSpace(asString(m["primitiveId"]))
+		if pouredID == "" {
+			return out, fmt.Errorf("materialized poured[%d] primitiveId is unknown", i)
+		}
+		layerN, ok := asFloatOK(m["layer"])
+		if !ok || !allFinite(layerN) || layerN != math.Trunc(layerN) || !netPathCopperLayer(int(layerN)) {
+			return out, fmt.Errorf("materialized poured %s layer is unknown/unsupported", pouredID)
+		}
+		if strings.TrimSpace(asString(m["net"])) == "" {
+			return out, fmt.Errorf("materialized poured %s net is unknown", pouredID)
+		}
+		fills, ok := m["fills"].([]any)
+		if !ok {
+			return out, fmt.Errorf("materialized poured %s fills are unknown", pouredID)
+		}
+		for j, rawFill := range fills {
+			fill, ok := rawFill.(map[string]any)
+			if !ok {
+				return out, fmt.Errorf("materialized poured fill[%d] is not an object", j)
+			}
+			filled, known := fill["fill"].(bool)
+			if !known || !filled && !allowUnfilled {
+				return out, fmt.Errorf("poured fill/stroke semantics unknown or unsupported")
+			}
+			width, ok := asFloatOK(fill["lineWidth"])
+			if !ok || !allFinite(width) || width < 0 {
+				return out, fmt.Errorf("poured polygon stroke width unknown or unsupported")
+			}
+			id := strings.TrimSpace(asString(fill["id"]))
+			if id == "" {
+				id = fmt.Sprintf("%s:%d", pouredID, j)
+			}
+			area := pcbCopperArea{ID: id, Kind: "poured copper", Net: asString(m["net"]), Layer: int(layerN)}
+			stroke := pcbStrokedArea{area: area, width: width, filled: filled}
+			var err error
+			if filled {
+				if stroke.area.Contours, err = contours(fill["source"]); err != nil {
+					return out, err
+				}
+			} else {
+				if width <= 0 {
+					return out, fmt.Errorf("unfilled poured path %s needs a positive stroke width", id)
+				}
+				if stroke.paths, err = polygonSourcePaths(fill["source"]); err != nil {
+					return out, fmt.Errorf("unfilled poured path %s: %w", id, err)
+				}
+			}
+			out.strokes = append(out.strokes, stroke)
+		}
+	}
+	return out, nil
 }
 
 // No curved contours are approximated for this proof. The broader host parser
