@@ -46,7 +46,7 @@ rate_limit_fatal() {
   printf '           export GITHUB_TOKEN=<token>    # GH_TOKEN works too\n' >&2
   printf '           gh auth login                 # gh CLI is picked up automatically\n' >&2
   printf '      2) skip the API by pinning a release tag:\n' >&2
-  printf '           EASYEDA_VERSION=<tag> sh install.sh\n' >&2
+  printf '           EASYEDA_VERSION=<tag> bash ./install.sh\n' >&2
   printf '           tags: https://github.com/%s/releases\n' "$REPO" >&2
   exit 1
 }
