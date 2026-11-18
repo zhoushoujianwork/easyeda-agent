@@ -22,11 +22,15 @@ func newPcbRoutabilityCmd(stdout, stderr io.Writer) *cobra.Command {
 For every netted SMD pad, flood its own copper layer with a minimum-width track
 (measured rules, exact pad/copper/keepout geometry, board edge) out to --radius
 beyond the pad's copper edge, and sample legal through-via sites (clearance to
-every pad, every via and the copper/keepouts of every copper layer the via
-crosses; never in a pad). Same-net vias or through-hole pads the flood reaches
-count as existing layer changes. A pad with no via site, no track reaching the
-radius and no existing layer change is "trapped" and is listed with the pads,
-tracks, vias, copper, keepouts or board edge bounding its reachable region.
+every pad, every via, board slots and the copper/keepouts of every copper
+layer the via crosses, pour strokes included; never in a pad). A reachable
+same-net via counts as an existing layer change only on a two-layer board (the
+via readback has no type or layer span); a reachable same-net through-hole pad
+needs a captured drill and metallization=true. A pad with no via site, no track
+reaching the radius and no proven layer change is "trapped" and is listed with
+the pads, tracks, vias, copper, slots, keepouts or board edge bounding its
+reachable region; one whose only way out is an unproven transition is
+"unverified" and makes the result incomplete.
 Passing pads report via-site count, nearest site, escape directions and
 existing transitions.
 

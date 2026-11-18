@@ -87,6 +87,10 @@ type pcbEscapeContext struct {
 	vias      []pcbViaP
 	areas     []pcbCopperArea
 	bans      []pcbCopperArea
+	// slots and strokes are filled only by callers that load
+	// pcbBoardCopperExtras (routability); escape-plan leaves them empty.
+	slots   []pcbCopperArea
+	strokes []pcbStrokedArea
 }
 
 func pcbEscapeIntentHash(in pcbRoutingIntent) string {
@@ -331,6 +335,16 @@ func (ctx *pcbEscapeContext) clear(d pcbEscapeDemand, routes []pcbModuleRoute, p
 				return false
 			}
 		}
+		for _, slot := range ctx.slots {
+			if copperAreaSegmentDistance(slot, a, z) < d.WidthMil/2+pcbSlotClearanceMil(ctx.snap.Rules)-netPathGeomEps {
+				return false
+			}
+		}
+		for _, stroke := range ctx.strokes {
+			if stroke.area.Net != d.Net && stroke.area.Layer == d.Layer && stroke.segmentDistance(a, z) < d.WidthMil/2+ctx.snap.Rules.ClearanceMil-netPathGeomEps {
+				return false
+			}
+		}
 		return true
 	}, nil
 }
@@ -442,6 +456,9 @@ func (ctx *pcbEscapeContext) viaCopperLayers() []int {
 	}
 	for _, b := range ctx.bans {
 		add(b.Layer)
+	}
+	for _, st := range ctx.strokes {
+		add(st.area.Layer)
 	}
 	sort.Ints(layers)
 	return layers
