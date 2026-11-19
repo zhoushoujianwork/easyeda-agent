@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://easyeda-agent.daboluo.cc"><b>项目官网</b></a> ·
-  <a href="https://eda.daboluo.cc/#desktop"><b>下载 Desktop 内测版</b></a> ·
+  <a href="https://eda.daboluo.cc/#desktop"><b>下载 EdaDesk Desktop</b></a> ·
   <a href="https://github.com/zhoushoujianwork/easyeda-agent/releases"><b>Releases</b></a> ·
   <a href="https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector"><b>立创插件市场</b></a> ·
   <a href="docs/quick-start.md"><b>快速开始</b></a> ·
@@ -26,23 +26,35 @@
 
 ## 推荐体验：EdaDesk Desktop
 
-想在一个窗口里管理工程、与 AI 对话、查看原理图和 PCB？推荐先下载配套的
-**[EdaDesk Desktop 内测版 →](https://eda.daboluo.cc/#desktop)**。
+[EdaDesk](https://eda.daboluo.cc/) 是基于 easyeda-agent 的 AI 电路设计工作台，
+在一个窗口中管理工程、与 AI 对话，并查看原理图、PCB 和三维结果。
 
 | 使用方式 | 适合谁 | 从哪里开始 |
 |---|---|---|
-| **EdaDesk Desktop** | 希望直接使用桌面工作台，集中查看工程、对话与工具执行 | [官网下载安装包与查看安装说明](https://eda.daboluo.cc/#desktop) |
+| **EdaDesk Desktop** | 希望直接使用桌面工作台，集中查看工程、对话与工具执行 | [官网下载安装包与查看安装说明](https://eda.daboluo.cc/#desktop) · [GitHub 发行仓库](https://github.com/zhoushoujianwork/edadesk-release) |
 | **easyeda-agent CLI / Skill / MCP** | 已使用 Codex、Claude Code 等 AI 客户端，或需要脚本与工具集成 | [下方安装步骤](#安装与开始使用) · [快速开始](docs/quick-start.md) · [MCP 接入](mcp/README.md) |
 
-当前 Desktop **0.1.0 内测版**内置 easyeda-agent **1.16.0**，提供 **macOS Apple Silicon**
-和 **Windows x64** 安装包；文件托管在本项目的
-[GitHub Release](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.16.0#edadesk-desktop)，
-无需访问私有仓库即可下载。后续版本与支持平台以 [Desktop 官网](https://eda.daboluo.cc/) 为准。
+### 下载、注册与开始使用
 
-Desktop 源码暂不公开，开源时间待定；本仓库的 easyeda-agent 继续按下方开源许可提供。
-macOS 包尚未开发者签名和公证，Windows 包尚未签名或完成真机验收。
-可使用自行安装并登录的本机智能体或自定义模型；官方 Token 赠送与统一模型服务尚未开放，
-下载安装不代表获得额度。首次体验建议使用可丢弃的测试工程。
+1. 从 [Desktop 官网](https://eda.daboluo.cc/#desktop) 下载 **macOS Apple Silicon** 或
+   **Windows x64** 安装包。国内用户优先使用官网腾讯云下载，也可从独立的
+   [GitHub Releases](https://github.com/zhoushoujianwork/edadesk-release/releases/latest) 获取安装包与 SHA256 校验文件；当前版本与安装要求以官网和发行说明为准。
+2. 在应用中选择「登录 EdaDesk」，进入官网托管的浏览器登录/注册页，按页面提示选择
+   **微信小程序或 Google**。核对桌面与浏览器中的确认码并明确授权后，返回桌面继续。
+   也可先访问[官网登录入口](https://eda.daboluo.cc/login?next=/my)；首次 Google 登录需确认创建独立账号，
+   已有账号请先用原方式登录，再到个人中心绑定 Google，账号不会按邮箱自动合并。
+3. 在[个人中心](https://eda.daboluo.cc/my)查看账号、可用额度和实际用量。
+   官方模型服务按实际用量扣费，也可使用已安装并登录的本机智能体或自带模型；
+   试用资格、额度和计价以官网当前规则及账号实际状态为准。
+
+### 发行仓库与反馈
+
+**[edadesk-release](https://github.com/zhoushoujianwork/edadesk-release)** 是公开的安装包发布与问题反馈仓库，
+不包含 EdaDesk 源码。EdaDesk 为独立的专有软件；本仓库的 easyeda-agent 继续按下方开源许可提供。
+
+- Desktop 安装和使用问题、功能建议：到[发行仓库 Issues](https://github.com/zhoushoujianwork/edadesk-release/issues/new/choose)提交，或使用应用内 Feedback。
+- CLI / Skill / MCP / 连接器问题：到 [easyeda-agent Issues](https://github.com/zhoushoujianwork/easyeda-agent/issues)提交。
+- 账号、充值和账单问题：使用[官网反馈](https://eda.daboluo.cc/feedback.html)或应用内 Feedback；公开 Issue 请勿附上密钥、登录凭据或私人工程。
 
 ## 它能做什么
 

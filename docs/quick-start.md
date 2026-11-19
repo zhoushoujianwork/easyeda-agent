@@ -1,5 +1,9 @@
 # 快速开始 & 使用注意事项
 
+想直接使用桌面工作台？请先看 [EdaDesk 下载、托管注册与使用入口](../README.md#下载注册与开始使用)，
+安装包与 Desktop 反馈统一在 [edadesk-release](https://github.com/zhoushoujianwork/edadesk-release)。
+下文介绍 CLI / Skill / MCP 的独立安装。
+
 easyeda-agent 有三个配套组成部分；EasyEDA Pro 是运行宿主：
 
 | 部件 | 是什么 | 装在哪 |
