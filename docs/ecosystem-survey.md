@@ -311,6 +311,11 @@ eda.pcb_PrimitiveVia.getAll() + via.getState_Net()            // 每网过孔数
 - 封装为 typed action `pcb.route.auto` + `easyeda pcb autoroute`（默认官方引擎，强制 keep）。
   ESP32-S3R8 两层板现场：12 网 23 s 布通 11 网，19 段锁定铜无损；`success:true` 时也可能 0/1 布通。
 - A4 / R5 由此解除；Freerouting 文件式往返降为离线兜底。
+- 2026-11-19 补充（`pro-api-types` 0.4.30，EDA v4.1.79 起）：新增作业模型 `startAutoRouting` →
+  `{jobId}`、`getAutoJobStatus`（`queued/running/completed/canceled/failed`，整数 `progress`、
+  结构化 `error`、`partial`）、`cancelAutoJob`、`getAutoJobLog`（日志、迭代最优解、布通率）。
+  同步 `autoRouting` 有固定 900 s 硬上限、超时不提交中间几何、不可取消。封装为
+  `pcb.route.auto.start/status/cancel`，`pcb autoroute` 优先使用（#308）；现场未复验前不标 live-verified。
 
 ## 8. PCB 自动布线 + keep-out 深挖（2026-06-29，真机 + 官方文档扫描）
 

@@ -101,3 +101,35 @@ func TestWriteStallRunEndsAtAnAnsweredWrite(t *testing.T) {
 		t.Fatalf("non-timeout write must end the run, got %d", timeouts)
 	}
 }
+
+// EDAD-10: a caller that hung up (CLI interrupted → request context canceled)
+// is not evidence that the host write path stalled. Only a spent budget is.
+func TestClientCancelIsNotAWriteTimeout(t *testing.T) {
+	req := &protocol.Request{Action: "schematic.netflag.create"}
+	canceled := outcomeOf(req, nil, context.Canceled)
+	if canceled.TimedOut || !canceled.ClientCanceled {
+		t.Fatalf("canceled caller classified as timeout: %+v", canceled)
+	}
+	deadline := outcomeOf(req, nil, context.DeadlineExceeded)
+	if !deadline.TimedOut || deadline.ClientCanceled {
+		t.Fatalf("deadline not classified as timeout: %+v", deadline)
+	}
+
+	tr := newWriteHealthTracker()
+	for i := 0; i < 3; i++ {
+		tr.observe("w", canceled)
+	}
+	tr.mu.Lock()
+	st := tr.byWindow["w"]
+	tr.mu.Unlock()
+	if st != nil && len(st.recent) != 0 {
+		t.Fatalf("client-canceled outcomes must not enter write health: %d samples", len(st.recent))
+	}
+	tr.observe("w", deadline)
+	tr.mu.Lock()
+	timeouts, _ := writeStallLocked(tr.byWindow["w"])
+	tr.mu.Unlock()
+	if timeouts != 1 {
+		t.Fatalf("deadline write should count once, got %d", timeouts)
+	}
+}
