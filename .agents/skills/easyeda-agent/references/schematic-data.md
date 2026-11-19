@@ -204,6 +204,7 @@ typed 连接器后重新读取。dry-run 同样不补发 debug 查询，不能�
 | 从实测引脚计算 Lib 内部 | `sch lib-layout --from layout-input.json --out composition.json`；核心与外围的连接图、实测姿态及网络绘制策略 → 局部器件位置/短线/标记，再交给 compose。 |
 | 非标准位号修复 | `sch designators allocate` 分配，`plan` 编译原地修改队列，`verify` 执行前后校验。 |
 | 已有器件补稳定 ID | `sch designators bind --before fresh.json --target-out target.json --out bind.json`：逐个放置的器件没有 `EasyEDA Agent Component ID`，`compose --preserve-instances` 会拒绝；bind 按本页实测连接给未绑定器件写 `cmp-<位号>`，位号、引脚和网络不变，执行后重新采集再 compose。 |
+| 程序化调用 Apply | `sch apply <queue> [--dry-run] --json`：进度写 stderr，stdout 只给一条结构化结果（预检/执行成功或执行前拒绝 `PRECONDITION_REFUSED`）；执行开始后中断没有结果，须先回读。 |
 | 完整 Lib 图面 | `sch compose`：完整连接核心与局部几何 → 单页布局与受保护 Apply。 |
 | 已确认的 Zone 单页 | `sch compose --layout-page page.json`：保持选中页的完整几何、框/标题、spacing 与 sheetPosition，仅转换坐标并生成相同守卫。 |
 | 基础放置 | `sch materialize`：已知库身份和 placement → 仅放件队列。它不是完整模块绘图器；`--with-connectivity` 已停用。 |

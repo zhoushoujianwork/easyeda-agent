@@ -118,12 +118,14 @@ type journalEntry struct {
 func newApplyCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	var (
 		dryRun, resume, yes, quiet bool
+		jsonOut                    bool
 		fromRef, toRef             string
 		journalPath, window, doc   string
 		varOverrides               []string
 		stepDelay                  float64
 	)
 
+	var applyRun func(args []string, executed *bool, result map[string]any) error
 	cmd := &cobra.Command{
 		Use:   "apply <playbook.json>",
 		Short: "Replay a declarative step file (playbook) against EasyEDA",
@@ -136,86 +138,121 @@ Precedence: CLI flag > playbook file > built-in default.`,
   easyeda apply pcb.playbook.json --dry-run`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pb, raw, err := loadPlaybook(args[0])
+			if !jsonOut {
+				var executed bool
+				return applyRun(args, &executed, map[string]any{})
+			}
+			// Callers that must prove the command ended read one JSON result on
+			// stdout; the human progress moves to stderr. A refusal before any
+			// step ran is reported as such. A stop after execution began has no
+			// result: what the last step did is unknown until read back.
+			human, result := stdout, map[string]any{}
+			stdout = stderr
+			defer func() { stdout = human }()
+			executed := false
+			err := applyRun(args, &executed, result)
 			if err != nil {
-				return err
-			}
-
-			// Guarded graph plans cannot skip their baseline or replay into another page.
-			guarded := pb.RequireFullExecution
-			for _, step := range pb.Steps {
-				if step.ExpectedConnectivity != nil {
-					guarded = true
-				}
-			}
-			if guarded {
-				if resume || fromRef != "" || toRef != "" {
-					return fmt.Errorf("guarded plans require a fresh full execution; re-export and re-plan after failure")
-				}
-				if (cfg.project != "" && cfg.project != pb.Meta.Project) || (doc != "" && doc != pb.Meta.Doc) {
-					return fmt.Errorf("cannot override guarded plan target")
-				}
-				local := *cfg
-				local.doc = pb.Meta.Doc
-				cfg = &local
-			}
-			// precedence: CLI flag > file
-			if cfg.project == "" {
-				cfg.project = pb.Meta.Project
-			}
-			effWindow := window
-			if effWindow == "" {
-				effWindow = pb.Meta.Window
-			}
-			if doc != "" { // CLI flag > playbook meta.doc
-				pb.Meta.Doc = doc
-			}
-			vars := map[string]string{}
-			maps.Copy(vars, pb.Vars)
-			for _, kv := range varOverrides {
-				k, v, ok := strings.Cut(kv, "=")
-				if !ok {
-					return fmt.Errorf("invalid --var %q, expected KEY=VALUE", kv)
-				}
-				vars[k] = v
-			}
-
-			if errs := preflight(pb, vars); len(errs) > 0 {
-				for _, e := range errs {
-					fmt.Fprintf(stderr, "preflight: %s\n", e)
-				}
-				return fmt.Errorf("playbook failed preflight (%d problem(s))", len(errs))
-			}
-
-			if journalPath == "" {
-				journalPath = args[0] + ".journal.jsonl"
-			}
-
-			r := &applyRunner{
-				cfg: cfg, stdout: stdout, stderr: stderr,
-				pb: pb, pbPath: args[0], sha: sha256Hex(raw), vars: vars,
-				window: effWindow, yes: yes, quiet: quiet,
-				journalPath: journalPath,
-				stepDelay:   time.Duration(stepDelay * float64(time.Second)),
-			}
-			if dryRun {
-				// ADR-0004 Decision 4: dry-run 必须纯计算 —— 机械保证。
-				defer setDispatchDryRun(true)()
-				return r.printPlan()
-			}
-			if resume {
-				if err := r.loadJournal(); err != nil {
+				if executed {
 					return err
 				}
-			}
-			if err := r.resolveRange(fromRef, toRef); err != nil {
+				_ = writeApplyJSON(human, map[string]any{"ok": false, "dryRun": dryRun,
+					"error": map[string]any{"code": "PRECONDITION_REFUSED", "message": err.Error()}})
 				return err
 			}
-			return r.execute()
+			return writeApplyJSON(human, result)
 		},
+	}
+	applyRun = func(args []string, executed *bool, result map[string]any) error {
+		pb, raw, err := loadPlaybook(args[0])
+		if err != nil {
+			return err
+		}
+
+		// Guarded graph plans cannot skip their baseline or replay into another page.
+		guarded := pb.RequireFullExecution
+		for _, step := range pb.Steps {
+			if step.ExpectedConnectivity != nil {
+				guarded = true
+			}
+		}
+		if guarded {
+			if resume || fromRef != "" || toRef != "" {
+				return fmt.Errorf("guarded plans require a fresh full execution; re-export and re-plan after failure")
+			}
+			if (cfg.project != "" && cfg.project != pb.Meta.Project) || (doc != "" && doc != pb.Meta.Doc) {
+				return fmt.Errorf("cannot override guarded plan target")
+			}
+			local := *cfg
+			local.doc = pb.Meta.Doc
+			cfg = &local
+		}
+		// precedence: CLI flag > file
+		if cfg.project == "" {
+			cfg.project = pb.Meta.Project
+		}
+		effWindow := window
+		if effWindow == "" {
+			effWindow = pb.Meta.Window
+		}
+		if doc != "" { // CLI flag > playbook meta.doc
+			pb.Meta.Doc = doc
+		}
+		vars := map[string]string{}
+		maps.Copy(vars, pb.Vars)
+		for _, kv := range varOverrides {
+			k, v, ok := strings.Cut(kv, "=")
+			if !ok {
+				return fmt.Errorf("invalid --var %q, expected KEY=VALUE", kv)
+			}
+			vars[k] = v
+		}
+
+		if errs := preflight(pb, vars); len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(stderr, "preflight: %s\n", e)
+			}
+			return fmt.Errorf("playbook failed preflight (%d problem(s))", len(errs))
+		}
+
+		if journalPath == "" {
+			journalPath = args[0] + ".journal.jsonl"
+		}
+
+		r := &applyRunner{
+			cfg: cfg, stdout: stdout, stderr: stderr,
+			pb: pb, pbPath: args[0], sha: sha256Hex(raw), vars: vars,
+			window: effWindow, yes: yes, quiet: quiet,
+			journalPath: journalPath,
+			stepDelay:   time.Duration(stepDelay * float64(time.Second)),
+		}
+		if dryRun {
+			// ADR-0004 Decision 4: dry-run 必须纯计算 —— 机械保证。
+			defer setDispatchDryRun(true)()
+			if err := r.printPlan(); err != nil {
+				return err
+			}
+			result["ok"], result["dryRun"], result["name"], result["steps"] = true, true, pb.Meta.Name, len(pb.Steps)
+			return nil
+		}
+		if resume {
+			if err := r.loadJournal(); err != nil {
+				return err
+			}
+		}
+		if err := r.resolveRange(fromRef, toRef); err != nil {
+			return err
+		}
+		*executed = true
+		if err := r.execute(); err != nil {
+			return err
+		}
+		result["ok"], result["dryRun"], result["name"], result["steps"] = true, false, pb.Meta.Name, len(pb.Steps)
+		result["okCount"], result["skipped"], result["journal"] = r.okCount, r.skipCount, r.journalPath
+		return nil
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate + print the plan, execute nothing")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print one structured result on stdout (progress goes to stderr)")
 	cmd.Flags().BoolVar(&resume, "resume", false, "skip steps already ok in the journal (restores captured vars)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "auto-approve confirmation-gated steps")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "only print failures and the final summary")
@@ -697,6 +734,8 @@ type applyRunner struct {
 
 	journalPath string
 	journal     *os.File
+	okCount     int
+	skipCount   int
 	doneOK      map[int]bool // idx (0-based) -> already ok (resume)
 	stepDelay   time.Duration
 
@@ -1011,9 +1050,19 @@ func (r *applyRunner) execute() error {
 		}
 	}
 
+	r.okCount, r.skipCount = okCount, skipCount
 	fmt.Fprintf(r.stdout, "✓ playbook %q done: %d ok, %d skipped, journal %s\n",
 		r.pb.Meta.Name, okCount, skipCount, r.journalPath)
 	return nil
+}
+
+func writeApplyJSON(w io.Writer, v map[string]any) error {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, string(raw))
+	return err
 }
 
 // executeStep runs one step with retry/verify semantics and returns captured vars.
