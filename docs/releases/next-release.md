@@ -1,3 +1,19 @@
+# v1.18.2 已发布
+
+仅提升 `pcb plan-apply`（离线布线方案写回与对账）及公开 Skill 的对应说明，连接器运行时未变化，按 patch 版本发布。
+[v1.18.2](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.18.2) 于 2026-11-19 02:30:12 UTC 正式发布，
+GitHub Latest 已指向本版。合并提交 `e3ede55fd38d11412e5a5389eda19792c8e17e27` 的 CI、十项公开附件校验及本机隔离安装/升级均通过；
+未做独立评审，完整设计 E2E 未执行。范围、验证与市场状态见 [v1.18.2 发布记录](release-1.18.2.md)。
+
+# v1.18.1 已发布（ALCY-7）
+
+仅提升 PR #311 的可布性检查及 Skill 变更，连接器运行时未变化，按 patch 版本发布。
+发布版本、固定提交、下载及安装验证、市场状态和回退入口见 [v1.18.1 发布记录](release-1.18.1.md)。
+[v1.18.1](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.18.1) 于 2026-11-18 16:28:05 UTC
+正式发布，GitHub Latest 已指向本版。main merge `dff86156cbde28e65d83dfe893f1b53f87d967b6` 的 CI、
+十项公开附件校验及本机隔离联网安装/升级均通过；真实四层板复验与完整设计 E2E 仍未执行。
+SkillHub/ClawHub 已提交，公开市场当前仍为 1.18.0，不将提交回执写成前台已更新。
+
 # v1.18.0 已发布
 
 当前正式版为 [v1.18.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.18.0)。
