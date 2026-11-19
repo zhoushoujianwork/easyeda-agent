@@ -63,16 +63,27 @@ func newSchDesignatorsBindCmd(stdout io.Writer) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		bindings := 0
+		refs := []string{}
 		for _, step := range pb.Steps {
 			if step.Action == "schematic.component.modify" {
-				bindings++
+				if patch, ok := step.Payload["patch"].(map[string]any); ok {
+					refs = append(refs, stringVal(patch["designator"]))
+				}
 			}
 		}
-		if bindings == 0 {
+		if len(refs) == 0 {
 			return fmt.Errorf("every part already carries its stable component binding; nothing to bind")
 		}
-		return schDesignatorsWriteJSON(outPath, pb, stdout)
+		outAbs, err := filepath.Abs(outPath)
+		if err != nil {
+			return err
+		}
+		if err = schDesignatorsWriteJSON(outAbs, pb, stdout); err != nil {
+			return err
+		}
+		// A structured summary on stdout is the caller's proof that the
+		// command finished and what it compiled.
+		return schDesignatorsWriteJSON("", map[string]any{"ok": true, "bindings": refs, "playbook": outAbs, "target": targetAbs}, stdout)
 	}}
 	c.Flags().StringVar(&beforePath, "before", "", "fresh sch list envelope with pins, wires and official device identity (required)")
 	c.Flags().StringVar(&targetOut, "target-out", "", "write the identity-only target the queue's guards verify against (required)")

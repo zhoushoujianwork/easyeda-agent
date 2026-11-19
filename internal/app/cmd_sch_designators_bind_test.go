@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,6 +34,15 @@ func TestSchDesignatorsBindAddsOnlyMissingBindings(t *testing.T) {
 	if err := run(); err != nil {
 		t.Fatal(err)
 	}
+	var summary struct {
+		OK       bool     `json:"ok"`
+		Bindings []string `json:"bindings"`
+		Playbook string   `json:"playbook"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &summary); err != nil || !summary.OK || !reflect.DeepEqual(summary.Bindings, []string{"U2"}) || summary.Playbook != out {
+		t.Fatalf("missing structured summary: %s (%v)", buf.String(), err)
+	}
+	buf.Reset()
 	var pb playbook
 	if err := schDesignatorsReadJSON(out, &pb); err != nil {
 		t.Fatal(err)
