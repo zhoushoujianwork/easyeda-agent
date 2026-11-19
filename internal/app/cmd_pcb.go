@@ -2381,7 +2381,7 @@ that net on other layers are kept (GND on TOP then BOTTOM is two calls).`,
 					if ruleErr != nil {
 						return ruleErr
 					}
-					inset = rules.copperToEdgeMil
+					inset = rules.zoneToEdgeMil // pour copper uses the zone↔outline cell
 				}
 				if strings.TrimSpace(net) == "" {
 					return fmt.Errorf("--net must not be empty (a pour must bind to a net; a netless pour is dead copper)")

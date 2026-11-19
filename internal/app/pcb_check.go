@@ -105,6 +105,15 @@ type pcbPadP struct {
 	ShapeOK    bool
 	ShapeIssue string
 	SpecialPad bool
+	// Contours is the exact straight-edged outline of a POLYGON pad in absolute
+	// board mil. It serves exact clearance (pcbExactPadSegmentGap) only; pad
+	// contact/net-path inspection still reports POLYGON as unsupported.
+	Contours [][][2]float64
+}
+
+// exactClearanceKnown reports whether pcbExactPadSegmentGap can measure the pad.
+func (p pcbPadP) exactClearanceKnown() bool {
+	return p.ShapeOK || p.Shape == "POLYGON" && !p.SpecialPad && len(p.Contours) > 0
 }
 
 // halfExt is the pad's half-extent (mil) for center-distance clearance math —

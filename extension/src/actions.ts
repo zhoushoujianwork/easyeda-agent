@@ -434,6 +434,16 @@ export function serializePcbPad(pad: PcbPad): Record<string, unknown> {
 		'getState_Metallization', value => typeof value === 'boolean',
 	);
 	if (hole.error) captureErrors.hole = hole.error;
+	// Hole placement relative to the pad (#309): offsets are kept raw (unit not
+	// verified live); rotation is degrees relative to the pad. Without them a
+	// slot's position/orientation is unknown, so consumers must not assume 0.
+	const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+	const holeOffsetX = capturePcbValue(typeof pad.getState_HoleOffsetX === 'function' ? () => pad.getState_HoleOffsetX() : undefined, 'getState_HoleOffsetX', finite);
+	const holeOffsetY = capturePcbValue(typeof pad.getState_HoleOffsetY === 'function' ? () => pad.getState_HoleOffsetY() : undefined, 'getState_HoleOffsetY', finite);
+	const holeRotation = capturePcbValue(typeof pad.getState_HoleRotation === 'function' ? () => pad.getState_HoleRotation() : undefined, 'getState_HoleRotation', finite);
+	if (holeOffsetX.error) captureErrors.holeOffsetX = holeOffsetX.error;
+	if (holeOffsetY.error) captureErrors.holeOffsetY = holeOffsetY.error;
+	if (holeRotation.error) captureErrors.holeRotation = holeRotation.error;
 	const rotation = pad.getState_Rotation();
 	const record: Record<string, unknown> = {
 		primitiveId: pad.getState_PrimitiveId(),
@@ -449,9 +459,18 @@ export function serializePcbPad(pad: PcbPad): Record<string, unknown> {
 		shape: geometry.shape.value,
 		specialPad: geometry.specialPad.value,
 		hole: hole.value,
-		availability: { shape: geometry.shape.availability, specialPad: geometry.specialPad.availability, hole: hole.availability },
+		holeOffsetX: holeOffsetX.value,
+		holeOffsetY: holeOffsetY.value,
+		holeRotation: holeRotation.value,
+		availability: {
+			shape: geometry.shape.availability, specialPad: geometry.specialPad.availability, hole: hole.availability,
+			holeOffsetX: holeOffsetX.availability, holeOffsetY: holeOffsetY.availability, holeRotation: holeRotation.availability,
+		},
 		captureErrors,
-		captureSources: { shape: 'getState_Pad', specialPad: 'getState_SpecialPad', hole: 'getState_Hole' },
+		captureSources: {
+			shape: 'getState_Pad', specialPad: 'getState_SpecialPad', hole: 'getState_Hole',
+			holeOffsetX: 'getState_HoleOffsetX', holeOffsetY: 'getState_HoleOffsetY', holeRotation: 'getState_HoleRotation',
+		},
 	};
 	if (metallization.availability === 'available') record.metallization = metallization.value;
 	if (geometry.specialPad.availability === 'available') record.specialPadPresent = Array.isArray(geometry.specialPad.value) && geometry.specialPad.value.length > 0;

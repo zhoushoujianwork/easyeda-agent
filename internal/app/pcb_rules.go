@@ -1,6 +1,9 @@
 package app
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // pcb_rules.go — read the board's LIVE DRC rules (clearance / track width / via)
 // and normalize them to mil, so the daemon-side heuristics (route-short,
@@ -23,8 +26,15 @@ type pcbRules struct {
 	trackWidthMinMil       float64 // minimum legal track width (clamp floor)
 	viaDrillMil            float64 // via hole diameter
 	viaDiameterMil         float64 // via outer diameter
-	copperToEdgeMil        float64 // copper/plane-zone → board-outline clearance (pour inset floor)
-	source                 string  // "live" | "fallback"
+	copperToEdgeMil        float64 // routed copper (track/via) → board-outline clearance
+	zoneToEdgeMil          float64 // copper/plane zone → board-outline clearance (pour inset floor)
+	holeToTrackMil         float64 // drilled hole → track clearance; 0 = not measured
+	slotToTrackMil         float64 // slot region → track clearance; 0 = not measured
+	// spacingMil is every measured Safe Spacing cell keyed "Row↔Column" (mil);
+	// spacingSource names the rule path and its declared unit.
+	spacingMil    map[string]float64
+	spacingSource string
+	source        string // "live" | "fallback"
 	// measured names the fields read from the board rule (pcbRuleField*).
 	// "live" means at least one field was read; consumers that must not run
 	// on defaults check the exact fields they use.
@@ -39,7 +49,12 @@ const (
 	pcbRuleFieldViaDrill            = "viaDrill"
 	pcbRuleFieldViaDiameter         = "viaDiameter"
 	pcbRuleFieldCopperToEdge        = "copperToEdge"
+	pcbRuleFieldZoneToEdge          = "zoneToEdge"
+	pcbRuleFieldHoleToTrack         = "holeToTrack"
+	pcbRuleFieldSlotToTrack         = "slotToTrack"
 )
+
+const pcbSafeSpacingPath = "rules.config.Spacing.Safe Spacing.copperThickness1oz"
 
 // defaultPcbRules is the daemon's fallback baseline — a sane seed when the live
 // rule is missing or a path can't be read. Values are the DOUBLE-LAYER row of the
@@ -54,7 +69,7 @@ func defaultPcbRules() pcbRules {
 	return pcbRules{
 		clearanceMil: 6, clearanceTrackTrackMil: 4,
 		trackWidthMil: 10, powerWidthMil: 20, trackWidthMinMil: 5,
-		viaDrillMil: 12, viaDiameterMil: 24, copperToEdgeMil: 10, source: "fallback",
+		viaDrillMil: 12, viaDiameterMil: 24, copperToEdgeMil: 10, zoneToEdgeMil: 10, source: "fallback",
 	}
 }
 
@@ -246,22 +261,44 @@ func parsePcbRules(result map[string]any) (pcbRules, error) {
 		}
 	}
 
-	// Copper-to-edge — Board Outline ↔ Copper/Plane Zone from the same Safe Spacing
-	// matrix, located by the row/col labels (robust to matrix size). This is the
-	// pour pull-back / inset floor (ceshi live = 10mil; JLCPCB fab min = 8mil).
-	ss := mnav(cfg, "Spacing", "Safe Spacing", "copperThickness1oz")
-	labels := asStrSlice(mnav(ss, "row"))
-	if content, ok := mnav(ss, "tables", "1", "content").([]any); ok {
-		bo := indexOf(labels, "Board Outline")
-		cz := indexOf(labels, "Copper/Plane Zone")
-		if bo >= 0 && bo < len(content) {
-			if row, ok := content[bo].([]any); ok && cz >= 0 && cz < len(row) {
-				if v, ok := asFloatOK(row[cz]); ok && v > 0 {
-					r.copperToEdgeMil = round2(v * spacingScale)
-					r.measured = append(r.measured, pcbRuleFieldCopperToEdge)
-				}
-			}
+	// Board-outline, hole and slot spacing come from the same lower-triangular
+	// matrix, located by its row/column labels. Native DRC judges each object
+	// pair separately: on JLCEDA defaults Board Outline↔Track is 0.29972mm
+	// (11.8mil) while Board Outline↔Copper/Plane Zone is 0.254mm (10mil), so the
+	// zone cell must never stand in for routed copper (#309).
+	if spacingMil := pcbSafeSpacingCells(spacing, spacingScale); len(spacingMil) > 0 {
+		r.spacingMil = spacingMil
+		unit, _ := mnav(spacing, "unit").(string)
+		r.spacingSource = pcbSafeSpacingPath + " (unit " + unit + ")"
+		cell := func(a, b string) (float64, bool) {
+			v, ok := spacingMil[a+"↔"+b]
+			return v, ok && v > 0
 		}
+		if v, ok := cell("Board Outline", "Copper/Plane Zone"); ok {
+			r.zoneToEdgeMil = v
+			r.measured = append(r.measured, pcbRuleFieldZoneToEdge)
+		}
+		track, trackOK := cell("Board Outline", "Track")
+		via, viaOK := cell("Board Outline", "Via")
+		if trackOK || viaOK {
+			r.copperToEdgeMil = math.Max(track, via)
+			r.measured = append(r.measured, pcbRuleFieldCopperToEdge)
+		} else if r.zoneToEdgeMil > 0 {
+			// Older matrices without per-object outline cells keep the former
+			// zone-derived value; provenance still records zoneToEdge only.
+			r.copperToEdgeMil = r.zoneToEdgeMil
+		}
+		if v, ok := cell("Hole", "Track"); ok {
+			r.holeToTrackMil = v
+			r.measured = append(r.measured, pcbRuleFieldHoleToTrack)
+		}
+		if v, ok := cell("Slot Region", "Track"); ok {
+			r.slotToTrackMil = v
+			r.measured = append(r.measured, pcbRuleFieldSlotToTrack)
+		}
+	}
+	if r.zoneToEdgeMil <= 0 {
+		r.zoneToEdgeMil = r.copperToEdgeMil
 	}
 
 	// Power width is a design convention (fab reference), not in the board rule;
@@ -276,6 +313,42 @@ func parsePcbRules(result map[string]any) (pcbRules, error) {
 		r.source = "fallback"
 	}
 	return r, nil
+}
+
+// pcbSafeSpacingCells maps each measured lower-triangular cell to
+// "Row↔Column" in mil. Row labels index content rows; column labels index the
+// entries within a row (row i holds columns 0..i), so a pair (a,b) is stored
+// once under the later row. Both orderings are emitted for direct lookup.
+func pcbSafeSpacingCells(ss any, scale float64) map[string]float64 {
+	rows := asStrSlice(mnav(ss, "row"))
+	cols := asStrSlice(mnav(ss, "column"))
+	if len(cols) == 0 {
+		cols = rows
+	}
+	content, ok := mnav(ss, "tables", "1", "content").([]any)
+	if !ok {
+		return nil
+	}
+	out := map[string]float64{}
+	for i, rawRow := range content {
+		row, ok := rawRow.([]any)
+		if !ok || i >= len(rows) || rows[i] == "" {
+			continue
+		}
+		for j, rawValue := range row {
+			if j >= len(cols) || cols[j] == "" {
+				continue
+			}
+			v, ok := asFloatOK(rawValue)
+			if !ok || !allFinite(v) || v < 0 {
+				continue
+			}
+			mil := round2(v * scale)
+			out[rows[i]+"↔"+cols[j]] = mil
+			out[cols[j]+"↔"+rows[i]] = mil
+		}
+	}
+	return out
 }
 
 // Positive numeric rule fields require a unit. Missing fields retain the
