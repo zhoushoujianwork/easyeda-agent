@@ -203,6 +203,7 @@ typed 连接器后重新读取。dry-run 同样不补发 debug 查询，不能�
 | 既有框/标题的差异 Apply | `sch design-diff before-plan.json after-plan.json --before fresh.json --playbook frame-diff-apply.json`；第一份是已落地基线，第二份是期望目标，只编译变化的既有 owned frames。 |
 | 从实测引脚计算 Lib 内部 | `sch lib-layout --from layout-input.json --out composition.json`；核心与外围的连接图、实测姿态及网络绘制策略 → 局部器件位置/短线/标记，再交给 compose。 |
 | 非标准位号修复 | `sch designators allocate` 分配，`plan` 编译原地修改队列，`verify` 执行前后校验。 |
+| 保留纯导线连接（匿名网络） | 读回里 `$` 开头的网名（如 `$2N10`）是用户只用导线画、没有网名的连接，平台重绘会重编号。compose 里沿用 inspect 给的 `$` 名，**只用导线**把它的引脚连成一棵连续导线树，不加网络标签或端口（加了会被拒，编辑器也无法给 `$` 名端口起标题）；最终核对按引脚分组，不比网名。 |
 | 已有器件补稳定 ID | `sch designators bind --before fresh.json --target-out target.json --out bind.json`：逐个放置的器件没有 `EasyEDA Agent Component ID`，`compose --preserve-instances` 会拒绝；bind 按本页实测连接给未绑定器件写 `cmp-<位号>`，位号、引脚和网络不变，执行后重新采集再 compose。target 只含本页，队列里的 verify 带 `--page-scope`：其他页器件只需不撞 ID 或位号，不要求出现在 target 里。 |
 | 程序化调用 Apply | `sch apply <queue> [--dry-run] --json`：进度写 stderr，stdout 只给一条结构化结果（预检/执行成功、执行前拒绝 `PRECONDITION_REFUSED`，或某步失败停止 `STEP_FAILED`，含 `step`、原因和 `cause.code`；`cause.code=TIMEOUT` 表示该步结果未知）；`STEP_FAILED` 前的步骤可能已改动设计，须先回读；未验证写入等其他中断没有结果。 |
 | 完整 Lib 图面 | `sch compose`：完整连接核心与局部几何 → 单页布局与受保护 Apply。 |

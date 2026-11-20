@@ -621,12 +621,21 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 	return result, nil
 }
 
+// schAnonymousNet reports a platform-generated net name ("$2N10"): a net the
+// user drew with wires only. It has no title the editor can give a port, and
+// the platform renumbers it on redraw, so it is identified by its pins.
+func schAnonymousNet(name string) bool { return strings.HasPrefix(name, "$") }
+
 // Verify that every electrical pin reaches a named marker through real wires.
 // Names written only in the JSON wire record do not name a native wire tree.
+// An anonymous net carries no marker: its pins must share one wire tree.
 func validateSchCompositionNets(p *powerLayoutPlan) error {
 	segs := append([]powerLayoutWire(nil), p.Wires...)
 	flagIndexes := map[int]string{}
 	for _, f := range p.Flags {
+		if schAnonymousNet(f.Net) {
+			return fmt.Errorf("anonymous net %s cannot carry a label or port; connect its pins with wires only", f.Net)
+		}
 		if strings.TrimSpace(f.Net) == "" || !plGrid(f.Offset) || f.Offset <= 0 {
 			return fmt.Errorf("invalid marker net/offset")
 		}
@@ -681,19 +690,31 @@ func validateSchCompositionNets(p *powerLayoutPlan) error {
 	for i, n := range flagIndexes {
 		named[root(i)] = n
 	}
+	anonymousTree := map[string]int{}
 	for _, c := range p.Placements {
 		for _, q := range c.Pins {
-			found := false
+			found, tree := false, -1
 			for i, s := range segs {
 				if plOnSegment([2]float64{q.X, q.Y}, s.Points[0], s.Points[1]) {
 					if q.Net == "" || s.Net != q.Net {
 						return fmt.Errorf("wire touches NC/foreign pin %s.%s", c.Designator, q.Number)
 					}
 					touched[root(i)] = true
+					tree = root(i)
 					if named[root(i)] == q.Net {
 						found = true
 					}
 				}
+			}
+			if schAnonymousNet(q.Net) {
+				if tree < 0 {
+					return fmt.Errorf("%s.%s on anonymous net %s is not wired", c.Designator, q.Number, q.Net)
+				}
+				if prev, seen := anonymousTree[q.Net]; seen && prev != tree {
+					return fmt.Errorf("anonymous net %s is split: %s.%s is on a different wire tree; an unlabeled net must be one continuous wire tree", q.Net, c.Designator, q.Number)
+				}
+				anonymousTree[q.Net] = tree
+				continue
 			}
 			if q.Net != "" && !found {
 				return fmt.Errorf("%s.%s does not reach a named wire tree", c.Designator, q.Number)
