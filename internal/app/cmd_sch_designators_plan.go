@@ -449,6 +449,23 @@ func verifySchDesignatorScene(before schDesignatorBaseline, target connectivity.
 	if err != nil {
 		return err
 	}
+	if phase == "after" {
+		// Modifying a part makes the editor hydrate device text metadata the
+		// baseline read did not carry (e.g. manufacturer). Accept a text field
+		// that was absent before; every field the baseline had is still exact.
+		cs, as := expected["components"].(map[string]any), actual["components"].(map[string]any)
+		for pid := range before.IDs {
+			want, _ := cs[pid].(map[string]any)
+			have, _ := as[pid].(map[string]any)
+			for key, value := range have {
+				if _, known := want[key]; !known && want != nil {
+					if _, text := value.(string); text {
+						want[key] = value
+					}
+				}
+			}
+		}
+	}
 	if !reflect.DeepEqual(expected, actual) {
 		want, _ := json.Marshal(expected)
 		got, _ := json.Marshal(actual)

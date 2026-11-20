@@ -251,6 +251,16 @@ func TestSchDesignatorsSceneProtectsElectricalAndPhysicalData(t *testing.T) {
 	if err := verifySchDesignatorScene(before, target, after, "after"); err != nil {
 		t.Fatalf("allowed render/timestamp change blocked: %v", err)
 	}
+	// Modifying a part hydrates device text metadata the baseline lacked.
+	after.Parts["p-rf"]["manufacturer"] = "Espressif"
+	if err := verifySchDesignatorScene(before, target, after, "after"); err != nil {
+		t.Fatalf("hydrated manufacturer blocked: %v", err)
+	}
+	after.Parts["p-rf"]["manufacturerFlags"] = float64(1)
+	if err := verifySchDesignatorScene(before, target, after, "after"); err == nil {
+		t.Fatal("a new non-text field passed")
+	}
+	delete(after.Parts["p-rf"], "manufacturerFlags")
 	for _, tc := range []struct {
 		name, path string
 		mutate     func(schDesignatorBaseline)
