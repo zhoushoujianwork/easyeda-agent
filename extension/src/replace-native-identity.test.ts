@@ -33,6 +33,10 @@ interface Options {
 	wrongCandidateSource?: boolean;
 	drift?: 'create' | 'restore';
 	unprovedCandidateAbsence?: 'still-present' | 'read-error';
+	/** Live platform: a created device carries its own otherProperty and modify merges into it. */
+	deviceFields?: boolean;
+	/** Live platform drops one restored entry. */
+	dropKept?: string;
 }
 
 function harness(options: Options = {}) {
@@ -106,7 +110,8 @@ function harness(options: Options = {}) {
 				const source = { uuid: replacement ? NEW_ASSET : OLD_ASSET, libraryUuid: device.libraryUuid };
 				const state: State = {
 					...clone(original), ...part(replacement), primitiveId: id, designator: 'U?', uniqueId: `synthetic-created-${id}`,
-					x, y, subPartName, rotation, mirror, addIntoBom, addIntoPcb, otherProperty: {},
+					x, y, subPartName, rotation, mirror, addIntoBom, addIntoPcb,
+					otherProperty: options.deviceFields ? { 'Manufacturer Part': part(replacement).manufacturerId, Datasheet: 'synthetic.pdf' } : {},
 					device: { uuid: replacement ? CANDIDATE_DEVICE_INSTANCE : RESTORED_DEVICE_INSTANCE, libraryUuid: device.libraryUuid, name: part(replacement).name },
 					footprint: { uuid: replacement ? CANDIDATE_FP_INSTANCE : RESTORED_FP_INSTANCE, libraryUuid: device.libraryUuid, name: 'Synthetic created package' },
 					nativeSource: replacement && options.wrongCandidateSource ? { ...source, uuid: WRONG_ASSET } : source,
@@ -116,7 +121,10 @@ function harness(options: Options = {}) {
 			modify: async (id: string, properties: State) => {
 				log('component.modify', id, properties); const state = states.get(id);
 				if (!state) return undefined;
-				Object.assign(state, clone(properties)); if (id === CANDIDATE_ID) drift('restore'); return primitive(state);
+				const next = clone(properties);
+				if (options.deviceFields && next.otherProperty) next.otherProperty = { ...(state.otherProperty as State), ...(next.otherProperty as State) };
+				if (options.dropKept && next.otherProperty) delete (next.otherProperty as State)[options.dropKept];
+				Object.assign(state, next); if (id === CANDIDATE_ID) drift('restore'); return primitive(state);
 			},
 			delete: async (id: string) => {
 				log('component.delete', id);
@@ -222,4 +230,18 @@ test('native16 candidate cleanup without proven absence refuses to recreate the 
 		assert.equal(f.states.has(RESTORED_ID), false);
 		assert.ok(f.events.some(event => event.kind === 'component.delete' && event.args[0] === CANDIDATE_ID));
 	});
+});
+
+test('keepProperties restores old custom entries on top of the new device\'s own fields', async t => {
+	const f = harness({ deviceFields: true }), result = await replace(t, f);
+	const props = result.result.component.otherProperty;
+	assert.equal(props.Voltage, '3.3V');
+	assert.equal(props['Manufacturer Part'], NEW_MODEL);
+	assert.equal(f.states.has(CANDIDATE_ID), true);
+});
+
+test('keepProperties still fails closed when a kept entry is not restored', async t => {
+	const f = harness({ deviceFields: true, dropKept: 'Voltage' });
+	await assert.rejects(() => replace(t, f), (error: any) => /replacement-restore/.test(error.message) && /otherProperty\.Voltage was not restored/.test(String(error.detail)));
+	assert.equal(f.states.has(CANDIDATE_ID), false);
 });

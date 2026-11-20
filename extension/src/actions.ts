@@ -8414,6 +8414,16 @@ const schematicComponentReplace: Handler = async (payload) => {
 			const identity = await resolvePlacedDeviceIdentity(observed, identityContext);
 			if (!sameDeviceRef(identity, dev)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Replacement or rollback-original resolved to a different library device.');
 			for (const [key, value] of Object.entries(props)) {
+				// otherProperty is a map the new device already populates with its own
+				// fields (Manufacturer Part, Datasheet…); keepProperties restores the
+				// old entries on top. Prove each restored entry, not map equality.
+				if (key === 'otherProperty' && value && typeof value === 'object') {
+					const have = (observed[key] ?? {}) as Record<string, unknown>;
+					for (const [entry, kept] of Object.entries(value as Record<string, unknown>)) {
+						if (exactJSON(have[entry]) !== exactJSON(kept)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property otherProperty.${entry} was not restored.`);
+					}
+					continue;
+				}
 				if (exactJSON(observed[key]) !== exactJSON(value)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property ${key} was not restored.`);
 			}
 			for (const key of ['x', 'y', 'rotation', 'mirror', 'addIntoBom', 'addIntoPcb']) {
