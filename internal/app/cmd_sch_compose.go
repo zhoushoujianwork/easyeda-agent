@@ -1135,6 +1135,9 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 		gateID = "paperless-schematic-gate"
 		gateFlags = map[string]any{"json": true}
 	}
+	// A whole-page rebuild is judged on its own page; other pages' DRC items
+	// are reported but must not block it.
+	gateFlags["drc-page"] = p.Connectivity.DocumentID
 	pb.Steps = append(pb.Steps, playbookStep{ID: "verify-all-pins-nets-nc", Action: "schematic.components.list", Payload: read, ExpectSchematic: final}, playbookStep{ID: "electrical-check", Action: "schematic.check", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: "wire-tree-check", Action: "schematic.bridgeCheck", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: gateID, Run: "sch gate", Flags: gateFlags}, playbookStep{ID: "save-composition", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
 	if preserved != nil {
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-saved-instance-preservation", Action: "schematic.components.list", Payload: read, ExpectSchematic: final})

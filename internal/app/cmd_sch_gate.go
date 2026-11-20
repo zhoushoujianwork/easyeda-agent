@@ -453,7 +453,7 @@ func gateBridgeStage(cfg *appConfig, window string, allPages, strict bool) gateS
 
 // gateDrcStage runs the official SDK DRC. Only fatal blocks — matching the
 // standalone `sch drc` contract, which real boards are calibrated against.
-func gateDrcStage(cfg *appConfig, window string, strict bool) gateStage {
+func gateDrcStage(cfg *appConfig, window string, strict bool, drcPage string) gateStage {
 	st := gateStage{Name: "drc"}
 	payload := map[string]any{"includeVerboseError": true}
 	if strict {
@@ -482,7 +482,7 @@ func gateDrcStage(cfg *appConfig, window string, strict bool) gateStage {
 			rep.Summary.Fatal, rep.Summary.Error, rep.Summary.Warn, rep.Summary.Info, rep.Summary.Total,
 			drcVerdictLabel(rep.Passed))
 	}
-	st.BlockingReasons = append(st.BlockingReasons, drcBlockingReasons(rep, strict)...)
+	st.BlockingReasons = append(st.BlockingReasons, drcBlockingReasons(rep, strict, drcPage)...)
 	if len(st.BlockingReasons) > 0 {
 		st.Status = gateStatusFail
 	} else {
@@ -502,7 +502,10 @@ func gateDrcStage(cfg *appConfig, window string, strict bool) gateStage {
 // 这一关此前只看 rep.Fatal,**收了 strict 参数却不用**:官方 DRC 判定的 error 在
 // 任何档位下都不阻塞,而文档写着 strict 会提升非 fatal。文档承诺了判据没做的事,
 // 方向还是「你以为管住了」(2026-08-16 回归测试翻出)。
-func drcBlockingReasons(rep drcReport, strict bool) []string {
+func drcBlockingReasons(rep drcReport, strict bool, page string) []string {
+	if scoped, ok := drcPageScoped(rep, strict, page); ok {
+		return scoped
+	}
 	var out []string
 	if !rep.Passed {
 		out = append(out, fmt.Sprintf("native DRC verdict failed (strict=%t; inspect EasyEDA DRC 面板)", strict))
@@ -573,8 +576,8 @@ func gateAdviceFor(st gateStage) []string {
 
 // runSchGate executes the fixed S5 gate pipeline and renders one report.
 func runSchGate(cfg *appConfig, window string, allPages, strict, asJSON, failFast bool,
-	only, skip string, minGap, pinEps, overlapEps float64, stdout, stderr io.Writer) error {
-	rep, err := collectSchGate(cfg, window, allPages, strict, failFast, only, skip,
+	only, skip, drcPage string, minGap, pinEps, overlapEps float64, stdout, stderr io.Writer) error {
+	rep, err := collectSchGate(cfg, window, allPages, strict, failFast, only, skip, drcPage,
 		minGap, pinEps, overlapEps, stderr)
 	if err != nil {
 		return err
@@ -607,7 +610,7 @@ func runSchGate(cfg *appConfig, window string, allPages, strict, asJSON, failFas
 // 看 error 非空」来判,blocked 就会被折成 fail —— 「检查器没跑起来」被当成「板子有病」,
 // 正是 gate 三态存在的理由。判定只有一个来源,渲染是它的下游。
 func collectSchGate(cfg *appConfig, window string, allPages, strict, failFast bool,
-	only, skip string, minGap, pinEps, overlapEps float64, stderr io.Writer) (*gateReport, error) {
+	only, skip, drcPage string, minGap, pinEps, overlapEps float64, stderr io.Writer) (*gateReport, error) {
 	if strict && allPages {
 		return nil, fmt.Errorf("sch gate: --strict cannot be combined with --all-pages: inactive pages expose shallow geometry (see layout-lint), so gate each page after `easyeda doc switch <page>`")
 	}
@@ -647,7 +650,7 @@ func collectSchGate(cfg *appConfig, window string, allPages, strict, failFast bo
 		case "bridge-check":
 			st = gateBridgeStage(cfg, window, allPages, strict)
 		case "drc":
-			st = gateDrcStage(cfg, window, strict)
+			st = gateDrcStage(cfg, window, strict, drcPage)
 		}
 		byName[name] = st
 		// A stage that could not RUN stops the pipeline: the remaining checkers
@@ -784,7 +787,7 @@ func renderGateReport(rep gateReport, w io.Writer) {
 func newSchGateCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
 	var (
 		allPages, strict, asJSON, failFast bool
-		only, skip                         string
+		only, skip, drcPage                string
 		minGap, pinEps, overlapEps         float64
 	)
 	c := &cobra.Command{
@@ -829,7 +832,7 @@ superset of the four single commands' JSON: nothing needs a second run.`,
   easyeda sch gate --fail-fast              # 第一个阻塞失败就停`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSchGate(cfg, *window, allPages, strict, asJSON, failFast,
-				only, skip, minGap, pinEps, overlapEps, stdout, stderr)
+				only, skip, drcPage, minGap, pinEps, overlapEps, stdout, stderr)
 		},
 	}
 	c.Flags().BoolVar(&allPages, "all-pages", false, "gate every page (geometry on inactive pages is shallow — cannot combine with --strict)")
@@ -838,10 +841,86 @@ superset of the four single commands' JSON: nothing needs a second run.`,
 	c.Flags().BoolVar(&failFast, "fail-fast", false, "stop at the first blocking failure instead of collecting every stage")
 	c.Flags().StringVar(&only, "only", "", "run only these stages (comma-separated: layout-lint,check,bridge-check,drc)")
 	c.Flags().StringVar(&skip, "skip", "", "skip these stages (comma-separated)")
+	c.Flags().StringVar(&drcPage, "drc-page", "", "drc stage: judge only violations on this schematic page (document UUID); items wholly on other pages are reported, not blocking. Needs complete per-item detail, else the native verdict stands")
 	// Defaults mirror `sch layout-lint` / `sch check` exactly — gating a page must
 	// never disagree with linting it directly.
 	c.Flags().Float64Var(&minGap, "min-gap", gateDefaultMinGap, "layout-lint stage: min edge-to-edge gap (mm) before a pair is flagged as tight")
 	c.Flags().Float64Var(&pinEps, "pin-eps", gateDefaultPinEps, "layout-lint stage: max distance (mm) at which two pins of DIFFERENT components count as coincident; 0 = strict equality")
 	c.Flags().Float64Var(&overlapEps, "overlap-eps", gateDefaultOverlapEps, "check stage: min positive-area extent (mm) for the marker-overlap/titleblock-overlap rules")
 	return c
+}
+
+
+// drcPageScoped judges only the violations that touch one schematic page. The
+// native DRC is project-wide, so a whole-page edit would otherwise be blocked
+// by another page's work in progress. It applies only when per-item detail is
+// complete (one entry per counted item); an item with no sheet evidence counts
+// as on the page. Otherwise ok=false and the native verdict stands.
+func drcPageScoped(rep drcReport, strict bool, page string) ([]string, bool) {
+	if page == "" || rep.Summary == nil || !rep.DetailsAvailable || len(rep.Violations) != rep.Summary.Total {
+		return nil, false
+	}
+	var fatal, errs, warns, others int
+	for _, v := range rep.Violations {
+		sheets := drcViolationSheets(v)
+		onPage := len(sheets) == 0
+		for _, sh := range sheets {
+			if sh == "" || sh == page {
+				onPage = true
+			}
+		}
+		level := strings.ToLower(v.Level)
+		if !onPage {
+			if level != "info" {
+				others++
+			}
+			continue
+		}
+		switch level {
+		case "fatal":
+			fatal++
+		case "error":
+			errs++
+		case "warn", "warning":
+			warns++
+		case "info":
+		default:
+			return nil, false // unknown severity: keep the native verdict
+		}
+	}
+	var out []string
+	if fatal > 0 {
+		out = append(out, fmt.Sprintf("%d fatal DRC violation on this page", fatal))
+	}
+	if errs > 0 {
+		out = append(out, fmt.Sprintf("%d error-level DRC violation on this page", errs))
+	}
+	if strict && warns > 0 {
+		out = append(out, fmt.Sprintf("%d warn-level DRC violation on this page (--strict;明细见 stages[].detail.violations)", warns))
+	}
+	if len(out) == 0 && !rep.Passed && others == 0 {
+		// Native failure with nothing explaining it: never pass on our reading.
+		return nil, false
+	}
+	return out, true
+}
+
+func drcViolationSheets(v drcViolation) []string {
+	var raw struct {
+		Primitives []struct {
+			Sheet *string `json:"sheet"`
+		} `json:"primitives"`
+	}
+	if len(v.Raw) == 0 || json.Unmarshal(v.Raw, &raw) != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range raw.Primitives {
+		if p.Sheet == nil {
+			out = append(out, "")
+		} else {
+			out = append(out, *p.Sheet)
+		}
+	}
+	return out
 }
