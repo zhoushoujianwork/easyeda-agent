@@ -14,6 +14,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -144,14 +146,21 @@ Precedence: CLI flag > playbook file > built-in default.`,
 			}
 			// Callers that must prove the command ended read one JSON result on
 			// stdout; the human progress moves to stderr. A refusal before any
-			// step ran is reported as such. A stop after execution began has no
-			// result: what the last step did is unknown until read back.
+			// step ran is reported as such. A step that failed and stopped the
+			// queue is reported as STEP_FAILED with its cause; earlier steps may
+			// have changed the design, so the caller must read back. Other stops
+			// after execution began (unverified writes) have no result.
 			human, result := stdout, map[string]any{}
 			stdout = stderr
 			defer func() { stdout = human }()
 			executed := false
 			err := applyRun(args, &executed, result)
 			if err != nil {
+				var stepErr *applyStepError
+				if executed && errors.As(err, &stepErr) {
+					_ = writeApplyJSON(human, stepErr.result(dryRun))
+					return err
+				}
 				if executed {
 					return err
 				}
@@ -1046,7 +1055,7 @@ func (r *applyRunner) execute() error {
 					fmt.Fprintf(r.stderr, "  ⚠ 变更类步骤失败/超时:变更可能已生效——先读回校验,再决定恢复步骤\n")
 				}
 			}
-			return fmt.Errorf("playbook stopped at step %s (%d ok, %d skipped)", ref, okCount, skipCount)
+			return &applyStepError{step: ref, okCount: okCount, skipCount: skipCount, journal: r.journalPath, cause: execErr}
 		}
 	}
 
@@ -1054,6 +1063,41 @@ func (r *applyRunner) execute() error {
 	fmt.Fprintf(r.stdout, "✓ playbook %q done: %d ok, %d skipped, journal %s\n",
 		r.pb.Meta.Name, okCount, skipCount, r.journalPath)
 	return nil
+}
+
+// applyStepError is a queue stop at a failed step. The cause code tells the
+// caller whether the step's own outcome is known: TIMEOUT means a write may
+// still be running.
+type applyStepError struct {
+	step               string
+	okCount, skipCount int
+	journal            string
+	cause              error
+}
+
+func (e *applyStepError) Error() string {
+	return fmt.Sprintf("playbook stopped at step %s (%d ok, %d skipped)", e.step, e.okCount, e.skipCount)
+}
+
+func (e *applyStepError) Unwrap() error { return e.cause }
+
+func (e *applyStepError) result(dryRun bool) map[string]any {
+	return map[string]any{"ok": false, "dryRun": dryRun, "okCount": e.okCount, "skipped": e.skipCount, "journal": e.journal,
+		"error": map[string]any{"code": "STEP_FAILED", "step": e.step, "message": e.cause.Error(), "cause": map[string]any{"code": applyCauseCode(e.cause)}}}
+}
+
+func applyCauseCode(err error) string {
+	var actionErr *actionError
+	if errors.As(err, &actionErr) && actionErr.Code != "" {
+		return actionErr.Code
+	}
+	var netErr net.Error
+	text := strings.ToLower(err.Error())
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.As(err, &netErr) && netErr.Timeout() ||
+		strings.Contains(text, "timeout") || strings.Contains(text, "timed out") || strings.Contains(text, "deadline exceeded") {
+		return "TIMEOUT"
+	}
+	return "STEP_ERROR"
 }
 
 func writeApplyJSON(w io.Writer, v map[string]any) error {
