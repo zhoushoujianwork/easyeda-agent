@@ -1012,13 +1012,7 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 				cleared.SourceConnectivityEdits = nil
 				cleared.PagePrimitives = remaining
 				cleared.Drawing = &schematicDrawingExpectation{}
-				for ref, part := range cleared.Parts {
-					for number, q := range part.Pins {
-						q.Net = nil
-						part.Pins[number] = q
-					}
-					cleared.Parts[ref] = part
-				}
+				schDropPinNets(cleared)
 				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-preserved-parts-after-clear", Action: "schematic.components.list", Payload: read, ExpectSchematic: cleared})
 			}
 			for i, c := range p.Layout.Placements {
@@ -1084,13 +1078,7 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			preserved.protect(ready)
 			ready.Drawing = &schematicDrawingExpectation{}
 			ready.Ownership = nil
-			for ref, part := range ready.Parts {
-				for number, pin := range part.Pins {
-					pin.Net = nil // disconnected net names may be unavailable before wires exist
-					part.Pins[number] = pin
-				}
-				ready.Parts[ref] = part
-			}
+			schDropPinNets(ready)
 			pb.Steps = append(pb.Steps, playbookStep{ID: "verify-edited-nc-before-wiring", Action: "schematic.components.list", Payload: read, ExpectSchematic: ready})
 		}
 		for i, w := range p.Layout.Wires {
@@ -1158,4 +1146,16 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 		return nil, fmt.Errorf("composition Apply preflight: %v", errs)
 	}
 	return pb, nil
+}
+
+// Before wires exist no pin has a net, so an unwired checkpoint drops every net
+// assertion: named (Net) and anonymous-net grouping (AutoNet) alike.
+func schDropPinNets(e *schematicStateExpectation) {
+	for ref, part := range e.Parts {
+		for number, pin := range part.Pins {
+			pin.Net, pin.AutoNet = nil, nil
+			part.Pins[number] = pin
+		}
+		e.Parts[ref] = part
+	}
 }
