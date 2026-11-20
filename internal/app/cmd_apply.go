@@ -1034,7 +1034,8 @@ func (r *applyRunner) execute() error {
 		var stateErr *schematicExpectationError
 		if errors.As(execErr, &stateErr) {
 			fmt.Fprintf(r.stderr, "  expectSchematic is a mandatory gate — stopping; journal: %s\n", r.journalPath)
-			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
+			// A read-only gate: its outcome is known, so --json reports it.
+			return &applyStepError{step: ref, okCount: okCount, skipCount: skipCount, journal: r.journalPath, cause: execErr}
 		}
 		switch onFail {
 		case "continue":
@@ -1076,7 +1077,7 @@ type applyStepError struct {
 }
 
 func (e *applyStepError) Error() string {
-	return fmt.Sprintf("playbook stopped at step %s (%d ok, %d skipped)", e.step, e.okCount, e.skipCount)
+	return fmt.Sprintf("playbook stopped at step %s (%d ok, %d skipped): %v", e.step, e.okCount, e.skipCount, e.cause)
 }
 
 func (e *applyStepError) Unwrap() error { return e.cause }
