@@ -988,6 +988,9 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			baselineAssertions = map[string]string{"$.connectivitySummary.scope": "==activePage", "$.connectivitySummary.wires": "==0", "$.connectivitySummary.buses": "==0"}
 		}
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-source-before-reset", Action: "schematic.components.list", Payload: read, ExpectSchematic: baseline, Assert: baselineAssertions})
+		// Group registration runs after wiring; prove it cannot conflict before
+		// the first write, so a stale group never strands a half-rebuilt page.
+		pb.Steps = append(pb.Steps, schComposeGroupSteps(p, "preflight-lib", true)...)
 		if preserved == nil && !reuseUnwired {
 			if err := schComposeOrdinaryClearable(pagePrimitives); err != nil {
 				return nil, err
@@ -1044,7 +1047,11 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			preserved.protect(unwired)
 		}
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-physical-pins-before-wiring", Action: "schematic.components.list", Payload: read, ExpectSchematic: unwired})
-		pb.Steps = append(pb.Steps, playbookStep{ID: "save-placed-parts", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
+		if preserved == nil {
+			// Editing an existing page saves only once, after the final check:
+			// a failure before that leaves unsaved edits the user can discard.
+			pb.Steps = append(pb.Steps, playbookStep{ID: "save-placed-parts", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
+		}
 		if edits != nil {
 			for i, c := range p.Connectivity.Components {
 				var pins []string
@@ -1088,17 +1095,7 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("marker-%03d", i), Action: "schematic.power.connect_pin", Payload: map[string]any{"pinX": f.PinX, "pinY": f.PinY, "net": f.Net, "kind": f.Kind, "offset": f.Offset, "direction": f.Direction}})
 		}
 	}
-	refs := map[string]string{}
-	for _, c := range p.Connectivity.Components {
-		refs[c.ID] = c.Ref
-	}
-	for i, m := range p.Connectivity.Modules {
-		var members []string
-		for _, id := range append(append([]string(nil), m.CoreComponents...), m.PeripheralComponents...) {
-			members = append(members, refs[id])
-		}
-		pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("register-lib-%03d", i), Run: "sch group create", Flags: map[string]any{"name": m.ID, "members": strings.Join(members, ","), "if-absent": true}})
-	}
+	pb.Steps = append(pb.Steps, schComposeGroupSteps(p, "register-lib", false)...)
 	frames, err := powerLayoutFrameSteps(&p.Layout)
 	if err != nil {
 		return nil, err
@@ -1158,4 +1155,28 @@ func schDropPinNets(e *schematicStateExpectation) {
 		}
 		e.Parts[ref] = part
 	}
+}
+
+
+// schComposeGroupSteps registers each composed module as a page group. The
+// rebuilt page is the grouping truth, so members are released from stale
+// groups (block-provenance groups still refuse). check=true validates only.
+func schComposeGroupSteps(p *schCompositionPlan, prefix string, check bool) []playbookStep {
+	refs := map[string]string{}
+	for _, c := range p.Connectivity.Components {
+		refs[c.ID] = c.Ref
+	}
+	var steps []playbookStep
+	for i, m := range p.Connectivity.Modules {
+		var members []string
+		for _, id := range append(append([]string(nil), m.CoreComponents...), m.PeripheralComponents...) {
+			members = append(members, refs[id])
+		}
+		flags := map[string]any{"name": m.ID, "members": strings.Join(members, ","), "if-absent": true, "replace-overlapping": true}
+		if check {
+			flags["check"] = true
+		}
+		steps = append(steps, playbookStep{ID: fmt.Sprintf("%s-%03d", prefix, i), Run: "sch group create", Flags: flags})
+	}
+	return steps
 }
