@@ -49,7 +49,7 @@ function harness(options: Options = {}) {
 	const original: State = {
 		primitiveId: OLD_ID, componentType: 'part', designator: 'U3', ...part(false),
 		x: 800, y: 500, rotation: 90, mirror: true, net: '', subPartName: undefined,
-		addIntoBom: true, addIntoPcb: true, uniqueId: 'synthetic-stable-replace-link', otherProperty: { Voltage: '3.3V' },
+		addIntoBom: true, addIntoPcb: true, uniqueId: 'synthetic-stable-replace-link', otherProperty: options.deviceFields ? { Voltage: '3.3V', Datasheet: 'old.pdf' } : { Voltage: '3.3V' },
 		device: { uuid: OLD_DEVICE_INSTANCE, libraryUuid: OLD_LIBRARY, name: OLD_NAME },
 		symbol: { uuid: 'abcdef0123456789', libraryUuid: OLD_LIBRARY },
 		footprint: { uuid: OLD_FP_INSTANCE, libraryUuid: OLD_LIBRARY, name: 'Synthetic old package' },
@@ -111,7 +111,7 @@ function harness(options: Options = {}) {
 				const state: State = {
 					...clone(original), ...part(replacement), primitiveId: id, designator: 'U?', uniqueId: `synthetic-created-${id}`,
 					x, y, subPartName, rotation, mirror, addIntoBom, addIntoPcb,
-					otherProperty: options.deviceFields ? { 'Manufacturer Part': part(replacement).manufacturerId, Datasheet: 'synthetic.pdf' } : {},
+					otherProperty: options.deviceFields ? { 'Manufacturer Part': part(replacement).manufacturerId, Datasheet: replacement ? 'new.pdf' : 'old.pdf' } : {},
 					device: { uuid: replacement ? CANDIDATE_DEVICE_INSTANCE : RESTORED_DEVICE_INSTANCE, libraryUuid: device.libraryUuid, name: part(replacement).name },
 					footprint: { uuid: replacement ? CANDIDATE_FP_INSTANCE : RESTORED_FP_INSTANCE, libraryUuid: device.libraryUuid, name: 'Synthetic created package' },
 					nativeSource: replacement && options.wrongCandidateSource ? { ...source, uuid: WRONG_ASSET } : source,
@@ -237,6 +237,7 @@ test('keepProperties restores old custom entries on top of the new device\'s own
 	const props = result.result.component.otherProperty;
 	assert.equal(props.Voltage, '3.3V');
 	assert.equal(props['Manufacturer Part'], NEW_MODEL);
+	assert.equal(props.Datasheet, 'new.pdf', 'fields the new device fills are not overwritten by the old part');
 	assert.equal(f.states.has(CANDIDATE_ID), true);
 });
 
