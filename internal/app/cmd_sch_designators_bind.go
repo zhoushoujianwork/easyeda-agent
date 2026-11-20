@@ -65,6 +65,10 @@ func newSchDesignatorsBindCmd(stdout io.Writer) *cobra.Command {
 		}
 		refs := []string{}
 		for _, step := range pb.Steps {
+			// The bind target describes only this page; other pages must just not conflict.
+			if step.Run == "sch designators verify" {
+				step.Flags["page-scope"] = true
+			}
 			if step.Action == "schematic.component.modify" {
 				if patch, ok := step.Payload["patch"].(map[string]any); ok {
 					refs = append(refs, stringVal(patch["designator"]))

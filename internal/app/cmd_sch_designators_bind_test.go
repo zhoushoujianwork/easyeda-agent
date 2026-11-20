@@ -57,7 +57,7 @@ func TestSchDesignatorsBindAddsOnlyMissingBindings(t *testing.T) {
 	}
 	// The guards verify against the exact target that was written.
 	targetRaw, _ := os.ReadFile(target)
-	if pb.Steps[0].Flags["target-sha"] != sha256Hex(targetRaw) || pb.Steps[0].Flags["before-sha"] != sha256Hex(raw) {
+	if pb.Steps[0].Flags["target-sha"] != sha256Hex(targetRaw) || pb.Steps[0].Flags["before-sha"] != sha256Hex(raw) || pb.Steps[0].Flags["page-scope"] != true || pb.Steps[2].Flags["page-scope"] != true {
 		t.Fatalf("guards not bound to files: %+v", pb.Steps[0].Flags)
 	}
 	var doc connectivity.Document
