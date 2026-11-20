@@ -726,7 +726,12 @@ func schCompositionExpectation(p *schCompositionPlan, final bool) *schematicStat
 			v := schematicPinExpectation{X: &q.X, Y: &q.Y}
 			if final {
 				noConnect := nc[c.Designator+"."+q.Number]
-				v.Net = &q.Net
+				if strings.HasPrefix(q.Net, "$") {
+					// Platform-generated names are renumbered on redraw.
+					v.AutoNet = &q.Net
+				} else {
+					v.Net = &q.Net
+				}
 				v.NC = &noConnect
 			}
 			part.Pins[q.Number] = v
