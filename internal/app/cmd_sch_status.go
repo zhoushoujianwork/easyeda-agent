@@ -470,7 +470,7 @@ func runSchStatus(cfg *appConfig, window string, allPages, withGate, asJSON bool
 			}
 			// 复用 gate 的同一条管线,并且**只认 verdict**:blocked(检查器没跑起来)
 			// 绝不能算通过,也不该被折成 fail —— 那正是 gate 三态存在的理由。
-			rep, gerr := collectSchGate(pinned, win, false, true, false, "", "",
+			rep, gerr := collectSchGate(pinned, win, false, true, false, "", "", p.DocUUID,
 				gateDefaultMinGap, gateDefaultPinEps, gateDefaultOverlapEps, stderr)
 			if gerr != nil || rep == nil {
 				fmt.Fprintf(stderr, "note: %s 页的 gate 没能跑起来(%v)—— 该页不计入 S5\n", p.Name, gerr)

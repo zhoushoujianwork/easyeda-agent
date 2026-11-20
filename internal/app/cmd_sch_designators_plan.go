@@ -449,6 +449,23 @@ func verifySchDesignatorScene(before schDesignatorBaseline, target connectivity.
 	if err != nil {
 		return err
 	}
+	if phase == "after" {
+		// Modifying a part makes the editor hydrate device text metadata the
+		// baseline read did not carry (e.g. manufacturer). Accept a text field
+		// that was absent before; every field the baseline had is still exact.
+		cs, as := expected["components"].(map[string]any), actual["components"].(map[string]any)
+		for pid := range before.IDs {
+			want, _ := cs[pid].(map[string]any)
+			have, _ := as[pid].(map[string]any)
+			for key, value := range have {
+				if _, known := want[key]; !known && want != nil {
+					if _, text := value.(string); text {
+						want[key] = value
+					}
+				}
+			}
+		}
+	}
 	if !reflect.DeepEqual(expected, actual) {
 		want, _ := json.Marshal(expected)
 		got, _ := json.Marshal(actual)
@@ -508,7 +525,12 @@ func schDesignatorFirstDifference(path string, expected, observed any) string {
 	return fmt.Sprintf("%s: expected %s, observed %s", path, brief(expected), brief(observed))
 }
 
-func verifySchDesignatorGlobal(before schDesignatorBaseline, target connectivity.Document, global *actionResult) error {
+// verifySchDesignatorGlobal checks the target against every part in the project.
+// A full-project target must account for every part. A page-scoped target (the
+// bind flow, which only touches the baseline page) skips parts on other pages,
+// but still rejects one that would duplicate a target ID or occupy a target
+// reference; a part without a page tag cannot be placed and is rejected.
+func verifySchDesignatorGlobal(before schDesignatorBaseline, target connectivity.Document, global *actionResult, pageScope bool) error {
 	if global == nil || !global.OK || global.Context == nil || global.Context.ProjectUUID != before.Context.ProjectUUID || global.Context.DocumentUUID != before.Context.DocumentUUID {
 		return fmt.Errorf("global reference inventory project/document mismatch")
 	}
@@ -534,6 +556,21 @@ func verifySchDesignatorGlobal(before schDesignatorBaseline, target connectivity
 		id, err := schDesignatorComponentID(c)
 		if err != nil {
 			return err
+		}
+		if pageScope {
+			page := stringVal(c["pageUuid"])
+			if page == "" {
+				return fmt.Errorf("global component %s has no page tag; page-scoped verification cannot place it", id)
+			}
+			if page != before.Context.DocumentUUID {
+				if wantIDs[id] {
+					return fmt.Errorf("global component %s on page %s duplicates a target component ID", id, page)
+				}
+				if owner, found := refs[strings.ToUpper(stringVal(c["designator"]))]; found {
+					return fmt.Errorf("target reference %s is already occupied by %s on page %s", c["designator"], owner, page)
+				}
+				continue
+			}
 		}
 		if !wantIDs[id] || seen[id] {
 			return fmt.Errorf("global component %s is missing from target or duplicated", id)
@@ -586,7 +623,7 @@ func renameSchDesignatorGroups(groups []*schGroup, before schDesignatorBaseline,
 
 func newSchDesignatorsVerifyCmd(cfg *appConfig, window *string, stdout io.Writer) *cobra.Command {
 	var beforePath, targetPath, beforeSHA, targetSHA, phase string
-	var syncGroups bool
+	var syncGroups, pageScope bool
 	c := &cobra.Command{Use: "verify", Short: "Verify a file-pinned designator repair against fresh EDA reads", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if phase != "before" && phase != "after" {
 			return fmt.Errorf("--phase must be before or after")
@@ -632,7 +669,7 @@ func newSchDesignatorsVerifyCmd(cfg *appConfig, window *string, stdout io.Writer
 		if err != nil {
 			return err
 		}
-		if err = verifySchDesignatorGlobal(before, target, global); err != nil {
+		if err = verifySchDesignatorGlobal(before, target, global, pageScope); err != nil {
 			return err
 		}
 		includeBBox := false
@@ -681,6 +718,7 @@ func newSchDesignatorsVerifyCmd(cfg *appConfig, window *string, stdout io.Writer
 	c.Flags().StringVar(&beforeSHA, "before-sha", "", "baseline file SHA-256 recorded by plan")
 	c.Flags().StringVar(&targetSHA, "target-sha", "", "target file SHA-256 recorded by plan")
 	c.Flags().StringVar(&phase, "phase", "", "before or after")
+	c.Flags().BoolVar(&pageScope, "page-scope", false, "the target covers only the baseline page; parts on other pages must just not conflict")
 	c.Flags().BoolVar(&syncGroups, "sync-groups", false, "after verification, update this page's local group members/roles")
 	return c
 }
