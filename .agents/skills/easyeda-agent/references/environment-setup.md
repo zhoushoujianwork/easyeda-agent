@@ -381,6 +381,22 @@ CLI 在统一派发入口为 `document.open` / `schematic.page.open` 提供至�
 不能确认目标时仍失败。zone-arrange 修复连接失败后立即停止，不因超时或回滚文案重发写入；
 先回读连接、图元和保存状态，再从参数化源数据重新计划。
 
+### 写入超时与宿主写通道卡住（#317）
+
+单个 EasyEDA 宿主会话累计数百次写入后，`createNetFlag` 等写调用可能在宿主内不再返回，
+而只读命令照常秒回；重启 daemon 或重连连接器无效，只有重启 EasyEDA 宿主恢复。
+写调用仍按请求预算结束（普通动作 20 秒），报 `DISPATCH_FAILED`，响应的
+`result.writeStall` 给出预算、`writeState: "unknown"` 与恢复步骤：
+
+- `suspected: "write-timeout"`：写状态未知，宿主调用不可取消，可能稍后落地。不要重发，
+  先回读目标，只补证实缺失的部分；Playbook 对账后用 `apply --resume`。
+- `suspected: "host-write-path-stalled"`：连续写超时且其间读命令成功。停止整批写入，
+  尝试 `sch save` / `pcb save`，重启 EasyEDA Pro，`health` 确认后回读目标页再续跑。
+  读命令成功只说明读通道正常，不能当作写入成功的证据。
+
+大批量写入按包分批，在包边界保存并回读；出现上述停滞后再重启宿主。约 500 次的阈值
+来自单次现场观察，根因未定位，不作为固定预算。
+
 ## 连续 PCB 批次的活动文档复用（#286）
 
 `doc switch` 指向当前活动文档且有有效 tab ID 时，连接器复用该 tab，仍重新核对身份与

@@ -157,3 +157,59 @@ func TestApplyCompositionPersistsOwnershipAndRejectsStrippedGuard(t *testing.T) 
 		t.Fatal("guard with ownership removed passed Apply preflight")
 	}
 }
+
+// A wire-only signal ("$2N10") is asserted by autoNet grouping. Ownership treats
+// it as exhaustive net evidence without a role entry, and the after-check holds
+// when the platform renumbers it.
+func TestApplyOwnershipAcceptsAnonymousNetPins(t *testing.T) {
+	e, result := applyOwnershipFixture(t)
+	anon := "$2N10"
+	e.Ownership.NetRoles = map[string]string{}
+	e.Drawing.Flags = nil
+	kept := []any{}
+	for _, c := range result["components"].([]any) {
+		if c.(map[string]any)["componentType"] == "part" {
+			kept = append(kept, c)
+		}
+	}
+	result["components"] = kept
+	result["wires"] = result["wires"].([]any)[:2]
+	for i := range e.Drawing.Wires {
+		e.Drawing.Wires[i].Net = anon
+	}
+	for ref, part := range e.Parts {
+		for number, pin := range part.Pins {
+			if pin.Net != nil && *pin.Net == "EN" {
+				pin.Net, pin.AutoNet = nil, &anon
+				part.Pins[number] = pin
+			}
+		}
+		e.Parts[ref] = part
+	}
+	if err := e.validateOwnership(); err != nil {
+		t.Fatalf("anonymous-net ownership rejected: %v", err)
+	}
+	raw, _ := json.Marshal(result)
+	renamed := map[string]any{}
+	if err := json.Unmarshal([]byte(strings.ReplaceAll(string(raw), `"EN"`, `"$2N99"`)), &renamed); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Ownership.check(renamed); err != nil {
+		t.Fatalf("renumbered anonymous net failed ownership after-check: %v", err)
+	}
+	// Missing both net and autoNet is still incomplete evidence.
+	for ref, part := range e.Parts {
+		for number, pin := range part.Pins {
+			if pin.AutoNet != nil {
+				pin.AutoNet = nil
+				part.Pins[number] = pin
+				e.Parts[ref] = part
+				if err := e.validateOwnership(); err == nil || !strings.Contains(err.Error(), "exhaustive geometry/net/NC") {
+					t.Fatalf("pin without net evidence accepted: %v", err)
+				}
+				return
+			}
+		}
+	}
+	t.Fatal("fixture had no anonymous pin")
+}

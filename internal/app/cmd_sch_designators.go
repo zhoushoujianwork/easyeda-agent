@@ -50,6 +50,7 @@ func newSchDesignatorsCmd(cfg *appConfig, window *string, stdout, stderr io.Writ
 	allocate.Flags().StringVar(&changesPath, "changes", "", "write ordered reference changes to this JSON file")
 	root.AddCommand(allocate)
 	root.AddCommand(newSchDesignatorsPlanCmd(stdout))
+	root.AddCommand(newSchDesignatorsBindCmd(stdout))
 	root.AddCommand(newSchDesignatorsVerifyCmd(cfg, window, stdout))
 	return root
 }

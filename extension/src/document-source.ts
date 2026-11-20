@@ -82,8 +82,8 @@ async function freshSource(manager: SourceManager): Promise<string> {
 	const readable = requireGetter(manager);
 	return checkedSource(await boundedRead('Document source read', () => readable.getDocumentSource()));
 }
-function snapshotOf(payload: Payload, requested: Pick<Target, 'projectUuid' | 'documentUuid'>): Target & { source: string } {
-	const value = payload.snapshot;
+function snapshotOf(payload: Payload, requested: Pick<Target, 'projectUuid' | 'documentUuid'>, key = 'snapshot'): Target & { source: string } {
+	const value = payload[key];
 	if (!value || typeof value !== 'object' || Array.isArray(value)) refuse('A document source snapshot is required for exact fresh-source comparison.');
 	const snapshot = value as Payload;
 	fields(snapshot, ['schemaVersion', 'projectUuid', 'documentUuid', 'documentType', 'source'], 'snapshot');
@@ -136,6 +136,72 @@ export async function documentSourceGet(payload: Payload): Promise<ActionResult>
 		bytes: new TextEncoder().encode(source).length, verified: true, partial: false, incomplete: false }, context: target };
 }
 
+/** The one setter call shared by both writers, followed by an identity-guarded
+ * fresh readback. Recheck the target immediately before the call. Do not add an
+ * automatic retry, rollback, save, or timeout race around this write. */
+async function writeOnce(readable: SourceManager & Required<Pick<SourceManager, 'getDocumentSource'>>,
+	requested: Pick<Target, 'projectUuid' | 'documentUuid'>, target: Target, comparison: Comparison, text: string) {
+	await contextFor(requested, target.documentType);
+	let written: boolean | null = null;
+	let writeError: string | undefined;
+	try {
+		const result = await readable.setDocumentSource!(text);
+		if (typeof result === 'boolean') written = result;
+		else writeError = `Official setter returned unsupported ${typeof result} result.`;
+	} catch (err) { writeError = describeThrown(err); }
+	let afterSource: string | null = null;
+	let readbackError: string | undefined;
+	let identityAfter: Target | undefined;
+	let afterComparison: SourceComparison | undefined;
+	try {
+		// Never read the source of a different document after a host transition.
+		await contextFor(requested, target.documentType);
+		afterSource = await freshSource(readable);
+		identityAfter = await contextFor(requested, target.documentType);
+		afterComparison = compareSource(afterSource, target, comparison);
+	} catch (err) { readbackError = describeThrown(err); }
+	return { written, writeError, afterSource, readbackError, identityAfter, afterComparison };
+}
+
+/** Write one earlier snapshot of the same schematic page back, once. Unlike the
+ * roundtrip probe the setter receives the caller's snapshot, so the page must
+ * first equal the caller's `expected` snapshot: edits nobody recorded are never
+ * overwritten. Both comparisons use dochead-volatile-v1, which is schematic
+ * only; the PCB setter has no live evidence. The returned beforeSource is the
+ * only way back, so the caller must keep it. */
+export async function documentSourceRestore(payload: Payload): Promise<ActionResult> {
+	fields(payload, ['projectUuid', 'documentUuid', 'snapshot', 'expected', 'dryRun'], 'document source restore');
+	if (payload.dryRun !== undefined && typeof payload.dryRun !== 'boolean') refuse('dryRun must be a boolean.');
+	const comparison: Comparison = 'dochead-volatile-v1';
+	const requested = targetRequest(payload);
+	const snapshot = snapshotOf(payload, requested);
+	const expected = snapshotOf(payload, requested, 'expected');
+	const snapshotComparison = compareSource(snapshot.source, snapshot, comparison);
+	const expectedComparison = compareSource(expected.source, expected, comparison);
+	const target = await contextFor(requested, 'schematic');
+	const { manager, availability } = sourceManager();
+	const readable = requireGetter(manager);
+	if (typeof readable.setDocumentSource !== 'function') {
+		throw new ActionError(ErrorCodes.EDA_API_UNAVAILABLE, 'Official sys_FileManager.setDocumentSource is unavailable.');
+	}
+	const beforeSource = await freshSource(readable);
+	await contextFor(requested, target.documentType);
+	const beforeComparison = compareSource(beforeSource, target, comparison);
+	if (beforeComparison.projection !== expectedComparison.projection) refuse('Fresh document source differs from the expected current snapshot; no source was written.');
+	const base = { schemaVersion: SCHEMA_VERSION, target, availability, beforeSource, comparison,
+		alreadyAtSnapshot: beforeComparison.projection === snapshotComparison.projection,
+		snapshotVolatile: snapshotComparison.volatile, beforeVolatile: beforeComparison.volatile };
+	if (payload.dryRun === true) return { result: { ...base, dryRun: true, afterSource: beforeSource, afterVolatile: beforeComparison.volatile,
+		writeAttempted: false, written: false, verified: true, partial: false, incomplete: false }, context: target };
+	const { written, writeError, afterSource, readbackError, identityAfter, afterComparison } =
+		await writeOnce(readable, requested, target, comparison, snapshot.source);
+	const verified = written === true && !readbackError && afterComparison?.projection === snapshotComparison.projection;
+	return { result: { ...base, dryRun: false, afterSource, identityAfter, writeAttempted: true, written,
+		afterVolatile: afterComparison?.volatile ?? null, writeError, readbackError, verified, partial: !verified, incomplete: !verified },
+		context: identityAfter ?? {},
+		...(!verified ? { warnings: ['Snapshot restore was not confirmed. Preserve beforeSource and the snapshot; inspect the page before any further write, and do not automatically retry.'] } : {}) };
+}
+
 /** Only re-submit the freshly read host string, once. The caller's snapshot is
  * a comparison guard, never a candidate source to write; the host has no CAS. */
 export async function documentSourceRoundtrip(payload: Payload): Promise<ActionResult> {
@@ -162,27 +228,8 @@ export async function documentSourceRoundtrip(payload: Payload): Promise<ActionR
 		rawAfterEqualsBefore: true,
 		...(comparison === 'dochead-volatile-v1' ? { afterVolatile: beforeComparison.volatile } : {}),
 		writeAttempted: false, written: false, verified: true, partial: false, incomplete: false }, context: target };
-	// Recheck the target immediately before the one setter call. Do not add an
-	// automatic retry, rollback, save, or timeout race around this write.
-	await contextFor(requested, target.documentType);
-	let written: boolean | null = null;
-	let writeError: string | undefined;
-	try {
-		const result = await readable.setDocumentSource(beforeSource);
-		if (typeof result === 'boolean') written = result;
-		else writeError = `Official setter returned unsupported ${typeof result} result.`;
-	} catch (err) { writeError = describeThrown(err); }
-	let afterSource: string | null = null;
-	let readbackError: string | undefined;
-	let identityAfter: Target | undefined;
-	let afterComparison: SourceComparison | undefined;
-	try {
-		// Never read the source of a different document after a host transition.
-		await contextFor(requested, target.documentType);
-		afterSource = await freshSource(readable);
-		identityAfter = await contextFor(requested, target.documentType);
-		afterComparison = compareSource(afterSource, target, comparison);
-	} catch (err) { readbackError = describeThrown(err); }
+	const { written, writeError, afterSource, readbackError, identityAfter, afterComparison } =
+		await writeOnce(readable, requested, target, comparison, beforeSource);
 	const verified = written === true && !readbackError && afterComparison?.projection === beforeComparison.projection;
 	return { result: { ...base, dryRun: false, afterSource, identityAfter, writeAttempted: true, written,
 		rawAfterEqualsBefore: afterSource === beforeSource,

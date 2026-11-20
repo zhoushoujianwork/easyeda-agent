@@ -621,12 +621,21 @@ func planSchCompositionWithPage(src schCompositionSource, page *SchematicRenderI
 	return result, nil
 }
 
+// schAnonymousNet reports a platform-generated net name ("$2N10"): a net the
+// user drew with wires only. It has no title the editor can give a port, and
+// the platform renumbers it on redraw, so it is identified by its pins.
+func schAnonymousNet(name string) bool { return strings.HasPrefix(name, "$") }
+
 // Verify that every electrical pin reaches a named marker through real wires.
 // Names written only in the JSON wire record do not name a native wire tree.
+// An anonymous net carries no marker: its pins must share one wire tree.
 func validateSchCompositionNets(p *powerLayoutPlan) error {
 	segs := append([]powerLayoutWire(nil), p.Wires...)
 	flagIndexes := map[int]string{}
 	for _, f := range p.Flags {
+		if schAnonymousNet(f.Net) {
+			return fmt.Errorf("anonymous net %s cannot carry a label or port; connect its pins with wires only", f.Net)
+		}
 		if strings.TrimSpace(f.Net) == "" || !plGrid(f.Offset) || f.Offset <= 0 {
 			return fmt.Errorf("invalid marker net/offset")
 		}
@@ -681,19 +690,31 @@ func validateSchCompositionNets(p *powerLayoutPlan) error {
 	for i, n := range flagIndexes {
 		named[root(i)] = n
 	}
+	anonymousTree := map[string]int{}
 	for _, c := range p.Placements {
 		for _, q := range c.Pins {
-			found := false
+			found, tree := false, -1
 			for i, s := range segs {
 				if plOnSegment([2]float64{q.X, q.Y}, s.Points[0], s.Points[1]) {
 					if q.Net == "" || s.Net != q.Net {
 						return fmt.Errorf("wire touches NC/foreign pin %s.%s", c.Designator, q.Number)
 					}
 					touched[root(i)] = true
+					tree = root(i)
 					if named[root(i)] == q.Net {
 						found = true
 					}
 				}
+			}
+			if schAnonymousNet(q.Net) {
+				if tree < 0 {
+					return fmt.Errorf("%s.%s on anonymous net %s is not wired", c.Designator, q.Number, q.Net)
+				}
+				if prev, seen := anonymousTree[q.Net]; seen && prev != tree {
+					return fmt.Errorf("anonymous net %s is split: %s.%s is on a different wire tree; an unlabeled net must be one continuous wire tree", q.Net, c.Designator, q.Number)
+				}
+				anonymousTree[q.Net] = tree
+				continue
 			}
 			if q.Net != "" && !found {
 				return fmt.Errorf("%s.%s does not reach a named wire tree", c.Designator, q.Number)
@@ -726,7 +747,12 @@ func schCompositionExpectation(p *schCompositionPlan, final bool) *schematicStat
 			v := schematicPinExpectation{X: &q.X, Y: &q.Y}
 			if final {
 				noConnect := nc[c.Designator+"."+q.Number]
-				v.Net = &q.Net
+				if strings.HasPrefix(q.Net, "$") {
+					// Platform-generated names are renumbered on redraw.
+					v.AutoNet = &q.Net
+				} else {
+					v.Net = &q.Net
+				}
 				v.NC = &noConnect
 			}
 			part.Pins[q.Number] = v
@@ -962,6 +988,9 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			baselineAssertions = map[string]string{"$.connectivitySummary.scope": "==activePage", "$.connectivitySummary.wires": "==0", "$.connectivitySummary.buses": "==0"}
 		}
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-source-before-reset", Action: "schematic.components.list", Payload: read, ExpectSchematic: baseline, Assert: baselineAssertions})
+		// Group registration runs after wiring; prove it cannot conflict before
+		// the first write, so a stale group never strands a half-rebuilt page.
+		pb.Steps = append(pb.Steps, schComposeGroupSteps(p, "preflight-lib", true)...)
 		if preserved == nil && !reuseUnwired {
 			if err := schComposeOrdinaryClearable(pagePrimitives); err != nil {
 				return nil, err
@@ -986,13 +1015,7 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 				cleared.SourceConnectivityEdits = nil
 				cleared.PagePrimitives = remaining
 				cleared.Drawing = &schematicDrawingExpectation{}
-				for ref, part := range cleared.Parts {
-					for number, q := range part.Pins {
-						q.Net = nil
-						part.Pins[number] = q
-					}
-					cleared.Parts[ref] = part
-				}
+				schDropPinNets(cleared)
 				pb.Steps = append(pb.Steps, playbookStep{ID: "verify-preserved-parts-after-clear", Action: "schematic.components.list", Payload: read, ExpectSchematic: cleared})
 			}
 			for i, c := range p.Layout.Placements {
@@ -1024,7 +1047,11 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			preserved.protect(unwired)
 		}
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-physical-pins-before-wiring", Action: "schematic.components.list", Payload: read, ExpectSchematic: unwired})
-		pb.Steps = append(pb.Steps, playbookStep{ID: "save-placed-parts", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
+		if preserved == nil {
+			// Editing an existing page saves only once, after the final check:
+			// a failure before that leaves unsaved edits the user can discard.
+			pb.Steps = append(pb.Steps, playbookStep{ID: "save-placed-parts", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
+		}
 		if edits != nil {
 			for i, c := range p.Connectivity.Components {
 				var pins []string
@@ -1058,13 +1085,7 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			preserved.protect(ready)
 			ready.Drawing = &schematicDrawingExpectation{}
 			ready.Ownership = nil
-			for ref, part := range ready.Parts {
-				for number, pin := range part.Pins {
-					pin.Net = nil // disconnected net names may be unavailable before wires exist
-					part.Pins[number] = pin
-				}
-				ready.Parts[ref] = part
-			}
+			schDropPinNets(ready)
 			pb.Steps = append(pb.Steps, playbookStep{ID: "verify-edited-nc-before-wiring", Action: "schematic.components.list", Payload: read, ExpectSchematic: ready})
 		}
 		for i, w := range p.Layout.Wires {
@@ -1074,17 +1095,7 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 			pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("marker-%03d", i), Action: "schematic.power.connect_pin", Payload: map[string]any{"pinX": f.PinX, "pinY": f.PinY, "net": f.Net, "kind": f.Kind, "offset": f.Offset, "direction": f.Direction}})
 		}
 	}
-	refs := map[string]string{}
-	for _, c := range p.Connectivity.Components {
-		refs[c.ID] = c.Ref
-	}
-	for i, m := range p.Connectivity.Modules {
-		var members []string
-		for _, id := range append(append([]string(nil), m.CoreComponents...), m.PeripheralComponents...) {
-			members = append(members, refs[id])
-		}
-		pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("register-lib-%03d", i), Run: "sch group create", Flags: map[string]any{"name": m.ID, "members": strings.Join(members, ","), "if-absent": true}})
-	}
+	pb.Steps = append(pb.Steps, schComposeGroupSteps(p, "register-lib", false)...)
 	frames, err := powerLayoutFrameSteps(&p.Layout)
 	if err != nil {
 		return nil, err
@@ -1124,6 +1135,9 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 		gateID = "paperless-schematic-gate"
 		gateFlags = map[string]any{"json": true}
 	}
+	// A whole-page rebuild is judged on its own page; other pages' DRC items
+	// are reported but must not block it.
+	gateFlags["drc-page"] = p.Connectivity.DocumentID
 	pb.Steps = append(pb.Steps, playbookStep{ID: "verify-all-pins-nets-nc", Action: "schematic.components.list", Payload: read, ExpectSchematic: final}, playbookStep{ID: "electrical-check", Action: "schematic.check", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: "wire-tree-check", Action: "schematic.bridgeCheck", Assert: map[string]string{"$.passed": "true"}}, playbookStep{ID: gateID, Run: "sch gate", Flags: gateFlags}, playbookStep{ID: "save-composition", Action: "schematic.save", Assert: map[string]string{"$.saved": "true"}})
 	if preserved != nil {
 		pb.Steps = append(pb.Steps, playbookStep{ID: "verify-saved-instance-preservation", Action: "schematic.components.list", Payload: read, ExpectSchematic: final})
@@ -1132,4 +1146,40 @@ func schCompositionPlaybookWithEdits(p *schCompositionPlan, before []byte, repla
 		return nil, fmt.Errorf("composition Apply preflight: %v", errs)
 	}
 	return pb, nil
+}
+
+// Before wires exist no pin has a net, so an unwired checkpoint drops every net
+// assertion: named (Net) and anonymous-net grouping (AutoNet) alike.
+func schDropPinNets(e *schematicStateExpectation) {
+	for ref, part := range e.Parts {
+		for number, pin := range part.Pins {
+			pin.Net, pin.AutoNet = nil, nil
+			part.Pins[number] = pin
+		}
+		e.Parts[ref] = part
+	}
+}
+
+
+// schComposeGroupSteps registers each composed module as a page group. The
+// rebuilt page is the grouping truth, so members are released from stale
+// groups (block-provenance groups still refuse). check=true validates only.
+func schComposeGroupSteps(p *schCompositionPlan, prefix string, check bool) []playbookStep {
+	refs := map[string]string{}
+	for _, c := range p.Connectivity.Components {
+		refs[c.ID] = c.Ref
+	}
+	var steps []playbookStep
+	for i, m := range p.Connectivity.Modules {
+		var members []string
+		for _, id := range append(append([]string(nil), m.CoreComponents...), m.PeripheralComponents...) {
+			members = append(members, refs[id])
+		}
+		flags := map[string]any{"name": m.ID, "members": strings.Join(members, ","), "if-absent": true, "replace-overlapping": true}
+		if check {
+			flags["check"] = true
+		}
+		steps = append(steps, playbookStep{ID: fmt.Sprintf("%s-%03d", prefix, i), Run: "sch group create", Flags: flags})
+	}
+	return steps
 }

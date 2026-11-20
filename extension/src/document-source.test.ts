@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { documentSourceGet, documentSourceRoundtrip } from './document-source';
+import { documentSourceGet, documentSourceRestore, documentSourceRoundtrip } from './document-source';
 import { runAction } from './actions';
 import { ActionQueue, isBypassAction, mustHoldAfterAbandon } from './action-queue';
 import { pendingDeadlines, sweepDeadlines } from './deadlines';
@@ -565,4 +565,60 @@ test('pre-write read timeout refuses without writing; post-write read timeout re
 			}
 		} finally { t.mock.timers.reset(); host.restore(); }
 	}
+});
+
+function restoreHost(current: string, options: { set?: (value: string) => Promise<unknown>; type?: number } = {}) {
+	let live = current;
+	const host = installHost({ type: options.type, context: () => volatileTarget, get: async () => live,
+		set: async value => { if (options.set) return options.set(value); live = value.replace('0123456789abcdef', 'fedcba9876543210'); return true; } });
+	return { ...host, live: () => live };
+}
+const editedBody = volatileBody + '\n{"type":"WIRE","id":"w2","ticket":5}||{"points":[605,410,625,410],"net":"PROBE_OUT"}|';
+
+test('restore writes the earlier snapshot once when the page equals the expected current snapshot', async () => {
+	const earlier = volatileSource({ updateTime: '1791126900000' });
+	const current = volatileSource({ updateTime: '1791126999000', body: editedBody });
+	const host = restoreHost(volatileSource({ client: 'aaaaaaaaaaaaaaaa', updateTime: '1791127000000', body: editedBody }));
+	try {
+		const { result } = await documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier), expected: volatileSnapshot(current) }) as any;
+		assert.deepEqual(host.writes, [earlier]);
+		assert.equal(result.verified, true);
+		assert.equal(result.alreadyAtSnapshot, false);
+		assert.equal(result.beforeSource.includes('PROBE_OUT'), true);
+		assert.equal(result.afterSource.includes('PROBE_OUT'), false);
+		assert.equal(result.afterVolatile.client, 'fedcba9876543210');
+	} finally { host.restore(); }
+});
+
+test('restore refuses unrecorded edits, non-schematic snapshots and unknown fields before any write', async () => {
+	const earlier = volatileSource();
+	const host = restoreHost(volatileSource({ body: editedBody }));
+	try {
+		await assert.rejects(documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier), expected: volatileSnapshot(earlier) }), hasCode(ErrorCodes.PRECONDITION_REFUSED));
+		await assert.rejects(documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier, 'pcb'), expected: volatileSnapshot(host.live()) }), hasCode(ErrorCodes.PRECONDITION_REFUSED));
+		await assert.rejects(documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier) }), hasCode(ErrorCodes.PRECONDITION_REFUSED));
+		await assert.rejects(documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier), expected: volatileSnapshot(host.live()), comparison: 'exact' }), hasCode(ErrorCodes.PRECONDITION_REFUSED));
+		assert.deepEqual(host.writes, []);
+	} finally { host.restore(); }
+});
+
+test('restore dry run only reads, and a host that keeps the edited body is reported incomplete', async () => {
+	const earlier = volatileSource();
+	const current = volatileSource({ body: editedBody });
+	const dry = restoreHost(current);
+	try {
+		const { result } = await documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier), expected: volatileSnapshot(current), dryRun: true }) as any;
+		assert.deepEqual(dry.writes, []);
+		assert.equal(result.writeAttempted, false);
+		assert.equal(result.verified, true);
+	} finally { dry.restore(); }
+	const stubborn = restoreHost(current, { set: async () => true });
+	try {
+		const response = await documentSourceRestore({ ...volatileTarget, snapshot: volatileSnapshot(earlier), expected: volatileSnapshot(current) }) as any;
+		assert.deepEqual(stubborn.writes, [earlier]);
+		assert.equal(response.result.verified, false);
+		assert.equal(response.result.incomplete, true);
+		assert.equal(response.warnings.length, 1);
+		assert.equal(mustHoldAfterAbandon('document.source.restore'), true);
+	} finally { stubborn.restore(); }
 });

@@ -4,6 +4,14 @@
 
 **动作权限契约**是 `easyeda actions` 中每个动作的版本化 `access` 声明，独立描述作用范围、实际副作用、确认类别、回读要求和批次限制。它是宿主发现能力的依据，不是用户授权或设计验收结果。历史 `mutates:false` 不证明无界面副作用；文档打开、关闭、重载仍须生命周期流程。字段与兼容规则见 [命令设计](cli-design.md#动作权限契约)。
 
+## 写命令检查点
+
+**检查点**是一条写命令执行前某个原理图页的完整源码，由 CLI 在该进程第一次向该页发送写动作前自动记录。
+一条命令对应一个步骤；回退到某个检查点即撤销该命令及其后的全部命令，回退本身先记录当前页，因此可撤销。
+回退是否成功按图元身份、几何字段和属性值判定，不按源码逐字相等：宿主重建器件时会重排记录并重新展开库属性。
+检查点不是保存或落盘证据，也不覆盖 PCB、图页的增删和超过 2 MiB 的页面；记录失败只警告，不阻止写入。
+用法与现场边界见[文档源码探针](../.agents/skills/easyeda-agent/references/document-source.md#写命令检查点与步骤级回退)。
+
 ## 按需原理图几何读取
 
 `sch geometry` / `schematic.geometry.read` 是当前页的 part 边界、世界坐标引脚与全部导线证据。
@@ -200,7 +208,7 @@ preserve/reuse-unwired 编译路径可使用其已有的完整零绘图证明：
 证明期间没有切到其他页再切回（ABA），也不证明落盘。
 
 后台 autosave 仅使用上述认证身份，按文档防抖，并在连接器保存执行前检查期望身份。
-`document.source.roundtrip` 是已知的文档域写动作，由认证身份的文档类型选择 schematic/PCB save；
+`document.source.roundtrip` 与 `document.source.restore` 是已知的文档域写动作，由认证身份的文档类型选择 schematic/PCB save；
 dry-run 不触发保存，其他 project/debug/view 泛域动作不据活动页推断保存目标。探针仍须单独
 执行 typed save 并保留保存重载证据，后台安全网不能替代这一检查点。
 显式保存成功也只能按认证的保存归属取消该文档的旧 timer；新编辑的 timer 继续保留。

@@ -88,7 +88,7 @@ CLI 完整读取单次 action 的 HTTP 响应，最多 32 MiB；health 清单另
 保存和 `doc reload` 要求布尔 `saved:true`；`saved:false`、缺失或其他类型均失败，
 reload 在关闭前停止。显式保存、真实重载和新回读才构成持久化证据。
 后台 autosave 只接受 `mutationContextAvailable:true` 的独立身份；响应 `context` 仅供诊断。
-已知 typed `document.source.roundtrip` 按认证文档类型选择保存；dry-run 不 arm，其他泛域动作不推断目标。
+已知 typed `document.source.roundtrip` / `document.source.restore` 按认证文档类型选择保存；dry-run 不 arm，其他泛域动作不推断目标。
 connector 在 handler 前后核对 project/doc/type 和可选 tab；漂移、缺测或旧版本缺少认证时
 不启用自动保存，并保留 warning、`health.autosave` 与审计原因。前后两次采样不覆盖 ABA 切页。
 显式保存只按认证归属取消旧 timer，不取消请求之后的新编辑；探针仍须显式保存。

@@ -9,7 +9,7 @@ import { pcbModel3dBind, pcbModel3dList, pcbModel3dSetTransform } from './pcb-mo
 import { PROJECTED_STATE_KEYS } from './projected-keys';
 import { moveSchematicAttribute } from './schematic-attribute-move';
 import { readConnectorLogs } from './connector-logs';
-import { documentSourceGet, documentSourceRoundtrip } from './document-source';
+import { documentSourceGet, documentSourceRestore, documentSourceRoundtrip } from './document-source';
 import { applyAndVerifyPourOrder, preparePourOrder, PourOrderError, verifyPourOrderReadback, type PourOrderVerification } from './pcb-pour-order';
 import { listSystemCommonLibrary } from './common-library';
 import { silkSlotFacts, validSilkRect, type SilkLabel } from './pcb-silk-placement';
@@ -8371,13 +8371,23 @@ const schematicComponentReplace: Handler = async (payload) => {
 			: {}),
 	};
 
-	const place = async (dev: DeviceRef, props: Record<string, unknown>, onCreated?: (id: string) => void): Promise<SchComponent | undefined> => {
+	const place = async (dev: DeviceRef, props: Record<string, unknown>, onCreated?: (id: string) => void, deviceFieldsWin = false): Promise<SchComponent | undefined> => {
 		await assertReplaceContext();
 		let c = await eda.sch_PrimitiveComponent.create(
 			{ libraryUuid: dev.libraryUuid, uuid: dev.uuid },
 			x, y, undefined, rotation, mirror, addIntoBom, addIntoPcb,
 		);
 		if (c) onCreated?.(c.getState_PrimitiveId());
+		// keepProperties carries the old part's custom entries, but entries the new
+		// device itself fills (Datasheet, LCSC Part Name…) describe the NEW part and
+		// must not be overwritten with the old part's values.
+		if (c && deviceFieldsWin && props.otherProperty && typeof props.otherProperty === 'object') {
+			const own = (c.getState_OtherProperty?.() ?? {}) as Record<string, unknown>;
+			const kept = Object.fromEntries(Object.entries(props.otherProperty as Record<string, unknown>)
+				.filter(([key]) => own[key] === undefined || own[key] === null || own[key] === ''));
+			const { otherProperty: _dropped, ...rest } = props;
+			props = Object.keys(kept).length ? { ...rest, otherProperty: kept } : rest;
+		}
 		await assertReplaceContext();
 		if (c && Object.keys(props).length) {
 			// Prefer modify's returned primitive: serializing the create-time object
@@ -8414,6 +8424,16 @@ const schematicComponentReplace: Handler = async (payload) => {
 			const identity = await resolvePlacedDeviceIdentity(observed, identityContext);
 			if (!sameDeviceRef(identity, dev)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Replacement or rollback-original resolved to a different library device.');
 			for (const [key, value] of Object.entries(props)) {
+				// otherProperty is a map the new device already populates with its own
+				// fields (Manufacturer Part, Datasheet…); keepProperties restores the
+				// old entries on top. Prove each restored entry, not map equality.
+				if (key === 'otherProperty' && value && typeof value === 'object') {
+					const have = (observed[key] ?? {}) as Record<string, unknown>;
+					for (const [entry, kept] of Object.entries(value as Record<string, unknown>)) {
+						if (exactJSON(have[entry]) !== exactJSON(kept)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property otherProperty.${entry} was not restored.`);
+					}
+					continue;
+				}
 				if (exactJSON(observed[key]) !== exactJSON(value)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property ${key} was not restored.`);
 			}
 			for (const key of ['x', 'y', 'rotation', 'mirror', 'addIntoBom', 'addIntoPcb']) {
@@ -8461,7 +8481,7 @@ const schematicComponentReplace: Handler = async (payload) => {
 	let created: SchComponent | undefined;
 	let placeError: unknown;
 	try {
-		created = await place({ libraryUuid: target.libraryUuid, uuid: target.uuid }, carryProps, id => { attemptedCandidateId = id; });
+		created = await place({ libraryUuid: target.libraryUuid, uuid: target.uuid }, carryProps, id => { attemptedCandidateId = id; }, true);
 	}
 	catch (err) { placeError = err; }
 	if (!created) {
@@ -15116,11 +15136,17 @@ const pcbTrackLock: Handler = async (payload) => {
 };
 
 export const pcbRouteRipUp: Handler = async (payload) => {
-	// Optional net filter (string or string[]); no net → rip up ALL routing.
+	// Optional net filter (string or string[]); only an ABSENT net means "rip up ALL
+	// routing". A present but empty, blank or malformed filter is refused rather than
+	// widened into a whole-board rip-up.
 	const rawNet = payload.net ?? payload.nets;
 	let nets: Array<string> | null = null;
-	if (typeof rawNet === 'string') nets = [rawNet];
-	else if (Array.isArray(rawNet) && rawNet.every(n => typeof n === 'string')) nets = rawNet as Array<string>;
+	if (rawNet !== undefined && rawNet !== null) {
+		const list = typeof rawNet === 'string' ? [rawNet] : rawNet;
+		if (!Array.isArray(list) || list.length === 0 || !list.every(n => typeof n === 'string' && n.trim() !== ''))
+			throw new Error('pcb.route.rip_up: net must be a non-empty net name or a non-empty list of them; omit net to rip up all routing.');
+		nets = list as Array<string>;
+	}
 	const want = nets ? new Set(nets) : null;
 
 	// COPPER layers only: TOP=1, BOTTOM=2, INNER_1..30 = 15..44. This excludes the
@@ -15138,7 +15164,14 @@ export const pcbRouteRipUp: Handler = async (payload) => {
 		throw edaError(err, 'Failed to read tracks/arcs/vias for rip-up.');
 	}
 
-	// Never touch locked primitives (e.g. a locked board outline).
+	// Never touch locked primitives (e.g. a locked board outline), but COUNT the
+	// locked copper the filter matched: a scoped rip-up that deleted nothing because
+	// everything was locked must say so instead of returning a silent requested:0.
+	const skippedLocked = {
+		lines: (lines ?? []).filter(l => (!want || want.has(l.getState_Net())) && onCopper(l.getState_Layer()) && l.getState_PrimitiveLock()).length,
+		arcs: (arcs ?? []).filter(a => (!want || want.has(a.getState_Net())) && onCopper(a.getState_Layer()) && a.getState_PrimitiveLock()).length,
+		vias: (vias ?? []).filter(v => (!want || want.has(v.getState_Net())) && v.getState_PrimitiveLock()).length,
+	};
 	const lineIds = (lines ?? [])
 		.filter(l => (!want || want.has(l.getState_Net())) && onCopper(l.getState_Layer()) && !l.getState_PrimitiveLock())
 		.map(l => l.getState_PrimitiveId());
@@ -15169,7 +15202,8 @@ export const pcbRouteRipUp: Handler = async (payload) => {
 	const arcsRes = await ripDelete('arcs', arcIds, ids => eda.pcb_PrimitiveArc.delete(ids));
 	const viasRes = await ripDelete('vias', viaIds, ids => eda.pcb_PrimitiveVia.delete(ids));
 
-	return { result: { nets: nets ?? 'all', lines: linesRes, arcs: arcsRes, vias: viasRes } };
+	const skippedLockedTotal = skippedLocked.lines + skippedLocked.arcs + skippedLocked.vias;
+	return { result: { nets: nets ?? 'all', lines: linesRes, arcs: arcsRes, vias: viasRes, skippedLocked, skippedLockedTotal } };
 };
 
 const pcbClearRouting: Handler = async (payload) => {
@@ -16327,6 +16361,7 @@ const HANDLERS: Record<string, Handler> = {
 	'document.current': documentCurrent,
 	'document.source.get': documentSourceGet,
 	'document.source.roundtrip': documentSourceRoundtrip,
+	'document.source.restore': documentSourceRestore,
 	'document.open': documentOpen,
 	'document.close': documentClose,
 	'view.fit': viewFit,

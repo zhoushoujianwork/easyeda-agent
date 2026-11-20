@@ -3,6 +3,21 @@
 合并原 `CLAUDE.md` 中仍有效的发布知识，按当前 Makefile 核对。发布授权与版本选择遵守
 [AGENTS.md](../AGENTS.md)；普通推送不会触发正式发版。
 
+## 分支集成与发布来源
+
+1. 功能、修复、文档及发布准备均从最新 `origin/dev` 创建独立任务分支和 worktree，
+   完成相关验证后通过 PR 合入 `dev`。版本同步、Changelog 和本次验收材料也先合入 `dev`；
+   不在 `main` 直接开发或为发布另行绕过 `dev` 补功能。
+2. 固定已验收的 `origin/dev` revision，创建以 `main` 为 base 的发布 PR；head 可为 `dev`
+   或从该 revision 创建的 `release/<版本>`。若 `dev` 仍需继续开发，用发布分支冻结候选。
+   记录候选 revision，审阅相对 `main` 的完整差异；存在未验收或无关内容时先协调范围。
+3. 发布 PR 完成审阅及要求的检查后合入 `main`。fetch 并核对合并结果，在独立发布 worktree
+   检出已推送的固定 `main` revision，确认干净后再执行下文构建和发布步骤。
+   记录发布 PR、固定 main revision、版本、测试范围和资产 SHA256；`dev` 的预览构建不能冒充正式包。
+4. 创建或推送发布标签及对外发布仍须用户明确批准具体版本；修改开发规则或合并任务 PR
+   不构成某个版本的发布批准。若发布合并生成 `dev` 尚未包含的提交，再通过同步 PR 合回 `dev`，
+   不直接推送共享分支。核对发布与回合结果后按根规则清理本次临时发布 worktree 和分支，保留标签及证据。
+
 ## Version and retention policy
 
 - If the connector runtime (`extension/src/**`, its build/configuration, manifest capabilities,

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://easyeda-agent.daboluo.cc"><b>Project website</b></a> ·
-  <a href="https://eda.daboluo.cc/#desktop"><b>Download Desktop beta</b></a> ·
+  <a href="https://eda.daboluo.cc/#desktop"><b>Download EdaDesk Desktop</b></a> ·
   <a href="https://github.com/zhoushoujianwork/easyeda-agent/releases"><b>Releases</b></a> ·
   <a href="https://jlc-ext.com/item/zhoushoujian/easyeda-agent-connector"><b>Plugin marketplace</b></a> ·
   <a href="README.md">中文</a>
@@ -25,26 +25,38 @@ can inspect real components, pins, nets, geometry, DRC results and saved state.
 
 ## Try EdaDesk Desktop
 
-For an integrated workspace with projects, AI chat, schematics, PCB views and tool activity,
-**[download the companion EdaDesk Desktop beta →](https://eda.daboluo.cc/#desktop)**.
+[EdaDesk](https://eda.daboluo.cc/) is an AI circuit-design workspace built on easyeda-agent,
+bringing projects, AI chat, schematics, PCB views and 3D results into one window.
 
 | Option | Best for | Start here |
 |---|---|---|
-| **EdaDesk Desktop** | A desktop workspace for projects, chat and tools | [Downloads and installation](https://eda.daboluo.cc/#desktop) |
+| **EdaDesk Desktop** | A desktop workspace for projects, chat and tools | [Downloads and installation](https://eda.daboluo.cc/#desktop) · [GitHub distribution repository](https://github.com/zhoushoujianwork/edadesk-release) |
 | **CLI / Skill / MCP** | Existing Codex or Claude Code workflows, scripts and tool integrations | [Install below](#install-the-open-source-tools) · [Quick Start](docs/quick-start.md) · [MCP setup](mcp/README.md) |
 
-Desktop **0.1.0 beta** bundles easyeda-agent **1.16.0** and offers **macOS Apple Silicon**
-and **Windows x64** packages through this project's
-[public GitHub Release](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.16.0#edadesk-desktop).
-No private-repository access is needed. See the [Desktop website](https://eda.daboluo.cc/)
-for current packages and supported platforms.
+### Download, register and get started
 
-Desktop source remains private; an open-source date has not been decided. The engine in
-this repository remains available under its existing licenses. The macOS beta is ad-hoc
-signed and not notarized; the Windows beta is unsigned and has not been validated on a
-Windows machine. Connect your own installed and authenticated local agent or a custom
-model. Official Token grants and the unified model service are not open yet; downloading
-the app does not grant credits. Start with a disposable test project.
+1. Download a **macOS Apple Silicon** or **Windows x64** installer from the
+   [Desktop website](https://eda.daboluo.cc/#desktop). Users in China can use its Tencent Cloud downloads;
+   the separate [GitHub Releases](https://github.com/zhoushoujianwork/edadesk-release/releases/latest)
+   provide an alternative source for installers and SHA256 checksums. See the website and release notes for current versions and installation requirements.
+2. Choose **Log in to EdaDesk** in the app to open the website's hosted login/registration page in your browser.
+   Follow the prompts for **WeChat Mini Program or Google**, match the desktop and browser confirmation codes,
+   explicitly authorize the desktop session, then return to the app. You can also start at the
+   [website login](https://eda.daboluo.cc/login?next=/my). First-time Google sign-in requires confirmation to create a separate account;
+   existing users should sign in with their original method and bind Google in the account console. Accounts are not automatically merged by email.
+3. Use the [account console](https://eda.daboluo.cc/my) to inspect your account, available balance and actual usage.
+   The official model service charges by actual usage; you can also use an installed, authenticated local agent or your own model.
+   Trial eligibility, credits and pricing follow the website's current rules and your account's actual status.
+
+### Distribution repository and feedback
+
+**[edadesk-release](https://github.com/zhoushoujianwork/edadesk-release)** is the public repository for installers and feedback.
+It does not contain EdaDesk source code. EdaDesk is a separate proprietary product;
+easyeda-agent in this repository remains available under the licenses below.
+
+- Desktop installation, usage issues and feature requests: use [distribution repository Issues](https://github.com/zhoushoujianwork/edadesk-release/issues/new/choose) or the in-app Feedback button.
+- CLI / Skill / MCP / connector issues: use [easyeda-agent Issues](https://github.com/zhoushoujianwork/easyeda-agent/issues).
+- Account, recharge and billing questions: use [website feedback](https://eda.daboluo.cc/feedback.html) or in-app Feedback. Do not post credentials, API keys or private project files in public issues.
 
 ## What it can do
 

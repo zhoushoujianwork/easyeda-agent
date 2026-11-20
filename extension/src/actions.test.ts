@@ -5273,3 +5273,28 @@ test('pcbRouteRipUp: skips footprint-embedded vias, deletes standalone ones', as
 	assert.equal(res.result.vias.requested, 1);
 	delete (globalThis as any).eda;
 });
+
+test('pcbRouteRipUp: counts the locked copper it matched instead of a silent requested:0', async () => {
+	const prim = (id: string, net: string, layer: number | undefined, locked: boolean) => ({ getState_PrimitiveId: () => id, getState_Net: () => net, getState_Layer: () => layer, getState_PrimitiveLock: () => locked });
+	(globalThis as any).eda = {
+		pcb_PrimitiveComponent: { getAll: async () => [] },
+		pcb_PrimitiveLine: { getAll: async () => [prim('t1', 'BLE_3V3', 1, true), prim('t2', 'BLE_3V3', 2, true), prim('t3', 'GND', 1, true), prim('o', 'BLE_3V3', 11, true)], delete: async () => { throw new Error('must not delete locked'); } },
+		pcb_PrimitiveArc: { getAll: async () => [], delete: async () => true },
+		pcb_PrimitiveVia: { getAll: async () => [prim('v1', 'BLE_3V3', undefined, true)], delete: async () => { throw new Error('must not delete locked'); } },
+	};
+	const res: any = await pcbRouteRipUp({ net: 'BLE_3V3' });
+	assert.equal(res.result.lines.requested, 0);
+	assert.deepEqual(res.result.skippedLocked, { lines: 2, arcs: 0, vias: 1 });
+	assert.equal(res.result.skippedLockedTotal, 3);
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteRipUp: an empty or malformed net filter is refused, never widened to all routing', async () => {
+	let read = 0;
+	(globalThis as any).eda = new Proxy({}, { get: () => ({ getAll: async () => { read++; return []; }, delete: async () => { throw new Error('must not delete'); } }) });
+	for (const net of ['', ' ', [], [''], ['GND', ''], 123, [1]]) {
+		await assert.rejects(() => pcbRouteRipUp({ net } as any), /omit net to rip up all routing/);
+	}
+	assert.equal(read, 0);
+	delete (globalThis as any).eda;
+});

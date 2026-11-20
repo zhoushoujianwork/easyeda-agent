@@ -207,6 +207,47 @@ func groupsCreateWithProvenance(groups []*schGroup, name string, members []strin
 	return next, g, false, nil
 }
 
+// groupsReleaseOverlapping frees the given members from every other group on
+// the page before a whole-page rebuild registers its own modules: the rebuilt
+// composition is the page's grouping truth. The same-name group that matches
+// exactly is kept for --if-absent reuse; a group emptied by the release is
+// dropped. Groups with block provenance are never rewritten (refused instead),
+// since sch reconcile depends on them.
+func groupsReleaseOverlapping(groups []*schGroup, name string, members []string, blockID, instance string, roles map[string]string) ([]*schGroup, []string, error) {
+	norm := schGroupDesignators(members)
+	var out []*schGroup
+	var released []string
+	for _, g := range groups {
+		if g == nil {
+			continue
+		}
+		var overlap, kept []string
+		for _, m := range g.Members {
+			if slices.ContainsFunc(norm, func(n string) bool { return strings.EqualFold(n, strings.TrimSpace(m)) }) {
+				overlap = append(overlap, m)
+			} else {
+				kept = append(kept, m)
+			}
+		}
+		exact := name != "" && strings.EqualFold(g.Name, strings.TrimSpace(name)) && schGroupSameDesignators(g.Members, norm) &&
+			g.BlockID == blockID && g.Instance == instance && maps.Equal(g.Roles, roles)
+		if len(overlap) == 0 || exact {
+			out = append(out, g)
+			continue
+		}
+		if g.BlockID != "" {
+			return nil, nil, fmt.Errorf("%s belongs to block group %s (block %s); remove it explicitly before rebuilding — block provenance is not replaced automatically", overlap[0], describeSchGroup(g), g.BlockID)
+		}
+		released = append(released, fmt.Sprintf("%s: %s", describeSchGroup(g), strings.Join(overlap, ",")))
+		if len(kept) > 0 {
+			c := *g
+			c.Members = kept
+			out = append(out, &c)
+		}
+	}
+	return out, released, nil
+}
+
 // groupsAddMembers adds members to an existing group (same one-group-per-part
 // rule as create; adding a designator the group already has is a no-op).
 func groupsAddMembers(groups []*schGroup, ref string, members []string) ([]*schGroup, *schGroup, error) {
@@ -1154,7 +1195,7 @@ at most one group per page.`,
 	// ── create ──
 	{
 		var membersRaw, name, blockID, instance, rolesRaw string
-		var ifAbsent bool
+		var ifAbsent, replaceOverlapping, checkOnly bool
 		c := &cobra.Command{
 			Use:   "create",
 			Short: "Create a group from member designators (CSV); id is auto-assigned (g1, g2, …)",
@@ -1192,11 +1233,28 @@ an error; an exact match leaves the registry and its timestamps unchanged.`,
 				if err != nil {
 					return err
 				}
+				var released []string
+				if replaceOverlapping {
+					if groups, released, err = groupsReleaseOverlapping(groups, name, splitDesignators(membersRaw), blockID, instance, roles); err != nil {
+						return err
+					}
+				}
 				next, g, unchanged, err := groupsCreateWithProvenance(groups, name, splitDesignators(membersRaw), blockID, instance, roles, ifAbsent)
 				if err != nil {
 					return err
 				}
-				if unchanged {
+				for _, r := range released {
+					verb := "releases"
+					if checkOnly {
+						verb = "would release"
+					}
+					fmt.Fprintf(stdout, "  %s %s\n", verb, r)
+				}
+				if checkOnly {
+					fmt.Fprintf(stdout, "✓ check ok: group %q — %d member(s): %s (project %q, page %s); nothing saved\n", name, len(g.Members), strings.Join(g.Members, ","), project, docUUID)
+					return nil
+				}
+				if unchanged && len(released) == 0 {
 					fmt.Fprintf(stdout, "✓ unchanged group %s — %d member(s): %s (project %q, page %s)\n", describeSchGroup(g), len(g.Members), strings.Join(g.Members, ","), project, docUUID)
 					return nil
 				}
@@ -1223,6 +1281,8 @@ an error; an exact match leaves the registry and its timestamps unchanged.`,
 		c.Flags().StringVar(&membersRaw, "members", "", "member designators — CSV: R1,C5,U2 (required)")
 		c.Flags().StringVar(&name, "name", "", "optional human-readable group name")
 		c.Flags().BoolVar(&ifAbsent, "if-absent", false, "reuse only an exactly matching named group; conflicting members/provenance fail (requires --name)")
+		c.Flags().BoolVar(&replaceOverlapping, "replace-overlapping", false, "whole-page rebuild: first free these members from other groups on the page (emptied groups are dropped); groups with block provenance still fail")
+		c.Flags().BoolVar(&checkOnly, "check", false, "validate only (including --replace-overlapping); save nothing")
 		c.Flags().StringVar(&blockID, "block-id", "", "块溯源:这个组实例化自哪个块(如 block.sy8089_buck)— 让 `sch reconcile` 能机械对账")
 		c.Flags().StringVar(&instance, "instance", "", "块实例 id(同一实例的多个子群靠它合并对账;需与 --block-id 同用)")
 		c.Flags().StringVar(&rolesRaw, "roles", "", "role→位号映射 — CSV: ROLE=R1,LED=LED1(reconcile 必需;需与 --block-id 同用)")

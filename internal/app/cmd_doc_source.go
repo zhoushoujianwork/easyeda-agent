@@ -424,6 +424,160 @@ func newDocSourceCmd(cfg *appConfig, window *string, stdout io.Writer) *cobra.Co
 	roundtrip.Flags().StringVar(&reportOut, "out", "", "new JSON evidence report path, reserved before invoking the setter (required)")
 	roundtrip.Flags().BoolVar(&dryRun, "dry-run", false, "only compare the fresh source and identity; never invoke the setter")
 	roundtrip.Flags().StringVar(&comparison, "comparison", documentSourceComparisonExact, "source comparison: exact (default) or experimental schematic-only dochead-volatile-v1")
-	group.AddCommand(get, roundtrip)
+	group.AddCommand(get, roundtrip, newDocSourceRestoreCmd(cfg, window, stdout))
 	return group
+}
+
+// sourceRestoreErrors re-derives every claim of a restore report from the
+// original strings. The connector's own verified flag is necessary, not sufficient.
+func sourceRestoreErrors(report map[string]any, to, expected *documentSourceSnapshot, dryRun bool) []string {
+	if report == nil {
+		return []string{"connector returned no restore evidence"}
+	}
+	var failures []string
+	var identity struct {
+		SchemaVersion int                  `json:"schemaVersion"`
+		Target        documentSourceTarget `json:"target"`
+		Availability  map[string]bool      `json:"availability"`
+		IdentityAfter documentSourceTarget `json:"identityAfter"`
+	}
+	data, err := json.Marshal(report)
+	if err != nil || json.Unmarshal(data, &identity) != nil || identity.SchemaVersion != 1 || identity.Target != to.Target {
+		failures = append(failures, "connector returned missing or mismatched target/schema")
+	}
+	if !identity.Availability["getDocumentSource"] || !identity.Availability["setDocumentSource"] {
+		failures = append(failures, "connector did not confirm both source methods available")
+	}
+	if !dryRun && identity.IdentityAfter != to.Target {
+		failures = append(failures, "connector returned missing or mismatched post-write identity")
+	}
+	for _, key := range []string{"writeError", "readbackError"} {
+		if value, exists := report[key]; exists && value != nil && value != "" {
+			failures = append(failures, "connector returned "+key)
+		}
+	}
+	if report["comparison"] != documentSourceComparisonDOCHEADV1 {
+		failures = append(failures, "connector comparison evidence is not dochead-volatile-v1")
+	}
+	before, beforeOK := report["beforeSource"].(string)
+	after, afterOK := report["afterSource"].(string)
+	if !beforeOK || !afterOK {
+		failures = append(failures, "connector returned missing or non-string source evidence")
+	}
+	project := func(name, source string) (string, bool) {
+		projection, _, err := documentSourceComparison(source, to.Target, documentSourceComparisonDOCHEADV1)
+		if err != nil {
+			failures = append(failures, name+" comparison failed: "+err.Error())
+		}
+		return projection, err == nil
+	}
+	toProjection, toOK := project("snapshot", to.Source)
+	expectedProjection, expectedOK := project("expected", expected.Source)
+	report["beforeSourceSha256"], report["afterSourceSha256"] = nil, nil
+	if beforeOK {
+		report["beforeSourceSha256"] = sourceSHA256(before)
+		if projection, ok := project("beforeSource", before); ok && expectedOK && projection != expectedProjection {
+			failures = append(failures, "fresh beforeSource differs from the expected current snapshot")
+		}
+	}
+	if afterOK {
+		report["afterSourceSha256"] = sourceSHA256(after)
+		if dryRun && after != before {
+			failures = append(failures, "dry-run afterSource must be the exact fresh beforeSource")
+		}
+		if projection, ok := project("afterSource", after); !dryRun && ok && toOK && projection != toProjection {
+			failures = append(failures, "afterSource differs from the restored snapshot")
+		}
+	}
+	for key, want := range map[string]bool{"dryRun": dryRun, "writeAttempted": !dryRun, "written": !dryRun, "verified": true, "partial": false, "incomplete": false} {
+		if report[key] != want {
+			failures = append(failures, fmt.Sprintf("connector %s evidence is missing or inconsistent", key))
+		}
+	}
+	return failures
+}
+
+func newDocSourceRestoreCmd(cfg *appConfig, window *string, stdout io.Writer) *cobra.Command {
+	var to, expectedPath, out string
+	var dryRun bool
+	c := &cobra.Command{
+		Use: "restore", Short: "Write an earlier snapshot of the same schematic page back once (experimental rollback)",
+		Long:    "Roll one schematic page back to an earlier 'doc source get' snapshot.\n--expected is a snapshot of the page as it is now: the fresh source must equal it apart from the three volatile DOCHEAD values, otherwise nothing is written. Take it immediately before the restore and keep it, it is the only way forward again.\nThe setter is called once with the --to source. No retry, automatic rollback, save or reload. Primitive IDs read earlier are stale afterwards; re-read before any further write.\nverified only means the immediate fresh source equals the snapshot; save, reload and connectivity readback remain separate. Schematic only.",
+		Args:    cobra.NoArgs,
+		Example: "  easyeda doc source get --window W --project-uuid P --document-uuid D --out now.json\n  easyeda doc source restore --window W --to before.json --expected now.json --out restore.json --dry-run\n  easyeda doc source restore --window W --to before.json --expected now.json --out restore.json",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			snapshot, err := readDocumentSourceSnapshot(to)
+			if err != nil {
+				return fmt.Errorf("--to: %w", err)
+			}
+			expected, err := readDocumentSourceSnapshot(expectedPath)
+			if err != nil {
+				return fmt.Errorf("--expected: %w", err)
+			}
+			if snapshot.Target != expected.Target {
+				return fmt.Errorf("--to and --expected are snapshots of different documents")
+			}
+			if err = sourceTargetArgs(cfg, *window, snapshot.Target.ProjectUUID, snapshot.Target.DocumentUUID); err != nil {
+				return err
+			}
+			for _, s := range []*documentSourceSnapshot{snapshot, expected} {
+				if _, _, err = documentSourceComparison(s.Source, s.Target, documentSourceComparisonDOCHEADV1); err != nil {
+					return err
+				}
+			}
+			f, err := reserveSourceOutput(out)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			wire := func(s *documentSourceSnapshot) map[string]any {
+				return map[string]any{"schemaVersion": 1, "projectUuid": s.Target.ProjectUUID, "documentUuid": s.Target.DocumentUUID, "documentType": s.Target.DocumentType, "source": s.Source}
+			}
+			payload := map[string]any{"projectUuid": snapshot.Target.ProjectUUID, "documentUuid": snapshot.Target.DocumentUUID, "dryRun": dryRun, "snapshot": wire(snapshot), "expected": wire(expected)}
+			hashes := map[string]any{"snapshotSha256": snapshot.SourceSHA256, "expectedSha256": expected.SourceSHA256, "persistenceVerified": false}
+			// One dispatch, no retries at any layer: a late setter must not run twice.
+			res, callErr := requestActionOnce(cfg, "document.source.restore", *window, payload, 60*time.Second)
+			if callErr != nil {
+				hashes["error"], hashes["response"] = callErr.Error(), res
+				_ = writeSourceEvidence(f, hashes)
+				return callErr
+			}
+			report := res.Result
+			failures := sourceRestoreErrors(report, snapshot, expected, dryRun)
+			if report == nil {
+				report = map[string]any{}
+			}
+			for key, value := range hashes {
+				report[key] = value
+			}
+			if len(failures) > 0 {
+				report["validationErrors"], report["verified"], report["incomplete"] = failures, false, true
+			}
+			if err = writeSourceEvidence(f, report); err != nil {
+				return err
+			}
+			absolute, err := filepath.Abs(out)
+			if err != nil {
+				return err
+			}
+			summary := map[string]any{"path": absolute, "persistenceVerified": false, "snapshotSha256": snapshot.SourceSHA256, "expectedSha256": expected.SourceSHA256}
+			for _, key := range []string{"target", "dryRun", "alreadyAtSnapshot", "writeAttempted", "written", "verified", "partial", "incomplete", "beforeSourceSha256", "afterSourceSha256", "validationErrors"} {
+				if value, exists := report[key]; exists {
+					summary[key] = value
+				}
+			}
+			if err = encodeResultEnvelope(res, summary, stdout); err != nil {
+				return err
+			}
+			if report["verified"] != true || report["partial"] == true || report["incomplete"] == true {
+				return fmt.Errorf("document source restore was not verified; the pre-restore page is beforeSource in %s — inspect the page before any further write", absolute)
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&to, "to", "", "unaltered earlier snapshot from 'doc source get' to write back (required)")
+	c.Flags().StringVar(&expectedPath, "expected", "", "unaltered snapshot of the page as it is now (required)")
+	c.Flags().StringVar(&out, "out", "", "new JSON evidence report path, reserved before invoking the setter (required)")
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "only compare the fresh source and identity; never invoke the setter")
+	return c
 }

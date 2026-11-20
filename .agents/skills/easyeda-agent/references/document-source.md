@@ -47,6 +47,64 @@ false；显式保存、typed 重载、fresh 源码和全部对象/引脚网络�
 保持设计，实际结果仍须对账；它不证明生成器、自动布局/布线、eprj3 folder 同步或 Web 工程导入可用。尚未完成
 现场核查时保持 `offline-verified`，记录缺口；原始响应留本地忽略的 artifacts。
 
+## 旧快照写回（实验性回退）
+
+`restore` 把同一原理图页的一份较早快照写回一次，用于整页回退。它与 roundtrip 的区别是
+setter 收到的是快照而不是 fresh 源码，因此必须同时给出“当前页”的快照作为写前检查：
+
+```sh
+easyeda doc source get --window <window> --project-uuid <project> --document-uuid <doc> --out now.json
+easyeda doc source restore --window <window> --to before.json --expected now.json --out restore.json --dry-run
+easyeda doc source restore --window <window> --to before.json --expected now.json --out restore.json
+```
+
+- fresh 源码须与 `--expected` 在 `dochead-volatile-v1` 下相等，否则写前拒绝；没有记录过的修改不会被覆盖。
+  `now.json` 同时是撤销这次回退的唯一依据，必须保留。
+- 仅支持原理图页，setter 只调用一次；不重试、不自动回滚、不保存、不重载。
+- `verified` 只表示写后 fresh 源码在该规则下等于快照。回退后此前读到的图元 ID 全部作废，
+  后续写入前必须重新回读；连接关系对账、typed 保存、重载后回读仍须单独执行。
+- 现场结论（Web 4.1.105，edadesk DEV，connector 1.18.1-dev.1，专用工程一页 30 个图元、154 KiB）：
+  - setter 接受与当前页不同的旧快照并返回 true，单次读取或写回均在 1 秒内。
+  - 删除两个器件并新增一段文字后写回旧快照：器件数、全部图元 ID、typed 器件列表、连接关系
+    与旧快照一致，文字消失；typed 保存并重载后仍一致（图框更新时间除外）。
+  - 反方向（从旧快照回到“已删除”状态）在 `dochead-volatile-v1` 下源码逐字相等，`verified:true`。
+  - 恢复被删器件时源码不逐字相等：宿主重新展开这两个器件的库属性（多出 37 条 ATTR），其
+    `Device` 属性值由器件 UUID 变为空串，记录顺序与 ticket 重排；未改动的 28 个图元记录逐字相同。
+    命令因此报告 `verified:false` 并非零退出，这是按源码规则的如实结果，不代表对象未恢复。
+  - 结论：整页写回可用于原理图回退，但“回退成功”必须以 typed 回读（图元身份、器件列表、连接关系）
+    判定，不能以源码逐字相等判定。PCB、多页、含导线与总线的页面、层次图未验证。
+- 日常回退用下节的检查点命令；`doc source restore` 保留为底层探针。
+
+## 写命令检查点与步骤级回退
+
+每条会写原理图页的命令在第一次写入前自动记录该页源码，一条命令就是一个可回退的步骤，
+不需要逐个命令适配。只读命令、dry-run、PCB 写入不记录。
+
+```sh
+easyeda sch checkpoint list --window <window>
+easyeda sch checkpoint list --project-uuid <project>    # 离线列出该工程所有图页的检查点
+easyeda sch checkpoint restore <checkpoint-id> --window <window> --dry-run
+easyeda sch checkpoint restore <checkpoint-id> --window <window>
+```
+
+- 检查点是“该命令执行之前”的页面。回退到它会撤销这条命令及之后的全部命令，不能只抽掉中间一步。
+- `list` 与 `restore` 默认针对当前激活的图页；带 `--doc <图页>` 时先切到该页并回读确认，再读取或回退。
+- 回退前先把当前页记为新检查点，结果里的 `undoCheckpoint` 就是撤销这次回退的入口。
+- 回退成功按内容判定：每个图元的类型与 ID、除库元数据 `attrs` 外的全部字段、每条属性的值都与
+  检查点一致才算 `verified`。源码逐字是否相等另报 `sourceEqual`。宿主重建器件时新增的库属性计入
+  `attributesAdded`，把 `Device` 属性清空计入 `deviceAttributeReset`，这两项不判失败。
+- 页面内容已与检查点一致时不写入，返回 `alreadyAtCheckpoint:true`。
+- 回退不保存。之后仍须 typed 保存、重载并回读；回退前读到的图元 ID 可能失效，继续写入前重新读取。
+- 记录失败（页面超过 2 MiB、身份不可读等）只在 stderr 警告，写入照常进行，该步骤不可回退。
+- 存储在 `~/.easyeda-agent/checkpoints/<project>/<document>/`，可用 `EASYEDA_CHECKPOINT_DIR` 改位置；
+  每页保留最近约 300 条。首条存完整压缩副本，之后只存相对上一条的差异，内容未变只记一条索引。
+  `EASYEDA_CHECKPOINT_LABEL` 的值随条目保存，供调用方把检查点对应到自己的操作记录；
+  `EASYEDA_CHECKPOINT=off` 关闭自动记录。
+- 现场验证（Web 4.1.105，专用工程一页 30 个图元）：三条写命令各自生成检查点（完整 14.8 KiB，
+  差异约 0.6 KiB），含记录在内每条命令 0.25–0.75 秒；逐步回退、撤销回退、回到初始状态后保存重载，
+  typed 器件列表与连接关系同测试前一致。
+- 未验证：含导线或总线的页面、一条命令写多页、增删图页、层次图、超过 2 MiB 的页面。
+
 ## Web 4.1.60 现场结论
 
 本地候选 `1.9.1-dev.2` 已在专用 Web 工程验证以下有限范围，不能据此扩大到其他宿主版本或设计：

@@ -11,6 +11,35 @@ envelopes). This file is the operational "how do I run it" guide.
 For Codex Desktop's in-app browser and a versioned local test, follow the
 [Codex Web EDA runbook](codex-web-eda-runbook.md).
 
+## 任务分支与 worktree
+
+分支规则以 [AGENTS.md 的“分支与提交”](../AGENTS.md#分支与提交)为准；日常任务统一为：
+
+`最新 origin/dev → 独立任务分支和 worktree → 验证 → PR 合入 dev → 核对远端 → 清理本任务分支和 worktree`
+
+在已有仓库中先检查 `git status --short`、`git worktree list` 和活跃任务，再依次执行以下示例。
+将 `fix/task-id` 和 `../easyeda-agent-wt-task-id` 替换为本任务唯一且尚未使用的名称；
+fetch 失败或远端缺少 `dev` 时停止，不退回本地旧分支或 `main`：
+
+```bash
+git fetch origin
+git rev-parse origin/dev
+git worktree add -b fix/task-id ../easyeda-agent-wt-task-id origin/dev
+cd ../easyeda-agent-wt-task-id
+# 在此开发、运行与改动相关的检查，并只提交本任务文件。
+git push -u origin fix/task-id
+gh pr create --base dev --head fix/task-id --title "修复说明" --body-file pr-description.md
+```
+
+PR 描述文件是本地交付辅助文件，不纳入无关源码提交；合并和清理前也须处理该文件，
+不能带着未跟踪文件强制移除 worktree。通过审阅和仓库要求的检查后合并 PR，回读合并状态
+与 revision，并 fetch 核对 `origin/dev` 中的结果。主目录的 `dev` 仅在确认无 WIP、无活跃
+会话冲突时用 `git pull --ff-only origin dev` 同步；有分歧则先协调，不 reset 覆盖。
+
+交付记录保留任务 head、PR、合并 revision 和验证结果后，按根规则核对并移除本任务
+worktree、本地及远端任务分支；其他工作树、未整合修改和冻结证据保留。正式发布另走
+[发布集成流程](release-workflow.md#分支集成与发布来源)，任务 PR 不直接合入 `main`。
+
 ## The AI-agent automation testing loop (what this whole setup is for)
 
 The pieces below combine into one repeatable loop an AI agent (or you) runs to

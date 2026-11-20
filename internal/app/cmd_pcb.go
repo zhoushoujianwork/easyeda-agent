@@ -1849,10 +1849,25 @@ pours reflow under the new clearance.`,
   easyeda pcb rip-up            # rip up ALL routing (board outline + locked survive)`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				payload := map[string]any{}
-				if len(nets) > 0 {
+				// "All routing" is only ever the absence of --net. A --net that
+				// resolves to nothing (an empty shell variable, "", ",") must not
+				// silently widen into a whole-board rip-up.
+				if cmd.Flags().Changed("net") {
+					for _, n := range nets {
+						if strings.TrimSpace(n) == "" {
+							return fmt.Errorf("--net contains an empty net name; refusing to rip up (omit --net entirely to rip up all routing)")
+						}
+					}
+					if len(nets) == 0 {
+						return fmt.Errorf("--net was given but names no net; refusing to rip up (omit --net entirely to rip up all routing)")
+					}
 					payload["net"] = nets
 				}
-				return dispatch(cfg, "pcb.route.rip_up", window, payload, stdout, stderr)
+				res, err := dispatchCapture(cfg, "pcb.route.rip_up", window, payload, stdout)
+				if err != nil || res == nil {
+					return err
+				}
+				return ripUpLockedOutcome(res.Result, nets, stderr)
 			},
 		}
 		c.Flags().StringSliceVar(&nets, "net", nil, "net(s) to rip up; repeat or comma-separate; omit = all")
@@ -5073,5 +5088,33 @@ func syncSchAttrsToPcb(cfg *appConfig, window string, overwrite bool, out io.Wri
 	if nl, ok := res.Result["noLcscDesignators"].([]any); ok && len(nl) > 0 {
 		fmt.Fprintf(out, "ℹ sync-attrs: %d part(s) without an LCSC C-number skipped: %v\n", len(nl), nl)
 	}
+	return nil
+}
+
+// ripUpLockedOutcome makes locked copper visible. rip-up never deletes locked
+// primitives (a locked outline or hand-routed critical net must survive), but a
+// scoped rip-up that removed nothing because everything matching was locked has
+// not done what was asked: that is an error naming the unlock step. Otherwise any
+// locked copper left in place is reported on stderr.
+func ripUpLockedOutcome(result map[string]any, nets []string, stderr io.Writer) error {
+	num := func(v any) int { f, _ := v.(float64); return int(f) }
+	skipped := num(result["skippedLockedTotal"])
+	if skipped == 0 {
+		return nil
+	}
+	requested := 0
+	for _, kind := range []string{"lines", "arcs", "vias"} {
+		if m, ok := result[kind].(map[string]any); ok {
+			requested += num(m["requested"])
+		}
+	}
+	unlock := "easyeda pcb track-lock --unlock --net <net>"
+	if len(nets) > 0 {
+		unlock = "easyeda pcb track-lock --unlock --net " + strings.Join(nets, ",")
+	}
+	if len(nets) > 0 && requested == 0 {
+		return fmt.Errorf("rip-up removed nothing: all %d matching track/arc/via primitive(s) are locked; unlock them first (%s), then rip up again", skipped, unlock)
+	}
+	fmt.Fprintf(stderr, "rip-up left %d locked track/arc/via primitive(s) in place; to remove them too: %s\n", skipped, unlock)
 	return nil
 }

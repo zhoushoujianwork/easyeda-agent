@@ -251,6 +251,16 @@ func TestSchDesignatorsSceneProtectsElectricalAndPhysicalData(t *testing.T) {
 	if err := verifySchDesignatorScene(before, target, after, "after"); err != nil {
 		t.Fatalf("allowed render/timestamp change blocked: %v", err)
 	}
+	// Modifying a part hydrates device text metadata the baseline lacked.
+	after.Parts["p-rf"]["manufacturer"] = "Espressif"
+	if err := verifySchDesignatorScene(before, target, after, "after"); err != nil {
+		t.Fatalf("hydrated manufacturer blocked: %v", err)
+	}
+	after.Parts["p-rf"]["manufacturerFlags"] = float64(1)
+	if err := verifySchDesignatorScene(before, target, after, "after"); err == nil {
+		t.Fatal("a new non-text field passed")
+	}
+	delete(after.Parts["p-rf"], "manufacturerFlags")
 	for _, tc := range []struct {
 		name, path string
 		mutate     func(schDesignatorBaseline)
@@ -293,12 +303,12 @@ func TestSchDesignatorsSceneProtectsElectricalAndPhysicalData(t *testing.T) {
 func TestSchDesignatorsGlobalConflictsAndGroups(t *testing.T) {
 	_, before, target := designatorFixture(t)
 	global := &actionResult{OK: true, Context: &before.Context, Result: before.Result}
-	if err := verifySchDesignatorGlobal(before, target, global); err != nil {
+	if err := verifySchDesignatorGlobal(before, target, global, false); err != nil {
 		t.Fatal(err)
 	}
 	copyGlobal := *global
 	copyGlobal.Result = map[string]any{"components": append(append([]any{}, before.Result["components"].([]any)...), map[string]any{"componentType": "part", "designator": "U2", "otherProperty": map[string]any{connectivity.ComponentIDProperty: "cmp-U1"}})}
-	if err := verifySchDesignatorGlobal(before, target, &copyGlobal); err == nil {
+	if err := verifySchDesignatorGlobal(before, target, &copyGlobal, false); err == nil {
 		t.Fatal("foreign page ref conflict accepted")
 	}
 	groups := []*schGroup{{ID: "one", Members: []string{"U_RF", "U1"}, Roles: map[string]string{"radio": "U_RF", "existing": "U1"}, Annotations: []string{"frame1"}}, {ID: "other", Members: []string{"CN1"}}}
@@ -421,5 +431,49 @@ func TestSchDesignatorsVerifyRejectsConflictOnUnvisitedPage(t *testing.T) {
 	cmd.SetArgs([]string{"--before", beforePath, "--target", targetPath, "--before-sha", sha256Hex(raw), "--target-sha", sha256Hex(targetRaw), "--phase", "before"})
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unvisited-component is missing from target or duplicated") {
 		t.Fatalf("conflict on an unvisited page was not rejected: %v", err)
+	}
+}
+
+func TestSchDesignatorsGlobalPageScope(t *testing.T) {
+	_, before, target := designatorFixture(t)
+	page := before.Context.DocumentUUID
+	tagged := func(extra ...map[string]any) *actionResult {
+		comps := []any{}
+		for _, item := range before.Result["components"].([]any) {
+			c := map[string]any{}
+			for k, v := range item.(map[string]any) {
+				c[k] = v
+			}
+			c["pageUuid"] = page
+			comps = append(comps, c)
+		}
+		for _, c := range extra {
+			comps = append(comps, c)
+		}
+		return &actionResult{OK: true, Context: &before.Context, Result: map[string]any{"components": comps}}
+	}
+	offPage := func(ref, id, pageUUID string) map[string]any {
+		c := map[string]any{"componentType": "part", "designator": ref, "otherProperty": map[string]any{connectivity.ComponentIDProperty: id}}
+		if pageUUID != "" {
+			c["pageUuid"] = pageUUID
+		}
+		return c
+	}
+	other := offPage("X9", "cmp-X9", "page-other")
+	if err := verifySchDesignatorGlobal(before, target, tagged(other), true); err != nil {
+		t.Fatalf("page scope rejected a non-conflicting part on another page: %v", err)
+	}
+	if err := verifySchDesignatorGlobal(before, target, tagged(other), false); err == nil {
+		t.Fatal("full-project scope accepted a part missing from the target")
+	}
+	first := target.Components[0]
+	for name, c := range map[string]map[string]any{
+		"duplicate id":  offPage("X8", first.ID, "page-other"),
+		"occupied ref":  offPage(first.Ref, "cmp-other", "page-other"),
+		"untagged part": offPage("X7", "cmp-X7", ""),
+	} {
+		if err := verifySchDesignatorGlobal(before, target, tagged(c), true); err == nil {
+			t.Fatalf("page scope accepted %s", name)
+		}
 	}
 }

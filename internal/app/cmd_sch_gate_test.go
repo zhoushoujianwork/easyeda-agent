@@ -325,7 +325,7 @@ func TestDrcBlockingReasons_MatchesDocumentedContract(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := drcBlockingReasons(c.rep, c.strict)
+			got := drcBlockingReasons(c.rep, c.strict, "")
 			if blocked := len(got) > 0; blocked != c.wantBlock {
 				t.Fatalf("blocking=%v want %v (reasons=%v)", blocked, c.wantBlock, got)
 			}
@@ -345,7 +345,7 @@ func TestDrcBlockingReasons_WarnBlockSaysWhereToLook(t *testing.T) {
 	// DRC 面板看」,它就是一条无法行动的阻塞,会被直接绕过,连它以后报的真问题
 	// 一起绕过。
 	rep := drcReport{Passed: true, NativePassed: true, Fatal: intp(0), Summary: &drcSummary{Warn: 1}, CountsAvailable: true}
-	got := drcBlockingReasons(rep, true)
+	got := drcBlockingReasons(rep, true, "")
 	if len(got) != 1 {
 		t.Fatalf("want 1 reason, got %v", got)
 	}

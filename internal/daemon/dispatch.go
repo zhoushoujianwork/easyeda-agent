@@ -329,6 +329,9 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 		errResp := errorResponse(req.ID, "DISPATCH_FAILED", message, err.Error())
 		errResp.WindowID = req.WindowID // frozen identity of the actual routed connection
 		s.writeHealth.annotateDegraded(&req, &errResp)
+		if isTimeoutErr(err) {
+			s.writeHealth.annotateWriteTimeout(&req, &errResp, executionBudget)
+		}
 		s.audit.Append(fromResponse(started, &req, &errResp))
 		writeJSON(w, status, errResp)
 		return

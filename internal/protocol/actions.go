@@ -150,6 +150,13 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"document.source.get", "schematic.save / pcb.save", "document.close/open", "fresh object and connectivity readback"},
 		},
 		{
+			Name: "document.source.restore", Access: accessDedicatedDesign, Domain: DomainDocument, Phase: 1, NeedsWindow: true, Mutates: true,
+			Description: "Experimental whole-page rollback: write one earlier source snapshot of the same schematic page back, once. The fresh source must equal the caller's expected current snapshot under dochead-volatile-v1, so unrecorded edits are never overwritten. Schematic only. Primitive IDs read before the restore are stale afterwards. No retry, no automatic rollback, no persistence claim; keep the returned beforeSource. dryRun only reads and checks.",
+			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)", "snapshot (source to write: schemaVersion/projectUuid/documentUuid/documentType/source)", "expected (current page snapshot, same shape)", "dryRun optional"},
+			Outputs:     []string{"target", "comparison", "beforeSource", "afterSource", "alreadyAtSnapshot", "snapshotVolatile/beforeVolatile/afterVolatile", "writeAttempted", "written", "verified", "partial", "incomplete"},
+			VerifyWith:  []string{"document.source.get", "schematic.read", "schematic.save", "document.close/open", "fresh object and connectivity readback"},
+		},
+		{
 			Name: "document.open", Access: accessEditorLifecycle,
 			Domain:      DomainDocument,
 			Phase:       1,
@@ -1622,9 +1629,9 @@ func AllActions() []ActionSpec {
 			Mutates:      true,
 			NeedsWindow:  true,
 			NeedsConfirm: true,
-			Description:  "Rip up copper routing (delete tracks + arcs + vias) — reliable hand-rolled rip-up (getAll → filter → delete) on the stable primitive APIs. Pass net (string or string[]) to rip up only those nets; omit to rip up ALL routing. Deletes COPPER layers ONLY (TOP/BOTTOM/INNER) — never silkscreen/assembly/mechanical artwork, the board outline, or locked primitives. The iteration primitive: rip_up → re-route. delete() is a batch boolean, so results report requested counts + ok, not an assumed deleted count.",
+			Description:  "Rip up copper routing (delete tracks + arcs + vias) — reliable hand-rolled rip-up (getAll → filter → delete) on the stable primitive APIs. Pass net (string or string[]) to rip up only those nets; omit to rip up ALL routing. Deletes COPPER layers ONLY (TOP/BOTTOM/INNER) — never silkscreen/assembly/mechanical artwork, the board outline, or locked primitives (matched locked copper is counted in skippedLocked; unlock with pcb.track.lock first). The iteration primitive: rip_up → re-route. delete() is a batch boolean, so results report requested counts + ok, not an assumed deleted count.",
 			Inputs:       []string{"net optional (string or string[]); omit = all"},
-			Outputs:      []string{"nets", "lines{requested,ok}", "arcs{requested,ok}", "vias{requested,ok}"},
+			Outputs:      []string{"nets", "lines{requested,ok}", "arcs{requested,ok}", "vias{requested,ok}", "skippedLocked{lines,arcs,vias}", "skippedLockedTotal"},
 			VerifyWith:   []string{"pcb.line.list", "pcb.via.list"},
 		},
 		{

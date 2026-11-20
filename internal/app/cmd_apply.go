@@ -14,6 +14,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -118,12 +120,14 @@ type journalEntry struct {
 func newApplyCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 	var (
 		dryRun, resume, yes, quiet bool
+		jsonOut                    bool
 		fromRef, toRef             string
 		journalPath, window, doc   string
 		varOverrides               []string
 		stepDelay                  float64
 	)
 
+	var applyRun func(args []string, executed *bool, result map[string]any) error
 	cmd := &cobra.Command{
 		Use:   "apply <playbook.json>",
 		Short: "Replay a declarative step file (playbook) against EasyEDA",
@@ -136,86 +140,128 @@ Precedence: CLI flag > playbook file > built-in default.`,
   easyeda apply pcb.playbook.json --dry-run`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pb, raw, err := loadPlaybook(args[0])
+			if !jsonOut {
+				var executed bool
+				return applyRun(args, &executed, map[string]any{})
+			}
+			// Callers that must prove the command ended read one JSON result on
+			// stdout; the human progress moves to stderr. A refusal before any
+			// step ran is reported as such. A step that failed and stopped the
+			// queue is reported as STEP_FAILED with its cause; earlier steps may
+			// have changed the design, so the caller must read back. Other stops
+			// after execution began (unverified writes) have no result.
+			human, result := stdout, map[string]any{}
+			stdout = stderr
+			defer func() { stdout = human }()
+			executed := false
+			err := applyRun(args, &executed, result)
 			if err != nil {
-				return err
-			}
-
-			// Guarded graph plans cannot skip their baseline or replay into another page.
-			guarded := pb.RequireFullExecution
-			for _, step := range pb.Steps {
-				if step.ExpectedConnectivity != nil {
-					guarded = true
-				}
-			}
-			if guarded {
-				if resume || fromRef != "" || toRef != "" {
-					return fmt.Errorf("guarded plans require a fresh full execution; re-export and re-plan after failure")
-				}
-				if (cfg.project != "" && cfg.project != pb.Meta.Project) || (doc != "" && doc != pb.Meta.Doc) {
-					return fmt.Errorf("cannot override guarded plan target")
-				}
-				local := *cfg
-				local.doc = pb.Meta.Doc
-				cfg = &local
-			}
-			// precedence: CLI flag > file
-			if cfg.project == "" {
-				cfg.project = pb.Meta.Project
-			}
-			effWindow := window
-			if effWindow == "" {
-				effWindow = pb.Meta.Window
-			}
-			if doc != "" { // CLI flag > playbook meta.doc
-				pb.Meta.Doc = doc
-			}
-			vars := map[string]string{}
-			maps.Copy(vars, pb.Vars)
-			for _, kv := range varOverrides {
-				k, v, ok := strings.Cut(kv, "=")
-				if !ok {
-					return fmt.Errorf("invalid --var %q, expected KEY=VALUE", kv)
-				}
-				vars[k] = v
-			}
-
-			if errs := preflight(pb, vars); len(errs) > 0 {
-				for _, e := range errs {
-					fmt.Fprintf(stderr, "preflight: %s\n", e)
-				}
-				return fmt.Errorf("playbook failed preflight (%d problem(s))", len(errs))
-			}
-
-			if journalPath == "" {
-				journalPath = args[0] + ".journal.jsonl"
-			}
-
-			r := &applyRunner{
-				cfg: cfg, stdout: stdout, stderr: stderr,
-				pb: pb, pbPath: args[0], sha: sha256Hex(raw), vars: vars,
-				window: effWindow, yes: yes, quiet: quiet,
-				journalPath: journalPath,
-				stepDelay:   time.Duration(stepDelay * float64(time.Second)),
-			}
-			if dryRun {
-				// ADR-0004 Decision 4: dry-run 必须纯计算 —— 机械保证。
-				defer setDispatchDryRun(true)()
-				return r.printPlan()
-			}
-			if resume {
-				if err := r.loadJournal(); err != nil {
+				var stepErr *applyStepError
+				if executed && errors.As(err, &stepErr) {
+					_ = writeApplyJSON(human, stepErr.result(dryRun))
 					return err
 				}
-			}
-			if err := r.resolveRange(fromRef, toRef); err != nil {
+				if executed {
+					return err
+				}
+				_ = writeApplyJSON(human, map[string]any{"ok": false, "dryRun": dryRun,
+					"error": map[string]any{"code": "PRECONDITION_REFUSED", "message": err.Error()}})
 				return err
 			}
-			return r.execute()
+			return writeApplyJSON(human, result)
 		},
+	}
+	applyRun = func(args []string, executed *bool, result map[string]any) error {
+		pb, raw, err := loadPlaybook(args[0])
+		if err != nil {
+			return err
+		}
+
+		// Guarded graph plans cannot skip their baseline or replay into another page.
+		guarded := pb.RequireFullExecution
+		for _, step := range pb.Steps {
+			if step.ExpectedConnectivity != nil {
+				guarded = true
+			}
+		}
+		if guarded {
+			if resume || fromRef != "" || toRef != "" {
+				return fmt.Errorf("guarded plans require a fresh full execution; re-export and re-plan after failure")
+			}
+			if (cfg.project != "" && cfg.project != pb.Meta.Project) || (doc != "" && doc != pb.Meta.Doc) {
+				return fmt.Errorf("cannot override guarded plan target")
+			}
+			local := *cfg
+			local.doc = pb.Meta.Doc
+			cfg = &local
+		}
+		// precedence: CLI flag > file
+		if cfg.project == "" {
+			cfg.project = pb.Meta.Project
+		}
+		effWindow := window
+		if effWindow == "" {
+			effWindow = pb.Meta.Window
+		}
+		if doc != "" { // CLI flag > playbook meta.doc
+			pb.Meta.Doc = doc
+		}
+		vars := map[string]string{}
+		maps.Copy(vars, pb.Vars)
+		for _, kv := range varOverrides {
+			k, v, ok := strings.Cut(kv, "=")
+			if !ok {
+				return fmt.Errorf("invalid --var %q, expected KEY=VALUE", kv)
+			}
+			vars[k] = v
+		}
+
+		if errs := preflight(pb, vars); len(errs) > 0 {
+			for _, e := range errs {
+				fmt.Fprintf(stderr, "preflight: %s\n", e)
+			}
+			return fmt.Errorf("playbook failed preflight (%d problem(s))", len(errs))
+		}
+
+		if journalPath == "" {
+			journalPath = args[0] + ".journal.jsonl"
+		}
+
+		r := &applyRunner{
+			cfg: cfg, stdout: stdout, stderr: stderr,
+			pb: pb, pbPath: args[0], sha: sha256Hex(raw), vars: vars,
+			window: effWindow, yes: yes, quiet: quiet,
+			journalPath: journalPath,
+			stepDelay:   time.Duration(stepDelay * float64(time.Second)),
+		}
+		if dryRun {
+			// ADR-0004 Decision 4: dry-run 必须纯计算 —— 机械保证。
+			defer setDispatchDryRun(true)()
+			if err := r.printPlan(); err != nil {
+				return err
+			}
+			result["ok"], result["dryRun"], result["name"], result["steps"] = true, true, pb.Meta.Name, len(pb.Steps)
+			return nil
+		}
+		if resume {
+			if err := r.loadJournal(); err != nil {
+				return err
+			}
+		}
+		if err := r.resolveRange(fromRef, toRef); err != nil {
+			return err
+		}
+		*executed = true
+		if err := r.execute(); err != nil {
+			return err
+		}
+		result["ok"], result["dryRun"], result["name"], result["steps"] = true, false, pb.Meta.Name, len(pb.Steps)
+		result["okCount"], result["skipped"], result["journal"] = r.okCount, r.skipCount, r.journalPath
+		return nil
 	}
 
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate + print the plan, execute nothing")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "print one structured result on stdout (progress goes to stderr)")
 	cmd.Flags().BoolVar(&resume, "resume", false, "skip steps already ok in the journal (restores captured vars)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "auto-approve confirmation-gated steps")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "only print failures and the final summary")
@@ -697,6 +743,8 @@ type applyRunner struct {
 
 	journalPath string
 	journal     *os.File
+	okCount     int
+	skipCount   int
 	doneOK      map[int]bool // idx (0-based) -> already ok (resume)
 	stepDelay   time.Duration
 
@@ -986,7 +1034,8 @@ func (r *applyRunner) execute() error {
 		var stateErr *schematicExpectationError
 		if errors.As(execErr, &stateErr) {
 			fmt.Fprintf(r.stderr, "  expectSchematic is a mandatory gate — stopping; journal: %s\n", r.journalPath)
-			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
+			// A read-only gate: its outcome is known, so --json reports it.
+			return &applyStepError{step: ref, okCount: okCount, skipCount: skipCount, journal: r.journalPath, cause: execErr}
 		}
 		switch onFail {
 		case "continue":
@@ -1007,13 +1056,58 @@ func (r *applyRunner) execute() error {
 					fmt.Fprintf(r.stderr, "  ⚠ 变更类步骤失败/超时:变更可能已生效——先读回校验,再决定恢复步骤\n")
 				}
 			}
-			return fmt.Errorf("playbook stopped at step %s (%d ok, %d skipped)", ref, okCount, skipCount)
+			return &applyStepError{step: ref, okCount: okCount, skipCount: skipCount, journal: r.journalPath, cause: execErr}
 		}
 	}
 
+	r.okCount, r.skipCount = okCount, skipCount
 	fmt.Fprintf(r.stdout, "✓ playbook %q done: %d ok, %d skipped, journal %s\n",
 		r.pb.Meta.Name, okCount, skipCount, r.journalPath)
 	return nil
+}
+
+// applyStepError is a queue stop at a failed step. The cause code tells the
+// caller whether the step's own outcome is known: TIMEOUT means a write may
+// still be running.
+type applyStepError struct {
+	step               string
+	okCount, skipCount int
+	journal            string
+	cause              error
+}
+
+func (e *applyStepError) Error() string {
+	return fmt.Sprintf("playbook stopped at step %s (%d ok, %d skipped): %v", e.step, e.okCount, e.skipCount, e.cause)
+}
+
+func (e *applyStepError) Unwrap() error { return e.cause }
+
+func (e *applyStepError) result(dryRun bool) map[string]any {
+	return map[string]any{"ok": false, "dryRun": dryRun, "okCount": e.okCount, "skipped": e.skipCount, "journal": e.journal,
+		"error": map[string]any{"code": "STEP_FAILED", "step": e.step, "message": e.cause.Error(), "cause": map[string]any{"code": applyCauseCode(e.cause)}}}
+}
+
+func applyCauseCode(err error) string {
+	var actionErr *actionError
+	if errors.As(err, &actionErr) && actionErr.Code != "" {
+		return actionErr.Code
+	}
+	var netErr net.Error
+	text := strings.ToLower(err.Error())
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.As(err, &netErr) && netErr.Timeout() ||
+		strings.Contains(text, "timeout") || strings.Contains(text, "timed out") || strings.Contains(text, "deadline exceeded") {
+		return "TIMEOUT"
+	}
+	return "STEP_ERROR"
+}
+
+func writeApplyJSON(w io.Writer, v map[string]any) error {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, string(raw))
+	return err
 }
 
 // executeStep runs one step with retry/verify semantics and returns captured vars.
