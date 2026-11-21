@@ -45,6 +45,7 @@
 - 带孔焊盘按 `holeGeometry`（mil）与 Hole↔Track 规则参与净距，同网金属化孔除外；孔偏移或
   旋转未采集、偏移超出 ±0.001 浮点噪声（单位未核实）、孔旋转不是 π/2 整数倍弧度时为 unknown
   （现场 USB-C 槽孔偏移 ±0.0007、竖向旋转恰为 π/2）。SLOT 按保守跑道形（脊长 = 孔长）建模。
+- `pcb check` 的铜到板边按板框中心线（`centerlineBBox`）量，与原生 DRC 一致；渲染外框含板框线宽。
 - 任何无法精确测量的焊盘或孔逐项写入 `reasons` 并返回 `incomplete`，不再只报第一项拒绝整板。
 - 封装内部的槽孔区、禁布区和填充官方接口不暴露（快照 `unsupported.footprintNonPadPrimitives`），
   求解结果不覆盖它们，写回后必须以原生 DRC 为准。
