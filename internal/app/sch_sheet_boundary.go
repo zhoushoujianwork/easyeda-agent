@@ -112,14 +112,7 @@ func visibleTextBoundaryFindings(items []visibleTextItem, sheet *layoutBBox, eps
 		if b == nil || (b.MinX >= paper.MinX-eps && b.MaxX <= paper.MaxX+eps && b.MinY >= paper.MinY-eps && b.MaxY <= paper.MaxY+eps) {
 			continue
 		}
-		what := "文字「" + it.Content + "」"
-		if it.Kind == "attribute" {
-			owner := it.Designator
-			if owner == "" {
-				owner = it.ComponentType
-			}
-			what = fmt.Sprintf("%s 的可见属性 %s", owner, it.Key)
-		}
+		what := visibleTextLabel(it)
 		out = append(out, checkFinding{
 			Type: "out-of-sheet", Level: "warn", PrimitiveId: it.ID, Designator: it.Designator, BBox: b,
 			Message: fmt.Sprintf("%s 超出纸张（%.0f..%.0f × %.0f..%.0f）— 打印不出来；移回图内，或不需要显示时关闭该属性的显示",
@@ -129,11 +122,12 @@ func visibleTextBoundaryFindings(items []visibleTextItem, sheet *layoutBBox, eps
 	return out
 }
 
-// visibleTextFindings reads the measured visible text and applies the ruler.
+// visibleTextFindings reads the measured visible text and applies the paper
+// ruler, then the title-table stroke ruler for texts reaching the title block.
 // An older connector without the action is reported once on stderr (no
 // finding: the rule simply does not exist there); a failed read or items the
 // host could not measure are surfaced, never treated as "inside".
-func visibleTextFindings(cfg *appConfig, window string, sheet *layoutBBox, eps float64, stderr io.Writer) []checkFinding {
+func visibleTextFindings(cfg *appConfig, window string, sheet, titleBlock *layoutBBox, eps float64, stderr io.Writer) []checkFinding {
 	if sheet == nil {
 		return nil
 	}
@@ -154,6 +148,7 @@ func visibleTextFindings(cfg *appConfig, window string, sheet *layoutBBox, eps f
 		return []checkFinding{{Type: "visible-text-unverified", Level: "warn", Message: "可见文字/属性测量结果无法解析"}}
 	}
 	out := visibleTextBoundaryFindings(parsed.Items, sheet, eps)
+	out = append(out, liveTitleBlockTextLineFindings(cfg, window, parsed.Items, titleBlock, eps, stderr)...)
 	if n := len(parsed.Unmeasured); n > 0 {
 		out = append(out, checkFinding{Type: "visible-text-unverified", Level: "info",
 			Message: fmt.Sprintf("%d 个可见文字/属性宿主未给出 bbox，越界情况未核验", n)})

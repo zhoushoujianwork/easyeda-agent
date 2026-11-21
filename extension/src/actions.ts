@@ -8390,13 +8390,23 @@ const schematicComponentReplace: Handler = async (payload) => {
 			: {}),
 	};
 
-	const place = async (dev: DeviceRef, props: Record<string, unknown>, onCreated?: (id: string) => void): Promise<SchComponent | undefined> => {
+	const place = async (dev: DeviceRef, props: Record<string, unknown>, onCreated?: (id: string) => void, deviceFieldsWin = false): Promise<SchComponent | undefined> => {
 		await assertReplaceContext();
 		let c = await eda.sch_PrimitiveComponent.create(
 			{ libraryUuid: dev.libraryUuid, uuid: dev.uuid },
 			x, y, undefined, rotation, mirror, addIntoBom, addIntoPcb,
 		);
 		if (c) onCreated?.(c.getState_PrimitiveId());
+		// keepProperties carries the old part's custom entries, but entries the new
+		// device itself fills (Datasheet, LCSC Part Name…) describe the NEW part and
+		// must not be overwritten with the old part's values.
+		if (c && deviceFieldsWin && props.otherProperty && typeof props.otherProperty === 'object') {
+			const own = (c.getState_OtherProperty?.() ?? {}) as Record<string, unknown>;
+			const kept = Object.fromEntries(Object.entries(props.otherProperty as Record<string, unknown>)
+				.filter(([key]) => own[key] === undefined || own[key] === null || own[key] === ''));
+			const { otherProperty: _dropped, ...rest } = props;
+			props = Object.keys(kept).length ? { ...rest, otherProperty: kept } : rest;
+		}
 		await assertReplaceContext();
 		if (c && Object.keys(props).length) {
 			// Prefer modify's returned primitive: serializing the create-time object
@@ -8433,6 +8443,16 @@ const schematicComponentReplace: Handler = async (payload) => {
 			const identity = await resolvePlacedDeviceIdentity(observed, identityContext);
 			if (!sameDeviceRef(identity, dev)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Replacement or rollback-original resolved to a different library device.');
 			for (const [key, value] of Object.entries(props)) {
+				// otherProperty is a map the new device already populates with its own
+				// fields (Manufacturer Part, Datasheet…); keepProperties restores the
+				// old entries on top. Prove each restored entry, not map equality.
+				if (key === 'otherProperty' && value && typeof value === 'object') {
+					const have = (observed[key] ?? {}) as Record<string, unknown>;
+					for (const [entry, kept] of Object.entries(value as Record<string, unknown>)) {
+						if (exactJSON(have[entry]) !== exactJSON(kept)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property otherProperty.${entry} was not restored.`);
+					}
+					continue;
+				}
 				if (exactJSON(observed[key]) !== exactJSON(value)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property ${key} was not restored.`);
 			}
 			for (const key of ['x', 'y', 'rotation', 'mirror', 'addIntoBom', 'addIntoPcb']) {
@@ -8480,7 +8500,7 @@ const schematicComponentReplace: Handler = async (payload) => {
 	let created: SchComponent | undefined;
 	let placeError: unknown;
 	try {
-		created = await place({ libraryUuid: target.libraryUuid, uuid: target.uuid }, carryProps, id => { attemptedCandidateId = id; });
+		created = await place({ libraryUuid: target.libraryUuid, uuid: target.uuid }, carryProps, id => { attemptedCandidateId = id; }, true);
 	}
 	catch (err) { placeError = err; }
 	if (!created) {
@@ -15278,11 +15298,7 @@ export const pcbRouteAuto: Handler = async (payload) => {
 	try { report = await route.call(eda.pcb_Document, props); }
 	catch (err) { throw edaError(err, 'eda.pcb_Document.autoRouting failed.'); }
 	const after = await pcbCopperInventory();
-	const added = (a: Set<string>, b: Set<string>) => [...b].filter(id => !a.has(id)).length;
-	const removed = (a: Set<string>, b: Set<string>) => [...a].filter(id => !b.has(id));
-	const lockedLost = [...before.locked].filter(id => !after.locked.has(id));
-	const removedIds = [...removed(before.lines, after.lines), ...removed(before.arcs, after.arcs), ...removed(before.vias, after.vias)];
-	const created = { tracks: added(before.lines, after.lines), arcs: added(before.arcs, after.arcs), vias: added(before.vias, after.vias) };
+	const { created, removedIds } = pcbCopperDelta(before, after);
 	const changed = created.tracks + created.arcs + created.vias + removedIds.length > 0;
 	const ok = (report as { success?: unknown } | undefined)?.success;
 	const failedNets = (report as { failedNets?: unknown } | undefined)?.failedNets;
@@ -15292,18 +15308,131 @@ export const pcbRouteAuto: Handler = async (payload) => {
 	if (!changed && (ok !== true || (Array.isArray(failedNets) && failedNets.length > 0))) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `autoRouting changed nothing (router report: ${JSON.stringify(report)}).`);
 	}
+	return { result: { router: report ?? null, props, ...pcbCopperReport(before, after) } };
+};
+
+/** Copper added/removed between two inventories, and locked copper that vanished. */
+function pcbCopperDelta(before: PcbCopperInventory, after: PcbCopperInventory) {
+	const added = (a: Set<string>, b: Set<string>) => [...b].filter(id => !a.has(id)).length;
+	const removed = (a: Set<string>, b: Set<string>) => [...a].filter(id => !b.has(id));
 	return {
-		result: {
-			router: report ?? null,
-			props,
-			created,
-			removedPrimitiveIds: removedIds,
-			lockedBefore: before.locked.size,
-			lockedLost,
-			before: { tracks: before.lines.size, arcs: before.arcs.size, vias: before.vias.size },
-			after: { tracks: after.lines.size, arcs: after.arcs.size, vias: after.vias.size },
-		},
+		created: { tracks: added(before.lines, after.lines), arcs: added(before.arcs, after.arcs), vias: added(before.vias, after.vias) },
+		removedIds: [...removed(before.lines, after.lines), ...removed(before.arcs, after.arcs), ...removed(before.vias, after.vias)],
+		lockedLost: [...before.locked].filter(id => !after.locked.has(id)),
 	};
+}
+
+function pcbCopperReport(before: PcbCopperInventory, after: PcbCopperInventory) {
+	const { created, removedIds, lockedLost } = pcbCopperDelta(before, after);
+	return {
+		created,
+		removedPrimitiveIds: removedIds,
+		lockedBefore: before.locked.size,
+		lockedLost,
+		before: { tracks: before.lines.size, arcs: before.arcs.size, vias: before.vias.size },
+		after: { tracks: after.lines.size, arcs: after.arcs.size, vias: after.vias.size },
+	};
+}
+
+// ─── PCB auto-routing as a native job (EDA ≥ 4.1.79) ─────────────────
+// autoRouting() holds this connector's FIFO for the router's whole life (up to
+// its internal 900 s cap) and cannot be cancelled, so a CLI timeout left the
+// queue blocked for tens of minutes (#308). The job model returns a jobId at
+// once; status and cancel are short calls, so the queue stays free while the
+// router runs and a deadline can really stop it. The copper inventory taken at
+// start is kept per job, so the final delta belongs to that job and a later
+// call can never adopt another run's result.
+
+type PcbRouteJob = { props: Record<string, unknown>; before: PcbCopperInventory; startedAt: number; final?: Record<string, unknown> };
+const pcbRouteJobs = new Map<string, PcbRouteJob>();
+const PCB_ROUTE_JOB_TERMINAL = new Set(['completed', 'canceled', 'failed']);
+
+type PcbAutoJobApi = {
+	startAutoRouting?: (p: unknown) => Promise<{ jobId?: unknown } | undefined>;
+	getAutoJobStatus?: (id: string) => Promise<Record<string, unknown> | undefined>;
+	cancelAutoJob?: (id: string) => Promise<boolean>;
+	getAutoJobLog?: (id: string) => Promise<{ progress?: unknown; logs?: unknown } | undefined>;
+};
+
+function pcbAutoJobApi(): Required<PcbAutoJobApi> {
+	const doc = eda.pcb_Document as unknown as PcbAutoJobApi;
+	for (const fn of ['startAutoRouting', 'getAutoJobStatus', 'cancelAutoJob', 'getAutoJobLog'] as const) {
+		if (typeof doc[fn] !== 'function') {
+			throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `unsupported: eda.pcb_Document.${fn} is not available on this EasyEDA build (auto-route job model needs EDA ≥ 4.1.79); nothing was started.`);
+		}
+	}
+	return doc as Required<PcbAutoJobApi>;
+}
+
+function requiredJobId(payload: Record<string, unknown>): string {
+	const id = optionalString(payload, 'jobId');
+	if (!id) throw new ActionError(ErrorCodes.MISSING_PAYLOAD_FIELD, 'Missing required field "jobId" (from pcb.route.auto.start).');
+	return id;
+}
+
+export const pcbRouteAutoStart: Handler = async (payload) => {
+	const props = parsePcbAutoRouteProps(payload);
+	const api = pcbAutoJobApi();
+	let before: PcbCopperInventory;
+	try { before = await pcbCopperInventory(); }
+	catch (err) { throw edaError(err, 'Copper inventory before auto-routing is unavailable; nothing was started.'); }
+	let handle: { jobId?: unknown } | undefined;
+	try { handle = await api.startAutoRouting.call(eda.pcb_Document, props); }
+	catch (err) { throw edaError(err, 'eda.pcb_Document.startAutoRouting failed; nothing was started.'); }
+	const jobId = typeof handle?.jobId === 'string' ? handle.jobId : '';
+	if (!jobId) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `startAutoRouting returned no jobId (${JSON.stringify(handle)}).`);
+	const startedAt = Date.now();
+	pcbRouteJobs.set(jobId, { props, before, startedAt });
+	return { result: { jobId, props, startedAt, lockedBefore: before.locked.size, before: { tracks: before.lines.size, arcs: before.arcs.size, vias: before.vias.size } } };
+};
+
+/**
+ * Native job state plus the engine's own progress snapshot. Only values the host
+ * reports are passed through — no percentage is derived here. Once the job is
+ * terminal the copper delta against its start inventory is computed once and
+ * cached, so repeated polls return the same final answer.
+ */
+export const pcbRouteAutoStatus: Handler = async (payload) => {
+	const jobId = requiredJobId(payload);
+	const api = pcbAutoJobApi();
+	const job = pcbRouteJobs.get(jobId);
+	if (job?.final) return { result: job.final };
+	let status: Record<string, unknown> | undefined;
+	try { status = await api.getAutoJobStatus.call(eda.pcb_Document, jobId); }
+	catch (err) { throw edaError(err, 'eda.pcb_Document.getAutoJobStatus failed.'); }
+	let snapshot: { progress?: unknown; logs?: unknown } | undefined;
+	try { snapshot = await api.getAutoJobLog.call(eda.pcb_Document, jobId); }
+	catch { snapshot = undefined; } // the snapshot is advisory; status is the contract
+	const logs = Array.isArray(snapshot?.logs) ? snapshot.logs as Array<Record<string, unknown>> : [];
+	const state = typeof status?.state === 'string' ? status.state : 'unknown';
+	const base: Record<string, unknown> = {
+		jobId,
+		state, // 'unknown' = host has no such job (e.g. editor reloaded) — not a success
+		hostProgress: typeof status?.progress === 'number' ? status.progress : null,
+		engine: snapshot?.progress ?? null,
+		error: status?.error ?? null,
+		partial: status?.partial ?? null,
+		lastLog: logs.length ? logs[logs.length - 1] : null,
+		elapsedMs: job ? Date.now() - job.startedAt : null,
+		tracked: Boolean(job),
+	};
+	if (!PCB_ROUTE_JOB_TERMINAL.has(state) || !job) return { result: { ...base, terminal: PCB_ROUTE_JOB_TERMINAL.has(state) } };
+	let after: PcbCopperInventory;
+	try { after = await pcbCopperInventory(); }
+	catch (err) { throw edaError(err, 'Copper inventory after auto-routing is unavailable; poll status again.'); }
+	const errorLogs = logs.filter(l => l?.level === 'error').slice(-5);
+	job.final = { ...base, terminal: true, props: job.props, errorLogs, ...pcbCopperReport(job.before, after) };
+	return { result: job.final };
+};
+
+export const pcbRouteAutoCancel: Handler = async (payload) => {
+	const jobId = requiredJobId(payload);
+	const api = pcbAutoJobApi();
+	let accepted: boolean;
+	try { accepted = await api.cancelAutoJob.call(eda.pcb_Document, jobId); }
+	catch (err) { throw edaError(err, 'eda.pcb_Document.cancelAutoJob failed.'); }
+	// accepted only means the host took the request; poll status for 'canceled'.
+	return { result: { jobId, cancelRequested: accepted === true } };
 };
 
 // ─── PCB routing: surgical delete by primitiveId ─────────────────────
@@ -16514,6 +16643,9 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.route.via_hop': pcbRouteViaHop,
 	'pcb.clear_routing': pcbClearRouting,
 	'pcb.route.auto': pcbRouteAuto,
+	'pcb.route.auto.start': pcbRouteAutoStart,
+	'pcb.route.auto.status': pcbRouteAutoStatus,
+	'pcb.route.auto.cancel': pcbRouteAutoCancel,
 	'pcb.pour.create': pcbPourCreate,
 	'pcb.pour.list': pcbPourList,
 	'pcb.poured.list': pcbPouredList,

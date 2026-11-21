@@ -2,7 +2,10 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,5 +53,30 @@ func TestApplyJSONReportsDryRunAndRefusal(t *testing.T) {
 	errs.Reset()
 	if code := Run([]string{"sch", "apply", path, "--dry-run"}, &out, &errs); code != 0 || !strings.Contains(out.String(), "dry-run: preflight passed") {
 		t.Fatalf("plain dry run changed: %d %q %q", code, out.String(), errs.String())
+	}
+}
+
+// A step that stops the queue reports STEP_FAILED with its cause; a cause
+// whose outcome is unknown is marked TIMEOUT so the caller stays cautious.
+func TestApplyStepErrorResult(t *testing.T) {
+	verify := fmt.Errorf(`run "sch designators verify" exited 1: global component cmp-U1 is missing`)
+	stop := &applyStepError{step: "verify-before", skipCount: 0, journal: "/j.jsonl", cause: verify}
+	got := stop.result(false)
+	e := got["error"].(map[string]any)
+	if got["ok"] != false || e["code"] != "STEP_FAILED" || e["step"] != "verify-before" || e["message"] != verify.Error() ||
+		e["cause"].(map[string]any)["code"] != "STEP_ERROR" || got["journal"] != "/j.jsonl" {
+		t.Fatalf("unexpected step failure: %v", got)
+	}
+	if !strings.Contains(stop.Error(), "playbook stopped at step verify-before") || !errors.Is(stop, verify) {
+		t.Fatalf("error text or chain changed: %v", stop)
+	}
+	for cause, want := range map[error]string{
+		&actionError{Action: "schematic.component.modify", Code: "PRIMITIVE_NOT_FOUND", Message: "gone"}: "PRIMITIVE_NOT_FOUND",
+		fmt.Errorf("wrapped: %w", context.DeadlineExceeded):                                              "TIMEOUT",
+		errors.New("request timed out after 30s"):                                                        "TIMEOUT",
+	} {
+		if got := applyCauseCode(cause); got != want {
+			t.Fatalf("%v: cause code %s, want %s", cause, got, want)
+		}
 	}
 }

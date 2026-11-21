@@ -149,6 +149,14 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   仍不通再手布（换层绕行）。路由器会把孔贴近已锁定的宽 RF 线（实测 2.8 mil），每轮跑
   `pcb check` 找间距。
 - 路由器给 3V3 用 7.06 mil 细线（低于 9.84 mil 电源支线档），`width-under-spec` 会报。
+- 作业模型（EDA ≥ 4.1.79，#308）：`pcb autoroute` 先走 `pcb.route.auto.start`（`startAutoRouting`）
+  拿 `jobId`，每 5 s 用 `pcb.route.auto.status` 打印宿主自报的状态、`progress`、引擎布通率与耗时，
+  不自行推算百分比；路由期间连接器队列不被占用。`--timeout` 到期或 Ctrl-C 时调用
+  `pcb.route.auto.cancel`（`cancelAutoJob`），只有宿主在 10 s 内回报 `canceled`/终态才算已停，
+  否则命令失败并给出 `--job <id>` 复查。终态结果附本作业起止的铜增量与错误日志，按 `jobId` 绑定，
+  迟到结果不会算到别的调用上；`completed` 但无新增铜也判失败。作业结束后仍须 save → reload → DRC。
+- 宿主或连接器没有作业接口时退回阻塞的 `autoRouting`：无进度、不能取消，CLI 超时只结束等待，
+  布线器仍占队列直到自行结束（宿主内部上限 900 s）；此时等待结束，不要重启 daemon。
 外部引擎（`--router` / `FREEROUTING_CMD`）只作离线兜底，`getDsnFile` 丢禁布区。
 
 - `pcb.line.create` — a copper **track** (导线): line segment on a copper layer
@@ -241,7 +249,15 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   (`notDeletable[]` with the parent component + `ok:false`; use `pcb via-bond` to net
   them, or delete the whole component) and additionally readback-verifies the rest
   (`removed`/`count` only count what actually vanished; unattributable survivors land
-  in `notDeleted`). ⚠️ **After surgical
+  in `notDeleted`). **Exit contract (#312)**: any non-empty `notFound` / `notDeleted` /
+  `notDeletable` / `skippedLocked` makes the command (and an `easyeda apply` step) exit
+  non-zero with a `partial delete` error, while stdout still carries the full result —
+  one valid id no longer turns a batch into a success. **Ids are only valid until the
+  next copper write or delete**: a T-branch splits the trunk into two NEW ids, and
+  deleting the branch merges them back into a third NEW id. So when deleting across
+  several calls, re-export ids before each call (or put related segments in ONE call),
+  and after a by-id batch delete re-export and reconcile copper per net and layer;
+  `pcb plan-apply` does this reconciliation for you. ⚠️ **After surgical
   edits (delete/via-hop/fill changes), a burst of same-net (usually GND) Connection
   Errors in DRC is pour-mediated connectivity gone stale, not real breaks — run
   `pcb pour-rebuild` first, then re-judge** (verified live: 11→1 baseline).

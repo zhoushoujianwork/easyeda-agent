@@ -518,7 +518,7 @@ func mergeMarkerGeomFindingsWith(cfg *appConfig, window string, allPages bool, o
 			geo = append(geo, schWireGeometryFindings(geometryResult.Result, wires)...)
 			geo = append(geo, sheetBoundaryFindings(comps, wires, sheetBBoxOf(comps), titleBlock, tbSource, overlapEps)...)
 		}
-		geo = append(geo, visibleTextFindings(cfg, window, sheetBBoxOf(comps), overlapEps, stderr)...)
+		geo = append(geo, visibleTextFindings(cfg, window, sheetBBoxOf(comps), titleBlock, overlapEps, stderr)...)
 	}
 
 	// Layout-organization rule (铁律 #15): a multi-module page with no functional
@@ -546,7 +546,7 @@ func mergeMarkerGeomFindingsWith(cfg *appConfig, window string, allPages bool, o
 		switch f.Type {
 		case "duplicate-net-marker":
 			rep.Summary.DuplicateNetMarkers++
-		case "titleblock-overlap":
+		case "titleblock-overlap", "titleblock-text-on-line":
 			rep.Summary.TitleblockOverlaps++
 		case "out-of-sheet":
 			rep.Summary.OutOfSheet++

@@ -167,6 +167,9 @@ type healthSample struct {
 	// seq is this window's monotonic outcome counter at push time — the clock
 	// the per-action horizon runs on (see writeHealthActionHorizon).
 	seq uint64
+	// mutates / timedOut: see outcome; read by writeStallLocked.
+	mutates  bool
+	timedOut bool
 }
 
 // failed is the effect-level verdict: the number that drives degraded.
@@ -199,6 +202,32 @@ type outcome struct {
 	ErrorCode string
 	// ErrorMsg is the failing response's "CODE: message" for lastFailureError.
 	ErrorMsg string
+	// Mutates / TimedOut feed the write-stall diagnosis (writestall.go): a
+	// content write that got no answer within its budget.
+	Mutates  bool
+	TimedOut bool
+	// ClientCanceled: the caller gave up (HTTP request context canceled, e.g. the
+	// CLI was interrupted) before the connector answered. That says nothing about
+	// whether the connector or host write path is healthy, so observe() drops it
+	// instead of counting it as a timeout / write stall (EDAD-10).
+	ClientCanceled bool
+}
+
+// outcomeOf builds the health outcome of one forwarded attempt.
+func outcomeOf(req *protocol.Request, resp *protocol.Response, err error) outcome {
+	code := responseErrorCode(resp)
+	return outcome{
+		Action:    req.Action,
+		RequestID: req.ID,
+		OK:        err == nil && resp != nil && resp.OK,
+		Verdict:   effectFromResponse(req, resp),
+		ErrorCode: code,
+		ErrorMsg:  responseErrorMsg(resp),
+		Mutates:   requestMutates(req),
+		TimedOut:  isDeadlineErr(err) || code == "ACTION_ABANDONED",
+
+		ClientCanceled: isClientCancelErr(err),
+	}
 }
 
 // requestRefusalCodes 是「**请求本身讲不通,而且一个字节都没写**」的错误码。
@@ -343,6 +372,10 @@ func (t *writeHealthTracker) observe(windowID string, o outcome) {
 	if !o.OK && requestRefusalCodes[o.ErrorCode] {
 		return
 	}
+	// Same for a caller that hung up first: no evidence either way.
+	if o.ClientCanceled {
+		return
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.stateLocked(windowID).push(&healthSample{
@@ -352,6 +385,8 @@ func (t *writeHealthTracker) observe(windowID string, o outcome) {
 		verdict:   o.Verdict,
 		at:        time.Now().UTC(),
 		err:       o.ErrorMsg,
+		mutates:   o.Mutates,
+		timedOut:  o.TimedOut,
 	})
 }
 
@@ -776,7 +811,7 @@ func forwardWithAdaptiveRetry(ctx context.Context, req protocol.Request, dispatc
 	resp, err := dispatch(ctx, req)
 	ok := err == nil && resp != nil && resp.OK
 	if h.observe != nil {
-		h.observe(outcome{Action: req.Action, RequestID: req.ID, OK: ok, Verdict: effectFromResponse(&req, resp), ErrorCode: responseErrorCode(resp), ErrorMsg: responseErrorMsg(resp)})
+		h.observe(outcomeOf(&req, resp, err))
 	}
 	if ok || errors.Is(err, errConnectorDisconnected) || !retryableOnFailure[req.Action] {
 		return resp, err, false
@@ -812,7 +847,7 @@ func forwardWithAdaptiveRetry(ctx context.Context, req protocol.Request, dispatc
 	resp2, err2 := dispatch(ctx, req)
 	ok2 := err2 == nil && resp2 != nil && resp2.OK
 	if h.observe != nil {
-		h.observe(outcome{Action: req.Action, RequestID: req.ID, OK: ok2, Verdict: effectFromResponse(&req, resp2), ErrorCode: responseErrorCode(resp2), ErrorMsg: responseErrorMsg(resp2)})
+		h.observe(outcomeOf(&req, resp2, err2))
 	}
 	if ok2 {
 		resp2.Warnings = append(resp2.Warnings, fmt.Sprintf(

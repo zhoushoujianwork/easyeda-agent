@@ -256,3 +256,46 @@ func TestComposePaperlessPreservedDrawingResetRetainsPartsAndNC(t *testing.T) {
 		}
 	}
 }
+
+// Editing an existing page: group conflicts are checked before the first write,
+// registration frees stale groups, and nothing is saved before the final check.
+func TestPreservedComposeChecksGroupsFirstAndSavesOnlyAtEnd(t *testing.T) {
+	p, _, before, source, edits := connectivityEditsFixture(t)
+	raw, _ := json.Marshal(edits)
+	edits, err := decodeSchConnectivityEdits(raw, before, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pb, err := schCompositionPlaybookWithEdits(p, before, true, true, edits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstWrite, firstPreflight, lastPreflight, saves := -1, -1, -1, []string{}
+	for i, st := range pb.Steps {
+		write := st.Action != "" && st.Action != "schematic.components.list" || st.Run != "" && st.Run != "sch group create"
+		if write && firstWrite < 0 {
+			firstWrite = i
+		}
+		if strings.HasPrefix(st.ID, "preflight-lib-") {
+			if st.Flags["check"] != true || st.Flags["replace-overlapping"] != true {
+				t.Fatalf("preflight must be check-only with the same release policy: %+v", st.Flags)
+			}
+			if firstPreflight < 0 {
+				firstPreflight = i
+			}
+			lastPreflight = i
+		}
+		if strings.HasPrefix(st.ID, "register-lib-") && (st.Flags["check"] != nil || st.Flags["replace-overlapping"] != true) {
+			t.Fatalf("registration must release stale groups and really save: %+v", st.Flags)
+		}
+		if st.Action == "schematic.save" {
+			saves = append(saves, st.ID)
+		}
+	}
+	if firstPreflight < 0 || firstWrite < 0 || lastPreflight > firstWrite {
+		t.Fatalf("group preflight (%d..%d) must precede the first write (%d)", firstPreflight, lastPreflight, firstWrite)
+	}
+	if len(saves) != 1 || saves[0] != "save-composition" {
+		t.Fatalf("existing-page edit must save once at the end, got %v", saves)
+	}
+}

@@ -35,13 +35,19 @@ func (e *schematicStateExpectation) validateOwnership() error {
 		part := SchematicPlacement{Designator: ref}
 		for _, number := range sortedStateKeys(e.Parts[ref].Pins) {
 			pin := e.Parts[ref].Pins[number]
-			if pin.X == nil || pin.Y == nil || pin.Net == nil || pin.NC == nil {
+			// An anonymous net is asserted by grouping (autoNet), not by its
+			// renumberable name; it is still exhaustive net evidence.
+			net := pin.Net
+			if net == nil {
+				net = pin.AutoNet
+			}
+			if pin.X == nil || pin.Y == nil || net == nil || pin.NC == nil {
 				return fmt.Errorf("peripheral-direct-incomplete: %s.%s needs exhaustive geometry/net/NC evidence", ref, number)
 			}
-			if *pin.Net != "" && e.Ownership.NetRoles[*pin.Net] != "power" && e.Ownership.NetRoles[*pin.Net] != "ground" && e.Ownership.NetRoles[*pin.Net] != "signal" {
-				return fmt.Errorf("peripheral-ownership-incomplete: net %s needs preserved power/ground/signal classification", *pin.Net)
+			if *net != "" && !schAnonymousNet(*net) && e.Ownership.NetRoles[*net] != "power" && e.Ownership.NetRoles[*net] != "ground" && e.Ownership.NetRoles[*net] != "signal" {
+				return fmt.Errorf("peripheral-ownership-incomplete: net %s needs preserved power/ground/signal classification", *net)
 			}
-			part.Pins = append(part.Pins, SchematicPin{Number: number, X: *pin.X, Y: *pin.Y, Net: *pin.Net})
+			part.Pins = append(part.Pins, SchematicPin{Number: number, X: *pin.X, Y: *pin.Y, Net: *net})
 		}
 		layout.Placements = append(layout.Placements, part)
 	}
