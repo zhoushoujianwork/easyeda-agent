@@ -1,7 +1,10 @@
 package app
 
 import (
+	"encoding/json"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -88,8 +91,16 @@ func TestParsePcbRules_Live(t *testing.T) {
 	if !near(r.viaDiameterMil, 24) {
 		t.Errorf("viaDiameter=%.2f, want ~24mil", r.viaDiameterMil)
 	}
-	if !near(r.copperToEdgeMil, 10) {
-		t.Errorf("copperToEdge=%.2f, want ~10mil (BoardOutline↔Copper/Plane Zone)", r.copperToEdgeMil)
+	// #309: native DRC judges routed copper by Board Outline↔Track (0.29972mm),
+	// not by the zone cell that used to be reported here.
+	if !near(r.copperToEdgeMil, 11.8) {
+		t.Errorf("copperToEdge=%.2f, want ~11.8mil (Board Outline↔Track)", r.copperToEdgeMil)
+	}
+	if !near(r.zoneToEdgeMil, 10) {
+		t.Errorf("zoneToEdge=%.2f, want ~10mil (Board Outline↔Copper/Plane Zone)", r.zoneToEdgeMil)
+	}
+	if r.holeToTrackMil != 0 || r.slotToTrackMil != 0 {
+		t.Errorf("hole/slot rules absent from this matrix must stay unmeasured: %+v", r)
 	}
 }
 
@@ -157,6 +168,7 @@ func TestParsePcbRules_UnitEquivalence(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		got.spacingSource = want.spacingSource // names the declared unit, by design
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("units=%v: got %+v want %+v", units, got, want)
 		}
@@ -199,15 +211,22 @@ func TestParsePcbRules_ExactMilAndClamp(t *testing.T) {
 	rows := mnav(cfg, "Spacing", "Safe Spacing", "copperThickness1oz", "tables", "1", "content").([]any)
 	rows[0].([]any)[0] = 4.0
 	rows[1].([]any)[0] = 6.0
+	rows[3].([]any)[0] = 12.0
 	rows[3].([]any)[2] = 10.0
 	got, err := parsePcbRules(result)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got.spacingMil["Board Outline↔Track"] != 12 || got.spacingMil["Track↔Board Outline"] != 12 || got.spacingMil["Board Outline↔Copper/Plane Zone"] != 10 {
+		t.Fatalf("spacing cells = %v", got.spacingMil)
+	}
 	want := defaultPcbRules()
 	want.source = "live"
+	want.copperToEdgeMil, want.zoneToEdgeMil = 12, 10
+	want.spacingMil = got.spacingMil
+	want.spacingSource = pcbSafeSpacingPath + " (unit mil)"
 	// Every field came from the board rule, so each is recorded as measured.
-	want.measured = []string{pcbRuleFieldTrackWidth, pcbRuleFieldTrackWidthMin, pcbRuleFieldViaDrill, pcbRuleFieldViaDiameter, pcbRuleFieldClearanceTrackTrack, pcbRuleFieldClearance, pcbRuleFieldCopperToEdge}
+	want.measured = []string{pcbRuleFieldTrackWidth, pcbRuleFieldTrackWidthMin, pcbRuleFieldViaDrill, pcbRuleFieldViaDiameter, pcbRuleFieldClearanceTrackTrack, pcbRuleFieldClearance, pcbRuleFieldZoneToEdge, pcbRuleFieldCopperToEdge}
 	if !reflect.DeepEqual(got, want) || got.clampWidth(2) != 5 || got.clampWidth(10) != 10 {
 		t.Fatalf("got %+v want %+v", got, want)
 	}
@@ -230,5 +249,47 @@ func TestParsePcbRules_PartialNumericNodesRequireUnits(t *testing.T) {
 		if _, err := parsePcbRules(result); err == nil {
 			t.Fatalf("partial numeric node without unit accepted: %v", tc.path)
 		}
+	}
+}
+
+// #309 full JLCEDA Web 3.2.203 rule export (12×13 Safe Spacing matrix). Native
+// DRC judged a track at 11.8mil from the outline while the dump said 10mil.
+func TestParsePcbRules_FullMatrixObjectPairs(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "extension", "src", "testdata", "pcb-config-web-3.2.203.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file map[string]any
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	r, err := parsePcbRules(map[string]any{"rules": map[string]any{"config": file["ruleConfiguration"]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name      string
+		got, want float64
+	}{
+		{"copperToEdge (Track/Via↔Board Outline 0.29972mm)", r.copperToEdgeMil, 11.8},
+		{"zoneToEdge (Copper/Plane Zone↔Board Outline 0.254mm)", r.zoneToEdgeMil, 10},
+		{"holeToTrack (Hole↔Track 0.1759966mm)", r.holeToTrackMil, 6.93},
+		{"slotToTrack (Slot Region↔Track 0.2999994mm)", r.slotToTrackMil, 11.81},
+		{"Via↔Board Outline cell", r.spacingMil["Via↔Board Outline"], 11.8},
+	} {
+		if math.Abs(c.got-c.want) > 0.01 {
+			t.Errorf("%s = %.3f mil, want %.2f", c.name, c.got, c.want)
+		}
+	}
+	if r.spacingSource != pcbSafeSpacingPath+" (unit mm)" {
+		t.Errorf("spacingSource = %q", r.spacingSource)
+	}
+	b := rulesToBoard(r)
+	if back := b.toPcbRules(); back.zoneToEdgeMil != r.zoneToEdgeMil || back.holeToTrackMil != r.holeToTrackMil || back.copperToEdgeMil != r.copperToEdgeMil {
+		t.Errorf("snapshot round trip lost rule cells: %+v", back)
+	}
+	// Snapshots that predate per-pair cells keep their recorded value for pours.
+	if old := (&boardRules{CopperToEdgeMil: 10, Source: "live"}).toPcbRules(); old.zoneToEdgeMil != 10 || old.holeToTrackMil != 0 {
+		t.Errorf("legacy snapshot rules = %+v", old)
 	}
 }

@@ -10,6 +10,9 @@ import (
 
 // Exact supported pad geometry; unknown geometry is never treated as free space.
 func pcbExactPadSegmentGap(p pcbPadP, a, z [2]float64) (float64, error) {
+	if p.Shape == "POLYGON" && p.exactClearanceKnown() {
+		return copperAreaSegmentDistance(pcbCopperArea{Contours: p.Contours}, a, z), nil
+	}
 	if !p.ShapeOK {
 		return 0, fmt.Errorf("pad %s.%s geometry unknown", p.Designator, p.Number)
 	}

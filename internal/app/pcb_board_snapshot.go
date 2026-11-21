@@ -43,20 +43,28 @@ import (
 // 0 = 未知（POLYGON 焊盘 padExtent 返回 null）——下游必须把 0 当"测不到"而不是
 // "尺寸为零"。Layer 是焊盘的铜层：1=top / 2=bottom / 12=multi(通孔桶，每层导通)。
 type boardPad struct {
-	ID                string            `json:"primitiveId,omitempty"`
-	Number            string            `json:"padNumber"`
-	Net               string            `json:"net"`
-	Layer             int               `json:"layer"`
-	X                 float64           `json:"x"`
-	Y                 float64           `json:"y"`
-	W                 float64           `json:"width,omitempty"`
-	H                 float64           `json:"height,omitempty"`
-	Rotation          float64           `json:"rotation"`
-	PadType           int               `json:"padType,omitempty"` // 0=NORMAL 1=TEST 2=MARK_POINT
-	Shape             any               `json:"shape,omitempty"`
-	SpecialPad        any               `json:"specialPad,omitempty"`
-	Hole              any               `json:"hole,omitempty"` // raw drill tuple, 10 mil units; see enclosure.PadHoleMM
-	Metallization     *bool             `json:"metallization,omitempty"`
+	ID            string   `json:"primitiveId,omitempty"`
+	Number        string   `json:"padNumber"`
+	Net           string   `json:"net"`
+	Layer         int      `json:"layer"`
+	X             float64  `json:"x"`
+	Y             float64  `json:"y"`
+	W             float64  `json:"width,omitempty"`
+	H             float64  `json:"height,omitempty"`
+	Rotation      float64  `json:"rotation"`
+	PadType       int      `json:"padType,omitempty"` // 0=NORMAL 1=TEST 2=MARK_POINT
+	Shape         any      `json:"shape,omitempty"`
+	SpecialPad    any      `json:"specialPad,omitempty"`
+	Hole          any      `json:"hole,omitempty"`         // raw drill tuple, 10 mil units; see enclosure.PadHoleMM
+	HoleOffsetX   *float64 `json:"holeOffsetX,omitempty"`  // raw, unit unverified
+	HoleOffsetY   *float64 `json:"holeOffsetY,omitempty"`  // raw, unit unverified
+	HoleRotation  *float64 `json:"holeRotation,omitempty"` // degrees relative to the pad
+	Metallization *bool    `json:"metallization,omitempty"`
+	// Derived at capture time only (pcb_pad_geometry.go); consumers recompute
+	// from the raw fields above rather than trusting a stored projection.
+	HoleGeometry      *pcbHoleGeometry  `json:"holeGeometry,omitempty"`
+	ShapeBBox         *layoutBBox       `json:"shapeBBox,omitempty"`    // exact POLYGON bbox, absolute mil
+	ExtentSource      string            `json:"extentSource,omitempty"` // set when width/height are derived here
 	SpecialPadPresent *bool             `json:"specialPadPresent,omitempty"`
 	Availability      map[string]string `json:"availability,omitempty"`
 	CaptureErrors     map[string]any    `json:"captureErrors,omitempty"`
@@ -492,7 +500,17 @@ type boardSnapshot struct {
 	SemanticSHA256 string              `json:"semanticSha256,omitempty"`
 	Capture        *pcbCaptureEvidence `json:"capture,omitempty"`
 	Availability   map[string]string   `json:"availability,omitempty"`
+	// Unsupported names geometry the official API cannot observe, with the
+	// reason. Such categories are neither empty nor verified (#309).
+	Unsupported map[string]string `json:"unsupported,omitempty"`
 }
+
+const pcbFootprintNonPadPrimitives = "footprintNonPadPrimitives"
+
+// pcbFootprintNonPadReason: the component API exposes pads only, so slot
+// regions, keepouts and fills drawn inside a footprint are invisible to
+// copper/regions/fills inventories and to offline checks built on them.
+const pcbFootprintNonPadReason = "official API exposes only pads of placed footprints; slot regions, keepout/rule regions and fills inside footprints are not observable — confirm them with native DRC"
 
 // boardCopperSnapshot keeps the connector's exact JSON projections.  The list
 // actions are already the public typed schema; retaining their objects avoids a
@@ -520,7 +538,17 @@ type boardRules struct {
 	ViaDrillMil            float64 `json:"viaDrillMil"`
 	ViaDiameterMil         float64 `json:"viaDiameterMil"`
 	CopperToEdgeMil        float64 `json:"copperToEdgeMil"`
-	Source                 string  `json:"source"` // live | fallback
+	// ZoneToEdgeMil, HoleToTrackMil and SlotToTrackMil are the native object-pair
+	// cells (0 = absent in snapshots that predate them, i.e. not measured).
+	// CopperToEdgeMil is the routed-copper (Track/Via) outline cell.
+	ZoneToEdgeMil  float64 `json:"zoneToEdgeMil,omitempty"`
+	HoleToTrackMil float64 `json:"holeToTrackMil,omitempty"`
+	SlotToTrackMil float64 `json:"slotToTrackMil,omitempty"`
+	// SpacingMil holds every measured Safe Spacing cell ("Row↔Column", mil);
+	// SpacingSource names its rule path and declared unit.
+	SpacingMil    map[string]float64 `json:"spacingMil,omitempty"`
+	SpacingSource string             `json:"spacingSource,omitempty"`
+	Source        string             `json:"source"` // live | fallback
 	// Measured lists rule fields read from the board (pcbRuleField*); absent in
 	// snapshots that predate per-field provenance, which therefore prove nothing
 	// field by field.
@@ -534,6 +562,8 @@ func rulesToBoard(r pcbRules) *boardRules {
 		PowerWidthMil: r.powerWidthMil, TrackWidthMinMil: r.trackWidthMinMil,
 		ViaDrillMil: r.viaDrillMil, ViaDiameterMil: r.viaDiameterMil,
 		CopperToEdgeMil: r.copperToEdgeMil, Source: r.source,
+		ZoneToEdgeMil: r.zoneToEdgeMil, HoleToTrackMil: r.holeToTrackMil, SlotToTrackMil: r.slotToTrackMil,
+		SpacingMil: r.spacingMil, SpacingSource: r.spacingSource,
 		Measured: append([]string(nil), r.measured...),
 	}
 }
@@ -548,12 +578,18 @@ func (b *boardRules) toPcbRules() pcbRules {
 		// conservative single-scalar behavior instead of silently assuming 4mil.
 		trackTrack = b.ClearanceMil
 	}
+	zone := b.ZoneToEdgeMil
+	if zone <= 0 {
+		zone = b.CopperToEdgeMil // older snapshots recorded the zone cell here
+	}
 	return pcbRules{
 		clearanceMil: b.ClearanceMil, clearanceTrackTrackMil: trackTrack,
 		trackWidthMil: b.TrackWidthMil,
 		powerWidthMil: b.PowerWidthMil, trackWidthMinMil: b.TrackWidthMinMil,
 		viaDrillMil: b.ViaDrillMil, viaDiameterMil: b.ViaDiameterMil,
 		copperToEdgeMil: b.CopperToEdgeMil, source: b.Source,
+		zoneToEdgeMil: zone, holeToTrackMil: b.HoleToTrackMil, slotToTrackMil: b.SlotToTrackMil,
+		spacingMil: b.SpacingMil, spacingSource: b.SpacingSource,
 		measured: append([]string(nil), b.Measured...),
 	}
 }
@@ -774,6 +810,13 @@ func parseBoardComponents(result map[string]any) []boardComp {
 				if m, ok := pm["metallization"].(bool); ok {
 					p.Metallization = &m
 				}
+				for key, dst := range map[string]**float64{"holeOffsetX": &p.HoleOffsetX, "holeOffsetY": &p.HoleOffsetY, "holeRotation": &p.HoleRotation} {
+					if v, ok := asFloatOK(pm[key]); ok && allFinite(v) {
+						*dst = &v
+					}
+				}
+				enrichPolygonPadExtent(&p)
+				p.HoleGeometry = pcbPadHoleGeometry(p)
 				if present, known := pm["specialPadPresent"].(bool); known {
 					p.SpecialPadPresent = &present
 				}
@@ -881,6 +924,8 @@ func fetchBoardSnapshot(cfg *appConfig, window string, opts boardSnapshotOpts) (
 			missingBBox++
 		}
 	}
+	snap.Availability[pcbFootprintNonPadPrimitives] = "unsupported"
+	snap.Unsupported = map[string]string{pcbFootprintNonPadPrimitives: pcbFootprintNonPadReason}
 	if missingBBox > 0 {
 		snap.note("%d/%d component(s) have no rendered bbox — geometric dimensions degrade to anchor points", missingBBox, len(snap.Components))
 	}

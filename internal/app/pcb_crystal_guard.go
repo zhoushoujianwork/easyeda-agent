@@ -971,7 +971,7 @@ func crystalCandidatePads(snap *boardSnapshot, moved map[string]boardComp) ([]pc
 			if err := parseNetPathPadShape(map[string]any{"shape": p.Shape, "specialPad": p.SpecialPad}, &parsed, c.Designator+"."+p.Number); err != nil {
 				return nil, fmt.Errorf("crystal-guard pad %s.%s geometry is unknown: %w", c.Designator, p.Number, err)
 			}
-			if !parsed.ShapeOK {
+			if !parsed.exactClearanceKnown() {
 				return nil, fmt.Errorf("crystal-guard pad %s.%s geometry is unknown/unsupported: %s", c.Designator, p.Number, parsed.ShapeIssue)
 			}
 			pads = append(pads, parsed)
