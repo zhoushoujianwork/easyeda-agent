@@ -1939,7 +1939,7 @@ combine it with neither --all-pages (inactive-page data is shallow) nor
 	// live sheet bbox + a known-template ratio, with explicit provenance +
 	// warnings (never false precision). Pure core in cmd_sch_sheet.go.
 	{
-		var asJSON bool
+		var asJSON, exact bool
 		var fromSVG string
 		c := &cobra.Command{
 			Use:   "sheet-geometry",
@@ -1964,12 +1964,41 @@ bounds, innerBBox and table keep-out, in raw y-UP coordinates. This mode is
 offline and binds sourceSha256 to the file bytes; preserve the export command
 and page identity separately. Supports one untransformed rectangular sheet and
 one rectangular title table; missing or ambiguous geometry fails closed.
-Bounds follow vector centerlines; add stroke clearance in layout parameters.`,
+Bounds follow vector centerlines; add stroke clearance in layout parameters.
+
+Use --exact to run that same official export on the active page now (read-only,
+no document change) instead of passing a file. Both SVG modes also report the
+title table's cells and drawn strokes:
+
+  titleBlock.cells[]  {id, bbox, text, leftText} — text is what the exporter
+                      rendered in the cell ("" when empty); leftText is the text
+                      of the cell to its left, naming value cells by row label
+                      (the 审阅 value cell has leftText "审阅")
+  titleBlock.lines[]  {x1,y1,x2,y2} drawn table strokes
+
+Coordinates are schematic raw units, y-UP, the same space as attribute-move and
+sch check bboxes. Cells and lines exist only when the export carries the
+official table structure; the derived (default) mode never reports them.`,
 			Args: cobra.NoArgs,
 			Example: `  easyeda sch sheet-geometry
   easyeda sch sheet-geometry --json
+  easyeda sch sheet-geometry --exact --json
   easyeda sch sheet-geometry --from-svg sheet.svg --json`,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				if exact && cmd.Flags().Changed("from-svg") {
+					return fmt.Errorf("--exact and --from-svg are mutually exclusive")
+				}
+				if exact {
+					g, err := exportSheetGeometry(cfg, window)
+					if err != nil {
+						return err
+					}
+					if asJSON {
+						return json.NewEncoder(stdout).Encode(map[string]any{"ok": true, "result": g})
+					}
+					renderSheetGeometry(g, stdout)
+					return nil
+				}
 				if cmd.Flags().Changed("from-svg") {
 					if strings.TrimSpace(fromSVG) == "" {
 						return fmt.Errorf("--from-svg requires a non-empty file path")
@@ -1981,6 +2010,7 @@ Bounds follow vector centerlines; add stroke clearance in layout parameters.`,
 		}
 		c.Flags().BoolVar(&asJSON, "json", false, "emit the geometry in the {id,type,version,ok,result} envelope (geometry under result)")
 		c.Flags().StringVar(&fromSVG, "from-svg", "", "read exact vectors from an official whole-page SVG; offline, no EDA calls")
+		c.Flags().BoolVar(&exact, "exact", false, "export the active page with the official exporter now and read its exact vectors, title cells and strokes (read-only)")
 		sch.AddCommand(c)
 	}
 
