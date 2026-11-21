@@ -52,6 +52,15 @@ func TestDumpPadGeometryFromSanitizedSimHolder(t *testing.T) {
 	if offset := simPad(t, comps, "J2", "PEG2").HoleGeometry; offset == nil || offset.Status != "unknown" || !strings.Contains(offset.Reason, "holeOffsetX is nonzero") {
 		t.Fatalf("nonzero offset must stay unknown: %+v", offset)
 	}
+	// Live USB-C slots (ceshi, EDA 4.1.105): offsets are ±0.0007 export noise and
+	// the rotation is exactly π/2 radians → measurable, vertical.
+	if sh := simPad(t, comps, "J2", "SH1").HoleGeometry; sh == nil || sh.Status != "available" || sh.RotationDeg != 90 ||
+		sh.DiameterMil != 31.496 || sh.LengthMil != 59.055 {
+		t.Fatalf("noise-offset slot geometry = %+v", sh)
+	}
+	if deg := simPad(t, comps, "J2", "PEG3").HoleGeometry; deg == nil || deg.Status != "unknown" || !strings.Contains(deg.Reason, "not a multiple of π/2 radians") {
+		t.Fatalf("degree-looking holeRotation must stay unknown: %+v", deg)
+	}
 	if legacy := simPad(t, comps, "J3", "PEG1").HoleGeometry; legacy == nil || legacy.Status != "unknown" || !strings.Contains(legacy.Reason, "not captured") {
 		t.Fatalf("missing offset capture must not be read as 0: %+v", legacy)
 	}
@@ -71,6 +80,22 @@ func TestDumpPadGeometryFromSanitizedSimHolder(t *testing.T) {
 	cov := (&boardSnapshot{Components: comps, ComponentsAvailability: "available"}).geometryCoverage(false)
 	if cov.Complete || cov.UnsupportedGeometryPads != 2 {
 		t.Fatalf("coverage = %+v", cov)
+	}
+}
+
+func TestPcbHoleRotationDeg(t *testing.T) {
+	for _, tc := range []struct {
+		in   float64
+		want float64
+		ok   bool
+	}{
+		{0, 0, true}, {math.Pi / 2, 90, true}, {math.Pi, 180, true}, {-math.Pi / 2, 270, true},
+		{90, 0, false}, {45, 0, false}, {math.Pi / 4, 0, false}, {math.NaN(), 0, false},
+	} {
+		got, ok := pcbHoleRotationDeg(tc.in)
+		if ok != tc.ok || ok && got != tc.want {
+			t.Errorf("pcbHoleRotationDeg(%v) = %v,%v want %v,%v", tc.in, got, ok, tc.want, tc.ok)
+		}
 	}
 }
 
@@ -175,13 +200,17 @@ func TestPCBRouteListsEveryUnmeasurablePad(t *testing.T) {
 		"pad J2.PEG2 drill geometry unknown: holeOffsetX is nonzero",
 		"pad J2.2 copper geometry unsupported",
 		"pad J3.PEG1 drill geometry unknown: holeOffsetX was not captured",
+		"pad J2.PEG3 drill geometry unknown: holeRotation 90 is not a multiple of π/2 radians",
 		"Hole↔Track spacing rule was not measured",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("reasons lack %q:\n%s", want, joined)
 		}
 	}
-	if len(rep.Reasons) != 4 {
+	if strings.Contains(joined, "J2.SH1") {
+		t.Errorf("float-noise offsets must not make SH1 unmeasurable:\n%s", joined)
+	}
+	if len(rep.Reasons) != 5 {
 		t.Errorf("want one reason per item, got %d:\n%s", len(rep.Reasons), joined)
 	}
 	if !strings.Contains(strings.Join(rep.Limitations, "\n"), "footprint-internal non-pad primitives are unobservable") {

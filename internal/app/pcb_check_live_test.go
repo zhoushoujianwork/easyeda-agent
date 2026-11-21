@@ -211,3 +211,30 @@ func TestPcbPlanningPadsRejectPartialInventoryAndPose(t *testing.T) {
 		})
 	}
 }
+
+// Live ceshi 2026-11-21 (EDA 4.1.105): native DRC flagged a track 11 mil from
+// the outline center line ("should be >= 11.8mil") while pcb check passed it,
+// because it measured to the rendered bbox, which adds half the 10 mil outline
+// stroke. The edge check must use centerlineBBox like native DRC.
+func TestPcbCheckCopperNearEdgeUsesOutlineCenterline(t *testing.T) {
+	// Track N1 runs x 0..100 at y 0, width 8 → copper edge at x=104.
+	outline := func(results map[string]map[string]any) {
+		results["pcb.outline.get"] = map[string]any{
+			"bbox":           map[string]any{"minX": -1005, "minY": -1005, "maxX": 120, "maxY": 1005},
+			"centerlineBBox": map[string]any{"minX": -1000, "minY": -1000, "maxX": 115, "maxY": 1000},
+			"lineWidth":      10,
+		}
+	}
+	cfg := newClearanceCheckFixture(t, 20, outline)
+	var stdout, stderr bytes.Buffer
+	if err := runPcbCheck(cfg, "w1", 3, nil, false, true, &stdout, &stderr); err != nil {
+		t.Fatalf("check: %v stderr=%s", err, stderr.String())
+	}
+	var report pcbCheckReport
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if report.Summary.CopperNearEdge != 1 {
+		t.Fatalf("11 mil gap to the center line must be flagged under the 11.8 mil rule: summary=%+v findings=%+v", report.Summary, report.Findings)
+	}
+}
