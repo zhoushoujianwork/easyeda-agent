@@ -14,7 +14,10 @@ import (
 //
 // The connector reports the drill tuple in 10 mil units (live: a 2.54 mm header
 // reads ["ROUND", 4.3308] = 1.1 mm). Hole offsets have no verified unit, so only
-// a captured offset of exactly 0 (unit-independent) yields an exact position.
+// an offset that is 0 up to float noise (|v| <= pcbHoleOffsetNoise, live USB-C
+// slots read ±0.0003–0.0007) yields an exact position. Hole rotation is read in
+// radians (live: a vertical USB-C slot reports exactly π/2) and accepted only at
+// whole multiples of π/2; any other value has no verified unit and stays unknown.
 // SLOT length semantics (overall vs. center distance) are not documented; the
 // obstacle model uses a spine of the full length, a superset of both readings.
 type pcbHoleGeometry struct {
@@ -32,6 +35,22 @@ type pcbHoleGeometry struct {
 }
 
 const pcbHoleTupleUnitMil = 10
+
+// pcbHoleOffsetNoise is the largest hole offset still read as 0. In the drill
+// tuple's 10 mil unit it is 0.01 mil (0.04 mil even if the unit were mm) — far
+// below any clearance rule, while real footprints carry ±0.0007 export noise.
+const pcbHoleOffsetNoise = 1e-3
+
+// pcbHoleRotationDeg converts a hole rotation to degrees when it is a whole
+// multiple of π/2 radians. Other values (including degree-looking 90) are not
+// accepted: the unit is only verified for cardinal slots.
+func pcbHoleRotationDeg(r float64) (float64, bool) {
+	k := math.Round(r / (math.Pi / 2))
+	if !allFinite(r) || math.Abs(r-k*math.Pi/2) > 1e-6 {
+		return 0, false
+	}
+	return normalizeDeg(k * 90), true
+}
 
 // pcbPadHoleGeometry derives the drill shape of p, or nil when the pad has no
 // hole. Any missing or unverifiable input yields Status "unknown" with a reason.
@@ -88,7 +107,7 @@ func pcbPadHoleGeometry(p boardPad) *pcbHoleGeometry {
 			g.Reason = field + " was not captured (connector predates hole placement capture; re-dump)"
 			return g
 		}
-		if math.Abs(*v) > 1e-9 {
+		if math.Abs(*v) > pcbHoleOffsetNoise {
 			g.Reason = field + " is nonzero and its unit is unverified"
 			return g
 		}
@@ -100,7 +119,12 @@ func pcbPadHoleGeometry(p boardPad) *pcbHoleGeometry {
 			g.Reason = "holeRotation was not captured (connector predates hole placement capture; re-dump)"
 			return g
 		}
-		g.RotationDeg = normalizeDeg(p.Rotation + *p.HoleRotation)
+		holeDeg, ok := pcbHoleRotationDeg(*p.HoleRotation)
+		if !ok {
+			g.Reason = fmt.Sprintf("holeRotation %v is not a multiple of π/2 radians; its unit is unverified", *p.HoleRotation)
+			return g
+		}
+		g.RotationDeg = normalizeDeg(p.Rotation + holeDeg)
 	}
 	g.Status = "available"
 	return g

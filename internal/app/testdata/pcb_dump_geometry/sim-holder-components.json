@@ -46,7 +46,7 @@
           "captureErrors": {},
           "holeOffsetX": 0.0,
           "holeOffsetY": 0.0,
-          "holeRotation": 90.0,
+          "holeRotation": 1.5707963267948966,
           "metallization": false,
           "width": 10,
           "height": 10
@@ -82,7 +82,7 @@
           "captureErrors": {},
           "holeOffsetX": 0.5,
           "holeOffsetY": 0.0,
-          "holeRotation": 90.0,
+          "holeRotation": 1.5707963267948966,
           "metallization": false,
           "width": 10,
           "height": 10
@@ -168,6 +168,78 @@
           "holeOffsetX": 0.0,
           "holeOffsetY": 0.0,
           "holeRotation": 0.0
+        },
+        {
+          "primitiveId": "sim-j2-peg1-peg3",
+          "padNumber": "PEG3",
+          "net": "",
+          "layer": 12,
+          "x": 190,
+          "y": 80,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            1.0,
+            3.0
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": 0.0,
+          "holeOffsetY": 0.0,
+          "holeRotation": 90.0,
+          "metallization": false,
+          "width": 10,
+          "height": 10
+        },
+        {
+          "primitiveId": "sim-j2-peg1-sh1",
+          "padNumber": "SH1",
+          "net": "",
+          "layer": 12,
+          "x": 230,
+          "y": 80,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            3.1496,
+            5.9055
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": -0.0006,
+          "holeOffsetY": -0.0003,
+          "holeRotation": 1.5707963267948966,
+          "metallization": true,
+          "width": 10,
+          "height": 10
         }
       ]
     },
