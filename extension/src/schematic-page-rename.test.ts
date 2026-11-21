@@ -94,3 +94,64 @@ test('worker-swept read timeout preserves known refusal and ignores late read co
 		assert.equal(writes, 1); assert.equal(reads, 1); assert.equal(pendingDeadlines(), before);
 	} finally { Object.assign(globals, { eda: original.eda, setTimeout: original.setTimeout, clearTimeout: original.clearTimeout }); Date.now = original.now; }
 });
+
+// Issue #55: the host refuses at once until its window has loaded a second page of the schematic.
+function twoPageHost({ current = 'pcb' as string | undefined, refuseUntilOpened = 2, failOpen = '' } = {}) {
+	const names: Record<string, string> = { page: 'old', other: 'P1' }, opened: string[] = [], log: string[] = [];
+	let active = current, writes = 0;
+	return { names, opened, log, writes: () => writes, active: () => active, eda: {
+		dmt_Schematic: {
+			modifySchematicPageName: async (uuid: string, name: string) => {
+				writes++; log.push(`rename:${uuid}`);
+				if (new Set(opened).size < refuseUntilOpened) return false;
+				names[uuid] = name; return true;
+			},
+			getAllSchematicPagesInfo: async () => [
+				{ uuid: 'page', name: names.page, parentSchematicUuid: 'sch' },
+				{ uuid: 'other', name: names.other, parentSchematicUuid: 'sch' },
+				{ uuid: 'foreign', name: 'X', parentSchematicUuid: 'sch-2' },
+			],
+		},
+		dmt_EditorControl: { openDocument: async (uuid: string) => { if (uuid === failOpen) throw new Error('open failed'); log.push(`open:${uuid}`); if (uuid !== 'pcb') opened.push(uuid); active = uuid; return uuid; } },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => { if (!active) throw new Error('No active document.'); return { uuid: active }; } },
+	} };
+}
+async function withHost<T>(host: ReturnType<typeof twoPageHost>, run: () => Promise<T>): Promise<T> {
+	const globals = globalThis as Record<string, any>, original = globals.eda;
+	globals.eda = host.eda;
+	try { return await run(); } finally { globals.eda = original; }
+}
+
+test('known refusal loads a sibling and the target page, restores the foreground, then renames once more', async () => {
+	const host = twoPageHost();
+	const { result } = await withHost(host, () => renameSchematicPage('page', 'new'));
+	assert.equal(result.verified, true); assert.equal(host.names.page, 'new'); assert.equal(host.names.other, 'P1');
+	assert.deepEqual(host.log, ['rename:page', 'open:other', 'open:page', 'open:pcb', 'rename:page']);
+	assert.equal(host.active(), 'pcb');
+	assert.deepEqual(result.recovery, { reason: 'host-refused-before-second-page-loaded', opened: ['other', 'page'], restored: 'pcb' });
+});
+
+test('a fresh window without an active document keeps the target page open after the recovery', async () => {
+	const host = twoPageHost({ current: '' }) // '' = the host reports no active document;
+	const { result } = await withHost(host, () => renameSchematicPage('page', 'new'));
+	assert.equal(result.verified, true); assert.equal(host.active(), 'page'); assert.equal(result.recovery!.restored, null);
+});
+
+test('a second refusal after loading pages is final and reports the recovery', async () => {
+	const host = twoPageHost({ refuseUntilOpened: 9 });
+	await withHost(host, () => assert.rejects(renameSchematicPage('page', 'new'), error => {
+		assert.ok(error instanceof ActionError);
+		const detail = JSON.parse(error.detail!);
+		assert.equal(detail.hostAccepted, false); assert.equal(detail.observation.name, 'old');
+		assert.deepEqual(detail.recovery.opened, ['other', 'page']); return true;
+	}));
+	assert.equal(host.writes(), 2); assert.equal(host.active(), 'pcb');
+});
+
+test('a failed page load skips the second call and still restores the foreground', async () => {
+	const host = twoPageHost({ failOpen: 'page' });
+	await withHost(host, () => assert.rejects(renameSchematicPage('page', 'new'), error => {
+		assert.match(JSON.parse((error as ActionError).detail!).recovery.error, /open failed/); return true;
+	}));
+	assert.equal(host.writes(), 1); assert.equal(host.active(), 'pcb');
+});
