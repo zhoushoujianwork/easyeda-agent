@@ -206,6 +206,11 @@ type outcome struct {
 	// content write that got no answer within its budget.
 	Mutates  bool
 	TimedOut bool
+	// ClientCanceled: the caller gave up (HTTP request context canceled, e.g. the
+	// CLI was interrupted) before the connector answered. That says nothing about
+	// whether the connector or host write path is healthy, so observe() drops it
+	// instead of counting it as a timeout / write stall (EDAD-10).
+	ClientCanceled bool
 }
 
 // outcomeOf builds the health outcome of one forwarded attempt.
@@ -219,7 +224,9 @@ func outcomeOf(req *protocol.Request, resp *protocol.Response, err error) outcom
 		ErrorCode: code,
 		ErrorMsg:  responseErrorMsg(resp),
 		Mutates:   requestMutates(req),
-		TimedOut:  isTimeoutErr(err) || code == "ACTION_ABANDONED",
+		TimedOut:  isDeadlineErr(err) || code == "ACTION_ABANDONED",
+
+		ClientCanceled: isClientCancelErr(err),
 	}
 }
 
@@ -363,6 +370,10 @@ func (t *writeHealthTracker) observe(windowID string, o outcome) {
 	// (rather than counting it as a non-failure) keeps it out of `samples` too,
 	// so it can't dilute the denominator either way. See requestRefusalCodes.
 	if !o.OK && requestRefusalCodes[o.ErrorCode] {
+		return
+	}
+	// Same for a caller that hung up first: no evidence either way.
+	if o.ClientCanceled {
 		return
 	}
 	t.mu.Lock()
