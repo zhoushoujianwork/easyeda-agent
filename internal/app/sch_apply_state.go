@@ -101,10 +101,14 @@ func measuredSchematicDevice(ref string, have map[string]any) (*schematicDeviceE
 }
 
 type schematicPinExpectation struct {
-	Name       *string        `json:"name,omitempty"`
-	X          *float64       `json:"x,omitempty"`
-	Y          *float64       `json:"y,omitempty"`
-	Net        *string        `json:"net,omitempty"`
+	Name *string  `json:"name,omitempty"`
+	X    *float64 `json:"x,omitempty"`
+	Y    *float64 `json:"y,omitempty"`
+	Net  *string  `json:"net,omitempty"`
+	// AutoNet groups pins on a platform-generated net ("$2N1"). The platform
+	// renumbers those names on redraw, so the name is not checked: pins with the
+	// same key must share one net, and different keys must be different nets.
+	AutoNet    *string        `json:"autoNet,omitempty"`
 	NC         *bool          `json:"noConnected,omitempty"`
 	Persistent map[string]any `json:"persistent,omitempty"`
 }
@@ -123,7 +127,7 @@ func (p *schematicPinExpectation) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	for _, key := range []string{"net", "noConnected", "name", "persistent"} {
+	for _, key := range []string{"net", "autoNet", "noConnected", "name", "persistent"} {
 		if value, exists := fields[key]; exists && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return fmt.Errorf("expectSchematic pin %s cannot be null; omit it when this fact is not checked", key)
 		}
@@ -231,6 +235,9 @@ func (e *schematicStateExpectation) validate() error {
 			}
 			if pin.Net != nil && *pin.Net != "" && pin.NC != nil && *pin.NC {
 				return fmt.Errorf("%s.%s cannot expect both a net and noConnected:true", ref, number)
+			}
+			if pin.AutoNet != nil && (strings.TrimSpace(*pin.AutoNet) == "" || pin.Net != nil || pin.NC != nil && *pin.NC) {
+				return fmt.Errorf("%s.%s autoNet needs a non-empty group key and excludes net and noConnected:true", ref, number)
 			}
 			for field, value := range map[string]*float64{"x": pin.X, "y": pin.Y} {
 				if value != nil && !finiteStateNumber(*value) {
@@ -367,6 +374,14 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 			}
 		}
 	}
+	autoNets, autoKeys, namedNets := map[string]string{}, map[string]string{}, map[string]bool{}
+	for _, part := range expected.Parts {
+		for _, pin := range part.Pins {
+			if pin.Net != nil {
+				namedNets[*pin.Net] = true
+			}
+		}
+	}
 	for _, ref := range sortedStateKeys(expected.Parts) {
 		want := expected.Parts[ref]
 		have, exists := parts[ref]
@@ -470,6 +485,23 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 				if net != *wantPin.Net {
 					return fmt.Errorf("%s.%s net: got %q, want %q", ref, number, net, *wantPin.Net)
 				}
+			}
+			if wantPin.AutoNet != nil {
+				net, known := pin["net"].(string)
+				if have["netAmbiguous"] == true || !known || net == "" {
+					return fmt.Errorf("%s.%s net is unknown or ambiguous", ref, number)
+				}
+				key := *wantPin.AutoNet
+				if namedNets[net] {
+					return fmt.Errorf("%s.%s joined named net %q, want its own unnamed net (%s)", ref, number, net, key)
+				}
+				if prev, seen := autoNets[key]; seen && prev != net {
+					return fmt.Errorf("%s.%s net: got %q, want the same net as other %s pins (%q)", ref, number, net, key, prev)
+				}
+				if owner, seen := autoKeys[net]; seen && owner != key {
+					return fmt.Errorf("%s.%s net %q merges unnamed nets %s and %s", ref, number, net, owner, key)
+				}
+				autoNets[key], autoKeys[net] = net, key
 			}
 		}
 	}

@@ -237,7 +237,15 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   (`notDeletable[]` with the parent component + `ok:false`; use `pcb via-bond` to net
   them, or delete the whole component) and additionally readback-verifies the rest
   (`removed`/`count` only count what actually vanished; unattributable survivors land
-  in `notDeleted`). ⚠️ **After surgical
+  in `notDeleted`). **Exit contract (#312)**: any non-empty `notFound` / `notDeleted` /
+  `notDeletable` / `skippedLocked` makes the command (and an `easyeda apply` step) exit
+  non-zero with a `partial delete` error, while stdout still carries the full result —
+  one valid id no longer turns a batch into a success. **Ids are only valid until the
+  next copper write or delete**: a T-branch splits the trunk into two NEW ids, and
+  deleting the branch merges them back into a third NEW id. So when deleting across
+  several calls, re-export ids before each call (or put related segments in ONE call),
+  and after a by-id batch delete re-export and reconcile copper per net and layer;
+  `pcb plan-apply` does this reconciliation for you. ⚠️ **After surgical
   edits (delete/via-hop/fill changes), a burst of same-net (usually GND) Connection
   Errors in DRC is pour-mediated connectivity gone stale, not real breaks — run
   `pcb pour-rebuild` first, then re-judge** (verified live: 11→1 baseline).

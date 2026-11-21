@@ -8371,13 +8371,23 @@ const schematicComponentReplace: Handler = async (payload) => {
 			: {}),
 	};
 
-	const place = async (dev: DeviceRef, props: Record<string, unknown>, onCreated?: (id: string) => void): Promise<SchComponent | undefined> => {
+	const place = async (dev: DeviceRef, props: Record<string, unknown>, onCreated?: (id: string) => void, deviceFieldsWin = false): Promise<SchComponent | undefined> => {
 		await assertReplaceContext();
 		let c = await eda.sch_PrimitiveComponent.create(
 			{ libraryUuid: dev.libraryUuid, uuid: dev.uuid },
 			x, y, undefined, rotation, mirror, addIntoBom, addIntoPcb,
 		);
 		if (c) onCreated?.(c.getState_PrimitiveId());
+		// keepProperties carries the old part's custom entries, but entries the new
+		// device itself fills (Datasheet, LCSC Part Name…) describe the NEW part and
+		// must not be overwritten with the old part's values.
+		if (c && deviceFieldsWin && props.otherProperty && typeof props.otherProperty === 'object') {
+			const own = (c.getState_OtherProperty?.() ?? {}) as Record<string, unknown>;
+			const kept = Object.fromEntries(Object.entries(props.otherProperty as Record<string, unknown>)
+				.filter(([key]) => own[key] === undefined || own[key] === null || own[key] === ''));
+			const { otherProperty: _dropped, ...rest } = props;
+			props = Object.keys(kept).length ? { ...rest, otherProperty: kept } : rest;
+		}
 		await assertReplaceContext();
 		if (c && Object.keys(props).length) {
 			// Prefer modify's returned primitive: serializing the create-time object
@@ -8414,6 +8424,16 @@ const schematicComponentReplace: Handler = async (payload) => {
 			const identity = await resolvePlacedDeviceIdentity(observed, identityContext);
 			if (!sameDeviceRef(identity, dev)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, 'Replacement or rollback-original resolved to a different library device.');
 			for (const [key, value] of Object.entries(props)) {
+				// otherProperty is a map the new device already populates with its own
+				// fields (Manufacturer Part, Datasheet…); keepProperties restores the
+				// old entries on top. Prove each restored entry, not map equality.
+				if (key === 'otherProperty' && value && typeof value === 'object') {
+					const have = (observed[key] ?? {}) as Record<string, unknown>;
+					for (const [entry, kept] of Object.entries(value as Record<string, unknown>)) {
+						if (exactJSON(have[entry]) !== exactJSON(kept)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property otherProperty.${entry} was not restored.`);
+					}
+					continue;
+				}
 				if (exactJSON(observed[key]) !== exactJSON(value)) throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Replacement or rollback-original property ${key} was not restored.`);
 			}
 			for (const key of ['x', 'y', 'rotation', 'mirror', 'addIntoBom', 'addIntoPcb']) {
@@ -8461,7 +8481,7 @@ const schematicComponentReplace: Handler = async (payload) => {
 	let created: SchComponent | undefined;
 	let placeError: unknown;
 	try {
-		created = await place({ libraryUuid: target.libraryUuid, uuid: target.uuid }, carryProps, id => { attemptedCandidateId = id; });
+		created = await place({ libraryUuid: target.libraryUuid, uuid: target.uuid }, carryProps, id => { attemptedCandidateId = id; }, true);
 	}
 	catch (err) { placeError = err; }
 	if (!created) {

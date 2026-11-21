@@ -109,6 +109,10 @@ type titleBlockInfo struct {
 	Visible *bool       `json:"visible,omitempty"`
 	BBox    *layoutBBox `json:"bbox,omitempty"`
 	Source  string      `json:"source"`
+	// Cells/Lines exist only for source=official-svg-vectors (an official
+	// whole-page export); derived keep-outs never invent table structure.
+	Cells []titleBlockCell `json:"cells,omitempty"`
+	Lines []titleBlockLine `json:"lines,omitempty"`
 }
 
 // keepout is one named, normalized exclusion rectangle planners must avoid.
@@ -324,6 +328,16 @@ func renderSheetGeometry(g sheetGeometry, w io.Writer) {
 			vis, g.TitleBlock.Source, b.MinX, b.MinY, b.MaxX, b.MaxY)
 	} else {
 		fmt.Fprintf(w, "  titleBlock (%s, source=%s): no keep-out\n", vis, g.TitleBlock.Source)
+	}
+	for _, c := range g.TitleBlock.Cells {
+		label := c.Text
+		if label == "" && c.LeftText != "" {
+			label = "(" + c.LeftText + " 右格)"
+		}
+		fmt.Fprintf(w, "  cell [%.2f,%.2f → %.2f,%.2f] %s\n", c.BBox.MinX, c.BBox.MinY, c.BBox.MaxX, c.BBox.MaxY, label)
+	}
+	if n := len(g.TitleBlock.Lines); n > 0 {
+		fmt.Fprintf(w, "  %d title-table strokes (see --json lines[])\n", n)
 	}
 	for _, k := range g.Keepouts {
 		hard := "soft"

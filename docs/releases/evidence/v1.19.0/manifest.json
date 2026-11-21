@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 3,
+  "version": "v1.19.0",
+  "result": "pass",
+  "independentReview": "pass",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.19.0",
+    "date": "2026-11-20",
+    "summary": "用户先批准 v1.18.3，得知连接器运行时变化须升中版本、且完整点灯板 E2E 未执行后，在“v1.19.0 有限 CLI 修复范围”与“先跑完整 E2E”中选择前者：以全量自动回归、整页原理图链路与 keepProperties 替换的 DEV 现场验收、v1.18.2 负对照为准，完整设计 E2E 延期。"
+  },
+  "sha256": {
+    "test-report.md": "584458b343590e2e8471f899974e612e8a00daa4ead60ebda6ebc208713f3277",
+    "baseline.md": "8917c1c5c6daa7fd102425c44c93943a628d9ac3eae597024c030a3fd52ca32f",
+    "test-cases.md": "5abc1d7632edcec47784c80c3673dc10a31ee7227b2e09d4b71f562563f84cdd"
+  }
+}
