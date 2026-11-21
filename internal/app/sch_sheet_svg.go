@@ -115,11 +115,16 @@ func parseSheetGeometrySVG(data []byte) (sheetGeometry, error) {
 	if root.XMLName.Local != "svg" {
 		return sheetGeometry{}, sheetSVGUnsupported("root must be svg")
 	}
-	var borders, cells []layoutBBox
+	var borders []layoutBBox
+	var cells []titleBlockCell
+	var lines []titleBlockLine
+	texts := map[string]string{}
 	sheets, tables, containers := 0, 0, 0
 	tableDepth, cellsDepth := -1, -1
-	var walk func(sheetSVGNode, bool, bool, bool, bool, int) error
-	walk = func(n sheetSVGNode, inSheet, inTable, inCells, unsafe bool, depth int) error {
+	var walk func(sheetSVGNode, bool, bool, string, bool, int) error
+	// region names the table child container being walked: "cells"
+	// (table-fill-container), "texts" or "strokes"; "" elsewhere.
+	walk = func(n sheetSVGNode, inSheet, inTable bool, region string, unsafe bool, depth int) error {
 		// Official shapeBox is a structural class with no geometry styling.
 		if n.XMLName.Local == "style" {
 			css := strings.Join(strings.Fields(n.Text), "")
@@ -134,6 +139,7 @@ func parseSheetGeometrySVG(data []byte) (sheetGeometry, error) {
 				}
 			}
 		}
+		parentUnsafe := unsafe
 		unsafe = unsafe || sheetSVGUnsafe(n)
 		// Only root svg → g ancestors are supported for measured rectangles.
 		// defs/symbol are not rendered, and a nested svg establishes a viewport.
@@ -152,15 +158,45 @@ func parseSheetGeometrySVG(data []byte) (sheetGeometry, error) {
 			inTable = true
 			tableDepth = depth
 		}
+		if inTable && region == "" && n.XMLName.Local == "g" && depth == tableDepth+1 {
+			switch n.attr("id") {
+			case "table-text-container":
+				region = "texts"
+			case "table-stroke-container":
+				region = "strokes"
+			}
+		}
 		if inTable && n.attr("id") == "table-fill-container" {
 			if n.XMLName.Local != "g" || depth != tableDepth+1 {
 				return sheetSVGUnsupported("title cell container must belong directly to table")
 			}
 			containers++
-			inCells = true
+			region = "cells"
 			cellsDepth = depth
 		}
-		if inSheet && n.XMLName.Local == "rect" && (!inTable || inCells) {
+		// Cell labels are reading aids, not geometry claims: keep the rendered
+		// text of each cell keyed by the shared table-<table>-<cell> id prefix.
+		if region == "texts" && n.XMLName.Local == "text" {
+			if key, ok := strings.CutSuffix(n.attr("id"), "-text"); ok && key != "" {
+				texts[key] = strings.TrimSpace(sheetSVGText(n))
+			}
+			return nil
+		}
+		// Drawn table strokes are the lines a title-block text must not sit on.
+		// Their own class/stroke styling is paint; anything that could move or
+		// hide them (ancestor or own transform/visibility) fails closed.
+		if region == "strokes" && n.XMLName.Local == "line" {
+			if parentUnsafe || sheetSVGLineUnsafe(n) {
+				return sheetSVGUnsupported("transformed or hidden title-table stroke")
+			}
+			l, err := sheetSVGLine(n)
+			if err != nil {
+				return err
+			}
+			lines = append(lines, l)
+			return nil
+		}
+		if inSheet && n.XMLName.Local == "rect" && (!inTable || region == "cells") {
 			if unsafe {
 				return sheetSVGUnsupported("transformed, hidden or styled geometry")
 			}
@@ -168,23 +204,23 @@ func parseSheetGeometrySVG(data []byte) (sheetGeometry, error) {
 			if err != nil {
 				return err
 			}
-			if inCells {
+			if region == "cells" {
 				if depth != cellsDepth+1 {
 					return sheetSVGUnsupported("cell rectangle must belong directly to cell container")
 				}
-				cells = append(cells, b)
+				cells = append(cells, titleBlockCell{ID: strings.TrimSuffix(n.attr("id"), "-fill-rect"), BBox: b})
 			} else {
 				borders = append(borders, b)
 			}
 		}
 		for _, child := range n.Children {
-			if err := walk(child, inSheet, inTable, inCells, unsafe, depth+1); err != nil {
+			if err := walk(child, inSheet, inTable, region, unsafe, depth+1); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	if err := walk(root, false, false, false, false, 0); err != nil {
+	if err := walk(root, false, false, "", false, 0); err != nil {
 		return sheetGeometry{}, err
 	}
 	if sheets != 1 || len(borders) != 2 || tables != 1 || containers != 1 || len(cells) == 0 {
@@ -197,8 +233,9 @@ func parseSheetGeometrySVG(data []byte) (sheetGeometry, error) {
 	if !(outer.MinX < inner.MinX && outer.MinY < inner.MinY && outer.MaxX > inner.MaxX && outer.MaxY > inner.MaxY) {
 		return sheetGeometry{}, sheetSVGUnsupported("border rectangles are not strictly nested")
 	}
-	table := cells[0]
-	for _, b := range cells[1:] {
+	table := cells[0].BBox
+	for _, c := range cells[1:] {
+		b := c.BBox
 		table.MinX = math.Min(table.MinX, b.MinX)
 		table.MinY = math.Min(table.MinY, b.MinY)
 		table.MaxX = math.Max(table.MaxX, b.MaxX)
@@ -207,14 +244,101 @@ func parseSheetGeometrySVG(data []byte) (sheetGeometry, error) {
 	if !sheetSVGContains(inner, table) {
 		return sheetGeometry{}, sheetSVGUnsupported("title table outside inner border")
 	}
+	for i := range cells {
+		if cells[i].ID != "" {
+			cells[i].Text = texts[cells[i].ID]
+		}
+	}
+	for i := range cells {
+		cells[i].LeftText = leftCellText(cells, i)
+	}
+	warnings := []string{"offline export: verify page identity and freshness against the same-batch object readback; add stroke clearance in layout parameters"}
+	if len(lines) == 0 {
+		warnings = append(warnings, "no title-table stroke lines in this export; text-on-line checks cannot run against it")
+	}
 	visible := true
 	return sheetGeometry{
 		SourceSha256: fmt.Sprintf("%x", sha256.Sum256(data)), CoordinateSystem: "schematic-raw-y-up-vector-centerlines",
 		Sheet:      sheetInfo{BBox: &outer, InnerBBox: &inner},
-		TitleBlock: titleBlockInfo{Visible: &visible, BBox: &table, Source: "official-svg-vectors"},
+		TitleBlock: titleBlockInfo{Visible: &visible, BBox: &table, Source: "official-svg-vectors", Cells: cells, Lines: lines},
 		Keepouts:   []keepout{{Name: "titleBlock", BBox: &table, Hard: true}},
-		Warnings:   []string{"offline export: verify page identity and freshness against the same-batch object readback; add stroke clearance in layout parameters"},
+		Warnings:   warnings,
 	}, nil
+}
+
+// titleBlockCell is one measured title-table cell from the official export.
+// Text is what the exporter rendered inside it ("" for an empty value cell);
+// LeftText is the text of the cell immediately to its left, which names a
+// value cell by its row label (e.g. the cell right of 审阅).
+type titleBlockCell struct {
+	ID       string     `json:"id,omitempty"`
+	BBox     layoutBBox `json:"bbox"`
+	Text     string     `json:"text"`
+	LeftText string     `json:"leftText,omitempty"`
+}
+
+// titleBlockLine is one drawn title-table stroke (centerline, raw y-UP).
+type titleBlockLine struct {
+	X1 float64 `json:"x1"`
+	Y1 float64 `json:"y1"`
+	X2 float64 `json:"x2"`
+	Y2 float64 `json:"y2"`
+}
+
+func leftCellText(cells []titleBlockCell, i int) string {
+	const tol = 0.01
+	c := cells[i].BBox
+	best, bestOverlap := "", 0.0
+	for j, o := range cells {
+		if j == i || math.Abs(o.BBox.MaxX-c.MinX) > tol {
+			continue
+		}
+		if ov := math.Min(o.BBox.MaxY, c.MaxY) - math.Max(o.BBox.MinY, c.MinY); ov > bestOverlap {
+			best, bestOverlap = o.Text, ov
+		}
+	}
+	return best
+}
+
+func sheetSVGText(n sheetSVGNode) string {
+	var b strings.Builder
+	b.WriteString(n.Text)
+	for _, c := range n.Children {
+		b.WriteString(sheetSVGText(c))
+	}
+	return b.String()
+}
+
+func sheetSVGLineUnsafe(n sheetSVGNode) bool {
+	for _, key := range []string{"transform", "display", "visibility", "opacity", "clip-path", "mask", "filter"} {
+		if n.attr(key) != "" {
+			return true
+		}
+	}
+	for _, declaration := range strings.Split(strings.ToLower(n.attr("style")), ";") {
+		key, value, _ := strings.Cut(declaration, ":")
+		switch strings.TrimSpace(key) {
+		case "display", "visibility", "transform":
+			return true
+		case "opacity", "stroke-opacity":
+			if v := strings.TrimSpace(value); v == "0" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func sheetSVGLine(n sheetSVGNode) (titleBlockLine, error) {
+	v := make([]float64, 4)
+	for i, key := range []string{"x1", "y1", "x2", "y2"} {
+		f, err := strconv.ParseFloat(n.attr(key), 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			return titleBlockLine{}, sheetSVGUnsupported("table stroke %q has invalid %s", n.attr("id"), key)
+		}
+		v[i] = f
+	}
+	return titleBlockLine{X1: v[0], Y1: -v[1], X2: v[2], Y2: -v[3]}, nil
 }
 
 func runSheetGeometrySVG(path string, asJSON bool, stdout io.Writer) error {

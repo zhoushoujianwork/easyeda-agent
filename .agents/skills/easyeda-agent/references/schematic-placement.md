@@ -174,6 +174,11 @@ destagger。先从完整快照计算局部模块几何，经 compose 守卫重�
 参数文件含 `projectUuid`、`documentUuid`、`primitiveId`、可选 `ownerType`、有限数值 `x/y` 和完整 `expected` 原状态；
 `expected` 直接来自新鲜 `schematic.components.list(includePagePrimitives:true)` 的单条原生属性记录，
 包括 `primitiveId` 和所有大写状态字段。公式值保留原文，不能用 SVG 渲染后的文字替换 `Value`。
+目标坐标取自 `easyeda sch sheet-geometry --exact --json --doc <page-uuid>` 的
+`titleBlock.cells[]`：每格给出 raw Y 向上的 `bbox`、格内文字 `text` 和左邻格文字 `leftText`，
+例如「审阅」值格是 `leftText:"审阅"` 的那一格；不要从字段锚点推算行列。属性锚点与文字 bbox
+的相对偏移以 `schematic.visible_text.bboxes` 回读为准，移动后用 `sch check` 确认无
+`titleblock-text-on-line`。单元格只来自官方导出的表格结构；导出不含该结构时命令失败，不给估算值。
 
 写前核对上下文、父器件和完整原状态；官方 `sch_PrimitiveAttribute.modify(id,{x,y})` 只接收坐标。
 写后再 `get(id)`，核对目标坐标及其余所有状态未变。缺读、漂移、部分写入或 SDK 异常均失败并

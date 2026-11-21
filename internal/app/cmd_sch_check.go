@@ -343,7 +343,7 @@ func renderCheckReport(rep checkReport, w io.Writer) {
 		fmt.Fprintln(w, "→ duplicate markers: a partial autoconnect stacked coincident flags/ports — sch prim-delete the suggested IDs (keep one)")
 	}
 	if s.TitleblockOverlaps > 0 {
-		fmt.Fprintln(w, "→ title-block: a part/marker intrudes the A4 图签 keep-out — move it out or pick another connect direction")
+		fmt.Fprintln(w, "→ title-block: a part/marker/wire intrudes the 图签 keep-out, or a visible text sits on a table line — move it out / into its cell (cell bboxes: sch sheet-geometry --exact)")
 	}
 	if s.MarkerOverlaps > 0 {
 		// `sch destagger` exists for exactly this finding and is safe by default
