@@ -76,9 +76,12 @@ function collectTabs(node: unknown, out: Tab[]) {
 async function captureHostState(stage: HostState['stage'], pageUuid: string, pages: PageInventory | undefined): Promise<HostState> {
 	const target = pages?.find(page => page.uuid === pageUuid);
 	const schematicPages = new Set((pages ?? []).filter(page => target && page.parentSchematicUuid === target.parentSchematicUuid).map(page => page.uuid));
-	// Tab ids equal document uuids for project documents in Web 4.1.x; a tab that
-	// does not match any page is reported as outside the target schematic.
-	const classify = (id: string | undefined) => ({ isTarget: id === pageUuid, inTargetSchematic: id !== undefined && schematicPages.has(id) });
+	// Web 4.1.105 tab ids are `<documentUuid>@<projectUuid>`; the Start Page is
+	// `tab_page1`. A tab matching no page is outside the target schematic.
+	const classify = (id: string | undefined) => {
+		const uuid = id?.split('@')[0];
+		return { isTarget: uuid === pageUuid, inTargetSchematic: uuid !== undefined && schematicPages.has(uuid) };
+	};
 	const state: HostState = {
 		stage, msSinceConnectorLoad: Date.now() - CONNECTOR_LOADED_AT,
 		foreground: { unavailable: 'not read' }, openTabs: { unavailable: 'not read' },
