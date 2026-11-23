@@ -5,6 +5,24 @@ import { ActionError, ErrorCodes } from './protocol';
 type Observation = { status: 'matched' | 'different' | 'missing' | 'ambiguous' | 'unavailable'; name?: string; error?: string };
 type PageInventory = Awaited<ReturnType<typeof eda.dmt_Schematic.getAllSchematicPagesInfo>>;
 type Recovery = { reason: 'host-refused-before-second-page-loaded'; opened: string[]; restored: string | null; error?: string };
+type Tab = { tabId: string; title?: string; documentType?: unknown };
+/**
+ * Redacted host state captured at each known refusal, so a rejection that the
+ * recovery did not cure can be compared with one it did. Fields the official
+ * API cannot provide are reported as unavailable, never guessed.
+ */
+type HostState = {
+	stage: 'first-refusal' | 'after-recovery';
+	msSinceConnectorLoad: number;
+	foreground: { uuid?: string; documentType?: unknown; isTarget: boolean; inTargetSchematic: boolean } | { unavailable: string };
+	openTabs: Array<Tab & { isTarget: boolean; inTargetSchematic: boolean }> | { unavailable: string };
+	target: { parentSchematicUuid?: string; schematicPageCount: number } | { unavailable: string };
+	unsaved: { unavailable: string };
+};
+
+// Approximates the window load: the connector module loads with the window
+// (or with a hot reload, which the reported connector version reveals).
+const CONNECTOR_LOADED_AT = Date.now();
 
 const READ_TIMEOUT_MS = 2000;
 
@@ -46,6 +64,39 @@ async function observePage(pageUuid: string, name: string): Promise<Observation>
 		return { status: observed === name ? 'matched' : 'different', name: observed };
 	}
 	catch (error) { return { status: 'unavailable', error: String(error) }; }
+}
+
+function collectTabs(node: unknown, out: Tab[]) {
+	if (!node || typeof node !== 'object') return;
+	const item = node as { tabs?: unknown; children?: unknown };
+	if (Array.isArray(item.tabs)) for (const tab of item.tabs) if (tab && typeof tab.tabId === 'string') out.push({ tabId: tab.tabId, title: tab.title, documentType: tab.documentType });
+	if (Array.isArray(item.children)) for (const child of item.children) collectTabs(child, out);
+}
+
+async function captureHostState(stage: HostState['stage'], pageUuid: string, pages: PageInventory | undefined): Promise<HostState> {
+	const target = pages?.find(page => page.uuid === pageUuid);
+	const schematicPages = new Set((pages ?? []).filter(page => target && page.parentSchematicUuid === target.parentSchematicUuid).map(page => page.uuid));
+	// Tab ids equal document uuids for project documents in Web 4.1.x; a tab that
+	// does not match any page is reported as outside the target schematic.
+	const classify = (id: string | undefined) => ({ isTarget: id === pageUuid, inTargetSchematic: id !== undefined && schematicPages.has(id) });
+	const state: HostState = {
+		stage, msSinceConnectorLoad: Date.now() - CONNECTOR_LOADED_AT,
+		foreground: { unavailable: 'not read' }, openTabs: { unavailable: 'not read' },
+		target: target ? { parentSchematicUuid: target.parentSchematicUuid, schematicPageCount: schematicPages.size } : { unavailable: 'target page not in the last inventory' },
+		unsaved: { unavailable: 'no official API reports unsaved document state' },
+	};
+	try {
+		const current = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+		state.foreground = current ? { uuid: current.uuid, documentType: current.documentType, ...classify(current.uuid) } : { unavailable: 'no active document' };
+	}
+	catch (error) { state.foreground = { unavailable: String(error) }; }
+	try {
+		const tabs: Tab[] = [];
+		collectTabs(await eda.dmt_EditorControl.getSplitScreenTree(), tabs);
+		state.openTabs = tabs.map(tab => ({ ...tab, ...classify(tab.tabId) }));
+	}
+	catch (error) { state.openTabs = { unavailable: String(error) }; }
+	return state;
 }
 
 const SETTLE_MS = 250;
@@ -100,23 +151,27 @@ export async function renameSchematicPage(pageUuid: string, name: string) {
 	let hostAccepted: unknown;
 	let callError: string | undefined;
 	let recovery: Recovery | undefined;
+	const hostStates: HostState[] = [];
 	// Leave a pending mutation attached to the transport queue guard: ending our
 	// own wait early would incorrectly allow another write while it still runs.
 	try { hostAccepted = await eda.dmt_Schematic.modifySchematicPageName(pageUuid, name); }
 	catch (error) { callError = String(error); }
 	let observed = await observePage(pageUuid, name);
 	if (callError === undefined && hostAccepted === false && observed.status === 'different' && lastInventory) {
+		hostStates.push(await captureHostState('first-refusal', pageUuid, lastInventory));
 		recovery = await loadPagesForRename(pageUuid, lastInventory);
 		if (recovery && !recovery.error) {
 			try { hostAccepted = await eda.dmt_Schematic.modifySchematicPageName(pageUuid, name); }
 			catch (error) { callError = String(error); }
 			observed = await observePage(pageUuid, name);
+			if (callError === undefined && hostAccepted === false) hostStates.push(await captureHostState('after-recovery', pageUuid, lastInventory));
 		}
 	}
+	const diagnostics = hostStates.length ? { hostStates } : {};
 	const fail = (message: string): never => {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, message, JSON.stringify({
 			pageUuid, requestedName: name, hostAccepted: hostAccepted ?? null, callError,
-			verified: false, observation: observed, ...(recovery ? { recovery } : {}),
+			verified: false, observation: observed, ...(recovery ? { recovery } : {}), ...diagnostics,
 		}));
 	};
 	if (callError !== undefined) fail('Schematic page rename call failed; write outcome is unknown. Inspect fresh state before any retry.');
@@ -126,7 +181,7 @@ export async function renameSchematicPage(pageUuid: string, name: string) {
 			await new Promise<void>(resolve => { armDeadline(delay, resolve); });
 			observed = await observePage(pageUuid, name);
 		}
-		if (observed.status === 'matched') return { result: { ok: true, verified: true, pageUuid, name, ...(recovery ? { recovery } : {}) } };
+		if (observed.status === 'matched') return { result: { ok: true, verified: true, pageUuid, name, ...(recovery ? { recovery } : {}), ...diagnostics } };
 		// Missing/ambiguous identity and unavailable reads are unknown, not a cache delay.
 		if (observed.status !== 'different') break;
 	}

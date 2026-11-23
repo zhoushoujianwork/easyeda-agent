@@ -112,7 +112,7 @@ function twoPageHost({ current = 'pcb' as string | undefined, refuseUntilOpened 
 				{ uuid: 'foreign', name: 'X', parentSchematicUuid: 'sch-2' },
 			],
 		},
-		dmt_EditorControl: { openDocument: async (uuid: string) => { if (uuid === failOpen) throw new Error('open failed'); log.push(`open:${uuid}`); if (uuid !== 'pcb') opened.push(uuid); active = uuid; return uuid; } },
+		dmt_EditorControl: { getSplitScreenTree: async () => ({ id: 'root', children: [{ id: 's1', tabs: [...new Set([...(current ? [current] : []), ...opened])].map(tabId => ({ tabId, title: tabId, documentType: 1 })) }] }), openDocument: async (uuid: string) => { if (uuid === failOpen) throw new Error('open failed'); log.push(`open:${uuid}`); if (uuid !== 'pcb') opened.push(uuid); active = uuid; return uuid; } },
 		dmt_SelectControl: { getCurrentDocumentInfo: async () => { if (!active) throw new Error('No active document.'); return { uuid: active }; } },
 	} };
 }
@@ -129,12 +129,19 @@ test('known refusal loads a sibling and the target page, restores the foreground
 	assert.deepEqual(host.log, ['rename:page', 'open:other', 'open:page', 'open:pcb', 'rename:page']);
 	assert.equal(host.active(), 'pcb');
 	assert.deepEqual(result.recovery, { reason: 'host-refused-before-second-page-loaded', opened: ['other', 'page'], restored: 'pcb' });
+	const [state] = result.hostStates!;
+	assert.equal(result.hostStates!.length, 1); assert.equal(state.stage, 'first-refusal');
+	assert.deepEqual(state.foreground, { uuid: 'pcb', documentType: undefined, isTarget: false, inTargetSchematic: false });
+	assert.deepEqual(state.openTabs, [{ tabId: 'pcb', title: 'pcb', documentType: 1, isTarget: false, inTargetSchematic: false }]);
+	assert.deepEqual(state.target, { parentSchematicUuid: 'sch', schematicPageCount: 2 });
+	assert.ok('unavailable' in state.unsaved); assert.equal(typeof state.msSinceConnectorLoad, 'number');
 });
 
 test('a fresh window without an active document keeps the target page open after the recovery', async () => {
 	const host = twoPageHost({ current: '' }) // '' = the host reports no active document;
 	const { result } = await withHost(host, () => renameSchematicPage('page', 'new'));
 	assert.equal(result.verified, true); assert.equal(host.active(), 'page'); assert.equal(result.recovery!.restored, null);
+	assert.deepEqual(result.hostStates![0].foreground, { unavailable: 'Error: No active document.' });
 });
 
 test('a second refusal after loading pages is final and reports the recovery', async () => {
@@ -143,7 +150,12 @@ test('a second refusal after loading pages is final and reports the recovery', a
 		assert.ok(error instanceof ActionError);
 		const detail = JSON.parse(error.detail!);
 		assert.equal(detail.hostAccepted, false); assert.equal(detail.observation.name, 'old');
-		assert.deepEqual(detail.recovery.opened, ['other', 'page']); return true;
+		assert.deepEqual(detail.recovery.opened, ['other', 'page']);
+		assert.deepEqual(detail.hostStates.map((state: { stage: string }) => state.stage), ['first-refusal', 'after-recovery']);
+		const after = detail.hostStates[1];
+		assert.equal(after.foreground.uuid, 'pcb');
+		assert.deepEqual(after.openTabs.map((tab: { tabId: string; inTargetSchematic: boolean }) => [tab.tabId, tab.inTargetSchematic]), [['pcb', false], ['other', true], ['page', true]]);
+		return true;
 	}));
 	assert.equal(host.writes(), 2); assert.equal(host.active(), 'pcb');
 });
