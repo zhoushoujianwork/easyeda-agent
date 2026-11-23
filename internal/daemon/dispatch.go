@@ -305,6 +305,9 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	// an IDLE gap, never in the middle of a batch (autosave.go). Deferred rather
 	// than released inline so no early return can leak the counter.
 	defer s.beginClientAction(req.WindowID)()
+	// Writes in flight / last write time for hosts deciding whether they may
+	// quit (writeactivity.go, edadesk#59). Reads are a no-op.
+	defer s.writeActivity.begin(&req)()
 	guardedDispatch := func(ctx context.Context, req protocol.Request) (*protocol.Response, error) {
 		resp, err := s.forwardSchematicGeometry(ctx, req, target.dispatch)
 		// Normalize before adaptive health observes the outcome, so persistence
