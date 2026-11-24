@@ -27,6 +27,12 @@ class LocalSnapshotTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({'version': '1.17.0', 'uuid': 'a' * 32, 'packages': {'': {'version': '1.17.0'}}}))
         (self.repo / 'extension/CHANGELOG.md').write_text('# Changelog\n')
+        # The root DSH bundle is versioned with the same release version.
+        (self.repo / 'package.json').write_text(json.dumps(
+            {'name': 'easyeda-agent-dsh', 'version': '1.17.0',
+             'dsh': {'bundle': {'patch': './cordis.patch.yml'}}}))
+        (self.repo / 'package-lock.json').write_text(json.dumps(
+            {'version': '1.17.0', 'packages': {'': {'version': '1.17.0'}}}))
         scripts = self.repo / 'scripts'
         scripts.mkdir()
         (scripts / 'sync-skill-version.py').write_text('import pathlib,sys\npathlib.Path("skill-version").write_text(sys.argv[1])\n')
@@ -47,6 +53,9 @@ class LocalSnapshotTest(unittest.TestCase):
             self.assertEqual(data['version'], version)
             self.assertEqual(data['uuid'], 'a' * 32)
         self.assertEqual(json.loads((source / 'extension/package-lock.json').read_text())['packages']['']['version'], version)
+        self.assertEqual(json.loads((source / 'package.json').read_text())['version'], version)
+        self.assertEqual(json.loads((source / 'package.json').read_text())['dsh']['bundle']['patch'], './cordis.patch.yml')
+        self.assertEqual(json.loads((source / 'package-lock.json').read_text())['packages']['']['version'], version)
         self.assertEqual((source / 'skill-version').read_text(), version)
         self.assertTrue((source / 'extension/node_modules').is_symlink())
         stage.mkdir()
