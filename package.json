@@ -1,7 +1,6 @@
 {
   "name": "easyeda-agent-dsh",
   "version": "1.13.1",
-  "private": true,
   "description": "EasyEDA Pro (JLC EDA) automation for DeepSeek Harness: MCP bridge + agent skill bundle",
   "license": "MIT",
   "main": "./index.js",
@@ -12,8 +11,28 @@
     "mcp/src/",
     ".agents/skills/easyeda-agent/"
   ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "easyeda",
+    "easyeda-pro",
+    "jlceda",
+    "eda",
+    "schematic",
+    "pcb",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhoushoujianwork/easyeda-agent.git"
+  },
+  "homepage": "https://github.com/zhoushoujianwork/easyeda-agent#readme",
+  "bugs": {
+    "url": "https://github.com/zhoushoujianwork/easyeda-agent/issues"
+  },
   "scripts": {
-    "test:dsh": "node --test scripts/tests/test_dsh_bundle.mjs scripts/tests/test_dsh_packaging.mjs"
+    "test:dsh": "node --test scripts/tests/test_dsh_bundle.mjs scripts/tests/test_dsh_packaging.mjs scripts/tests/test_dsh_publishable.mjs"
   },
   "engines": {
     "node": ">=20.17.0"

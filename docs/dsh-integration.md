@@ -19,6 +19,9 @@ dsh plugin --profile web add git+https://github.com/zhoushoujianwork/easyeda-age
 # 重启 dsh web 生效；升级/卸载走 Settings → Plugins
 ```
 
+DSH 插件市场只展示人工收录的目录条目，未收录时在里面搜不到本插件；条目内容、提交和
+npm/预构建 tarball 两种分发方式见 [上架 DSH 插件市场](dsh-market.md)。
+
 仓库根声明了 `dsh.bundle.patch`（见根 `cordis.patch.yml`），安装后自动成为
 profile 的活跃 bundle 层，注入两个行：
 
