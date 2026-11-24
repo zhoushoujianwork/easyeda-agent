@@ -61,12 +61,18 @@ test('PCB pad serialization preserves source shape/rotation and computes shape-a
 		getState_Pad: () => ['RECT', 40, 10, 0],
 		getState_SpecialPad: () => [],
 		getState_Hole: () => null,
+		getState_HoleOffsetX: () => 0,
+		getState_HoleOffsetY: () => 0,
+		getState_HoleRotation: () => 0,
 	};
 	const got: any = serializePcbPad(pad);
 	assert.deepEqual(got.shape, ['RECT', 40, 10, 0]);
 	assert.equal(got.rotation, 45);
 	assert.deepEqual(got.specialPad, []);
-	assert.deepEqual(got.availability, { shape: 'available', specialPad: 'available', hole: 'available' });
+	assert.deepEqual(got.availability, {
+		shape: 'available', specialPad: 'available', hole: 'available',
+		holeOffsetX: 'available', holeOffsetY: 'available', holeRotation: 'available',
+	});
 	assert.equal(got.hole, null);
 	assert.equal(got.specialPadPresent, false);
 	assert.ok(Math.abs(got.width - 35.3553390593) < 1e-6);
@@ -5250,6 +5256,76 @@ test('pcbRouteAuto: locked copper the router removed is reported, not hidden', a
 	const res: any = await pcbRouteAuto({});
 	assert.deepEqual(res.result.lockedLost, ['xtal']);
 	assert.deepEqual(res.result.removedPrimitiveIds, ['xtal']);
+	delete (globalThis as any).eda;
+});
+
+// ─── pcb.route.auto.start/status/cancel: native job model (EDAD-10 / #308) ──
+import { pcbRouteAutoCancel, pcbRouteAutoStart, pcbRouteAutoStatus } from './actions';
+
+function installAutoJobStub() {
+	const live: Record<string, any[]> = { lines: [pcbPrim('xtal', 1, true)], arcs: [], vias: [] };
+	const host: any = { state: 'running', progress: 30, canceled: [] as string[], started: [] as any[] };
+	(globalThis as any).eda = {
+		pcb_PrimitiveLine: { getAll: async () => [...live.lines] },
+		pcb_PrimitiveArc: { getAll: async () => [...live.arcs] },
+		pcb_PrimitiveVia: { getAll: async () => [...live.vias] },
+		pcb_Document: {
+			startAutoRouting: async (props: any) => { host.started.push(props); return { jobId: `job-${host.started.length}` }; },
+			getAutoJobStatus: async (id: string) => (id.startsWith('job-') ? { jobId: id, state: host.state, progress: host.progress, partial: host.partial } : undefined),
+			cancelAutoJob: async (id: string) => { host.canceled.push(id); return true; },
+			getAutoJobLog: async () => ({ logs: [{ at: 1, level: 'error', code: 'E1', message: 'no escape for U3.12' }], result: null, progress: { progress: 0.3, routabitity: 0.42 } }),
+		},
+	};
+	return { live, host };
+}
+
+test('pcbRouteAutoStart: returns a jobId at once and keeps existing copper', async () => {
+	const { host } = installAutoJobStub();
+	const res: any = await pcbRouteAutoStart({ nets: ['SPID'] });
+	assert.equal(res.result.jobId, 'job-1');
+	assert.equal(host.started[0].existingPrimitiveMode, 'keep');
+	assert.equal(res.result.lockedBefore, 1);
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteAutoStatus: running passes host progress through; terminal adds the job copper delta once', async () => {
+	const { live, host } = installAutoJobStub();
+	const { result: { jobId } }: any = await pcbRouteAutoStart({});
+	const running: any = await pcbRouteAutoStatus({ jobId });
+	assert.equal(running.result.state, 'running');
+	assert.equal(running.result.terminal, false);
+	assert.equal(running.result.hostProgress, 30);
+	assert.equal(running.result.engine.routabitity, 0.42);
+	assert.equal(running.result.created, undefined, 'no delta before the job is terminal');
+	live.lines.push(pcbPrim('t1', 1));
+	host.state = 'canceled'; host.partial = true;
+	const done: any = await pcbRouteAutoStatus({ jobId });
+	assert.equal(done.result.terminal, true);
+	assert.deepEqual(done.result.created, { tracks: 1, arcs: 0, vias: 0 });
+	assert.equal(done.result.partial, true);
+	assert.equal(done.result.errorLogs[0].message, 'no escape for U3.12');
+	live.lines.push(pcbPrim('later-write', 1)); // copper from a later, unrelated write
+	const again: any = await pcbRouteAutoStatus({ jobId });
+	assert.deepEqual(again.result.created, { tracks: 1, arcs: 0, vias: 0 }, 'final answer is frozen to this job');
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteAutoStatus: a job the host no longer knows is unknown, not success', async () => {
+	installAutoJobStub();
+	const res: any = await pcbRouteAutoStatus({ jobId: 'stale-id' });
+	assert.equal(res.result.state, 'unknown');
+	assert.equal(res.result.terminal, false);
+	assert.equal(res.result.tracked, false);
+	delete (globalThis as any).eda;
+});
+
+test('pcbRouteAutoCancel: forwards to cancelAutoJob; missing job API is unsupported', async () => {
+	const { host } = installAutoJobStub();
+	const res: any = await pcbRouteAutoCancel({ jobId: 'job-9' });
+	assert.equal(res.result.cancelRequested, true);
+	assert.deepEqual(host.canceled, ['job-9']);
+	delete (globalThis as any).eda.pcb_Document.startAutoRouting;
+	await assert.rejects(() => pcbRouteAutoStart({}), /unsupported: .*startAutoRouting/);
 	delete (globalThis as any).eda;
 });
 

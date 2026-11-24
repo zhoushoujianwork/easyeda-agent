@@ -40,7 +40,15 @@ func newPcbDumpCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *co
 			"continues to emit only the snapshot JSON.\n\n" +
 			"--include-copper also captures tracks/arcs, vias, pour boundaries, materialized\n" +
 			"poured copper, regions and static fills. Each category records available/unknown,\n" +
-			"so a failed read cannot be mistaken for an empty board.\n\n" +
+			"so a failed read cannot be mistaken for an empty board. Categories the official\n" +
+			"API cannot observe (non-pad primitives inside footprints) are listed under\n" +
+			"`unsupported` with the reason.\n\n" +
+			"Units are mil, y-UP. POLYGON pad shapes are absolute board coordinates; a\n" +
+			"measurable POLYGON pad gets shapeBBox plus a centered width/height envelope\n" +
+			"(extentSource). Pads with drills carry holeGeometry (mil, status/reason).\n" +
+			"rules.spacingMil lists every native Safe Spacing cell (Row↔Column) with\n" +
+			"rules.spacingSource; copperToEdgeMil is the Track/Via↔Board Outline cell and\n" +
+			"zoneToEdgeMil the Copper/Plane Zone one.\n\n" +
 			"The snapshot is what `" + "pcb layout-score --from <file>" + "` replays offline, so a\n" +
 			"reference board can become a regression fixture that needs no live editor.\n\n" +
 			"Board outline requires the PCB to be the FOREGROUND document (the platform\n" +

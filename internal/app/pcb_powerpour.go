@@ -178,7 +178,7 @@ func runPowerPour(cfg *appConfig, window, gndLayersSpec, railsMode string, margi
 		if ruleErr != nil {
 			return ruleErr
 		}
-		inset = rules.copperToEdgeMil
+		inset = rules.zoneToEdgeMil // pour copper uses the zone↔outline cell
 	}
 	outline, err := outlineRect(cfg, window, inset)
 	if err != nil {

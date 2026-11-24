@@ -1325,6 +1325,9 @@ func (r *applyRunner) runAction(action string, payload map[string]any, timeout t
 	if err := pcbImportResultError(action, parsed.Result); err != nil {
 		return anyResult(parsed.Result), err
 	}
+	if err := routeDeleteResultError(action, parsed.Result); err != nil {
+		return anyResult(parsed.Result), err
+	}
 	if parsed.Result != nil {
 		partial, _ := parsed.Result["partial"].(bool)
 		na, _ := parsed.Result["notApplied"].([]any)

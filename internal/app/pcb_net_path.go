@@ -547,6 +547,19 @@ func parseNetPathPadShape(m map[string]any, p *pcbPadP, prefix string) error {
 			return fmt.Errorf("%s.shape POLYGON source is missing", prefix)
 		}
 		p.ShapeIssue = "POLYGON pad geometry is not supported by pcb net-path"
+		// Pad POLYGON sources are absolute board mil (live dump, see
+		// testdata/pcb_polygon_pad). Straight-edged sources are exact copper for
+		// clearance; ARC edges stay unknown rather than being chord-flattened.
+		if contours, err := pcbRouteExactContours(shape[1]); err == nil {
+			p.Contours = contours
+			// W/H are consumed as an envelope centered on the pad origin; a
+			// polygon need not be centered, so cover its farthest vertex.
+			if w, h := pcbPolygonCenteredExtent(contours, p.X, p.Y); p.W <= 0 || p.H <= 0 {
+				p.W, p.H = w, h
+			}
+		} else {
+			p.ShapeIssue += "; exact clearance unavailable: " + err.Error()
+		}
 	case "":
 		return fmt.Errorf("%s.shape name is empty", prefix)
 	default:
@@ -2031,4 +2044,17 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// pcbPolygonCenteredExtent is the smallest axis-aligned box centered on (x,y)
+// that contains every contour vertex: twice the farthest |dx| and |dy|.
+func pcbPolygonCenteredExtent(contours [][][2]float64, x, y float64) (float64, float64) {
+	var dx, dy float64
+	for _, contour := range contours {
+		for _, p := range contour {
+			dx = math.Max(dx, math.Abs(p[0]-x))
+			dy = math.Max(dy, math.Abs(p[1]-y))
+		}
+	}
+	return 2 * dx, 2 * dy
 }

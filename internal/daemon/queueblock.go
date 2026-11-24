@@ -294,3 +294,15 @@ func (s *Server) observeQueueBypass(ctx context.Context, windowID string, probe 
 func isTimeoutErr(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
+
+// isDeadlineErr is the narrower "the budget ran out" case. Write-stall evidence
+// must use this one: a canceled caller is not a host that failed to answer.
+func isDeadlineErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded)
+}
+
+// isClientCancelErr reports a dispatch that ended because the caller went away
+// (request context canceled) rather than because its budget expired.
+func isClientCancelErr(err error) bool {
+	return errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}

@@ -177,6 +177,15 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		}
 		return libraryWriteResultError(action, envelope.Result, respBody)
 	}
+	if action == "pcb.route.delete" {
+		var envelope struct {
+			Result map[string]any `json:"result"`
+		}
+		if err := json.Unmarshal(respBody, &envelope); err != nil {
+			return errActionFailed
+		}
+		return routeDeleteResultError(action, envelope.Result)
+	}
 	switch action {
 	case "schematic.save", "pcb.save":
 		if parsed.Result.Saved != true || parsed.Result.Partial {

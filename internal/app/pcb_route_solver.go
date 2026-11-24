@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -49,7 +50,60 @@ func newPCBRouteReport(board, request []byte) pcbRouteReport {
 	return pcbRouteReport{SchemaVersion: 1, Status: "incomplete", BoardSHA256: sha256String(board), RequestSHA256: sha256String(request), Limitations: []string{
 		"offline single-layer endpoint-pair proof only; no editor writes or saved-state evidence",
 		"no global optimality, whole-board routing, differential-pair, impedance or return-path proof",
+		"footprint-internal non-pad primitives are unobservable: " + pcbFootprintNonPadReason,
 	}}
+}
+
+// pcbRouteIssues lists every independent blocker found before solving, so a
+// caller sees each unsupported pad or hole instead of only the first (#309).
+type pcbRouteIssues []string
+
+func (e pcbRouteIssues) Error() string { return strings.Join(e, "; ") }
+
+func pcbRouteReasons(err error) []string {
+	var issues pcbRouteIssues
+	if errors.As(err, &issues) {
+		return append([]string(nil), issues...)
+	}
+	return []string{err.Error()}
+}
+
+// pcbRouteGeometryIssues names each pad whose copper or drill cannot be
+// measured exactly for a route on net. Same-net plated drills are the route's
+// own connection and are exempt from the hole rule.
+func pcbRouteGeometryIssues(snap *boardSnapshot, net string) (pcbRouteIssues, []pcbHoleGeometry) {
+	var issues pcbRouteIssues
+	var holes []pcbHoleGeometry
+	needHoleRule := false
+	for _, c := range snap.Components {
+		for _, p := range c.Pads {
+			label := c.Designator + "." + p.Number
+			parsed := pcbPadP{X: p.X, Y: p.Y}
+			if err := parseNetPathPadShape(map[string]any{"shape": p.Shape, "specialPad": p.SpecialPad, "availability": p.Availability, "captureErrors": p.CaptureErrors}, &parsed, label); err != nil {
+				issues = append(issues, fmt.Sprintf("pad %s copper geometry unknown: %v", label, err))
+			} else if _, gapErr := pcbExactPadSegmentGap(parsed, [2]float64{p.X, p.Y}, [2]float64{p.X, p.Y}); gapErr != nil {
+				reason := parsed.ShapeIssue
+				if reason == "" {
+					reason = gapErr.Error()
+				}
+				issues = append(issues, fmt.Sprintf("pad %s copper geometry unsupported: %s", label, reason))
+			}
+			hole := pcbPadHoleGeometry(p)
+			if hole == nil || p.Net == net && p.Metallization != nil && *p.Metallization {
+				continue
+			}
+			if hole.Status != "available" {
+				issues = append(issues, fmt.Sprintf("pad %s drill geometry unknown: %s", label, hole.Reason))
+				continue
+			}
+			needHoleRule = true
+			holes = append(holes, *hole)
+		}
+	}
+	if needHoleRule && (snap.Rules == nil || snap.Rules.HoleToTrackMil <= 0) {
+		issues = append(issues, "Hole↔Track spacing rule was not measured; re-dump with live rules")
+	}
+	return issues, holes
 }
 
 func preparePCBRouteRequest(in pcbRouteRequest, snap *boardSnapshot) (pcbrouting.Request, pcbrouting.SegmentClear, string, error) {
@@ -68,6 +122,10 @@ func preparePCBRouteRequest(in pcbRouteRequest, snap *boardSnapshot) (pcbrouting
 	}
 	if snap == nil || len(snap.Partial) > 0 || snap.Components == nil || snap.CopperLayers < 1 || in.Layer == 2 && snap.CopperLayers < 2 {
 		return fail("incomplete", "route solver needs a complete measured snapshot and stackup")
+	}
+	issues, holes := pcbRouteGeometryIssues(snap, in.Net)
+	if len(issues) > 0 {
+		return r, nil, "incomplete", issues
 	}
 	g, status, err := preparePCBRouteGeometry(snap)
 	if err != nil {
@@ -127,6 +185,11 @@ func preparePCBRouteRequest(in pcbRouteRequest, snap *boardSnapshot) (pcbrouting
 		if !clear(a, z) {
 			return false
 		}
+		for _, hole := range holes {
+			if hole.segmentGap(a, z) < in.WidthMil/2+snap.Rules.HoleToTrackMil-netPathGeomEps {
+				return false
+			}
+		}
 		for _, slot := range slots {
 			if copperAreaSegmentDistance(slot, a, z) < in.WidthMil/2+pcbSlotClearanceMil(snap.Rules)-netPathGeomEps {
 				return false
@@ -176,10 +239,15 @@ type pcbBoardExtras struct {
 	strokes []pcbStrokedArea
 }
 
-// pcbSlotClearanceMil is copper-to-cutout spacing: never below the board-edge
-// rule, the copper clearance or the 8 mil milling floor.
+// pcbSlotClearanceMil is copper-to-cutout spacing: the measured Slot
+// Region↔Track cell when present (else the board-edge rule), never below the
+// copper clearance or the 8 mil milling floor.
 func pcbSlotClearanceMil(r *boardRules) float64 {
-	return math.Max(8, math.Max(r.ClearanceMil, r.CopperToEdgeMil))
+	slot := r.CopperToEdgeMil
+	if r.SlotToTrackMil > 0 {
+		slot = r.SlotToTrackMil
+	}
+	return math.Max(8, math.Max(r.ClearanceMil, slot))
 }
 
 // pcbBoardCopperExtras reads the slot cutouts and stroke widths that
@@ -318,7 +386,7 @@ func solvePCBRoute(ctx context.Context, in pcbRouteRequest, snap *boardSnapshot,
 	r, clear, status, err := preparePCBRouteRequest(in, snap)
 	if err != nil {
 		report.Status = status
-		report.Reasons = []string{err.Error()}
+		report.Reasons = pcbRouteReasons(err)
 		return err
 	}
 	result, err := pcbrouting.Solve(ctx, r, clear)
@@ -345,7 +413,8 @@ func checkPCBRoute(ctx context.Context, in pcbRouteRequest, snap *boardSnapshot,
 	}
 	r, clear, status, err := preparePCBRouteRequest(in, snap)
 	if err != nil {
-		return fail(status, err.Error())
+		report.Status, report.Reasons = status, pcbRouteReasons(err)
+		return err
 	}
 	if plan.SchemaVersion != 1 || plan.BoardSHA256 != report.BoardSHA256 || plan.RequestSHA256 != report.RequestSHA256 {
 		return fail("fail", "plan provenance differs from board/request inputs")

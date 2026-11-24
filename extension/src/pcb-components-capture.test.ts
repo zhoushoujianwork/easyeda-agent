@@ -30,7 +30,8 @@ function pad(overrides: Record<string, unknown> = {}): any {
 		getState_Net: () => 'SIG', getState_Layer: () => 1,
 		getState_X: () => 10, getState_Y: () => 20, getState_Rotation: () => 0,
 		getState_PadType: () => 0, getState_Pad: () => ['RECT', 40, 10, 0],
-		getState_SpecialPad: () => [], getState_Hole: () => null, ...overrides,
+		getState_SpecialPad: () => [], getState_Hole: () => null,
+		getState_HoleOffsetX: () => 0, getState_HoleOffsetY: () => 0, getState_HoleRotation: () => 0, ...overrides,
 	};
 }
 
@@ -203,4 +204,19 @@ test('PCB pad capture keeps the raw drill tuple and plating; an unreadable drill
 	assert.equal(unknown.availability.hole, 'unavailable');
 	assert.equal(unknown.captureErrors.hole.code, 'getter-threw');
 	assert.equal(unknown.metallization, undefined);
+});
+
+test('PCB pad capture records slot placement raw; a host without the getters reports it missing, not zero (#309)', () => {
+	const slot: any = serializePcbPad(pad({
+		getState_Layer: () => 12, getState_Hole: () => ['SLOT', 1, 3], getState_Metallization: () => false,
+		getState_HoleOffsetX: () => 0.5, getState_HoleOffsetY: () => 0, getState_HoleRotation: () => 90,
+	}));
+	assert.deepEqual([slot.hole, slot.holeOffsetX, slot.holeOffsetY, slot.holeRotation], [['SLOT', 1, 3], 0.5, 0, 90]);
+	assert.equal(slot.availability.holeRotation, 'available');
+	assert.equal(slot.captureSources.holeRotation, 'getState_HoleRotation');
+	const old: any = serializePcbPad(pad({ getState_HoleOffsetX: undefined, getState_HoleOffsetY: undefined, getState_HoleRotation: undefined }));
+	assert.equal(old.holeOffsetX, null);
+	assert.equal(old.availability.holeOffsetX, 'unavailable');
+	assert.equal(old.captureErrors.holeRotation.code, 'missing-getter');
+	assert.equal(old.availability.shape, 'available', 'placement gaps do not hide copper geometry');
 });

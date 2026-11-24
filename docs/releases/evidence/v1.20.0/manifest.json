@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 3,
+  "version": "v1.20.0",
+  "result": "pass",
+  "independentReview": "pass",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.20.0",
+    "date": "2026-11-24",
+    "summary": "用户在得知 v1.19.0 已发布、DSH 插件市场 tarball 资产只能随新版本产出的情况下，选择“发 v1.20.0（需现场验收）”，并同意使用已连接的 EasyEDA 窗口：以全量自动回归、页面改名与宿主诊断、PCB 孔/槽几何与只读检查、v1.19.0 负对照、检查点与写前拒绝的 DEV 现场验收为准，完整设计 E2E 延期 follow-up。"
+  },
+  "sha256": {
+    "test-report.md": "abeb597279fa36f7b986434ecffb52b2e58ff8f0f256fc6b336c69ab3419d15c",
+    "baseline.md": "53372b3dcb80e1a611da6c7ecca13d10960ddc978b16be3de206dc7938f48c90",
+    "test-cases.md": "71c1b5437ecde9fc765df22fb90489a1d767bca965f56b23c5a3732dda88f969"
+  }
+}

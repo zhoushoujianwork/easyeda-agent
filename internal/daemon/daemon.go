@@ -76,6 +76,10 @@ type Server struct {
 	// structured degraded advisory (writehealth.go, REPORT round2 新 3).
 	writeHealth *writeHealthTracker
 
+	// writeActivity reports per-window writes in flight and the last write
+	// time, so a host app can refuse to quit mid-batch (writeactivity.go).
+	writeActivity *writeActivityTracker
+
 	// queueBlocks proves (or clears) "the connector's per-window FIFO is stuck
 	// behind one wedged handler", so a command gets an instant, named answer
 	// instead of burning its full dispatch budget behind a dead head
@@ -162,6 +166,7 @@ func New(opts Options) *Server {
 		staleReads:       newStaleGuard(),
 		concurrentWrites: newConcurrentGuard(),
 		writeHealth:      newWriteHealthTracker(),
+		writeActivity:    newWriteActivityTracker(),
 		queueBlocks:      newQueueBlockTracker(),
 	}
 	if opts.AutosaveDebounce > 0 {
@@ -186,7 +191,12 @@ type health struct {
 	// per-action buckets (actions / degradedActions) keep one broken road from
 	// being averaged away. Omitted while no action has been forwarded.
 	WriteHealth map[string]WindowWriteHealth `json:"writeHealth,omitempty"`
-	Autosave    []AutosaveStatus             `json:"autosave,omitempty"`
+	// WriteActivity is the per-window writes-in-flight / last-write-time view
+	// (writeactivity.go): a host checks it before quitting or restarting so an
+	// external agent's batch is not cut off silently. Omitted while no window
+	// has written within the retention.
+	WriteActivity map[string]WindowWriteActivity `json:"writeActivity,omitempty"`
+	Autosave      []AutosaveStatus               `json:"autosave,omitempty"`
 }
 
 // routes builds the HTTP handlers. port is the bound port, reported in /health
@@ -203,15 +213,16 @@ func (s *Server) routes(port int) *http.ServeMux {
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(health{
-			PID:         os.Getpid(),
-			Service:     Service,
-			Version:     s.opts.Version,
-			Status:      "ok",
-			Port:        port,
-			Windows:     s.hub.listAnnotated(s.opts.Version),
-			Lifecycle:   s.opts.Lifecycle,
-			WriteHealth: s.writeHealth.all(),
-			Autosave:    s.autosave.snapshot(),
+			PID:           os.Getpid(),
+			Service:       Service,
+			Version:       s.opts.Version,
+			Status:        "ok",
+			Port:          port,
+			Windows:       s.hub.listAnnotated(s.opts.Version),
+			Lifecycle:     s.opts.Lifecycle,
+			WriteHealth:   s.writeHealth.all(),
+			WriteActivity: s.writeActivity.all(),
+			Autosave:      s.autosave.snapshot(),
 		})
 	})
 	mux.HandleFunc("/eda", s.handleConnect)

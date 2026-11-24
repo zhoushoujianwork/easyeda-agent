@@ -24,7 +24,10 @@ import zipfile
 ASSETS = (
     "easyeda_darwin_amd64", "easyeda_darwin_arm64", "easyeda_linux_amd64",
     "easyeda_linux_arm64", "easyeda_windows_amd64.exe",
-    "easyeda-agent-connector.eext", "skills.tar.gz", "install.sh", "install.ps1",
+    "easyeda-agent-connector.eext", "skills.tar.gz",
+    # Prebuilt DSH bundle for the plugin market (root package + mcp/ + Skill).
+    "easyeda-agent-dsh.tgz",
+    "install.sh", "install.ps1",
 )
 EVIDENCE_ASSET = "test-evidence.zip"
 EVIDENCE_FILES = ("manifest.json", "test-report.md", "baseline.md", "test-cases.md")

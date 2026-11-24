@@ -2381,7 +2381,7 @@ that net on other layers are kept (GND on TOP then BOTTOM is two calls).`,
 					if ruleErr != nil {
 						return ruleErr
 					}
-					inset = rules.copperToEdgeMil
+					inset = rules.zoneToEdgeMil // pour copper uses the zone↔outline cell
 				}
 				if strings.TrimSpace(net) == "" {
 					return fmt.Errorf("--net must not be empty (a pour must bind to a net; a netless pour is dead copper)")
@@ -3063,13 +3063,19 @@ external router (Freerouting) would route under the antenna. The result reports
 		var layers []int
 		var corner, optimize string
 		var routeTimeout time.Duration
+		var jobID string
 		var forceReason, forceUnsafeReason string
 		c := &cobra.Command{
 			Use:   "autoroute",
 			Short: "Auto-route the active PCB with the official EasyEDA router (or an external engine via --router)",
-			Long: `Default: run the official router eda.pcb_Document.autoRouting (@beta since
-pro-api-types 0.4.25, live on Web 4.1.78) — the same engine as the native
-布线 → 自动布线 dialog, with no popup. Existing tracks/vias are always KEPT, so
+			Long: `Default: run the official router — the same engine as the native
+布线 → 自动布线 dialog, with no popup. On EasyEDA >= 4.1.79 it runs as a native
+job (startAutoRouting): progress (host-reported state/progress, elapsed) is
+printed every 5s, and --timeout or Ctrl-C cancels the job and waits up to 10s
+for the host to confirm it stopped; the connector queue is never held while the
+router runs. Older hosts fall back to the blocking autoRouting call, which can
+neither report progress nor be cancelled (the CLI says so). Resume watching a
+job with --job <id>. Existing tracks/vias are always KEPT, so
 critical nets routed by hand and locked ('pcb track-lock') survive; the command
 fails if any locked primitive disappears. Exclude nets you will pour (GND) or have
 already routed with --ignore-net. The result lists the router's per-net report
@@ -3087,7 +3093,7 @@ getDsnFile drops keep-out regions, so verify the DSN before trusting that path.`
 					tmpl = os.Getenv("FREEROUTING_CMD")
 				}
 				if tmpl == "" {
-					return runOfficialAutoroute(cfg, window, nets, ignoreNets, layers, corner, optimize, routeTimeout, stdout, stderr)
+					return runOfficialAutoroute(cfg, window, nets, ignoreNets, layers, corner, optimize, routeTimeout, jobID, stdout, stderr)
 				}
 				// Workflow stage state is historical diagnostic data only. Autoroute
 				// proceeds from the live board and its factual preflights below.
@@ -3157,7 +3163,8 @@ getDsnFile drops keep-out regions, so verify the DSN before trusting that path.`
 		c.Flags().IntSliceVar(&layers, "layers", nil, "official router: copper layer ids it may use, e.g. 1,2 (omit = all signal layers)")
 		c.Flags().StringVar(&corner, "corner", "45", "official router: corner style 45|90")
 		c.Flags().StringVar(&optimize, "optimize", "completion", "official router: completion (布通率) | faster (速度)")
-		c.Flags().DurationVar(&routeTimeout, "timeout", 10*time.Minute, "official router: request budget for the routing call")
+		c.Flags().DurationVar(&routeTimeout, "timeout", 10*time.Minute, "official router: run budget; on expiry the job is cancelled on the host (blocking fallback: only the CLI wait ends)")
+		c.Flags().StringVar(&jobID, "job", "", "official router: follow (and on --timeout/Ctrl-C cancel) an already started job id instead of starting one")
 		c.Flags().StringVar(&forceReason, "force", "", "deprecated compatibility option; workflow stages no longer gate routing")
 		c.Flags().StringVar(&forceUnsafeReason, "force-unsafe", "", "deprecated compatibility option; workflow stages no longer gate routing")
 		pcb.AddCommand(c)

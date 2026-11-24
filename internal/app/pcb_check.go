@@ -105,6 +105,15 @@ type pcbPadP struct {
 	ShapeOK    bool
 	ShapeIssue string
 	SpecialPad bool
+	// Contours is the exact straight-edged outline of a POLYGON pad in absolute
+	// board mil. It serves exact clearance (pcbExactPadSegmentGap) only; pad
+	// contact/net-path inspection still reports POLYGON as unsupported.
+	Contours [][][2]float64
+}
+
+// exactClearanceKnown reports whether pcbExactPadSegmentGap can measure the pad.
+func (p pcbPadP) exactClearanceKnown() bool {
+	return p.ShapeOK || p.Shape == "POLYGON" && !p.SpecialPad && len(p.Contours) > 0
 }
 
 // halfExt is the pad's half-extent (mil) for center-distance clearance math —
@@ -1978,27 +1987,24 @@ func gatherPcbCheckReport(cfg *appConfig, window string, couplingW float64, chec
 	// Copper-near-edge is a LIVE-only rule (needs the board outline). The floor is
 	// the live copper-to-edge rule (fallback: JLC routed-edge 8mil, doc §5.1
 	// recommends ~20mil/0.5mm — we gate on the fab floor, the doc value is advice).
-	if ores, oerr := requestAction(cfg, "pcb.outline.get", window, nil); oerr != nil {
+	// Native DRC measures to the outline's CENTER line; the rendered bbox
+	// includes the outline stroke (half its width per side) and under-reads every
+	// gap by that much (live: an 11 mil gap read as 16 and passed an 11.8 rule).
+	if ob, drawn, oerr := fetchPcbOutlineBBox(cfg, window); oerr != nil {
 		fmt.Fprintf(stderr, "warning: copper-near-edge check skipped (%v)\n", oerr)
-	} else if bb, ok := mnav(ores.Result, "bbox").(map[string]any); ok {
-		minX, ok1 := asFloatOK(bb["minX"])
-		minY, ok2 := asFloatOK(bb["minY"])
-		maxX, ok3 := asFloatOK(bb["maxX"])
-		maxY, ok4 := asFloatOK(bb["maxY"])
-		if ok1 && ok2 && ok3 && ok4 {
-			outline := &layoutBBox{MinX: minX, MinY: minY, MaxX: maxX, MaxY: maxY}
-			edgeClr := rules.copperToEdgeMil
-			if edgeClr <= 0 {
-				edgeClr = 8
-			}
-			for _, f := range findCopperNearEdge(tracks, vias, outline, edgeClr) {
-				rep.Findings = append(rep.Findings, f)
-				rep.Summary.CopperNearEdge++
-				rep.Summary.Warnings++
-				rep.Summary.Total++
-			}
-			rep.Passed = rep.Summary.Total == 0
+	} else if drawn {
+		outline := &layoutBBox{MinX: ob.MinX, MinY: ob.MinY, MaxX: ob.MaxX, MaxY: ob.MaxY}
+		edgeClr := rules.copperToEdgeMil
+		if edgeClr <= 0 {
+			edgeClr = 8
 		}
+		for _, f := range findCopperNearEdge(tracks, vias, outline, edgeClr) {
+			rep.Findings = append(rep.Findings, f)
+			rep.Summary.CopperNearEdge++
+			rep.Summary.Warnings++
+			rep.Summary.Total++
+		}
+		rep.Passed = rep.Summary.Total == 0
 	}
 
 	// Zone-violation is a LIVE-only rule (issue #126): claimed parts must sit in

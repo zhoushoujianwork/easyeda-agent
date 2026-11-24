@@ -1,0 +1,294 @@
+{
+  "components": [
+    {
+      "primitiveId": "sim-j2",
+      "designator": "J2",
+      "name": "SIM holder (sanitized)",
+      "layer": 1,
+      "x": 150,
+      "y": 80,
+      "rotation": 0,
+      "bbox": {
+        "minX": 100,
+        "minY": 30,
+        "maxX": 200,
+        "maxY": 130
+      },
+      "pads": [
+        {
+          "primitiveId": "sim-j2-peg1",
+          "padNumber": "PEG1",
+          "net": "",
+          "layer": 12,
+          "x": 150,
+          "y": 80,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            1.0,
+            3.0
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": 0.0,
+          "holeOffsetY": 0.0,
+          "holeRotation": 1.5707963267948966,
+          "metallization": false,
+          "width": 10,
+          "height": 10
+        },
+        {
+          "primitiveId": "sim-j2-peg2",
+          "padNumber": "PEG2",
+          "net": "",
+          "layer": 12,
+          "x": 110,
+          "y": 40,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            1.0,
+            3.0
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": 0.5,
+          "holeOffsetY": 0.0,
+          "holeRotation": 1.5707963267948966,
+          "metallization": false,
+          "width": 10,
+          "height": 10
+        },
+        {
+          "primitiveId": "sim-j2-p1",
+          "padNumber": "1",
+          "net": "SIM_IO",
+          "layer": 1,
+          "x": 180,
+          "y": 120,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "POLYGON",
+            [
+              172,
+              114,
+              "L",
+              192,
+              114,
+              192,
+              124,
+              172,
+              124,
+              172,
+              114
+            ]
+          ],
+          "specialPad": [],
+          "hole": null,
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": 0.0,
+          "holeOffsetY": 0.0,
+          "holeRotation": 0.0
+        },
+        {
+          "primitiveId": "sim-j2-p2",
+          "padNumber": "2",
+          "net": "SIM_CLK",
+          "layer": 1,
+          "x": 120,
+          "y": 120,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "POLYGON",
+            [
+              115,
+              115,
+              "ARC",
+              90,
+              125,
+              115,
+              "L",
+              125,
+              125,
+              115,
+              125,
+              115,
+              115
+            ]
+          ],
+          "specialPad": [],
+          "hole": null,
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": 0.0,
+          "holeOffsetY": 0.0,
+          "holeRotation": 0.0
+        },
+        {
+          "primitiveId": "sim-j2-peg1-peg3",
+          "padNumber": "PEG3",
+          "net": "",
+          "layer": 12,
+          "x": 190,
+          "y": 80,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            1.0,
+            3.0
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": 0.0,
+          "holeOffsetY": 0.0,
+          "holeRotation": 90.0,
+          "metallization": false,
+          "width": 10,
+          "height": 10
+        },
+        {
+          "primitiveId": "sim-j2-peg1-sh1",
+          "padNumber": "SH1",
+          "net": "",
+          "layer": 12,
+          "x": 230,
+          "y": 80,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            3.1496,
+            5.9055
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available",
+            "holeOffsetX": "available",
+            "holeOffsetY": "available",
+            "holeRotation": "available"
+          },
+          "captureErrors": {},
+          "holeOffsetX": -0.0006,
+          "holeOffsetY": -0.0003,
+          "holeRotation": 1.5707963267948966,
+          "metallization": true,
+          "width": 10,
+          "height": 10
+        }
+      ]
+    },
+    {
+      "primitiveId": "sim-j3",
+      "designator": "J3",
+      "name": "SIM holder (sanitized)",
+      "layer": 1,
+      "x": 150,
+      "y": 80,
+      "rotation": 0,
+      "bbox": {
+        "minX": 100,
+        "minY": 30,
+        "maxX": 200,
+        "maxY": 130
+      },
+      "pads": [
+        {
+          "primitiveId": "sim-j3-peg1",
+          "padNumber": "PEG1",
+          "net": "",
+          "layer": 12,
+          "x": 150,
+          "y": 80,
+          "rotation": 0.0,
+          "padType": 0,
+          "shape": [
+            "ELLIPSE",
+            10,
+            10
+          ],
+          "specialPad": [],
+          "hole": [
+            "SLOT",
+            1.0,
+            3.0
+          ],
+          "availability": {
+            "shape": "available",
+            "specialPad": "available",
+            "hole": "available"
+          },
+          "captureErrors": {},
+          "metallization": false,
+          "width": 10,
+          "height": 10
+        }
+      ]
+    }
+  ]
+}
