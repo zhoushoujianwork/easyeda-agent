@@ -11,6 +11,7 @@
 | 下载 EdaDesk、注册账号或反馈 Desktop 问题 | [EdaDesk 使用入口](../README.md#推荐体验edadesk-desktop) | [发行仓库与安装包](https://github.com/zhoushoujianwork/edadesk-release)、官网托管登录与个人中心 |
 | CLI 现在能否日常使用、检查是否收尾 | [CLI Status](cli-STATUS.md) | 当前可用范围、已知限制和后续跟进 |
 | 安装、连接和升级 | [quick-start.md](quick-start.md) | [dev-environment.md](dev-environment.md) |
+| 上架或更新 DSH 插件市场条目 | [dsh-market.md](dsh-market.md) | [DSH 集成](dsh-integration.md)、npm 发布前置 |
 | Codex 内置浏览器本地版本测试 | [codex-web-eda-runbook.md](codex-web-eda-runbook.md) | [原理图验收实例](reviews/2026-09-23-v1.6.0-schematic-acceptance.md) |
 | 基础 CLI 动作与真实链路测试 | [cli-live-test.md](cli-live-test.md) | [B00–B10 前置条件与步骤](cli-live-test-detail.md) |
 | 已知 CLI bug 与当前使用建议 | [cli-known-bugs.md](cli-known-bugs.md) | 影响、跟踪单、提示与暂停条件 |
