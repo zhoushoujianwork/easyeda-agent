@@ -94,6 +94,15 @@ def inject_version(source, version):
         if name.endswith("package-lock.json"):
             data["packages"][""]["version"] = version
         path.write_text(json.dumps(data, ensure_ascii=False, indent="\t") + "\n")
+    # The root package is the DSH bundle and its release tarball; release-check
+    # requires its version (and the lock's) to match the snapshot version too.
+    for name, indent in (("package.json", 2), ("package-lock.json", 2)):
+        path = source / name
+        data = json.loads(path.read_text())
+        data["version"] = version
+        if name.endswith("package-lock.json"):
+            data["packages"][""]["version"] = version
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=indent) + "\n")
     run("python3", "scripts/sync-skill-version.py", version, cwd=source)
     path = source / "extension/CHANGELOG.md"
     text = path.read_text()
