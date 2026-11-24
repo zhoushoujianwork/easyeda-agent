@@ -1,6 +1,6 @@
 {
   "name": "easyeda-agent-dsh",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "description": "EasyEDA Pro (JLC EDA) automation for DeepSeek Harness: MCP bridge + agent skill bundle",
   "license": "MIT",
   "main": "./index.js",

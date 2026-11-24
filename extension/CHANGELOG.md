@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.20.0] - 2026-11-24
+
+- PCB 几何与检查（EDAD-8）：
+  - `pcb dump`：孔偏移在 ±0.001 mil 内的导出浮点噪声视为 0，USB-C 槽孔不再因噪声判为不可测；`holeRotation` 只接受 π/2 整数倍弧度并换算成角度（此前按角度相加得到 1.57°），竖向槽孔可测量。
+  - 板边/孔/槽按原生对象对规则导出，补多边形焊盘与钻孔几何；官方 API 看不到的封装内非焊盘图元在 `unsupported` 中列明，不当作空板。
+  - `pcb check` 的铜到板边按板框中心线测量，与原生 DRC 口径一致。
+- 原理图页改名（EDAD-50、edadesk#88）：宿主只加载了部分页面时先打开兄弟页再重试；仍被拒绝时返回宿主侧诊断（前台页、打开的标签、目标页与页数、未保存状态不可观测），并明确说明没有重试成功、没有保存写入。
+- 检查与删除（EDAD-41、EDAD-6）：
+  - `sch check` 报告图签文字压线/越界（`titleblockOverlaps`、`outOfSheet`）；新增 `sch sheet-geometry --exact` 输出只读的图签单元格 bbox。
+  - `pcb delete` 的 track/via 部分失效不再以成功退出：`notFound` / `notDeleted` / `notDeletable` / `skippedLocked` 任一非空即非零退出，stdout 保留完整结果。
+- 原生自动布线（EDAD-10）：改走可取消作业模型（`pcb.route.auto.start/status/cancel`），每 5 s 输出宿主自报状态、进度与耗时；`--timeout` / Ctrl-C 调用 cancel，只有宿主回报终态才算已停。
+- daemon（edadesk#59）：`/health` 按窗口报告进行中的写入数、最后写入时间与失败/降级状态；空闲 10 分钟后清理，进行中的写入不清理。
+- DSH 分发（#334、#335、#336）：根包补齐 npm 发布清单；发版额外产出预构建 `easyeda-agent-dsh.tgz` 并校验内容；`release-check` 强制根包版本与发版版本一致，`scripts/sync-dsh-version.py` 负责同步；本地 DEV 快照同时注入根包版本。
+
 ## [1.19.0] - 2026-11-20
 
 - 整页原理图链路（edadesk#9）：
