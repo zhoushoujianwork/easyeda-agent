@@ -1,3 +1,10 @@
+# v1.20.0 已发布
+
+当前正式版为 [v1.20.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.20.0)（2026-11-24 发布）。
+本版为 schema 3 `cli-fixes` 定向范围：全量自动回归、页面改名与宿主诊断、PCB 孔/槽几何与只读检查、
+v1.19.0 负对照、检查点与写前拒绝；完整设计 E2E 延期 follow-up。发布同时首次产出预构建 DSH bundle
+`easyeda-agent-dsh.tgz`。来源、检查、资产 SHA256 与市场状态见 [v1.20.0 发布记录](release-1.20.md)。
+
 # v1.18.2 已发布
 
 仅提升 `pcb plan-apply`（离线布线方案写回与对账）及公开 Skill 的对应说明，连接器运行时未变化，按 patch 版本发布。
