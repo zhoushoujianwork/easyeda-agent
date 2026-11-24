@@ -156,8 +156,9 @@ eext-fresh: ## bump patch + FRESH uuid (imports as new entry; delete the old one
 # ── Release ───────────────────────────────────────────────────────────────────
 # Usage: make release VERSION=v0.2.0
 # Preparation (local only, no tags or uploads):
-#   1. synchronize extension/extension.json, package.json, package-lock.json and
-#      SKILL.md to VERSION; add extension/CHANGELOG.md entry
+#   1. synchronize extension/extension.json, extension/package.json,
+#      extension/package-lock.json, the root package.json + package-lock.json
+#      (the DSH bundle) and SKILL.md to VERSION; add extension/CHANGELOG.md entry
 #   2. stage reviewed new skill files; make release-check VERSION=vX.Y.Z
 #   3. make release-build VERSION=vX.Y.Z; review dist/; commit reviewed sources
 # Actual publication additionally requires explicit authorization and gh login.
@@ -166,6 +167,7 @@ eext-fresh: ## bump patch + FRESH uuid (imports as new entry; delete the old one
 #   • cross-compiles CLI for darwin/linux/windows (amd64 + arm64)
 #   • verifies and copies the exact VERSION .eext from extension/build/dist/
 #   • packages tracked/staged public skill files into skills.tar.gz
+#   • packs the DSH bundle as easyeda-agent-dsh.tgz for the plugin market
 #   • creates a git tag, pushes it, and creates a GitHub Release with all assets
 #   • publishes the skill to ClawHub at the same version (best-effort — a hub
 #     outage won't fail the release; retry with `make publish-skill VERSION=…`)
@@ -212,6 +214,9 @@ release-assets:
 	cp "extension/build/dist/easyeda-agent-connector_$(VERSION).eext" "$(DIST)/easyeda-agent-connector.eext"
 	@echo "  packaging skills..."
 	python3 scripts/pack-skill.py --out "$(DIST)/skills.tar.gz"
+	@echo "  packaging DSH bundle..."
+	npm pack --ignore-scripts --pack-destination "$(DIST)" >/dev/null
+	mv "$(DIST)/easyeda-agent-dsh-$(VERSION:v%=%).tgz" "$(DIST)/easyeda-agent-dsh.tgz"
 	cp install.sh $(DIST)/install.sh
 	cp install.ps1 $(DIST)/install.ps1
 	python3 scripts/release-check.py "$(VERSION)" $(LOCAL_CHECK) --package-evidence "$(DIST)/test-evidence.zip" --write-checksums "$(DIST)" --artifacts "$(DIST)"

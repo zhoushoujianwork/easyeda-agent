@@ -19,6 +19,12 @@ dsh plugin --profile web add git+https://github.com/zhoushoujianwork/easyeda-age
 # 重启 dsh web 生效；升级/卸载走 Settings → Plugins
 ```
 
+含 `easyeda-agent-dsh.tgz` 资产的版本起，也可以装预构建 tarball（不拉整仓，约 650 KB）：
+
+```sh
+dsh plugin --profile web add https://github.com/zhoushoujianwork/easyeda-agent/releases/download/vX.Y.Z/easyeda-agent-dsh.tgz
+```
+
 DSH 插件市场只展示人工收录的目录条目，未收录时在里面搜不到本插件；条目内容、提交和
 npm/预构建 tarball 两种分发方式见 [上架 DSH 插件市场](dsh-market.md)。
 
