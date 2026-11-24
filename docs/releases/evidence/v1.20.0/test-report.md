@@ -8,10 +8,10 @@
 
 | ID | 结果 | 实际证据与边界 |
 | --- | --- | --- |
-| M1 | pass | 候选 `529bd59d`：`go vet ./...` 退出 0；`go test -json ./...` 统计 6256 项通过、0 失败、3 跳过（16 个测试包通过；跳过为平台限定项）。连接器 1416 项通过、0 失败，`tsc` typecheck 退出 0。`make agent-check` 13 项、`skill-check` 192 个已跟踪文件、`release-script-test` 144 项全部通过，退出码均为 0。原始日志与命令退出码见 `m1-*.log` 与 `m1-summary.txt`。 |
-| F1 | pass | Dev 宿主（daemon 60833）上把 `P1`（`6abf3fbf13dc52f0`）改为 `P1-v120`：退出码 0，响应 `verified:true`，`doc ls` 回读显示 `P1-v120`；再改回 `P1` 退出码 0。`P1-v120` 的日志只有 1 个 `first-refusal` 阶段（前台为 PCB1、标签里只有 Start Page 与 PCB1），随后恢复加载两页并重试成功；改回 `P1` 的日志没有 `hostStates`。把该页改成已存在的 `LED 指示`：退出码 1、`EDA_CALL_FAILED`，detail 含 `first-refusal` 与 `after-recovery` 两阶段 `hostStates`、`observation.status=different`，页名保持不变。另：edadesk release 0.2.1 上的失败尝试含完整两阶段 `hostStates`（`host-refused-before-second-page-loaded`），说明宿主侧诊断路径在真实拒绝时可用。 |
+| M1 | pass | 候选 `529bd59d`：`go vet ./...` 退出 0；`go test -json ./...` 事件统计 6256 项通过（6240 个测试 pass + 16 个包 pass）、0 失败；3 个 skip 事件是 1 个平台限定测试（Windows PowerShell 5.1）与 2 个无测试文件的包（`cmd/easyeda`、`internal/version`），不计为通过。连接器 1416 项通过、0 失败，`tsc` typecheck 退出 0。`make agent-check` 13 项、`skill-check` 192 个已跟踪文件、`release-script-test` 144 项全部通过，退出码均为 0。原始日志与命令退出码见 `m1-*.log` 与 `m1-summary.txt`。 |
+| F1 | pass | Dev 宿主（daemon 60833）上把 `P1`（`6abf3fbf13dc52f0`）改为 `P1-v120`：退出码 0，响应 `verified:true`，`doc ls` 回读显示 `P1-v120`；再改回 `P1` 退出码 0。`P1-v120` 的日志带 `exit=0`、`verified:true`、`name=P1-v120` 与 `doc ls` 回读（`P1-v120`），只有 1 个 `first-refusal` 阶段（前台为 PCB1、标签里只有 Start Page 与 PCB1），随后恢复加载两页并重试成功；改回 `P1` 的日志带 `exit=0` 与 `doc ls` 回读 `P1`，没有 `hostStates`。把该页改成已存在的 `LED 指示`：退出码 1、`EDA_CALL_FAILED`，detail 含 `first-refusal` 与 `after-recovery` 两阶段 `hostStates`、`observation.status=different`，页名保持不变。另：edadesk release 0.2.1 上的失败尝试含完整两阶段 `hostStates`（`host-refused-before-second-page-loaded`），说明宿主侧诊断路径在真实拒绝时可用。 |
 | F2 | pass | 对 `PCB1` 只读 `pcb dump --include-copper`：33 个器件、outline=polygon；USB-C 槽孔 1–4 的 `holeRotation=1.5707963267948966`（π/2 弧度，竖向），孔偏移 ±0.0003–0.0007 mil（在 ±0.001 噪声界内仍可测）；`rules.copperToEdgeMil=11.8`、`zoneToEdgeMil=10`，`spacingSource` 指向原生 `Spacing.Safe Spacing` 单元格。`pcb check` 只读：`ERROR=0 WARN=16`（dangling=1、silkOverPad=11、powerNotPoured=2、antennaKeepout=1、matingBlocked=1；`fiducialMissing=1` 是 INFO 计数器，不计入 WARN）。`sch check --json` 含 `titleblockOverlaps=0`、`outOfSheet=0`；`sch sheet-geometry --exact` 输出图签可见区与单元格 bbox（原理图 / Schematic1 / 创建日期 / 2026-11-14 等，来源 official-svg-vectors）。`pcb drc` 返回原生失败（既有违规），未据此改板。 |
-| E1 | pass | 用 Release `v1.19.0` CLI 对同一 `PCB1` 只读运行，运行身份记录在 `e1-old-identity.log`（二进制 SHA256 `919b059e…`、`easyeda-agent v1.19.0`、daemon `v1.19.1-dev.4`、窗口 `5ade41ed…`）。旧 dump 的 147 个焊盘**没有任何孔偏移/旋转测量值**——`holeOffsetX/holeOffsetY/holeRotation` 只作为 `availability` 静态占位出现（值为 available），没有数值；新版每个焊盘各写出 3 个测量字段（147×3=441）。两版 `pcb check` 输出逐字节相同（同一 SHA256），因为本板没有近边铜，**中心线测量改动无法在这块板上形成可区分差异**；该改动只由单元测试覆盖，不写成现场已验证。 |
+| E1 | pass | 用 Release `v1.19.0` CLI 对同一 `PCB1` 只读运行，运行身份记录在 `e1-old-identity.log`（二进制 SHA256 `919b059e…`、`easyeda-agent v1.19.0`、daemon `v1.19.1-dev.4`、窗口 `5ade41ed…`）。旧 dump 的 147 个焊盘**没有任何孔偏移/旋转测量值**——`holeOffsetX/holeOffsetY/holeRotation` 只作为 `availability` 静态占位出现（值为 available），没有数值；新版每个焊盘各写出 3 个测量字段（147×3=441）。两版 `pcb check` 输出正文逐字节相同（去掉时间戳/`exit=` 头后正文 SHA256 `a4e4ccba…`；原始记录文件因旧日志新增了时间戳与退出码头而哈希不同），因为本板没有近边铜，**中心线测量改动无法在这块板上形成可区分差异**；该改动只由单元测试覆盖，不写成现场已验证。 |
 | L1 | pass | `sch save` 与 `sch check` 的 stderr 出现 `checkpoint … (same, 0 bytes stored)`（保存 1 条、检查 2 条），说明写前检查点存在；两次成功页面改名没有打印 checkpoint 行（目标是后台页，stderr 提示 certified mutation context 未识别目标、autosave 未 arm），该边界如实保留。本轮没有新增回退写入；步骤级回退引用 edadesk#17 的 2026-11-18 DEV 现场验证（Auto 下 `checkpoint:restore` 返回 restored/verified，重复回退不写入），本轮不重放。 |
 | N1 | pass | `pcb delete --ids nonexistent-v120-id`：日志记录 `exit=1`、`PRECONDITION_REFUSED`，消息为 “no deletion was dispatched”；随后重新 `pcb dump` 仍为 33 个器件（`n1-after-dump.json`），确认写入前拒绝且无删除。EDAD-6 的**部分失效**路径（一个有效 ID + 一个无效 ID）本轮没有现场制造，只有自动测试覆盖。 |
 | R1 | pass | `build-local-snapshot.py --version 1.20.0-dev.1 --revision 529bd59d…` 构建成功；`local-dev.json` 的 `sourceRevision=529bd59d…`、`sourceDirty=false`、`versionInjected=true`；`checksums.txt` 全项校验通过（`shasum -c` 11 项 OK），CLI SHA256 `ac162668…`。`fb80cb36..529bd59d` 无运行时相关文件差异（15 个改动全在 docs/、package*.json、Makefile、scripts/、scripts/tests/），故 Dev 宿主运行时 `1.19.1-dev.4` 与候选行为一致。 |
@@ -30,9 +30,9 @@ Go 的 3 项跳过为平台限定测试（Windows PowerShell 等），不计为�
 
 | 原始记录 | SHA256 |
 | --- | --- |
-| f1-rename-p1-v120.log | aa1bd4f450210c87dd7aea790fa37bb0d426f1995ac345af0bdfe5b2a67da884 |
-| f1-rename-back.log | 6b02ca4258390936e406c8f77c0323ed572ab9d84030d3c7da5fe2e9a683b767 |
-| f1-duplicate-refusal.log | 4f0892ac1b4bc4e66047bacf89b4f91cc1552dc3e0552ad9c95fd45f96272c27 |
+| f1-rename-p1-v120.log | aa6af35c90a3c68e93b2b6dd4a443eb2f9085ce4f9c38df6f45b2ab4904d9c8a |
+| f1-rename-back.log | 915afa510bc038c3ca111f97bbce9a9cc0f3c3b381454b451f416eeb4eac476a |
+| f1-duplicate-refusal.log | b0c37ed153a4c76cc7c6a1c1702f9cc58e74297faca11d942890c5571395895a |
 | f1-rename-attempt.log | a8392047c78e6ebf055afa678aab374536e565e7fa6ee37a1c153635dc67e810 |
 | f2-pcb-dump.json | ea99940d30759fd1fcfaaf51ed799d7d2775620e56941f2c5699fa34913c1744 |
 | f2-pcb-dump.json.capture.json | c0aaf6dd293c4b02d75c07b130f5c26023f5117a7fcbd93c675272ad98d2655c |
