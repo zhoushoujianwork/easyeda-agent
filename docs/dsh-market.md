@@ -52,17 +52,31 @@ description:
 收录不是永久的：仓库归档、长期停更或条目失效会被定期扫描移除；改了仓库名或分发方式要
 同步改条目，且只改自己那条。
 
-## npm 发布（推荐，非必需）
+## 预构建分发：Release tarball 优先，npm 可选
 
-只提目录条目也能装（GitHub 源码安装，用户端需要构建/联网），但发布 npm 包会让安装跳过
-构建授权，也才能进入 DSH Discover 的 npm 索引。本包已具备发布条件：
+GitHub 源码安装可用，但用户要拉整棵仓库（约 30 MB）并本地解析依赖。发版流程现在同时产出
+预构建 bundle：
 
-- 根 `package.json` 去掉 `private`，补 `keywords`（含 `dsh-plugin`）、`repository`、
-  `homepage`、`bugs`；`files` 只带入口、patch、MCP 源码和公开 Skill。
-- `easyeda-agent-dsh` 在 npm 上未被占用，版本与仓库发布标签同步（当前 1.13.1）。
-- 发布属于版本发布动作，须按 [AGENTS.md](../AGENTS.md#发布) 先获用户对具体版本的批准，
-  再由具备 npm 凭据的维护者执行 `npm publish`；不要把 `npm publish` 接进 CI 自动流程。
-- 发布后目录条目会自动带上 npm 映射与版本，安装命令从 GitHub 源码切换为预构建包。
+- `make release-build` 在 `dist/` 里多出一个 `easyeda-agent-dsh.tgz`（根包 `npm pack`
+  产物，约 650 KB），文件名不带版本号、版本由 Release tag 固定，并计入 `checksums.txt`
+  与发布资产核验。
+- `release-check` 校验这个 tarball：只允许入口、`cordis.patch.yml`、MCP 源码和公开 Skill，
+  Go/连接器/文档等私有文件进入即失败；包内 `name`/`version` 必须等于发布版本。
+- 根 `package.json` 与 `package-lock.json` 的版本必须与 `VERSION` 一致；漂移曾让根包停在
+  1.13.1 而 Release 已到 v1.19.0。发版准备用
+  `python3 scripts/sync-dsh-version.py X.Y.Z` 一次对齐（当前已对齐最新 Release 1.19.0）。
 
-不想发 npm 时，可把 `npm pack` 产物作为 GitHub Release 资产，并在条目里加
-`tarball:` 指向该 URL；市场会优先展示这个预构建 tarball，适用于无法从源码安装的网络。
+第一次包含该资产的 Release 发布后，在目录条目里加一行（版本换成该 Release tag）：
+
+```yaml
+tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/download/vX.Y.Z/easyeda-agent-dsh.tgz
+```
+
+市场和店铺页会优先展示这个预构建 tarball，用户也可以直接
+`dsh plugin --profile web add <tarball 地址>`；GitHub 源码安装退为后备。
+
+**npm 仍然可选，不是上架前提。** 只有发布 npm 包才能进入 DSH Discover 的 npm 索引
+（`index.json` 只收 npm 已发布且有版本的条目），安装与更新才按 npm 版本号比较。代价是包
+发布后基本不可撤回、需要 npm 账号与持续的版本纪律。真需要时，在版本同步的基础上
+`npm publish`（发布属版本发布动作，须按 [AGENTS.md](../AGENTS.md#发布) 先获批准，不接进
+CI 自动流程）。

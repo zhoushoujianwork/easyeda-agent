@@ -14,10 +14,31 @@ import zipfile
 ASSETS = [
     "easyeda_darwin_amd64", "easyeda_darwin_arm64",
     "easyeda_linux_amd64", "easyeda_linux_arm64", "easyeda_windows_amd64.exe",
-    "easyeda-agent-connector.eext", "skills.tar.gz", "install.sh", "install.ps1",
+    "easyeda-agent-connector.eext", "skills.tar.gz",
+    # The DSH bundle (root package.json + cordis.patch.yml + mcp/ + Skill) as a
+    # prebuilt npm tarball. Unversioned asset name like the connector: the
+    # release tag in the URL pins the version, and the market advertises the
+    # tarball instead of asking users to download the whole Git tree.
+    "easyeda-agent-dsh.tgz",
+    "install.sh", "install.ps1",
 ]
 EVIDENCE_ASSET = "test-evidence.zip"
 EVIDENCE_FILES = ("test-report.md", "baseline.md", "test-cases.md")
+# The DSH bundle ships from the repository root: entry, patch, MCP server and the
+# public Skill. Its tarball is a release asset too, so the market can install a
+# prebuilt package instead of the whole Git tree.
+DSH_TARBALL = "easyeda-agent-dsh.tgz"
+DSH_PACKAGE = "easyeda-agent-dsh"
+DSH_REQUIRED_FILES = (
+    "package/package.json", "package/index.js", "package/cordis.patch.yml",
+    "package/mcp/src/server.mjs", "package/mcp/src/core.mjs",
+    "package/.agents/skills/easyeda-agent/SKILL.md",
+)
+DSH_FORBIDDEN_PREFIXES = (
+    "package/artifacts/", "package/bin/", "package/cmd/", "package/dist/",
+    "package/docs/", "package/extension/", "package/internal/", "package/node_modules/",
+    "package/mcp/node_modules/", "package/scripts/", "package/tmp/",
+)
 REQUIRED_CASES = frozenset(("M1", "F1", "F2", "E1", "L1", "N1", "R1", "E2E"))
 BASIC_CASES = frozenset(f"B{i:02d}" for i in range(11))
 ADVANCED_CASES = frozenset(f"A{i:02d}" for i in range(7))
@@ -158,6 +179,40 @@ def check_evidence_archive(path: Path, contents: dict[str, bytes]) -> None:
                 raise ValueError(f"{path}: {name} differs from reviewed source")
 
 
+def check_dsh_bundle(path: Path, version: str) -> None:
+    """Verify the packaged DSH bundle is the one the version claims to be."""
+    with tarfile.open(path, "r:gz") as archive:
+        members = archive.getmembers()
+        names = [member.name for member in members]
+        if len(names) != len(set(names)):
+            raise ValueError(f"{path}: duplicate archive members")
+        for member in members:
+            if member.isdir():
+                continue
+            if not member.isfile():
+                raise ValueError(f"{path}: unexpected non-file member {member.name}")
+            if not member.name.startswith("package/"):
+                raise ValueError(f"{path}: member outside package/: {member.name}")
+            if member.name.startswith(DSH_FORBIDDEN_PREFIXES):
+                raise ValueError(f"{path}: private or unrelated file entered the bundle: {member.name}")
+        for required in DSH_REQUIRED_FILES:
+            if required not in names:
+                raise ValueError(f"{path}: bundle is missing {required}")
+        manifest = json.loads(archive.extractfile("package/package.json").read().decode("utf-8"))
+        skill = archive.extractfile("package/.agents/skills/easyeda-agent/SKILL.md").read().decode("utf-8")
+    if manifest.get("name") != DSH_PACKAGE:
+        raise ValueError(f"{path}: package name {manifest.get('name')!r}, expected {DSH_PACKAGE}")
+    if manifest.get("version") != version:
+        raise ValueError(f"{path}: package version {manifest.get('version')!r}, expected {version}")
+    if manifest.get("private") is True:
+        raise ValueError(f"{path}: bundle must not be private")
+    bundle = manifest.get("dsh") or {}
+    if (bundle.get("bundle") or {}).get("patch") != "./cordis.patch.yml":
+        raise ValueError(f"{path}: dsh.bundle.patch is missing")
+    if skill_version(skill) != version:
+        raise ValueError(f"{path}: packaged SKILL.md has the wrong version")
+
+
 def check_sources(repo: Path, tag: str, local_dev: bool = False) -> str:
     pattern = r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     if local_dev:
@@ -174,6 +229,20 @@ def check_sources(repo: Path, tag: str, local_dev: bool = False) -> str:
             raise ValueError(f"{name}: packages[''].version must also be {version}")
     if skill_version((repo / ".agents/skills/easyeda-agent/SKILL.md").read_text(encoding="utf-8")) != version:
         raise ValueError(f"SKILL.md version must be {version}; run scripts/sync-skill-version.py {version}")
+    # The root package is the DSH bundle and its release tarball; it used to
+    # drift for several releases because only extension/* was synced.
+    root = json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    if root.get("name") != DSH_PACKAGE:
+        raise ValueError(f"package.json: name {root.get('name')!r}, expected {DSH_PACKAGE}")
+    if root.get("version") != version:
+        raise ValueError(f"package.json: version {root.get('version')!r}, expected {version}")
+    if root.get("private") is True:
+        raise ValueError("package.json must not be private; the DSH bundle is distributed")
+    if ((root.get("dsh") or {}).get("bundle") or {}).get("patch") != "./cordis.patch.yml":
+        raise ValueError("package.json: dsh.bundle.patch must be ./cordis.patch.yml")
+    lock = json.loads((repo / "package-lock.json").read_text(encoding="utf-8"))
+    if lock.get("version") != version or lock.get("packages", {}).get("", {}).get("version") != version:
+        raise ValueError(f"package-lock.json: root version must also be {version}")
     changelog = (repo / "extension/CHANGELOG.md").read_text(encoding="utf-8")
     if not re.search(rf"^##\s*\[{re.escape(version)}\]", changelog, re.MULTILINE):
         raise ValueError(f"extension/CHANGELOG.md has no ## [{version}] entry")
@@ -225,6 +294,7 @@ def check_artifacts(repo: Path, dist: Path, version: str) -> None:
         item = archive.extractfile("easyeda-agent/SKILL.md")
         if item is None or skill_version(item.read().decode()) != version:
             raise ValueError("packaged SKILL.md has the wrong version")
+    check_dsh_bundle(dist / DSH_TARBALL, version)
     for name in INSTALLERS:
         if (dist / name).read_bytes() != (repo / name).read_bytes():
             raise ValueError(f"packaged {name} differs from source")

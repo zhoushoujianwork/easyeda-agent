@@ -84,19 +84,24 @@ M1/F1/F2/E1/L1/N1/R1 等已实际验证的有限范围仍须通过并独立复�
 
 发布分为本地准备与外部发布。准备阶段先显式同步
 `extension/extension.json`、`extension/package.json`、`extension/package-lock.json`
-的版本（含 lock 的 `packages[""].version`），补齐 `extension/CHANGELOG.md` 对应条目，
-再同步 Skill。下面的版本号须替换为本次完整 `vX.Y.Z` 版本：
+的版本（含 lock 的 `packages[""].version`），再对齐根 `package.json` 与
+`package-lock.json`（DSH bundle 与市场 tarball，同样含 `packages[""].version`），
+补齐 `extension/CHANGELOG.md` 对应条目，最后同步 Skill。下面的版本号须替换为本次完整
+`vX.Y.Z` 版本：
 
 ```bash
-python3 scripts/sync-skill-version.py X.Y.Z   # 准备时显式写 metadata.version
+python3 scripts/sync-dsh-version.py X.Y.Z   # 准备时显式写根包与 lock 版本
+python3 scripts/sync-skill-version.py X.Y.Z # 准备时显式写 metadata.version
 make skill-check                            # 离线检查公共 Skill 文件及安装后链接
 make release-check VERSION=vX.Y.Z           # 校验版本、Changelog、打包输入；不修改源码
 make release-build VERSION=vX.Y.Z           # 本地构建并核对全部资产；不提交、打 tag 或上传
 ```
 
-`release-check` 要求 connector manifest、npm/lock 和 Skill 版本全部匹配，拒绝缺失的
-Changelog；中版本还检查上述验收材料。`release-build` 生成五平台 CLI、准确版本/UUID
-的连接器、`skills.tar.gz`、安装脚本和 `checksums.txt`，并验证资产与本机 CLI 的版本。
+`release-check` 要求 connector manifest、扩展与根包的 npm/lock、Skill 版本全部匹配，
+拒绝缺失的 Changelog；中版本还检查上述验收材料。`release-build` 生成五平台 CLI、准确
+版本/UUID 的连接器、`skills.tar.gz`、`easyeda-agent-dsh.tgz`（预构建 DSH bundle，供
+插件市场与 tarball 安装）、安装脚本和 `checksums.txt`，并验证资产内容与本机 CLI 的版本。
+tarball 只允许入口、patch、MCP 源码和公开 Skill，Go/连接器/文档等文件进入即失败。
 它不会自动 bump 或提交源码。
 `make eext` 仍是开发期升 patch 的快捷入口，不代替发布准备所需的完整版本同步。
 

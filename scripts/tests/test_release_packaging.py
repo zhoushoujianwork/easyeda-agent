@@ -2,6 +2,7 @@
 
 import importlib.util
 import hashlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -99,7 +100,9 @@ class TrackedSkillPackageTests(unittest.TestCase):
 
 class ReleaseVersionAndAssetTests(unittest.TestCase):
     def test_local_prerelease_is_not_a_publishable_release(self):
-        for file in ["extension/extension.json", "extension/package.json", "extension/package-lock.json", ".agents/skills/easyeda-agent/SKILL.md", "extension/CHANGELOG.md"]:
+        for file in ["extension/extension.json", "extension/package.json", "extension/package-lock.json",
+                     "package.json", "package-lock.json",
+                     ".agents/skills/easyeda-agent/SKILL.md", "extension/CHANGELOG.md"]:
             path = self.repo / file
             path.write_text(path.read_text().replace("1.4.2", "1.4.3-dev.1"))
         self.assertEqual(release.check_sources(self.repo, "v1.4.3-dev.1", local_dev=True), "1.4.3-dev.1")
@@ -120,12 +123,18 @@ class ReleaseVersionAndAssetTests(unittest.TestCase):
         self.write_json("extension/package-lock.json", {"version": "1.4.2", "packages": {"": {"version": "1.4.2"}}})
         (self.repo / ".agents/skills/easyeda-agent/SKILL.md").write_text('---\nmetadata:\n  version: "1.4.2"\n---\n')
         (self.repo / "extension/CHANGELOG.md").write_text("# Changes\n\n## [1.4.2]\n\nNew release\n")
+        # The root package is the DSH bundle and its release tarball.
+        self.write_json("package.json", {"name": "easyeda-agent-dsh", "version": "1.4.2",
+                                         "dsh": {"bundle": {"patch": "./cordis.patch.yml"}}})
+        self.write_json("package-lock.json", {"version": "1.4.2",
+                                             "packages": {"": {"version": "1.4.2"}}})
 
     def write_json(self, path, data):
         (self.repo / path).write_text(json.dumps(data))
 
     def set_version(self, version):
         for file in ["extension/extension.json", "extension/package.json", "extension/package-lock.json",
+                     "package.json", "package-lock.json",
                      ".agents/skills/easyeda-agent/SKILL.md", "extension/CHANGELOG.md"]:
             path = self.repo / file
             path.write_text(path.read_text().replace("1.4.2", version))
@@ -169,6 +178,56 @@ class ReleaseVersionAndAssetTests(unittest.TestCase):
         (self.repo / "extension/CHANGELOG.md").write_text("## [1.4.1]\n")
         with self.assertRaisesRegex(ValueError, "no ##"):
             release.check_sources(self.repo, "v1.4.2")
+
+    def test_root_bundle_version_must_match_the_release(self):
+        self.assertEqual(release.check_sources(self.repo, "v1.4.2"), "1.4.2")
+        self.write_json("package.json", {"name": "easyeda-agent-dsh", "version": "1.3.9",
+                                         "dsh": {"bundle": {"patch": "./cordis.patch.yml"}}})
+        with self.assertRaisesRegex(ValueError, "package.json: version"):
+            release.check_sources(self.repo, "v1.4.2")
+
+    def test_root_bundle_must_stay_publishable(self):
+        self.write_json("package.json", {"name": "easyeda-agent-dsh", "version": "1.4.2", "private": True,
+                                         "dsh": {"bundle": {"patch": "./cordis.patch.yml"}}})
+        with self.assertRaisesRegex(ValueError, "must not be private"):
+            release.check_sources(self.repo, "v1.4.2")
+        self.write_json("package.json", {"name": "easyeda-agent-dsh", "version": "1.4.2"})
+        with self.assertRaisesRegex(ValueError, "dsh.bundle.patch"):
+            release.check_sources(self.repo, "v1.4.2")
+
+    def write_bundle(self, path, version="1.4.2", extra=None):
+        files = {
+            "package/package.json": json.dumps({"name": "easyeda-agent-dsh", "version": version,
+                                                "dsh": {"bundle": {"patch": "./cordis.patch.yml"}}}).encode(),
+            "package/index.js": b"exports.name = 'easyeda-agent-dsh';\n",
+            "package/cordis.patch.yml": b"- insert: []\n",
+            "package/mcp/src/server.mjs": b"// stdio MCP server\n",
+            "package/mcp/src/core.mjs": b"// typed action bridge\n",
+            "package/.agents/skills/easyeda-agent/SKILL.md":
+                f'---\nmetadata:\n  version: "{version}"\n---\n'.encode(),
+        }
+        files.update(extra or {})
+        with tarfile.open(path, "w:gz") as archive:
+            for name, data in files.items():
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+
+    def test_dsh_bundle_asset_carries_the_bundle_only(self):
+        path = self.repo / "easyeda-agent-dsh.tgz"
+        self.write_bundle(path)
+        release.check_dsh_bundle(path, "1.4.2")
+        self.write_bundle(path, version="1.4.1")
+        with self.assertRaisesRegex(ValueError, "package version"):
+            release.check_dsh_bundle(path, "1.4.2")
+        self.write_bundle(path, extra={"package/docs/plan.md": b"internal notes\n"})
+        with self.assertRaisesRegex(ValueError, "private or unrelated"):
+            release.check_dsh_bundle(path, "1.4.2")
+        self.write_bundle(path, extra={"package/package.json": json.dumps(
+            {"name": "easyeda-agent-dsh", "version": "1.4.2", "private": True,
+             "dsh": {"bundle": {"patch": "./cordis.patch.yml"}}}).encode()})
+        with self.assertRaisesRegex(ValueError, "must not be private"):
+            release.check_dsh_bundle(path, "1.4.2")
 
     def test_connector_must_contain_exact_target_manifest(self):
         path = self.repo / "stale.eext"
