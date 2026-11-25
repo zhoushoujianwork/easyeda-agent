@@ -201,6 +201,8 @@ Act on the focused canvas; the editor view shortcuts. CLI: `easyeda view …`.
 对齐值合法范围为 1–9，不能传 0。宿主常把这些参数错误统一包装成
 “无法创建文本图元”，这不等同于连接断开或 PCB 未加载。
 
+`silk-delete --id <primitiveId>` 只删一条自由丝印字符串（层 3/4），命令参数、拒绝条件和失败语义见 [pcb-layout.md](pcb-layout.md) 的 `silk-delete` 条目。
+
 ### 天线禁铜区域
 
 `easyeda pcb antenna-keepout [--margin 20] [--pad-clearance 40] [--chip-margin 120]`

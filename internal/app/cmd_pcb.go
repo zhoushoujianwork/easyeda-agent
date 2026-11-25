@@ -4460,6 +4460,33 @@ restyle later with 'pcb silk-set'.`,
 		pcb.AddCommand(c)
 	}
 
+	// pcb.silk.delete — delete exactly one free silkscreen string by id and verify absence.
+	{
+		var id string
+		c := &cobra.Command{
+			Use:   "silk-delete",
+			Short: "Delete one free silkscreen string by id and verify its absence",
+			Long: `Delete exactly ONE free silkscreen STRING by primitive id (--id from
+'easyeda call pcb.silk.list', kind "string"). Refuses — without calling delete — a missing id, a
+designator/value attribute id, a string on a non-silk layer, and a locked string.
+Success needs delete acknowledged AND a fresh string inventory without the id; an
+unreadable inventory is reported partial/unverified and exits non-zero. Returns
+primitiveId, text, layer, deleted, verified. Save, reload and re-read pcb.silk.list
+before accepting the result.`,
+			Args:    cobra.NoArgs,
+			Example: `  easyeda call pcb.silk.list                  # find the string id (kind "string")
+  easyeda pcb silk-delete --id <primitiveId>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if strings.TrimSpace(id) == "" {
+					return fmt.Errorf("--id is required")
+				}
+				return dispatch(cfg, "pcb.silk.delete", window, map[string]any{"primitiveId": id}, stdout, stderr)
+			},
+		}
+		c.Flags().StringVar(&id, "id", "", "primitive id of the free silkscreen string (required)")
+		pcb.AddCommand(c)
+	}
+
 	// pcb.silk.set — batch reconfigure existing silk (position / rotation / size / text
 	// / align-to-reference).
 	{

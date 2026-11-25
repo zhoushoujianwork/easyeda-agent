@@ -67,6 +67,7 @@
 | 能力 | 命令 | 说明 |
 |---|---|---|
 | 位号避让重排 | `pcb silk-align` | 位置感知:4 方向打分避开焊盘/器件体/禁区/板框/其它标签;挤死的如实报告 |
+| 删除自由丝印 | `pcb silk-delete --id` | 只删一条层 3/4 自由字符串；位号/值属性、其他层、锁定、缺失 ID 拒绝；新 `getAll()` 证明消失，未验证非零退出 |
 | 自由丝印 | `pcb silk-add` / `silk-set` | 板注/极性标记,层/字号/线宽/旋转/`--font-family` 可配并回读实际字体；`--align --ref` 对齐参考 |
 | 非电气参考图片 | `pcb image create/list/modify/delete` | PNG/JPEG/SVG 嵌入 DOCUMENT 13；mil、左上角 anchor，创建须给宽或高；不是制造丝印 |
 | 矢量图形 | `pcb silk-import-svg` | SVG(logo/品牌)转填充丝印图元,dry-run 预览 |

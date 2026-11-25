@@ -993,6 +993,10 @@ func (r *applyRunner) execute() error {
 		if errors.As(execErr, &silkSetErr) {
 			failure.RawResponse = silkSetErr.rawResponse
 		}
+		var silkDeleteErr *unverifiedSilkDeleteError
+		if errors.As(execErr, &silkDeleteErr) {
+			failure.RawResponse = silkDeleteErr.rawResponse
+		}
 		var libraryErr *unverifiedLibraryWriteError
 		if errors.As(execErr, &libraryErr) {
 			failure.RawResponse = libraryErr.rawResponse
@@ -1015,6 +1019,9 @@ func (r *applyRunner) execute() error {
 			return execErr
 		}
 		if silkSetErr != nil {
+			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
+		}
+		if silkDeleteErr != nil {
 			return fmt.Errorf("playbook stopped at step %s: %w", ref, execErr)
 		}
 		var silkErr *unverifiedSilkAlignmentError
@@ -1144,6 +1151,10 @@ func (r *applyRunner) executeStep(s *playbookStep, catalog map[string]protocol.A
 		var silkSetErr *unverifiedSilkSetError
 		if errors.As(err, &silkSetErr) {
 			return nil, err // Generic verify/retry must not hide or replay an unverified write.
+		}
+		var silkDeleteErr *unverifiedSilkDeleteError
+		if errors.As(err, &silkDeleteErr) {
+			return nil, err
 		}
 		var silkErr *unverifiedSilkAlignmentError
 		if errors.As(err, &silkErr) {
@@ -1316,6 +1327,12 @@ func (r *applyRunner) runAction(action string, payload map[string]any, timeout t
 		}
 		return anyResult(parsed.Result), err
 	}
+	if err := silkDeleteResultError(action, parsed.Result, respBody); err != nil {
+		if r.stdout != nil {
+			fmt.Fprintln(r.stdout, string(respBody))
+		}
+		return anyResult(parsed.Result), err
+	}
 	if err := libraryWriteResultError(action, parsed.Result, respBody); err != nil {
 		return anyResult(parsed.Result), err
 	}
@@ -1395,6 +1412,10 @@ func (r *applyRunner) runSubcommand(run string, flags map[string]any, args []str
 		}
 		var silkSetErr *unverifiedSilkSetError
 		if errors.As(commandErr, &silkSetErr) {
+			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)
+		}
+		var silkDeleteErr *unverifiedSilkDeleteError
+		if errors.As(commandErr, &silkDeleteErr) {
 			return parseTrailingJSON(out.String()), fmt.Errorf("run %q: %w", run, commandErr)
 		}
 		var silkErr *unverifiedSilkAlignmentError
