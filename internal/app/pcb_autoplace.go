@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +25,31 @@ import (
 // edge nearest the pad it actually connects to, then packed along that edge so
 // nothing overlaps. Decoupling caps land by their power pin; signal R's by their
 // signal pin; an LED chains next to its series resistor.
+//
+// v2 = cost-based slot search (the assignment passes 1-3 are unchanged; only the
+// packing stage changed). The idea of scoring candidate slots instead of taking
+// the first free one comes from the open-source low-power-iot-hardware-design
+// layout planner (MIT, github.com/donghuixin/low-power-iot-hardware-design).
+//
+//   - 2-D occupancy: one list of placed satellite bodies is shared by ALL
+//     (main, edge) groups, so satellites on adjacent edges can no longer collide
+//     at a chip corner. A slot is free iff it stays on the board, clear of every
+//     keep-out, clear (zero clearance) of every non-moving part's bbox (mains,
+//     locked parts, fixed group members, skipped connectors) and at least
+//     opt.pitch from every placed satellite.
+//   - Rings: each group may use up to apRings rows parallel to the edge. Row r
+//     sits r*ringStep further out, ringStep = widest satellite of the group +
+//     pitch, so a blocked first row degrades to a second row instead of failing.
+//   - Cost: candidates are visited in ascending lowerBound = |along offset| +
+//     ring*ringStep and the search stops once lowerBound exceeds the best cost.
+//     cost = lowerBound + escape penalty (the body sits in front of a pad of a
+//     DIFFERENT net on this chip edge, which blocks that pad's fan-out) + avoid
+//     penalty (inductors keep away from keep-outs and crystals).
+//   - Order inside a group: decoupling parts first, smallest capacitance nearest
+//     the pin; then crystals; then everything else by target position.
+//   - Distance limits: a decoupling part should sit within apLimitPowerMil of its
+//     pin, a crystal within apLimitCrystalMil. A part that ends up farther is
+//     still placed, but a diag names what blocks the nearer slots.
 
 // apPad is one component pad: its net (by name), rendered center, and copper layer.
 type apPad struct {
@@ -39,6 +65,7 @@ type apPad struct {
 type apComp struct {
 	id         string
 	designator string
+	name       string  // component Name attribute (usually the value, e.g. "100nF"); "" if unknown
 	x, y       float64 // component anchor (what modify sets)
 	rotation   float64 // current rotation (deg, y-up CCW) — needed to re-orient
 	locked     bool
@@ -296,6 +323,10 @@ type assignment struct {
 	along     float64 // target coordinate along the edge axis (y for L/R, x for T/B)
 	targetNet string
 	via       string
+	// pad is the same-net chip pad the assignment was derived from (the point the
+	// distance limits measure to). Chain assignments inherit their parent's pad.
+	pad    apPad
+	hasPad bool
 }
 
 // planAutoPlace is the pure planner: given the placed components, decide where
@@ -304,7 +335,6 @@ type assignment struct {
 func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 	var mains, sats []int
 	var diags []apDiag
-	var fixedBoxes []layoutBBox
 	for i, c := range comps {
 		if !c.hasBBox {
 			continue
@@ -316,9 +346,8 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		case c.locked:
 			continue
 		case opt.fixed[strings.ToUpper(strings.TrimSpace(c.designator))]:
-			// 虚拟组成员(#173):原地不动,并作为其他卫星的禁入区 —— 否则卫星会被
-			// 打包进它的位置。
-			fixedBoxes = append(fixedBoxes, layoutBBox{MinX: c.minX, MinY: c.minY, MaxX: c.maxX, MaxY: c.maxY})
+			// 虚拟组成员(#173):原地不动。它不是卫星候选,所以和其他未动的件一样
+			// 进入打包阶段的障碍物表 —— 否则卫星会被打包进它的位置。
 			diags = append(diags, apDiag{c.designator, "group:fixed — virtual PCB group member, not moved (--break-group to override)"})
 		case highPin && connectorDesRe.MatchString(strings.TrimSpace(c.designator)):
 			// #131: a high-pin connector (USB-C, boxed header…) is a MECHANICAL
@@ -336,10 +365,6 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		default:
 			sats = append(sats, i)
 		}
-	}
-
-	if len(fixedBoxes) > 0 {
-		opt.keepouts = append(append([]layoutBBox(nil), opt.keepouts...), fixedBoxes...)
 	}
 
 	if len(mains) == 0 {
@@ -421,7 +446,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		}
 		if best >= 0 {
 			e, along := edgeFor(comps[mains[best]], bestPad)
-			assigned[s] = &assignment{s, best, e, along, bestNet, "local"}
+			assigned[s] = &assignment{sat: s, mainIdx: best, edge: e, along: along, targetNet: bestNet, via: "local", pad: bestPad, hasPad: true}
 		}
 	}
 
@@ -448,7 +473,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 				}
 				if parent >= 0 {
 					a := assigned[parent]
-					assigned[s] = &assignment{s, a.mainIdx, a.edge, a.along, ln, "chain:" + comps[parent].designator}
+					assigned[s] = &assignment{sat: s, mainIdx: a.mainIdx, edge: a.edge, along: a.along, targetNet: ln, via: "chain:" + comps[parent].designator, pad: a.pad, hasPad: a.hasPad}
 					changed = true
 					break
 				}
@@ -487,7 +512,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		}
 		if best >= 0 {
 			e, along := edgeFor(comps[mains[best]], bestPad)
-			assigned[s] = &assignment{s, best, e, along, bestNet, "power"}
+			assigned[s] = &assignment{sat: s, mainIdx: best, edge: e, along: along, targetNet: bestNet, via: "power", pad: bestPad, hasPad: true}
 		}
 	}
 
@@ -498,8 +523,24 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		}
 	}
 
-	// Pack per (main, edge): sort by target-along, then lay out in a line just
-	// outside the edge, pushing later items along so none overlap.
+	// Obstacles: every placed part that stays where it is — mains (after the
+	// chip-spacing shift), locked parts, fixed group members, skipped connectors,
+	// excluded high-pin parts and satellites with no net path (they are not
+	// moved either). Moving satellites are NOT obstacles: they vacate their spot.
+	pk := &apPacker{opt: opt}
+	for i, c := range comps {
+		if !c.hasBBox || assigned[i] != nil {
+			continue
+		}
+		pk.obstacles = append(pk.obstacles, apOccupant{
+			box:     layoutBBox{MinX: c.minX, MinY: c.minY, MaxX: c.maxX, MaxY: c.maxY},
+			des:     strings.TrimSpace(c.designator),
+			crystal: apCrystalRe.MatchString(strings.TrimSpace(c.designator)),
+		})
+	}
+
+	// Pack per (main, edge). All groups share one occupancy list (pk.placed), so
+	// satellites on adjacent edges cannot collide at a chip corner.
 	type key struct {
 		main int
 		edge apEdge
@@ -525,113 +566,8 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 	})
 
 	for _, k := range keys {
-		group := groups[k]
-		// Power (decoupling) parts claim their slot first, then the rest; each takes
-		// the free position NEAREST its target pad, searching both directions —
-		// a one-way cursor pushed later parts away from their pins and into keep-outs.
-		rank := func(a *assignment) int {
-			if a.via == "power" {
-				return 0
-			}
-			return 1
-		}
-		sort.SliceStable(group, func(i, j int) bool {
-			if ri, rj := rank(group[i]), rank(group[j]); ri != rj {
-				return ri < rj
-			}
-			if group[i].along != group[j].along {
-				return group[i].along < group[j].along
-			}
-			return comps[group[i].sat].designator < comps[group[j].sat].designator
-		})
 		chip := comps[mains[k.main]]
-		var taken [][2]float64 // occupied along-intervals on this edge, incl. pitch
-		for _, a := range group {
-			sat := comps[a.sat]
-			// Re-orient (2-pin parts) so the connecting pad faces the chip; pack with
-			// the EFFECTIVE (post-rotation) bbox so rotated parts still don't overlap.
-			targetRot, effW, effH, oriented := orientSatellite(sat, k.edge, a.targetNet, opt.rotate)
-			var alongExtent, perpCenter float64
-			if k.edge.vertical() {
-				alongExtent = effH
-				half := effW / 2
-				if k.edge == edgeLeft {
-					perpCenter = chip.minX - opt.gap - half
-				} else {
-					perpCenter = chip.maxX + opt.gap + half
-				}
-			} else {
-				alongExtent = effW
-				half := effH / 2
-				if k.edge == edgeTop {
-					perpCenter = chip.maxY + opt.gap + half
-				} else {
-					perpCenter = chip.minY - opt.gap - half
-				}
-			}
-			half := alongExtent / 2
-			body := func(center float64) layoutBBox {
-				if k.edge.vertical() {
-					return layoutBBox{MinX: perpCenter - effW/2, MaxX: perpCenter + effW/2, MinY: center - half, MaxY: center + half}
-				}
-				return layoutBBox{MinX: center - half, MaxX: center + half, MinY: perpCenter - effH/2, MaxY: perpCenter + effH/2}
-			}
-			free := func(center float64) bool {
-				lo, hi := center-half-opt.pitch, center+half+opt.pitch
-				for _, t := range taken {
-					if lo < t[1] && t[0] < hi {
-						return false
-					}
-				}
-				b := body(center)
-				for _, ko := range opt.keepouts {
-					if b.MinX < ko.MaxX && ko.MinX < b.MaxX && b.MinY < ko.MaxY && ko.MinY < b.MaxY {
-						return false
-					}
-				}
-				if opt.board != nil && (b.MinX < opt.board.MinX || b.MaxX > opt.board.MaxX || b.MinY < opt.board.MinY || b.MaxY > opt.board.MaxY) {
-					return false
-				}
-				return true
-			}
-			center, found := 0.0, false
-			for d := 0.0; d <= apSearchSpanMil && !found; d += apSearchStepMil {
-				for _, c := range []float64{a.along - d, a.along + d} {
-					if free(c) {
-						center, found = c, true
-						break
-					}
-				}
-			}
-			if !found {
-				diags = append(diags, apDiag{sat.designator, fmt.Sprintf("no free slot on %s's %s edge within %.0fmil of its pin (keep-outs/board edge/other satellites)", chip.designator, k.edge, apSearchSpanMil)})
-				continue
-			}
-			taken = append(taken, [2]float64{center - half, center + half})
-
-			var cx, cy float64
-			if k.edge.vertical() {
-				cx, cy = perpCenter, center
-			} else {
-				cx, cy = center, perpCenter
-			}
-			// Place the bbox center at (cx,cy). The anchor→center offset is fixed on
-			// the part, so it rotates with it (Δ = targetRot − current).
-			bcx, bcy := sat.bboxCenter()
-			odx, ody := rotateVec(bcx-sat.x, bcy-sat.y, targetRot-sat.rotation)
-			moves = append(moves, apMove{
-				ID:         sat.id,
-				Designator: sat.designator,
-				NewX:       round2(cx - odx),
-				NewY:       round2(cy - ody),
-				NewRot:     targetRot,
-				SetRot:     oriented,
-				Main:       chip.designator,
-				Edge:       k.edge.String(),
-				TargetNet:  a.targetNet,
-				Via:        a.via,
-			})
-		}
+		moves, diags = pk.packGroup(comps, chip, k.edge, groups[k], moves, diags)
 	}
 	return moves, diags
 }
@@ -799,4 +735,494 @@ func orientSatellite(sat apComp, e apEdge, targetNet string, rotate bool) (targe
 func oddQuarter(deg float64) bool {
 	q := int(math.Round(deg/90)) % 2
 	return q == 1 || q == -1
+}
+
+// ── v2 packing: 2-D occupancy + cost-based slot search ───────────────────────
+
+const (
+	apRings                = 3     // rows parallel to a chip edge a satellite may use (0 = innermost)
+	apEscapeDepthMil       = 50.0  // how far in front of a foreign pad its escape strip reaches
+	apEscapeExtraMil       = 10.0  // extra along-width added to the pad extent
+	apEscapePadFallbackMil = 20.0  // pad extent when the pad size is unknown
+	apEscapePenaltyMil     = 25.0  // cost of a body lying completely inside escape strips
+	apAvoidRadiusMil       = 300.0 // inductor distance to keep-outs / crystals below which it is penalised
+	apAvoidWeight          = 0.5
+	apLimitPowerMil        = 100.0 // decoupling part: max distance from its pin before a diag is raised
+	apLimitCrystalMil      = 160.0 // crystal: same
+	apEps                  = 1e-6  // overlap tolerance (floating point noise)
+)
+
+var (
+	apCrystalRe  = regexp.MustCompile(`(?i)^(?:Y|X)\d`)
+	apInductorRe = regexp.MustCompile(`(?i)^L\d`)
+	// apCapValueRe accepts "100nF", "0.1uF", "0.1µF", "10u", "4.7uF/16V", "22 pF".
+	// A letter right after the unit ("10uH", "100mΩ") is not a capacitance.
+	apCapValueRe = regexp.MustCompile(`(?i)^\s*(\d+(?:\.\d+)?)\s*([pnuµμm])\s*(f?)(?:$|[^\p{L}\p{N}])`)
+)
+
+// parseCapacitanceFarads reads a capacitance such as "100nF" or "4.7uF/16V" from a
+// component Name. Part numbers and anything else that does not start with
+// <number><p|n|u|µ|m>[F] report ok=false.
+func parseCapacitanceFarads(s string) (float64, bool) {
+	m := apCapValueRe.FindStringSubmatch(s)
+	if m == nil {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return 0, false
+	}
+	if strings.EqualFold(m[2], "m") && m[3] == "" {
+		return 0, false // a bare "10m" is too ambiguous (milli-what?) — require "mF"
+	}
+	switch strings.ToLower(m[2]) {
+	case "p":
+		return v * 1e-12, true
+	case "n":
+		return v * 1e-9, true
+	case "u", "µ", "μ":
+		return v * 1e-6, true
+	case "m":
+		return v * 1e-3, true
+	}
+	return 0, false
+}
+
+// apOccupant is a box the packer must not overlap: an obstacle (a part that
+// stays put) or an already placed satellite.
+type apOccupant struct {
+	box     layoutBBox
+	des     string
+	crystal bool
+}
+
+// apPacker holds the occupancy shared by every (main, edge) group.
+type apPacker struct {
+	opt       apOptions
+	obstacles []apOccupant // parts that do not move (zero clearance)
+	placed    []apOccupant // satellites already placed (pitch clearance)
+}
+
+// apSatPrep is one satellite of a group with its post-rotation geometry.
+type apSatPrep struct {
+	a                 *assignment
+	sat               apComp
+	rot, effW, effH   float64
+	oriented          bool
+	perp, along       float64 // effective extent perpendicular / parallel to the edge
+	rank              int     // 0 decoupling, 1 crystal, 2 other
+	capKey            float64 // capacitance in femtofarads (rounded), valid when capOK
+	capOK             bool
+	crystal, inductor bool
+}
+
+// apSlot is one candidate position: ring and signed offset along the edge.
+type apSlot struct {
+	ring int
+	sign int // -1 / 0 / +1
+	d    float64
+	lb   float64 // |d| + ring*ringStep, a lower bound of the cost
+}
+
+func apOverlapExtents(a, b layoutBBox) (float64, float64) {
+	return math.Min(a.MaxX, b.MaxX) - math.Max(a.MinX, b.MinX),
+		math.Min(a.MaxY, b.MaxY) - math.Max(a.MinY, b.MinY)
+}
+
+func apOverlaps(a, b layoutBBox) bool {
+	ox, oy := apOverlapExtents(a, b)
+	return ox > apEps && oy > apEps
+}
+
+func apOverlapArea(a, b layoutBBox) float64 {
+	ox, oy := apOverlapExtents(a, b)
+	if ox <= apEps || oy <= apEps {
+		return 0
+	}
+	return ox * oy
+}
+
+func apInflate(b layoutBBox, d float64) layoutBBox {
+	return layoutBBox{MinX: b.MinX - d, MinY: b.MinY - d, MaxX: b.MaxX + d, MaxY: b.MaxY + d}
+}
+
+// apPointRectDist is the distance from a point to a rectangle (0 inside).
+func apPointRectDist(px, py float64, b layoutBBox) float64 {
+	dx := math.Max(0, math.Max(b.MinX-px, px-b.MaxX))
+	dy := math.Max(0, math.Max(b.MinY-py, py-b.MaxY))
+	return math.Hypot(dx, dy)
+}
+
+func apAlongRange(b layoutBBox, e apEdge) (float64, float64) {
+	if e.vertical() {
+		return b.MinY, b.MaxY
+	}
+	return b.MinX, b.MaxX
+}
+
+// apPerpCenter is the perpendicular center of a body of perpendicular extent
+// perp whose inner side sits `off` outward of the chip edge.
+func apPerpCenter(chip apComp, e apEdge, off, perp float64) float64 {
+	switch e {
+	case edgeLeft:
+		return chip.minX - off - perp/2
+	case edgeRight:
+		return chip.maxX + off + perp/2
+	case edgeTop:
+		return chip.maxY + off + perp/2
+	default:
+		return chip.minY - off - perp/2
+	}
+}
+
+// apFrontRegion is the rectangle starting at the chip edge, `depth` deep
+// outward, `halfSpan` either side of `along`.
+func apFrontRegion(chip apComp, e apEdge, along, halfSpan, depth float64) layoutBBox {
+	switch e {
+	case edgeLeft:
+		return layoutBBox{MinX: chip.minX - depth, MaxX: chip.minX, MinY: along - halfSpan, MaxY: along + halfSpan}
+	case edgeRight:
+		return layoutBBox{MinX: chip.maxX, MaxX: chip.maxX + depth, MinY: along - halfSpan, MaxY: along + halfSpan}
+	case edgeTop:
+		return layoutBBox{MinX: along - halfSpan, MaxX: along + halfSpan, MinY: chip.maxY, MaxY: chip.maxY + depth}
+	default:
+		return layoutBBox{MinX: along - halfSpan, MaxX: along + halfSpan, MinY: chip.minY - depth, MaxY: chip.minY}
+	}
+}
+
+// apOwnNets is the set of non-empty nets on the satellite's pads.
+func apOwnNets(c apComp) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range c.pads {
+		if n := strings.TrimSpace(p.net); n != "" {
+			out[n] = true
+		}
+	}
+	return out
+}
+
+// apEscapeStrips returns the fan-out strips in front of every pad of `chip` on
+// `edge` whose net is not one of the satellite's own: a body parked there blocks
+// the pad's escape. Identical strips (a pad repeated on one net) are deduped.
+func apEscapeStrips(chip apComp, edge apEdge, own map[string]bool) []layoutBBox {
+	var out []layoutBBox
+	seen := map[layoutBBox]bool{}
+	for _, p := range chip.pads {
+		net := strings.TrimSpace(p.net)
+		if net == "" || own[net] {
+			continue
+		}
+		e, along := edgeFor(chip, p)
+		if e != edge {
+			continue
+		}
+		ext := p.w
+		if edge.vertical() {
+			ext = p.h
+		}
+		if ext <= 0 {
+			ext = apEscapePadFallbackMil
+		}
+		s := apFrontRegion(chip, edge, along, (ext+apEscapeExtraMil)/2, apEscapeDepthMil)
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// apEscapePenalty scales apEscapePenaltyMil by the share of the body covered by
+// the strips (summed overlaps, capped at the body area).
+func apEscapePenalty(body layoutBBox, strips []layoutBBox) float64 {
+	area := (body.MaxX - body.MinX) * (body.MaxY - body.MinY)
+	if area <= 0 || len(strips) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, s := range strips {
+		sum += apOverlapArea(body, s)
+	}
+	return apEscapePenaltyMil * math.Min(sum, area) / area
+}
+
+// apDistLimit is the farthest a satellite should sit from its target pad (0 = no limit).
+func apDistLimit(via string, crystal bool) float64 {
+	switch {
+	case via == "power":
+		return apLimitPowerMil
+	case crystal:
+		return apLimitCrystalMil
+	}
+	return 0
+}
+
+// free reports whether a body may be placed: on the board, outside keep-outs and
+// every non-moving part (zero clearance), and pitch away from placed satellites.
+func (pk *apPacker) free(b layoutBBox) bool {
+	if bd := pk.opt.board; bd != nil && (b.MinX < bd.MinX-apEps || b.MaxX > bd.MaxX+apEps || b.MinY < bd.MinY-apEps || b.MaxY > bd.MaxY+apEps) {
+		return false
+	}
+	for _, ko := range pk.opt.keepouts {
+		if apOverlaps(b, ko) {
+			return false
+		}
+	}
+	for _, o := range pk.obstacles {
+		if apOverlaps(b, o.box) {
+			return false
+		}
+	}
+	infl := apInflate(b, pk.opt.pitch)
+	for _, o := range pk.placed {
+		if apOverlaps(infl, o.box) {
+			return false
+		}
+	}
+	return true
+}
+
+// avoidPenalty keeps inductors away from keep-outs and crystals (noise): 0.5 per
+// mil closer than apAvoidRadiusMil to each of them.
+func (pk *apPacker) avoidPenalty(b layoutBBox, inductor bool) float64 {
+	if !inductor {
+		return 0
+	}
+	pen := 0.0
+	add := func(r layoutBBox) {
+		if d := rectGap(b, r); d < apAvoidRadiusMil {
+			pen += apAvoidWeight * (apAvoidRadiusMil - d)
+		}
+	}
+	for _, ko := range pk.opt.keepouts {
+		add(ko)
+	}
+	for _, o := range pk.obstacles {
+		if o.crystal {
+			add(o.box)
+		}
+	}
+	for _, o := range pk.placed {
+		if o.crystal {
+			add(o.box)
+		}
+	}
+	return pen
+}
+
+// blockerReason explains why a satellite could not get a slot near its pad: it
+// scans the region just outside the chip edge in front of the target pad
+// (along ±limit, depth gap+limit). `slot` is the ideal (ring 0, on-target) body.
+func (pk *apPacker) blockerReason(chip apComp, edge apEdge, p *apSatPrep, slot layoutBBox, limit float64) string {
+	opt := pk.opt
+	region := apFrontRegion(chip, edge, p.a.along, limit, opt.gap+limit)
+	type blocker struct {
+		name string
+		area float64
+		box  layoutBBox
+	}
+	var blks []blocker
+	for _, o := range pk.obstacles {
+		if ar := apOverlapArea(region, o.box); ar > 0 {
+			name := o.des
+			if name == "" {
+				name = "part"
+			}
+			blks = append(blks, blocker{name, ar, o.box})
+		}
+	}
+	for _, ko := range opt.keepouts {
+		if ar := apOverlapArea(region, ko); ar > 0 {
+			blks = append(blks, blocker{"keep-out", ar, ko})
+		}
+	}
+	sib := 0.0
+	for _, o := range pk.placed {
+		sib += apOverlapArea(region, o.box)
+	}
+	sort.SliceStable(blks, func(i, j int) bool {
+		a, b := blks[i], blks[j]
+		if a.area != b.area {
+			return a.area > b.area
+		}
+		if a.name != b.name {
+			return a.name < b.name
+		}
+		if a.box.MinX != b.box.MinX {
+			return a.box.MinX < b.box.MinX
+		}
+		return a.box.MinY < b.box.MinY
+	})
+	if len(blks) > 0 && blks[0].area >= sib {
+		slo, shi := apAlongRange(slot, edge)
+		for _, b := range blks {
+			if !apOverlaps(slot, b.box) {
+				continue // does not stand on the ideal slot
+			}
+			blo, bhi := apAlongRange(b.box, edge)
+			n := math.Min(shi-blo, bhi-slo) // shortest shift along the edge that frees the slot
+			if n <= 0 {
+				continue
+			}
+			n = math.Ceil(n/5-1e-9) * 5
+			return fmt.Sprintf("blocked by %s; move it ~%.0fmil away", b.name, n)
+		}
+	}
+	if sib > 0 {
+		return fmt.Sprintf("crowded: too many satellites on %s %s edge", chip.designator, edge)
+	}
+	return "no closer free slot"
+}
+
+// packGroup places one (main, edge) group. Decoupling parts claim slots first
+// (smallest capacitance nearest the pin), then crystals, then the rest; each takes
+// the minimum-cost free slot over rings × along offsets (both directions).
+func (pk *apPacker) packGroup(comps []apComp, chip apComp, edge apEdge, group []*assignment, moves []apMove, diags []apDiag) ([]apMove, []apDiag) {
+	opt := pk.opt
+	preps := make([]*apSatPrep, 0, len(group))
+	maxPerp := 0.0
+	for _, a := range group {
+		sat := comps[a.sat]
+		// Re-orient (2-pin parts) so the connecting pad faces the chip; pack with
+		// the EFFECTIVE (post-rotation) bbox so rotated parts still don't overlap.
+		rot, effW, effH, oriented := orientSatellite(sat, edge, a.targetNet, opt.rotate)
+		p := &apSatPrep{a: a, sat: sat, rot: rot, effW: effW, effH: effH, oriented: oriented}
+		if edge.vertical() {
+			p.perp, p.along = effW, effH
+		} else {
+			p.perp, p.along = effH, effW
+		}
+		des := strings.TrimSpace(sat.designator)
+		p.crystal = apCrystalRe.MatchString(des)
+		p.inductor = apInductorRe.MatchString(des)
+		if f, ok := parseCapacitanceFarads(sat.name); ok {
+			p.capKey, p.capOK = math.Round(f*1e15), true
+		}
+		switch {
+		case a.via == "power":
+			p.rank = 0
+		case p.crystal:
+			p.rank = 1
+		default:
+			p.rank = 2
+		}
+		maxPerp = math.Max(maxPerp, p.perp)
+		preps = append(preps, p)
+	}
+	sort.SliceStable(preps, func(i, j int) bool {
+		a, b := preps[i], preps[j]
+		if a.rank != b.rank {
+			return a.rank < b.rank
+		}
+		if a.rank == 0 && a.capOK != b.capOK {
+			return a.capOK // a known capacitance sorts before an unknown one
+		}
+		if a.rank == 0 && a.capOK && a.capKey != b.capKey {
+			return a.capKey < b.capKey
+		}
+		if a.a.along != b.a.along {
+			return a.a.along < b.a.along
+		}
+		return a.sat.designator < b.sat.designator
+	})
+
+	ringStep := maxPerp + opt.pitch
+	body := func(p *apSatPrep, ring int, center float64) layoutBBox {
+		pc := apPerpCenter(chip, edge, opt.gap+float64(ring)*ringStep, p.perp)
+		if edge.vertical() {
+			return layoutBBox{MinX: pc - p.effW/2, MaxX: pc + p.effW/2, MinY: center - p.effH/2, MaxY: center + p.effH/2}
+		}
+		return layoutBBox{MinX: center - p.effW/2, MaxX: center + p.effW/2, MinY: pc - p.effH/2, MaxY: pc + p.effH/2}
+	}
+
+	// Candidate template, visited in ascending lowerBound; ties: smaller ring, then
+	// the -d side first (as the old nearest-free search did).
+	var slots []apSlot
+	for r := 0; r < apRings; r++ {
+		for k := 0; float64(k)*apSearchStepMil <= apSearchSpanMil; k++ {
+			d := float64(k) * apSearchStepMil
+			lb := d + float64(r)*ringStep
+			if k == 0 {
+				slots = append(slots, apSlot{ring: r, sign: 0, d: 0, lb: lb})
+				continue
+			}
+			slots = append(slots, apSlot{ring: r, sign: -1, d: d, lb: lb}, apSlot{ring: r, sign: 1, d: d, lb: lb})
+		}
+	}
+	sort.SliceStable(slots, func(i, j int) bool {
+		a, b := slots[i], slots[j]
+		if a.lb != b.lb {
+			return a.lb < b.lb
+		}
+		if a.ring != b.ring {
+			return a.ring < b.ring
+		}
+		return a.sign < b.sign
+	})
+
+	for _, p := range preps {
+		a, sat := p.a, p.sat
+		strips := apEscapeStrips(chip, edge, apOwnNets(sat))
+		limit := apDistLimit(a.via, p.crystal)
+
+		var bestBody layoutBBox
+		var bestCenter, bestCost float64
+		found := false
+		for _, sl := range slots {
+			if found && sl.lb > bestCost {
+				break
+			}
+			center := a.along + float64(sl.sign)*sl.d
+			b := body(p, sl.ring, center)
+			if !pk.free(b) {
+				continue
+			}
+			cost := sl.lb + apEscapePenalty(b, strips) + pk.avoidPenalty(b, p.inductor)
+			if !found || cost < bestCost {
+				bestBody, bestCenter, bestCost, found = b, center, cost, true
+			}
+		}
+
+		scan := limit
+		if scan <= 0 {
+			scan = apLimitCrystalMil
+		}
+		if !found {
+			reason := pk.blockerReason(chip, edge, p, body(p, 0, a.along), scan)
+			diags = append(diags, apDiag{sat.designator, fmt.Sprintf("no free slot on %s's %s edge within %.0fmil of its pin (keep-outs/board edge/other satellites) — %s", chip.designator, edge, apSearchSpanMil, reason)})
+			continue
+		}
+
+		var cx, cy float64
+		if edge.vertical() {
+			cx, cy = (bestBody.MinX+bestBody.MaxX)/2, bestCenter
+		} else {
+			cx, cy = bestCenter, (bestBody.MinY+bestBody.MaxY)/2
+		}
+		if limit > 0 && a.hasPad {
+			if dist := apPointRectDist(a.pad.x, a.pad.y, bestBody); dist > limit+apEps {
+				reason := pk.blockerReason(chip, edge, p, body(p, 0, a.along), limit)
+				diags = append(diags, apDiag{sat.designator, fmt.Sprintf("placed %.0fmil from %s.%s (limit %.0fmil) — %s", math.Ceil(dist-apEps), chip.designator, a.pad.net, limit, reason)})
+			}
+		}
+		pk.placed = append(pk.placed, apOccupant{box: bestBody, des: strings.TrimSpace(sat.designator), crystal: p.crystal})
+
+		// Place the bbox center at (cx,cy). The anchor→center offset is fixed on
+		// the part, so it rotates with it (Δ = targetRot − current).
+		bcx, bcy := sat.bboxCenter()
+		odx, ody := rotateVec(bcx-sat.x, bcy-sat.y, p.rot-sat.rotation)
+		moves = append(moves, apMove{
+			ID:         sat.id,
+			Designator: sat.designator,
+			NewX:       round2(cx - odx),
+			NewY:       round2(cy - ody),
+			NewRot:     p.rot,
+			SetRot:     p.oriented,
+			Main:       chip.designator,
+			Edge:       edge.String(),
+			TargetNet:  a.targetNet,
+			Via:        a.via,
+		})
+	}
+	return moves, diags
 }

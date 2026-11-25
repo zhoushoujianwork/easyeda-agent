@@ -24,7 +24,7 @@
 | 能力 | 命令 | 说明 |
 |---|---|---|
 | 板框与原点 | `pcb outline` / `outline-fit` / `outline-round` / `origin get/set` | `outline-round` 生成含原生 ARC 的闭合锁定板框；`outline-get` 回读中心线尺寸、半径、线宽、锁定与弧数；origin 只改显示坐标，不移动几何 |
-| 角色感知自动摆放 | `pcb auto-place` / `place-constrained` | 卫星贴其所连芯片侧、2 脚件自动转向、间距规则感知;规划后按 blocking 复算合法化(重叠/短路/出框就地重定位) |
+| 角色感知自动摆放 | `pcb auto-place` / `place-constrained` | 卫星贴其所连芯片侧(代价制选槽:多排回退、跨边共享占位、非移动件作障碍;退耦电容容值小者更近、电感避开禁布区/晶振;超出距离上限给出阻挡者诊断)、2 脚件自动转向、间距规则感知;规划后按 blocking 复算合法化(重叠/短路/出框就地重定位) |
 | 分区规划 | `pcb floorplan` / `pcb zones` | S0 spec 驱动的有序带切分(只读)+ 分区认领 |
 | 分档记录 | `pcb stage confirm-tier 1-4` / `set-assembly` | 兼容保留孔→边缘件→主芯片+RF→卫星的历史记录；不决定后续动作能否执行 |
 | 布局检查 | `pcb layout-lint` | 报告重叠/紧间距/可布性(飞线 MST+交叉)/手焊可达性(no-access)的具体事实 |

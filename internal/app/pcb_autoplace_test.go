@@ -428,8 +428,15 @@ func TestPlanAutoPlaceKeepsSatellitesOutOfKeepoutsAndNearTheirPin(t *testing.T) 
 	opt.keepouts = []layoutBBox{keepout}
 	opt.board = &layoutBBox{MinX: -240, MaxX: 940, MinY: -1600, MaxY: -343}
 	moves, diags := planAutoPlace(comps, opt)
-	if len(diags) != 0 {
-		t.Fatalf("every satellite must find a slot: %+v", diags)
+	// v2 adds distance-limit diags ("placed Nmil from … (limit …)") for parts that
+	// ARE placed but sit beyond the decoupling limit; only a missing move is a failure.
+	for _, d := range diags {
+		if strings.Contains(d.Reason, "no free slot") {
+			t.Fatalf("every satellite must find a slot: %+v", diags)
+		}
+	}
+	if len(moves) != 5 {
+		t.Fatalf("want 5 satellites moved, got %d (diags %+v)", len(moves), diags)
 	}
 	size := map[string][2]float64{}
 	for _, c := range comps {
@@ -448,6 +455,280 @@ func TestPlanAutoPlaceKeepsSatellitesOutOfKeepoutsAndNearTheirPin(t *testing.T) 
 		if m.Designator == "C1" || m.Designator == "C3" {
 			if d := math.Abs(m.NewY - (-693)); d > 200 {
 				t.Errorf("%s decouples U1.2 (y=-693) but sits %.0fmil away along the edge", m.Designator, d)
+			}
+		}
+	}
+}
+
+// ── v2 packer: rings, obstacles, cost, limits ────────────────────────────────
+
+// v2Chip is a 400×400 main chip centered on the origin (bbox ±200). `left` pads
+// are placed on the left edge (x=-190); filler pads on the right edge with no net
+// bring the distinct-pin count over the main-chip threshold.
+func v2Chip(left ...apPad) apComp {
+	pads := append([]apPad(nil), left...)
+	for i := 0; i < 8; i++ {
+		pads = append(pads, p(fmt.Sprintf("F%d", i), "", 190, float64(-140+i*40)))
+	}
+	return mkComp("u1", "U1", 0, 0, 400, 400, pads)
+}
+
+// v2Opt: no rotation so a w×h part keeps w across the edge and h along it.
+func v2Opt() apOptions {
+	opt := defaultApOptions() // gap 40, pitch 30
+	opt.rotate = false
+	return opt
+}
+
+func v2Move(t *testing.T, moves []apMove, des string) apMove {
+	t.Helper()
+	for _, m := range moves {
+		if m.Designator == des {
+			return m
+		}
+	}
+	t.Fatalf("%s not placed; moves=%+v", des, moves)
+	return apMove{}
+}
+
+func diagFor(diags []apDiag, des string) string {
+	for _, d := range diags {
+		if d.Designator == des {
+			return d.Reason
+		}
+	}
+	return ""
+}
+
+// Ring 0 is fully blocked by a keep-out: the part must land in ring 1 (one
+// ringStep = widest satellite + pitch further out) instead of "no free slot".
+func TestPlanAutoPlaceV2_RingFallbackWhenRingZeroBlocked(t *testing.T) {
+	chip := v2Chip(p("1", "SIG", -190, 0))
+	r1 := mkComp("r1", "R1", 900, 900, 60, 30, []apPad{p("1", "SIG", 0, 0), p("2", "GND", 0, 0)})
+	opt := v2Opt()
+	// Ring 0 body is x ∈ [-300,-240]; ring 1 is x ∈ [-390,-330].
+	opt.keepouts = []layoutBBox{{MinX: -320, MaxX: -230, MinY: -2500, MaxY: 2500}}
+	moves, diags := planAutoPlace([]apComp{chip, r1}, opt)
+	if len(diags) != 0 {
+		t.Fatalf("ring 1 is free, expected no diag: %+v", diags)
+	}
+	m := v2Move(t, moves, "R1")
+	if m.NewX != -360 || m.NewY != 0 {
+		t.Errorf("R1 at (%.1f,%.1f), want ring 1 slot (-360,0)", m.NewX, m.NewY)
+	}
+
+	// All three rings blocked → no slot, and the diag still names the blocker.
+	opt.keepouts = []layoutBBox{{MinX: -5000, MaxX: -210, MinY: -3000, MaxY: 3000}}
+	moves, diags = planAutoPlace([]apComp{chip, r1}, opt)
+	if len(moves) != 0 {
+		t.Fatalf("nothing is free, got moves %+v", moves)
+	}
+	if r := diagFor(diags, "R1"); !strings.Contains(r, "no free slot") || !strings.Contains(r, "blocked by keep-out") {
+		t.Errorf("want a no-free-slot diag naming the keep-out, got %q", r)
+	}
+}
+
+// A locked (non-satellite) part sitting on the ideal slot is an obstacle with zero
+// clearance: the satellite slides along the edge until it just clears it.
+func TestPlanAutoPlaceV2_LockedPartIsAvoided(t *testing.T) {
+	chip := v2Chip(p("1", "SIG", -190, 0))
+	locked := mkComp("q1", "Q1", -270, 0, 60, 30, nil)
+	locked.locked = true
+	r1 := mkComp("r1", "R1", 900, 900, 60, 30, []apPad{p("1", "SIG", 0, 0), p("2", "GND", 0, 0)})
+	moves, diags := planAutoPlace([]apComp{chip, locked, r1}, v2Opt())
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diags %+v", diags)
+	}
+	m := v2Move(t, moves, "R1")
+	if m.NewX != -270 || m.NewY != -30 {
+		t.Errorf("R1 at (%.1f,%.1f), want (-270,-30): beside the locked part, still in ring 0", m.NewX, m.NewY)
+	}
+	for _, mv := range moves {
+		if mv.Designator == "Q1" {
+			t.Errorf("locked part must not move: %+v", mv)
+		}
+	}
+}
+
+// The smallest capacitance claims the slot nearest the pin; an unknown value
+// sorts after every known one even when its designator sorts first.
+func TestPlanAutoPlaceV2_SmallestCapacitanceNearestPin(t *testing.T) {
+	chip := v2Chip(p("1", "3V3", -190, 0))
+	cap2 := func(id, des, name string) apComp {
+		c := mkComp(id, des, 900, 900, 60, 30, []apPad{p("1", "3V3", 0, 0), p("2", "GND", 0, 0)})
+		c.name = name
+		return c
+	}
+	comps := []apComp{
+		chip,
+		cap2("c0", "C0", "STM32-BULK"), // unknown value: sorts last despite the first designator
+		cap2("c1", "C1", "10uF"),
+		cap2("c2", "C2", "100nF"),
+		cap2("c3", "C3", "1uF"),
+	}
+	moves, diags := planAutoPlace(comps, v2Opt())
+	// Slot costs: ring 0 at y=0 (0), -60, +60 (60); ring 1 at y=0 costs ringStep=90,
+	// cheaper than a fourth ring-0 slot (120), so the unknown value goes there.
+	want := map[string][2]float64{"C2": {-270, 0}, "C3": {-270, -60}, "C1": {-270, 60}, "C0": {-360, 0}}
+	for des, xy := range want {
+		m := v2Move(t, moves, des)
+		if m.NewX != xy[0] || m.NewY != xy[1] {
+			t.Errorf("%s at (%.1f,%.1f), want (%.0f,%.0f) (100nF < 1uF < 10uF < unknown)", des, m.NewX, m.NewY, xy[0], xy[1])
+		}
+	}
+	// Only the far one (140mil, beyond the 100mil decoupling limit) is reported.
+	if len(diags) != 1 || diags[0].Designator != "C0" || !strings.Contains(diags[0].Reason, "limit 100mil") {
+		t.Errorf("want one limit diag for C0, got %+v", diags)
+	}
+}
+
+// A body parked in front of a pad of ANOTHER net blocks that pad's fan-out. With
+// an equally near clean slot the satellite takes it; when the pad shares the
+// satellite's net there is no penalty and the on-target slot stays.
+func TestPlanAutoPlaceV2_EscapeStripShiftsOffForeignPad(t *testing.T) {
+	run := func(foreignNet string) apMove {
+		chip := v2Chip(p("1", "3V3", -190, 0),
+			apPad{num: "9", net: foreignNet, x: -190, y: 0, layer: 1, w: 10, h: 10})
+		c := mkComp("c1", "C1", 900, 900, 40, 20, []apPad{p("1", "3V3", 0, 0), p("2", "GND", 0, 0)})
+		opt := v2Opt()
+		opt.gap = 10 // body x ∈ [-250,-210], fully inside the 50mil-deep strip
+		moves, diags := planAutoPlace([]apComp{chip, c}, opt)
+		if len(diags) != 0 {
+			t.Fatalf("foreign=%s: unexpected diags %+v", foreignNet, diags)
+		}
+		return v2Move(t, moves, "C1")
+	}
+	if m := run("SIG"); m.NewY != -20 {
+		t.Errorf("foreign SIG pad in front: C1 y=%.1f, want -20 (nearest clean slot, -d side first)", m.NewY)
+	}
+	if m := run("GND"); m.NewY != 0 {
+		t.Errorf("a pad on the cap's own net has no escape strip: C1 y=%.1f, want 0", m.NewY)
+	}
+}
+
+// Inductors add a penalty for sitting near a keep-out. With the centre slot taken,
+// the two equally near slots differ only by that penalty: an inductor picks the
+// side away from the keep-out, a resistor keeps the usual -d side.
+func TestPlanAutoPlaceV2_InductorMovesAwayFromKeepout(t *testing.T) {
+	run := func(des string) apMove {
+		chip := v2Chip(p("1", "SW", -190, 0))
+		blocker := mkComp("q1", "Q1", -270, 0, 60, 30, nil)
+		blocker.locked = true
+		part := mkComp("p1", des, 900, 900, 60, 30, []apPad{p("1", "SW", 0, 0), p("2", "GND", 0, 0)})
+		opt := v2Opt()
+		opt.keepouts = []layoutBBox{{MinX: -320, MaxX: -230, MinY: -300, MaxY: -100}}
+		moves, diags := planAutoPlace([]apComp{chip, blocker, part}, opt)
+		if len(diags) != 0 {
+			t.Fatalf("%s: unexpected diags %+v", des, diags)
+		}
+		return v2Move(t, moves, des)
+	}
+	if m := run("R1"); m.NewY != -30 {
+		t.Errorf("resistor y=%.1f, want -30 (tie → -d side first)", m.NewY)
+	}
+	if m := run("L1"); m.NewY != 30 {
+		t.Errorf("inductor y=%.1f, want +30 (away from the keep-out below)", m.NewY)
+	}
+}
+
+// A decoupling cap pushed out of its 100mil limit is still placed, and the diag
+// says by how much and which part is in the way.
+func TestPlanAutoPlaceV2_FarPlacementDiagNamesBlocker(t *testing.T) {
+	chip := v2Chip(p("1", "3V3", -190, 0))
+	wall := mkComp("d1", "D1", -270, 0, 60, 400, nil) // x ∈ [-300,-240], y ∈ [-200,200]
+	wall.locked = true
+	c1 := mkComp("c1", "C1", 900, 900, 60, 30, []apPad{p("1", "3V3", 0, 0), p("2", "GND", 0, 0)})
+	moves, diags := planAutoPlace([]apComp{chip, wall, c1}, v2Opt())
+	m := v2Move(t, moves, "C1")
+	if m.NewX != -360 || m.NewY != 0 {
+		t.Errorf("C1 at (%.1f,%.1f), want ring 1 (-360,0)", m.NewX, m.NewY)
+	}
+	r := diagFor(diags, "C1")
+	for _, want := range []string{"placed 140mil from U1.3V3", "limit 100mil", "blocked by D1", "move it ~215mil away"} {
+		if !strings.Contains(r, want) {
+			t.Errorf("diag %q lacks %q", r, want)
+		}
+	}
+	// Same cap, nothing in the way → within the limit, no diag at all.
+	if _, diags := planAutoPlace([]apComp{chip, c1}, v2Opt()); len(diags) != 0 {
+		t.Errorf("a near placement must be silent, got %+v", diags)
+	}
+}
+
+func TestParseCapacitanceFarads(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+		ok   bool
+	}{
+		{"100nF", 1e-7, true},
+		{"100NF", 1e-7, true},
+		{"0.1uF", 1e-7, true},
+		{"0.1µF", 1e-7, true}, // U+00B5
+		{"0.1μF", 1e-7, true}, // U+03BC
+		{"10u", 1e-5, true},
+		{"10 uF", 1e-5, true},
+		{"4.7uF/16V", 4.7e-6, true},
+		{"1nF", 1e-9, true},
+		{"22pF", 2.2e-11, true},
+		{"100nF_0402", 1e-7, true},
+		{"1mF", 1e-3, true},
+		{"", 0, false},
+		{"STM32F415RGT6", 0, false},
+		{"CL05B104KO5NNNC", 0, false},
+		{"0402", 0, false},
+		{"10k", 0, false},
+		{"10uH", 0, false},  // inductance, not capacitance
+		{"100mΩ", 0, false}, // resistance
+		{"10m", 0, false},   // bare milli: ambiguous, needs the F
+		{"abc 100nF", 0, false},
+	}
+	for _, c := range cases {
+		got, ok := parseCapacitanceFarads(c.in)
+		if ok != c.ok {
+			t.Errorf("%q: ok=%v, want %v", c.in, ok, c.ok)
+			continue
+		}
+		if ok && math.Abs(got-c.want) > math.Abs(c.want)*1e-9 {
+			t.Errorf("%q: %g F, want %g F", c.in, got, c.want)
+		}
+	}
+}
+
+// Satellites of two different edges share one occupancy list. Three parts on the
+// left edge spill up past the chip's top-left corner, exactly where the wide top-
+// edge parts want to go (R3 at y∈[215,245] vs R4 at y∈[240,270], x ranges overlap
+// by 10mil); a per-group packer would stack them, the shared one must not.
+func TestPlanAutoPlaceV2_CornerSatellitesNeverOverlap(t *testing.T) {
+	chip := v2Chip(p("1", "SIGA", -190, 170), p("2", "SIGB", -190, 195)) // 2nd pad: top edge
+	comps := []apComp{chip}
+	for i, des := range []string{"R1", "R2", "R3"} {
+		comps = append(comps, mkComp(fmt.Sprintf("a%d", i), des, 900, 900+float64(i)*100, 60, 30, []apPad{p("1", "SIGA", 0, 0), p("2", "GND", 0, 0)}))
+	}
+	for i, des := range []string{"R4", "R5", "R6"} {
+		comps = append(comps, mkComp(fmt.Sprintf("b%d", i), des, 1500, 900+float64(i)*100, 120, 30, []apPad{p("1", "SIGB", 0, 0), p("2", "GND", 0, 0)}))
+	}
+	size := map[string][2]float64{"R1": {60, 30}, "R2": {60, 30}, "R3": {60, 30}, "R4": {120, 30}, "R5": {120, 30}, "R6": {120, 30}}
+	opt := v2Opt()
+	moves, diags := planAutoPlace(comps, opt)
+	if len(moves) != 6 {
+		t.Fatalf("want 6 placed, got %d (diags %+v)", len(moves), diags)
+	}
+	edges := map[string]bool{}
+	box := map[string]layoutBBox{}
+	for _, m := range moves {
+		edges[m.Edge] = true
+		sz := size[m.Designator] // rotate=false: the body keeps its size
+		box[m.Designator] = layoutBBox{MinX: m.NewX - sz[0]/2, MaxX: m.NewX + sz[0]/2, MinY: m.NewY - sz[1]/2, MaxY: m.NewY + sz[1]/2}
+	}
+	if !edges["left"] || !edges["top"] {
+		t.Fatalf("test needs satellites on both left and top edges, got %v", edges)
+	}
+	des := []string{"R1", "R2", "R3", "R4", "R5", "R6"}
+	for i := 0; i < len(des); i++ {
+		for j := i + 1; j < len(des); j++ {
+			if apOverlaps(apInflate(box[des[i]], opt.pitch), box[des[j]]) {
+				t.Errorf("%s %+v and %s %+v are closer than pitch %.0f", des[i], box[des[i]], des[j], box[des[j]], opt.pitch)
 			}
 		}
 	}
