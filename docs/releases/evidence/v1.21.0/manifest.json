@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 3,
+  "version": "v1.21.0",
+  "result": "pass",
+  "independentReview": "pass",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.21.0",
+    "date": "2026-11-25",
+    "summary": "用户要求发布 pcb.silk.delete（#341）；在被告知新增连接器动作按版本规则须升中版本并提交现场验收与独立复核材料后，选择发 v1.21.0：以全量自动回归、EdaDesk DEV 上内置 AI 按 ID 删除自由丝印的现场写入与保存重载回读、写前拒绝、v1.20.0 负对照和候选制品等价性为准，完整设计 E2E 延期 follow-up。"
+  },
+  "sha256": {
+    "test-report.md": "1b4c4903d484c0a34b4e0dd36f50fd6fb22ff748ca03ecca96bd643ce2503c49",
+    "baseline.md": "9f686447692c9d7c2fbd85abecd3f98bd26b97d814ac72a32e612c04f553221f",
+    "test-cases.md": "697cafe91ce3297e38532b8c09a90ae06e8cd1418efe6f47f3d1d3a60bcd1a64"
+  }
+}
