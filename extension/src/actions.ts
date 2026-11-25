@@ -10559,6 +10559,39 @@ const pcbSilkSet: Handler = async (payload) => {
 	return { result: { align: align || undefined, count: results.length, requestedIds: ids, verified, partial: !verified && appliedIds.length > 0, appliedIds, results } };
 };
 
+// pcb.silk.delete — delete exactly ONE free silkscreen STRING by primitive id.
+// Component designator/value ATTRIBUTES are pcb_PrimitiveAttribute, not strings,
+// so an attribute id simply resolves to nothing here and is refused. Every
+// refusal happens before the delete call; success is a fresh getAll() that shows
+// the id gone (an unreadable inventory is not proof of absence).
+const pcbSilkDelete: Handler = async (payload) => {
+	const id = requireString(payload, 'primitiveId');
+	for (const key of Object.keys(payload)) {
+		if (key !== 'primitiveId') throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Unsupported pcb.silk.delete field ${key}; only primitiveId is accepted.`);
+	}
+	let target;
+	try { target = await eda.pcb_PrimitiveString.get(id); }
+	catch (err) { throw edaError(err, `Failed to read silkscreen string ${id}; no delete was attempted.`); }
+	if (!target || target.getState_PrimitiveId() !== id) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Free string ${id} not found or ID readback mismatched (designator/value attributes are not deletable here); no delete was attempted.`);
+	}
+	const layer = pcbPrimLayer(target);
+	if (!isPcbSilkLayer(layer)) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `String ${id} is on layer ${layer}, not silkscreen layer 3/4; no delete was attempted.`);
+	}
+	if (pcbPrimLocked(target)) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `String ${id} is locked; unlock it deliberately before deleting. No delete was attempted.`);
+	}
+	const text = target.getState_Text();
+	let deleted: boolean;
+	try { deleted = (await eda.pcb_PrimitiveString.delete(id)) === true; }
+	catch (err) { throw edaError(err, `pcb_PrimitiveString.delete failed for ${id}; it may already be deleted. Read pcb.silk.list before retrying.`); }
+	let fresh; let readable = false;
+	try { fresh = await eda.pcb_PrimitiveString.getAll(); readable = Array.isArray(fresh); } catch { /* unavailable is not proof of absence */ }
+	const verified = deleted && readable && !fresh!.some(o => o.getState_PrimitiveId() === id);
+	return { result: { primitiveId: id, text, layer, deleted, verified, ...(!verified ? { partial: true } : {}) } };
+};
+
 /**
  * Auto-generate network-name silkscreen labels for nets with pads in a zone.
  * Reads the list of nets and their pads, filters by zone_rect, computes
@@ -16590,6 +16623,7 @@ const HANDLERS: Record<string, Handler> = {
 	'pcb.image.modify': pcbImageModify,
 	'pcb.image.delete': pcbImageDelete,
 	'pcb.silk.set': pcbSilkSet,
+	'pcb.silk.delete': pcbSilkDelete,
 	'pcb.silk.netnames': pcbSilkNetnames,
 	'pcb.silk.label_pads': pcbSilkLabelPads,
 	'pcb.nets.list': pcbNetsList,
