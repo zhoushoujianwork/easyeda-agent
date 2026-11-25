@@ -4943,6 +4943,7 @@ func parseApComps(result map[string]any) []apComp {
 			y:          asFloat(cm["y"]),
 			rotation:   asFloat(cm["rotation"]),
 			locked:     asBool(cm["locked"]),
+			layer:      int(asFloat(cm["layer"])),
 		}
 		if bb, ok := cm["bbox"].(map[string]any); ok {
 			c.hasBBox = true

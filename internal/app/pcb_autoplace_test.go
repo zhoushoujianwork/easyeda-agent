@@ -964,3 +964,36 @@ func TestPlanAutoPlaceRF_BlockedPathReportsOffLineMember(t *testing.T) {
 		}
 	}
 }
+
+// A part on the other side of a double-sided board is not an obstacle: a
+// bottom-side cap may sit right under a top-side locked part, while a top-side
+// cap must step around it. Through-hole parts (MULTI pads) block both sides.
+func TestPlanAutoPlaceV2_OppositeSideDoesNotCollide(t *testing.T) {
+	chip := v2Chip(p("1", "SIG", -190, 0))
+	chip.layer = 1
+	locked := mkComp("q1", "Q1", -270, 0, 60, 30, nil)
+	locked.locked, locked.layer = true, 1
+	bottom := mkComp("r1", "R1", 900, 900, 60, 30, []apPad{{num: "1", net: "SIG", x: 0, y: 0, layer: 2}, {num: "2", net: "GND", x: 0, y: 0, layer: 2}})
+	bottom.layer = 2
+	moves, diags := planAutoPlace([]apComp{chip, locked, bottom}, v2Opt())
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diags %+v", diags)
+	}
+	if m := v2Move(t, moves, "R1"); m.NewX != -270 || m.NewY != 0 {
+		t.Errorf("bottom-side R1 at (%.1f,%.1f), want (-270,0) under the top-side locked part", m.NewX, m.NewY)
+	}
+
+	top := mkComp("r1", "R1", 900, 900, 60, 30, []apPad{p("1", "SIG", 0, 0), p("2", "GND", 0, 0)})
+	top.layer = 1
+	moves, _ = planAutoPlace([]apComp{chip, locked, top}, v2Opt())
+	if m := v2Move(t, moves, "R1"); m.NewX == -270 && m.NewY == 0 {
+		t.Errorf("top-side R1 must not overlap the top-side locked part")
+	}
+
+	tht := mkComp("q1", "Q1", -270, 0, 60, 30, []apPad{{num: "1", x: -270, y: 0, layer: pcbLayerMulti}})
+	tht.locked, tht.layer = true, 1
+	moves, _ = planAutoPlace([]apComp{chip, tht, bottom}, v2Opt())
+	if m := v2Move(t, moves, "R1"); m.NewX == -270 && m.NewY == 0 {
+		t.Errorf("a through-hole part blocks the bottom side too")
+	}
+}

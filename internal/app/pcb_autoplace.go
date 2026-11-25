@@ -80,6 +80,7 @@ type apComp struct {
 	x, y       float64 // component anchor (what modify sets)
 	rotation   float64 // current rotation (deg, y-up CCW) — needed to re-orient
 	locked     bool
+	layer      int // assembly side from the readback: 1 top, 2 bottom, other = unknown
 	hasBBox    bool
 	minX, minY float64
 	maxX, maxY float64
@@ -89,7 +90,26 @@ type apComp struct {
 func (c apComp) bboxCenter() (float64, float64) {
 	return (c.minX + c.maxX) / 2, (c.minY + c.maxY) / 2
 }
-func (c apComp) width() float64  { return c.maxX - c.minX }
+func (c apComp) width() float64 { return c.maxX - c.minX }
+
+// side is the board side the part occupies for collision purposes: 1 top,
+// 2 bottom, 0 both/unknown (unknown layer, or a through-hole part with a MULTI
+// pad, which blocks both sides). Parts on opposite sides never collide — a
+// double-sided board puts decoupling caps under the chip they serve.
+func (c apComp) side() int {
+	if c.layer != 1 && c.layer != 2 {
+		return 0
+	}
+	for _, p := range c.pads {
+		if p.layer == pcbLayerMulti {
+			return 0
+		}
+	}
+	return c.layer
+}
+
+// sameSide reports whether two sides can collide (0 = both sides).
+func sameSide(a, b int) bool     { return a == 0 || b == 0 || a == b }
 func (c apComp) height() float64 { return c.maxY - c.minY }
 
 // distinctPins counts unique pad numbers (U1 reports the same GND pad many
@@ -347,8 +367,24 @@ type assignment struct {
 // every movable satellite goes. Main chips are anchors (never moved in v1).
 // Returns the moves plus diagnostics for anything left unplaced.
 func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
+	moves, diags, _ := planAutoPlaceDetailed(comps, opt)
+	return moves, diags
+}
+
+// apPlanInfo is the planner's own classification of the parts (indices into the
+// comps slice passed in), exposed so offline callers (pcb layout simulate) agree
+// with what planAutoPlace actually moves instead of re-deriving the rules.
+type apPlanInfo struct {
+	Mains   []int       // anchors (chips)
+	Movable []int       // every part the planner may move: satellites AND RF chain members
+	AntChip map[int]int // antenna index → index of the chip its RF chain ends on
+}
+
+// planAutoPlaceDetailed is planAutoPlace plus the classification of the parts.
+func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, apPlanInfo) {
 	var mains, sats, ants []int
 	var diags []apDiag
+	info := apPlanInfo{AntChip: map[int]int{}}
 	for i, c := range comps {
 		if !c.hasBBox {
 			continue
@@ -389,11 +425,14 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		}
 	}
 
+	info.Mains = append([]int(nil), mains...)
+	info.Movable = append([]int(nil), sats...)
+
 	if len(mains) == 0 {
 		for _, s := range sats {
 			diags = append(diags, apDiag{comps[s].designator, "no main chip on board (>= mainPins distinct pins) to anchor against"})
 		}
-		return nil, diags
+		return nil, diags, info
 	}
 
 	var moves []apMove
@@ -455,6 +494,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		chains, cd = discoverRfChains(comps, sats, mains, ants, mainPadsByNet)
 		diags = append(diags, cd...)
 		for _, ch := range chains {
+			info.AntChip[ch.ant] = mains[ch.chip]
 			for _, m := range ch.members() {
 				chainMoving[m] = true
 			}
@@ -582,6 +622,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 			box:     layoutBBox{MinX: c.minX, MinY: c.minY, MaxX: c.maxX, MaxY: c.maxY},
 			des:     strings.TrimSpace(c.designator),
 			crystal: apCrystalRe.MatchString(strings.TrimSpace(c.designator)),
+			side:    c.side(),
 		})
 	}
 
@@ -620,7 +661,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 		chip := comps[mains[k.main]]
 		moves, diags = pk.packGroup(comps, chip, k.edge, groups[k], moves, diags)
 	}
-	return moves, diags
+	return moves, diags, info
 }
 
 // edgeFor returns the chip bbox edge nearest a target pad, plus the pad's
@@ -857,6 +898,7 @@ type apOccupant struct {
 	box     layoutBBox
 	des     string
 	crystal bool
+	side    int // see apComp.side
 }
 
 // apPacker holds the occupancy shared by every (main, edge) group.
@@ -1020,13 +1062,14 @@ func apDistLimit(via string, crystal bool) float64 {
 	return 0
 }
 
-// free reports whether a body may be placed: on the board, outside keep-outs and
-// every non-moving part (zero clearance), and pitch away from placed satellites.
-func (pk *apPacker) free(b layoutBBox) bool { return pk.freeSkip(b, nil) }
+// free reports whether a body on `side` may be placed: on the board, outside
+// keep-outs (every side) and every non-moving part on the same side (zero
+// clearance), and pitch away from placed satellites on the same side.
+func (pk *apPacker) free(b layoutBBox, side int) bool { return pk.freeSkip(b, side, nil) }
 
 // freeSkip is free() that ignores the keep-outs for which skipKO returns true
 // (RF chain members may sit inside the keep-out that surrounds their antenna).
-func (pk *apPacker) freeSkip(b layoutBBox, skipKO func(layoutBBox) bool) bool {
+func (pk *apPacker) freeSkip(b layoutBBox, side int, skipKO func(layoutBBox) bool) bool {
 	if bd := pk.opt.board; bd != nil && (b.MinX < bd.MinX-apEps || b.MaxX > bd.MaxX+apEps || b.MinY < bd.MinY-apEps || b.MaxY > bd.MaxY+apEps) {
 		return false
 	}
@@ -1039,13 +1082,13 @@ func (pk *apPacker) freeSkip(b layoutBBox, skipKO func(layoutBBox) bool) bool {
 		}
 	}
 	for _, o := range pk.obstacles {
-		if apOverlaps(b, o.box) {
+		if sameSide(side, o.side) && apOverlaps(b, o.box) {
 			return false
 		}
 	}
 	infl := apInflate(b, pk.opt.pitch)
 	for _, o := range pk.placed {
-		if apOverlaps(infl, o.box) {
+		if sameSide(side, o.side) && apOverlaps(infl, o.box) {
 			return false
 		}
 	}
@@ -1092,7 +1135,11 @@ func (pk *apPacker) blockerReason(chip apComp, edge apEdge, p *apSatPrep, slot l
 		box  layoutBBox
 	}
 	var blks []blocker
+	side := p.sat.side()
 	for _, o := range pk.obstacles {
+		if !sameSide(side, o.side) {
+			continue
+		}
 		if ar := apOverlapArea(region, o.box); ar > 0 {
 			name := o.des
 			if name == "" {
@@ -1108,7 +1155,9 @@ func (pk *apPacker) blockerReason(chip apComp, edge apEdge, p *apSatPrep, slot l
 	}
 	sib := 0.0
 	for _, o := range pk.placed {
-		sib += apOverlapArea(region, o.box)
+		if sameSide(side, o.side) {
+			sib += apOverlapArea(region, o.box)
+		}
 	}
 	sort.SliceStable(blks, func(i, j int) bool {
 		a, b := blks[i], blks[j]
@@ -1232,7 +1281,11 @@ func (pk *apPacker) packGroup(comps []apComp, chip apComp, edge apEdge, group []
 
 	for _, p := range preps {
 		a, sat := p.a, p.sat
-		strips := apEscapeStrips(chip, edge, apOwnNets(sat))
+		// A part on the other side of the board does not block this side's fan-out.
+		var strips []layoutBBox
+		if sameSide(chip.side(), sat.side()) {
+			strips = apEscapeStrips(chip, edge, apOwnNets(sat))
+		}
 		limit := apDistLimit(a.via, p.crystal)
 
 		var bestBody layoutBBox
@@ -1244,7 +1297,7 @@ func (pk *apPacker) packGroup(comps []apComp, chip apComp, edge apEdge, group []
 			}
 			center := a.along + float64(sl.sign)*sl.d
 			b := body(p, sl.ring, center)
-			if !pk.free(b) {
+			if !pk.free(b, sat.side()) {
 				continue
 			}
 			cost := sl.lb + apEscapePenalty(b, strips) + pk.avoidPenalty(b, p.inductor)
@@ -1275,7 +1328,7 @@ func (pk *apPacker) packGroup(comps []apComp, chip apComp, edge apEdge, group []
 				diags = append(diags, apDiag{sat.designator, fmt.Sprintf("placed %.0fmil from %s.%s (limit %.0fmil) — %s", math.Ceil(dist-apEps), chip.designator, a.pad.net, limit, reason)})
 			}
 		}
-		pk.placed = append(pk.placed, apOccupant{box: bestBody, des: strings.TrimSpace(sat.designator), crystal: p.crystal})
+		pk.placed = append(pk.placed, apOccupant{box: bestBody, des: strings.TrimSpace(sat.designator), crystal: p.crystal, side: sat.side()})
 
 		// Place the bbox center at (cx,cy). The anchor→center offset is fixed on
 		// the part, so it rotates with it (Δ = targetRot − current).
@@ -1590,7 +1643,7 @@ func (pk *apPacker) placeRfChain(comps []apComp, mains []int, ch *rfChain, moves
 			NewRot: rot, SetRot: oriented,
 			Main: chip.designator, Edge: "rf-chain", TargetNet: net, Via: via,
 		})
-		pk.placed = append(pk.placed, apOccupant{box: b, des: strings.TrimSpace(sat.designator)})
+		pk.placed = append(pk.placed, apOccupant{box: b, des: strings.TrimSpace(sat.designator), side: sat.side()})
 	}
 	offLine := func(sat apComp, b layoutBBox, limit float64) {
 		if d := lineDist(b); d > limit+apEps {
@@ -1650,7 +1703,7 @@ func (pk *apPacker) placeRfChain(comps []apComp, mains []int, ch *rfChain, moves
 			for _, off := range apRfPerpTries {
 				t = cursor + ext/2 + al
 				b := box(ax-ux*t+vx*off, ay-uy*t+vy*off, effW, effH)
-				if pk.freeSkip(b, skipKO) {
+				if pk.freeSkip(b, sat.side(), skipKO) {
 					body, found = b, true
 					cursor += ext + al + apRfPartGapMil
 					break search
@@ -1700,7 +1753,7 @@ func (pk *apPacker) placeRfChain(comps []apComp, mains []int, ch *rfChain, moves
 				offMag := pos[anchor].across/2 + opt.pitch + own/2
 				t := pos[anchor].t + dl
 				b := box(ax-ux*t+vx*side*offMag, ay-uy*t+vy*side*offMag, sr.w, sr.h)
-				if pk.freeSkip(b, skipKO) {
+				if pk.freeSkip(b, sat.side(), skipKO) {
 					body, chosen, limit, found = b, sr, apRfLineLimitMil+offMag, true
 					break shuntSearch
 				}

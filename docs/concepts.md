@@ -334,7 +334,7 @@ daemon、Connector、文件系统或 EasyEDA 对象。
 
 **宿主适配层**负责将原始快照和独立需求转换为内核输入，校验端点网络与层，并保存输入
 溯源。单端点入口为 `pcb route solve/check`，布局与所有声明网络的入口为
-`pcb layout solve/check/render`；不分发第二个 CLI、不通过子进程调用求解器。其他 Go 项目可
+`pcb layout solve/check/render`（另有离线摆放模拟 `pcb layout simulate`，复用 auto-place 规划器，不求解）；不分发第二个 CLI、不通过子进程调用求解器。其他 Go 项目可
 直接 import 同一 module。应用结果仍走既有 typed 执行链。
 
 宿主适配层按**对象对规则**取值：原生 Safe Spacing 是按对象类型成对的矩阵，走线、过孔、孔、
