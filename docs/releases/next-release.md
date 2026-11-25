@@ -1,3 +1,10 @@
+# v1.21.0 已发布
+
+当前正式版为 [v1.21.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.21.0)（2026-11-25 发布）。
+本版新增连接器动作 `pcb.silk.delete` / `easyeda pcb silk-delete --id`（#341），按中版本发布；schema 3 `cli-fixes`
+定向范围：全量自动回归、EdaDesk DEV 现场按 ID 删除与保存重载回读、写前拒绝、v1.20.0 负对照；完整设计 E2E 延期
+follow-up。来源、检查、资产 SHA256 与市场状态见 [v1.21.0 发布记录](release-1.21.md)。
+
 # v1.20.0 已发布
 
 当前正式版为 [v1.20.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.20.0)（2026-11-24 发布）。
