@@ -733,3 +733,234 @@ func TestPlanAutoPlaceV2_CornerSatellitesNeverOverlap(t *testing.T) {
 		}
 	}
 }
+
+// ── RF matching chain ────────────────────────────────────────────────────────
+
+// rfChip is a 400×400 chip (bbox ±200) whose right edge carries the RF pad
+// (net RF_CHIP, at (190,0)) and a 3V3 pad at (190,-20); filler pads bring the
+// distinct-pin count over the main-chip threshold.
+func rfChip() apComp {
+	pads := []apPad{p("20", "RF_CHIP", 190, 0), p("21", "3V3", 190, -20)}
+	for i := 0; i < 8; i++ {
+		pads = append(pads, p(fmt.Sprintf("F%d", i), "", -190, float64(-140+i*40)))
+	}
+	return mkComp("u1", "U1", 0, 0, 400, 400, pads)
+}
+
+// rfAnt is an antenna at (900,0), bbox x ∈ [850,950]; its feed pad (net
+// ANT_FEED) is at the left side, (850,0), facing the chip.
+func rfAnt() apComp {
+	return mkComp("ant", "ANT1", 900, 0, 100, 60, []apPad{p("1", "ANT_FEED", 850, 0), p("2", "GND", 950, 0)})
+}
+
+// rfPart is a 60×30 two-pin part centred at (1500,y0): pad "1" (netA) at its
+// left end, pad "2" (netB) at its right end, as drawn (rotation 0).
+func rfPart(des, name, netA, netB string, y0 float64) apComp {
+	c := mkComp(strings.ToLower(des), des, 1500, y0, 60, 30, []apPad{p("1", netA, 1480, y0), p("2", netB, 1520, y0)})
+	c.name = name
+	return c
+}
+
+// rfMoveBox is the body a move occupies (all test parts are 60×30 at rotation 0
+// with the anchor at the bbox centre, so a quarter turn swaps the extents).
+func rfMoveBox(m apMove) layoutBBox {
+	w, h := 60.0, 30.0
+	if m.SetRot && oddQuarter(m.NewRot) {
+		w, h = h, w
+	}
+	return layoutBBox{MinX: m.NewX - w/2, MaxX: m.NewX + w/2, MinY: m.NewY - h/2, MaxY: m.NewY + h/2}
+}
+
+// chip → L1 → C1 → ANT1, with C2 shunting the L1/C1 junction (N1) to ground.
+func rfBoard() []apComp {
+	return []apComp{
+		rfChip(), rfAnt(),
+		rfPart("C1", "1.2pF", "ANT_FEED", "N1", 1000),
+		rfPart("L1", "3.9nH", "RF_CHIP", "N1", 1100),
+		rfPart("C2", "1.8pF", "N1", "GND", 1200),
+	}
+}
+
+func TestIsAntennaComp(t *testing.T) {
+	for _, c := range []struct {
+		des, name string
+		want      bool
+	}{
+		{"ANT1", "", true}, {"ant12", "", true}, {"AE1", "", true}, {"ae3", "", true},
+		{"J7", "2.4G Antenna Connector", true}, {"U9", "PCB ANTENNA", true},
+		{"ANTX", "", false}, {"C1", "100nF", false}, {"AEX1", "", false}, {"U1", "ESP32", false},
+	} {
+		if got := isAntennaComp(apComp{designator: c.des, name: c.name}); got != c.want {
+			t.Errorf("isAntennaComp(%q,%q)=%v, want %v", c.des, c.name, got, c.want)
+		}
+	}
+	// A pin-rich module that only mentions its antenna in the Name stays a main chip.
+	module := rfChip()
+	module.designator, module.name = "U7", "ESP32-WROOM-32 (PCB antenna)"
+	if isAntennaComp(module) || !isMainComp(module, defaultApOptions()) {
+		t.Error("a 10-pin module whose Name mentions an antenna must remain a main chip")
+	}
+	// A pin-rich antenna must still never become a main chip.
+	many := rfChip()
+	many.designator = "ANT2"
+	if isMainComp(many, defaultApOptions()) {
+		t.Error("an antenna must not be a main chip whatever its pin count")
+	}
+}
+
+func TestPlanAutoPlaceRF_ChainLiesOnFeedLineAntennaFirst(t *testing.T) {
+	moves, diags := planAutoPlace(rfBoard(), defaultApOptions())
+	for _, m := range moves {
+		if m.Designator == "ANT1" {
+			t.Errorf("the antenna must not move: %+v", m)
+		}
+	}
+	if r := diagFor(diags, "ANT1"); !strings.Contains(r, "mechanical anchor") {
+		t.Errorf("want the antenna anchor diag, got %q", r)
+	}
+	for _, d := range diags {
+		if d.Designator != "ANT1" {
+			t.Errorf("a clean chain must be silent, got %+v", d)
+		}
+	}
+	c1, l1, c2 := v2Move(t, moves, "C1"), v2Move(t, moves, "L1"), v2Move(t, moves, "C2")
+	for _, m := range []apMove{c1, l1, c2} {
+		if m.Edge != "rf-chain" || m.Main != "U1" || m.Via != "rf:ANT1" {
+			t.Errorf("%s: edge/main/via = %q/%q/%q, want rf-chain/U1/rf:ANT1", m.Designator, m.Edge, m.Main, m.Via)
+		}
+	}
+	if c1.TargetNet != "ANT_FEED" || l1.TargetNet != "N1" || c2.TargetNet != "N1" {
+		t.Errorf("target nets C1=%s L1=%s C2=%s, want ANT_FEED, N1, N1", c1.TargetNet, l1.TargetNet, c2.TargetNet)
+	}
+	// P=(190,0), A=(850,0): the line is y=0. Series parts sit on it, antenna side first.
+	for _, m := range []apMove{c1, l1} {
+		if d := math.Abs(m.NewY); d > 40 {
+			t.Errorf("%s is %.0fmil off the feed line", m.Designator, d)
+		}
+	}
+	if !(c1.NewX > l1.NewX && l1.NewX > 190) || c1.NewX > 850 {
+		t.Errorf("order must be chip < L1 < C1 < antenna, got L1 x=%.0f C1 x=%.0f", l1.NewX, c1.NewX)
+	}
+	// Rotation: C1's ANT_FEED pad (pad 1, left end) must face the antenna (+x) → 180;
+	// L1's N1 pad (pad 2, right end) faces the antenna already → 0.
+	if !c1.SetRot || c1.NewRot != 180 || !l1.SetRot || l1.NewRot != 0 {
+		t.Errorf("rotations C1=%v/%.0f L1=%v/%.0f, want 180 and 0", c1.SetRot, c1.NewRot, l1.SetRot, l1.NewRot)
+	}
+	// The shunt hangs beside the line, between the two series parts' span, rotated across it.
+	if math.Abs(c2.NewY) < 30 || math.Abs(c2.NewY) > 120 || c2.NewX < l1.NewX-60 || c2.NewX > c1.NewX+60 {
+		t.Errorf("shunt C2 at (%.0f,%.0f) is not beside the chain", c2.NewX, c2.NewY)
+	}
+	if !c2.SetRot || (c2.NewRot != 90 && c2.NewRot != 270) {
+		t.Errorf("shunt must be turned across the line, got rot %.0f (set=%v)", c2.NewRot, c2.SetRot)
+	}
+	// No overlaps among members, nor with chip or antenna.
+	opt := defaultApOptions()
+	boxes := map[string]layoutBBox{"C1": rfMoveBox(c1), "L1": rfMoveBox(l1), "C2": rfMoveBox(c2)}
+	names := []string{"C1", "L1", "C2"}
+	for i := range names {
+		for j := i + 1; j < len(names); j++ {
+			if apOverlaps(apInflate(boxes[names[i]], opt.pitch), boxes[names[j]]) {
+				t.Errorf("%s and %s closer than pitch", names[i], names[j])
+			}
+		}
+		if apOverlaps(boxes[names[i]], layoutBBox{MinX: 850, MaxX: 950, MinY: -30, MaxY: 30}) ||
+			apOverlaps(boxes[names[i]], layoutBBox{MinX: -200, MaxX: 200, MinY: -200, MaxY: 200}) {
+			t.Errorf("%s overlaps the antenna or the chip", names[i])
+		}
+	}
+}
+
+// An antenna whose feed net never reaches a chip gets a diag; its parts are not
+// treated as a chain, so a part with a chip net still goes through normal packing.
+func TestPlanAutoPlaceRF_UnreachableAntennaFallsBack(t *testing.T) {
+	comps := []apComp{
+		rfChip(), rfAnt(),
+		rfPart("C1", "1.2pF", "ANT_FEED", "N1", 1000), // dead end: N1 goes nowhere
+		rfPart("L1", "3.9nH", "RF_CHIP", "N2", 1100),  // chip side, but not joined to N1
+		rfPart("C9", "100nF", "3V3", "GND", 1200),
+	}
+	moves, diags := planAutoPlace(comps, defaultApOptions())
+	found := false
+	for _, d := range diags {
+		found = found || (d.Designator == "ANT1" && strings.Contains(d.Reason, "no matching chain"))
+	}
+	if !found {
+		t.Errorf("want a 'no matching chain' diag on ANT1, got %+v", diags)
+	}
+	for _, m := range moves {
+		if m.Edge == "rf-chain" || strings.HasPrefix(m.Via, "rf:") {
+			t.Errorf("no chain exists, yet %s was placed as RF: %+v", m.Designator, m)
+		}
+		if m.Designator == "ANT1" {
+			t.Errorf("the antenna must not move: %+v", m)
+		}
+	}
+	if m := v2Move(t, moves, "L1"); m.Via != "local" || m.Edge != "right" {
+		t.Errorf("L1 must fall back to normal packing at the RF pad, got %+v", m)
+	}
+	v2Move(t, moves, "C9")
+	if r := diagFor(diags, "C1"); !strings.Contains(r, "no shared net path") {
+		t.Errorf("the dead-end part has nowhere to go, got %q", r)
+	}
+}
+
+// A keep-out around the antenna must not block the matching network that sits at
+// the feed, but still blocks an ordinary decoupling cap that the same keep-out covers.
+func TestPlanAutoPlaceRF_AntennaKeepoutSparesChainNotOrdinaryCaps(t *testing.T) {
+	comps := append(rfBoard(), rfPart("C9", "100nF", "3V3", "GND", 1300))
+	baseMoves, _ := planAutoPlace(comps, defaultApOptions())
+	opt := defaultApOptions()
+	ko := layoutBBox{MinX: 230, MaxX: 1100, MinY: -100, MaxY: 100} // touches the antenna zone
+	opt.keepouts = []layoutBBox{ko}
+	moves, diags := planAutoPlace(comps, opt)
+	for _, d := range diags {
+		if d.Designator != "ANT1" && !strings.Contains(d.Reason, "limit") {
+			t.Errorf("unexpected diag %+v", d)
+		}
+	}
+	for _, des := range []string{"C1", "L1", "C2"} {
+		m := v2Move(t, moves, des)
+		if m.Edge != "rf-chain" {
+			t.Errorf("%s left the chain: %+v", des, m)
+		}
+		b0 := v2Move(t, baseMoves, des)
+		if m.NewX != b0.NewX || m.NewY != b0.NewY {
+			t.Errorf("%s moved because of the keep-out: (%.0f,%.0f) vs (%.0f,%.0f)", des, m.NewX, m.NewY, b0.NewX, b0.NewY)
+		}
+	}
+	c9, c9base := v2Move(t, moves, "C9"), v2Move(t, baseMoves, "C9")
+	if c9base.NewY != -20 {
+		t.Fatalf("precondition: without the keep-out C9 sits at the 3V3 pin (y=-20), got %.0f", c9base.NewY)
+	}
+	if apOverlaps(layoutBBox{MinX: c9.NewX - 30, MaxX: c9.NewX + 30, MinY: c9.NewY - 15, MaxY: c9.NewY + 15}, ko) || c9.NewY > -115 {
+		t.Errorf("ordinary cap C9 at (%.0f,%.0f) must stay out of the keep-out", c9.NewX, c9.NewY)
+	}
+}
+
+// A wall across the straight path leaves no slot on the line: the member is still
+// placed (generic search at the chip RF pad) and the diag says how far off it is.
+func TestPlanAutoPlaceRF_BlockedPathReportsOffLineMember(t *testing.T) {
+	wall := mkComp("q1", "Q1", 537.5, 0, 615, 120, nil) // x ∈ [230,845], y ∈ [-60,60]
+	wall.locked = true
+	comps := append(rfBoard(), wall)
+	moves, diags := planAutoPlace(comps, defaultApOptions())
+	r := diagFor(diags, "C1")
+	for _, want := range []string{"C1 sits 75mil off the RF feed line U1→ANT1 (limit 40mil)", "free the straight path"} {
+		if !strings.Contains(r, want) {
+			t.Errorf("C1 diag %q lacks %q", r, want)
+		}
+	}
+	m := v2Move(t, moves, "C1")
+	if m.Edge != "rf-chain" || m.Via != "rf:ANT1" {
+		t.Errorf("a fallback member keeps its RF identity, got %+v", m)
+	}
+	if math.Abs(m.NewY) < 40 {
+		t.Errorf("C1 at y=%.0f is not off the line", m.NewY)
+	}
+	// Nothing may overlap the wall.
+	for _, mv := range moves {
+		if apOverlaps(rfMoveBox(mv), layoutBBox{MinX: 230, MaxX: 845, MinY: -60, MaxY: 60}) {
+			t.Errorf("%s was placed on the wall", mv.Designator)
+		}
+	}
+}

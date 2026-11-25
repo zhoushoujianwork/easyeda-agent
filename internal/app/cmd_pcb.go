@@ -3199,6 +3199,14 @@ an obstacle, as are keep-out regions (e.g. the antenna) and the board outline:
   • an LED chains next to its series resistor (shared signal net)
   • a decoupling cap placed >100mil (crystal >160mil) from its pin is still moved, but
     a diag says how far and what blocks the nearer slots
+  • an antenna (ANT*/AE* designator, or a Name containing "antenna") is a mechanical
+    anchor: never moved, an obstacle. Its RF matching chain is found by topology (the
+    netlist has no RF class): from the antenna feed net through 2-pin series parts to
+    a net with a main-chip pad (<= 6 hops), plus 2-pin shunts to ground. The chain is
+    placed first, on the straight line from the chip RF pad to the antenna feed pad,
+    antenna end first (moves carry edge "rf-chain", via "rf:<antenna>"); keep-outs
+    around the antenna do not block it, and a member more than 40mil off the line gets
+    a diag. No chain found -> diag on the antenna, parts fall back to normal packing
 With 2+ main chips, any that overlap / sit closer than --multi-gap are spread into a
 row (leftmost stays put) before satellites are placed. Use --multi-gap 0 to PRESERVE
 a pre-anchored layout untouched; spreading is also auto-skipped when the chips already

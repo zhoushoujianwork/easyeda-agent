@@ -50,6 +50,17 @@ import (
 //   - Distance limits: a decoupling part should sit within apLimitPowerMil of its
 //     pin, a crystal within apLimitCrystalMil. A part that ends up farther is
 //     still placed, but a diag names what blocks the nearer slots.
+//
+// v2.1 = RF matching chain. An antenna (designator ANT*/AE* or a Name containing
+// "antenna") is a mechanical anchor: never moved, an obstacle. With no RF net
+// class in the netlist the chain is found by topology: from the antenna feed net,
+// breadth-first through 2-pin series parts (one pad on the current net, the other
+// on another signal net) up to apRfMaxHops, until a net with a main-chip pad. The
+// series parts, plus 2-pin shunts (path net to ground), are placed BEFORE any
+// other group on the straight line between the chip RF pad and the antenna feed
+// pad, antenna end first (placeRfChain, ported from the same planner). Keep-outs
+// that touch the antenna zone are ignored for chain members; a member that cannot
+// stay on the line falls back to the generic cost search and gets a diag.
 
 // apPad is one component pad: its net (by name), rendered center, and copper layer.
 type apPad struct {
@@ -310,6 +321,9 @@ func isMainComp(c apComp, opt apOptions) bool {
 	if opt.anchors[des] {
 		return true
 	}
+	if isAntennaComp(c) {
+		return false // mechanical anchor, never the owner of satellites
+	}
 	return c.distinctPins() >= opt.mainPins && !connectorDesRe.MatchString(des)
 }
 
@@ -333,13 +347,16 @@ type assignment struct {
 // every movable satellite goes. Main chips are anchors (never moved in v1).
 // Returns the moves plus diagnostics for anything left unplaced.
 func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
-	var mains, sats []int
+	var mains, sats, ants []int
 	var diags []apDiag
 	for i, c := range comps {
 		if !c.hasBBox {
 			continue
 		}
 		highPin := c.distinctPins() >= opt.mainPins
+		if isAntennaComp(c) && !isMainComp(c, opt) {
+			ants = append(ants, i) // locked / fixed antennas still anchor an RF chain
+		}
 		switch {
 		case isMainComp(c, opt):
 			mains = append(mains, i)
@@ -349,6 +366,11 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 			// 虚拟组成员(#173):原地不动。它不是卫星候选,所以和其他未动的件一样
 			// 进入打包阶段的障碍物表 —— 否则卫星会被打包进它的位置。
 			diags = append(diags, apDiag{c.designator, "group:fixed — virtual PCB group member, not moved (--break-group to override)"})
+		case isAntennaComp(c):
+			// Antenna (ANT*/AE* or a part named "antenna"): a mechanical anchor like a
+			// board-edge connector. It never moves and becomes an obstacle below; its
+			// matching network is placed by the RF chain pass.
+			diags = append(diags, apDiag{c.designator, "antenna — mechanical anchor, not moved; place it on the board edge"})
 		case highPin && connectorDesRe.MatchString(strings.TrimSpace(c.designator)):
 			// #131: a high-pin connector (USB-C, boxed header…) is a MECHANICAL
 			// anchor, not an electrical main — it must neither move nor own
@@ -421,6 +443,30 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 				continue
 			}
 			mainPadsByNet[mi][n] = append(mainPadsByNet[mi][n], p)
+		}
+	}
+
+	// RF matching chains (antenna → series parts → chip RF pad). Chain members
+	// leave the normal passes; they are placed first, below, so they own the feed path.
+	var chains []*rfChain
+	chainMoving := map[int]bool{}
+	if len(ants) > 0 {
+		var cd []apDiag
+		chains, cd = discoverRfChains(comps, sats, mains, ants, mainPadsByNet)
+		diags = append(diags, cd...)
+		for _, ch := range chains {
+			for _, m := range ch.members() {
+				chainMoving[m] = true
+			}
+		}
+		if len(chainMoving) > 0 {
+			kept := make([]int, 0, len(sats))
+			for _, s := range sats {
+				if !chainMoving[s] {
+					kept = append(kept, s)
+				}
+			}
+			sats = kept
 		}
 	}
 
@@ -529,7 +575,7 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 	// moved either). Moving satellites are NOT obstacles: they vacate their spot.
 	pk := &apPacker{opt: opt}
 	for i, c := range comps {
-		if !c.hasBBox || assigned[i] != nil {
+		if !c.hasBBox || assigned[i] != nil || chainMoving[i] {
 			continue
 		}
 		pk.obstacles = append(pk.obstacles, apOccupant{
@@ -537,6 +583,11 @@ func planAutoPlace(comps []apComp, opt apOptions) ([]apMove, []apDiag) {
 			des:     strings.TrimSpace(c.designator),
 			crystal: apCrystalRe.MatchString(strings.TrimSpace(c.designator)),
 		})
+	}
+
+	// RF chains first: they own the straight path between antenna and chip.
+	for _, ch := range chains {
+		moves, diags = pk.placeRfChain(comps, mains, ch, moves, diags)
 	}
 
 	// Pack per (main, edge). All groups share one occupancy list (pk.placed), so
@@ -701,8 +752,25 @@ func orientSatellite(sat apComp, e apEdge, targetNet string, rotate bool) (targe
 	if !rotate || sat.distinctPins() != 2 {
 		return sat.rotation, curW, curH, false
 	}
-	pad, ok := satPadOnNet(sat, targetNet)
+	fx, fy := edgeFacing(e)
+	candidates := []float64{0, 180} // vertical edge → pad axis horizontal
+	if !e.vertical() {
+		candidates = []float64{90, 270} // horizontal edge → pad axis vertical
+	}
+	rot, w, h, ok := orientFacing(sat, targetNet, fx, fy, candidates)
 	if !ok {
+		return sat.rotation, curW, curH, false
+	}
+	return rot, w, h, true
+}
+
+// orientFacing picks, among candidate rotations, the one that turns the pad on
+// `net` most toward the direction (fx,fy), and returns it with the effective
+// (post-rotation) bbox. ok=false when the part has no pad on that net.
+func orientFacing(sat apComp, net string, fx, fy float64, candidates []float64) (rot, effW, effH float64, ok bool) {
+	curW, curH := sat.width(), sat.height()
+	pad, found := satPadOnNet(sat, net)
+	if !found {
 		return sat.rotation, curW, curH, false
 	}
 	// Native dims (footprint at rotation 0): current bbox is swapped when the part
@@ -713,11 +781,6 @@ func orientSatellite(sat apComp, e apEdge, targetNet string, rotate bool) (targe
 	}
 	// Pad offset from the anchor, in the native (rotation-0) frame.
 	ndx, ndy := rotateVec(pad.x-sat.x, pad.y-sat.y, -sat.rotation)
-	fx, fy := edgeFacing(e)
-	candidates := []float64{0, 180} // vertical edge → pad axis horizontal
-	if !e.vertical() {
-		candidates = []float64{90, 270} // horizontal edge → pad axis vertical
-	}
 	bestRot, bestScore := candidates[0], math.Inf(-1)
 	for _, r := range candidates {
 		rx, ry := rotateVec(ndx, ndy, r)
@@ -959,11 +1022,18 @@ func apDistLimit(via string, crystal bool) float64 {
 
 // free reports whether a body may be placed: on the board, outside keep-outs and
 // every non-moving part (zero clearance), and pitch away from placed satellites.
-func (pk *apPacker) free(b layoutBBox) bool {
+func (pk *apPacker) free(b layoutBBox) bool { return pk.freeSkip(b, nil) }
+
+// freeSkip is free() that ignores the keep-outs for which skipKO returns true
+// (RF chain members may sit inside the keep-out that surrounds their antenna).
+func (pk *apPacker) freeSkip(b layoutBBox, skipKO func(layoutBBox) bool) bool {
 	if bd := pk.opt.board; bd != nil && (b.MinX < bd.MinX-apEps || b.MaxX > bd.MaxX+apEps || b.MinY < bd.MinY-apEps || b.MaxY > bd.MaxY+apEps) {
 		return false
 	}
 	for _, ko := range pk.opt.keepouts {
+		if skipKO != nil && skipKO(ko) {
+			continue
+		}
 		if apOverlaps(b, ko) {
 			return false
 		}
@@ -1225,4 +1295,439 @@ func (pk *apPacker) packGroup(comps []apComp, chip apComp, edge apEdge, group []
 		})
 	}
 	return moves, diags
+}
+
+// ── RF matching chain (antenna → series parts → chip RF pad) ─────────────────
+//
+// The netlist carries no RF net class, so the chain is found by topology: an
+// antenna's feed net is walked through 2-pin series parts until a net that has a
+// pad on a main chip. The parts on the way (and their shunts to ground) are laid
+// on the straight line between the chip RF pad and the antenna feed pad, antenna
+// end first. Port of placeRfChain from the low-pin-count IoT layout planner (see
+// the file header).
+
+const (
+	apRfMaxHops        = 6     // series parts a chain may have
+	apRfLineLimitMil   = 40.0  // max distance of a series part's centre from the feed line
+	apRfStartMil       = 12.0  // first series part starts this far from the antenna feed pad
+	apRfPartGapMil     = 12.0  // gap added between consecutive series parts
+	apRfAntennaKeepMil = 100.0 // keep-outs touching the antenna bbox grown by this are ignored by chain members
+)
+
+var (
+	apAntennaDesRe = regexp.MustCompile(`(?i)^(?:ANT|AE)\d`)
+	apRfAlongTries = []float64{0, 12, 24, 40}
+	apRfPerpTries  = []float64{0, 12, -12, 24, -24, 40, -40}
+	apRfShuntTries = []float64{0, 12, -12, 24, -24}
+)
+
+// apAntennaMaxPins bounds the Name-based antenna test: a real antenna / antenna
+// connector has a handful of pads, while a pin-rich module whose Name merely
+// mentions its on-board antenna ("ESP32-WROOM-32 (PCB antenna)") is a main chip.
+const apAntennaMaxPins = 4
+
+// isAntennaComp reports a part that is the antenna itself: designator ANT*/AE*, or
+// a Name that says "antenna" on a part with at most apAntennaMaxPins distinct pads.
+// It is a mechanical anchor and never moves.
+func isAntennaComp(c apComp) bool {
+	if apAntennaDesRe.MatchString(strings.TrimSpace(c.designator)) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(c.name), "antenna") && c.distinctPins() <= apAntennaMaxPins
+}
+
+type rfShunt struct {
+	part   int // comps index
+	netIdx int // index into rfChain.nets of the path net it sits on
+}
+
+// rfChain is one discovered matching network.
+type rfChain struct {
+	ant    int      // comps index of the antenna
+	chip   int      // index into mains
+	feed   apPad    // antenna feed pad (A)
+	rf     apPad    // chip RF pad (P)
+	nets   []string // path nets, antenna feed net first, chip net last
+	series []int    // comps indices antenna→chip; series[i] joins nets[i] and nets[i+1]
+	shunts []rfShunt
+}
+
+func (ch *rfChain) members() []int {
+	out := append([]int(nil), ch.series...)
+	for _, s := range ch.shunts {
+		out = append(out, s.part)
+	}
+	return out
+}
+
+func apPadNumLess(a, b string) bool {
+	ai, aerr := strconv.Atoi(a)
+	bi, berr := strconv.Atoi(b)
+	if aerr == nil && berr == nil {
+		return ai < bi
+	}
+	return a < b
+}
+
+// antennaFeedPad is the antenna's pad on a non-global net (lowest pad number).
+func antennaFeedPad(c apComp) (apPad, bool) {
+	var best apPad
+	found := false
+	for _, p := range c.pads {
+		n := strings.TrimSpace(p.net)
+		if n == "" || isGlobalNet(n) {
+			continue
+		}
+		if !found || apPadNumLess(p.num, best.num) {
+			best, found = p, true
+		}
+	}
+	return best, found
+}
+
+// twoPadNets returns the nets of a 2-pin part's two distinct pads.
+func twoPadNets(c apComp) (n0, n1 string, ok bool) {
+	if c.distinctPins() != 2 {
+		return "", "", false
+	}
+	first := ""
+	for _, p := range c.pads {
+		if first == "" {
+			first = p.num
+			n0 = strings.TrimSpace(p.net)
+		} else if p.num != first {
+			return n0, strings.TrimSpace(p.net), true
+		}
+	}
+	return "", "", false
+}
+
+// seriesOther returns the far net of a series part entered from `net`: one pad on
+// `net`, the other on a different non-global, non-empty net.
+func seriesOther(c apComp, net string) (string, bool) {
+	n0, n1, ok := twoPadNets(c)
+	if !ok {
+		return "", false
+	}
+	pick := func(a, b string) (string, bool) {
+		if a == net && b != "" && b != net && !isGlobalNet(b) {
+			return b, true
+		}
+		return "", false
+	}
+	if o, ok := pick(n0, n1); ok {
+		return o, true
+	}
+	return pick(n1, n0)
+}
+
+// discoverRfChains finds, per antenna, the matching chain to a main chip. Parts
+// of a chain are claimed (a part serves one antenna). An antenna with no chain
+// gets a diag and its would-be parts stay in normal packing.
+func discoverRfChains(comps []apComp, sats, mains, ants []int, padsByNet []map[string][]apPad) ([]*rfChain, []apDiag) {
+	var chains []*rfChain
+	var diags []apDiag
+	claimed := map[int]bool{}
+	chipOf := func(net string, ax, ay float64) (int, apPad, bool) {
+		bestMi, bestD := -1, math.MaxFloat64
+		var bestPad apPad
+		for mi := range mains {
+			if pad, ok := nearestPad(padsByNet[mi][net], ax, ay); ok {
+				if d := math.Hypot(pad.x-ax, pad.y-ay); d < bestD {
+					bestMi, bestD, bestPad = mi, d, pad
+				}
+			}
+		}
+		return bestMi, bestPad, bestMi >= 0
+	}
+	for _, ai := range ants {
+		ant := comps[ai]
+		feed, ok := antennaFeedPad(ant)
+		if !ok {
+			diags = append(diags, apDiag{ant.designator, "rf: antenna has no pad on a signal net — no matching chain to place"})
+			continue
+		}
+		feedNet := strings.TrimSpace(feed.net)
+		if _, _, direct := chipOf(feedNet, feed.x, feed.y); direct {
+			continue // wired straight to the chip: nothing to chain
+		}
+		type step struct {
+			prev string
+			part int
+		}
+		parent := map[string]step{feedNet: {part: -1}}
+		frontier := []string{feedNet}
+		goal := ""
+		for hop := 0; hop < apRfMaxHops && goal == ""; hop++ {
+			var next []string
+			for _, net := range frontier {
+				for _, s := range sats {
+					if claimed[s] {
+						continue
+					}
+					other, ok := seriesOther(comps[s], net)
+					if !ok {
+						continue
+					}
+					if _, seen := parent[other]; seen {
+						continue
+					}
+					parent[other] = step{prev: net, part: s}
+					next = append(next, other)
+					if _, _, hit := chipOf(other, feed.x, feed.y); hit {
+						goal = other
+						break
+					}
+				}
+				if goal != "" {
+					break
+				}
+			}
+			frontier = next
+		}
+		if goal == "" {
+			diags = append(diags, apDiag{ant.designator, fmt.Sprintf("rf: no matching chain from net %s to a main chip within %d hops — parts on it fall back to normal packing", feedNet, apRfMaxHops)})
+			continue
+		}
+		mi, rfPad, _ := chipOf(goal, feed.x, feed.y)
+		ch := &rfChain{ant: ai, chip: mi, feed: feed, rf: rfPad}
+		for net := goal; net != feedNet; net = parent[net].prev {
+			ch.nets = append(ch.nets, net)
+			ch.series = append(ch.series, parent[net].part)
+		}
+		ch.nets = append(ch.nets, feedNet)
+		slices.Reverse(ch.nets) // antenna feed net … chip net
+		slices.Reverse(ch.series)
+		pathIdx := map[string]int{}
+		for i, n := range ch.nets {
+			pathIdx[n] = i
+		}
+		for _, s := range ch.series {
+			claimed[s] = true
+		}
+		for _, s := range sats {
+			if claimed[s] {
+				continue
+			}
+			n0, n1, ok := twoPadNets(comps[s])
+			if !ok {
+				continue
+			}
+			if j, on := pathIdx[n0]; on && n1 != "" && isGlobalNet(n1) {
+				ch.shunts = append(ch.shunts, rfShunt{part: s, netIdx: j})
+			} else if j, on := pathIdx[n1]; on && n0 != "" && isGlobalNet(n0) {
+				ch.shunts = append(ch.shunts, rfShunt{part: s, netIdx: j})
+			}
+		}
+		sort.SliceStable(ch.shunts, func(i, j int) bool {
+			a, b := ch.shunts[i], ch.shunts[j]
+			if a.netIdx != b.netIdx {
+				return a.netIdx < b.netIdx
+			}
+			return comps[a.part].designator < comps[b.part].designator
+		})
+		for _, sh := range ch.shunts {
+			claimed[sh.part] = true
+		}
+		chains = append(chains, ch)
+	}
+	return chains, diags
+}
+
+func apPointSegDist(px, py, ax, ay, bx, by float64) float64 {
+	dx, dy := bx-ax, by-ay
+	l2 := dx*dx + dy*dy
+	if l2 < apEps {
+		return math.Hypot(px-ax, py-ay)
+	}
+	t := math.Max(0, math.Min(1, ((px-ax)*dx+(py-ay)*dy)/l2))
+	return math.Hypot(px-(ax+t*dx), py-(ay+t*dy))
+}
+
+// rfOrient turns a 2-pin part so the pad on `net` points along (fx,fy), choosing
+// from the two rotations that put the pad axis on the wanted axis. With --no-rotate
+// (or a part that is not a 2-pin with a pad on the net) the part keeps its rotation.
+func (pk *apPacker) rfOrient(sat apComp, net string, fx, fy float64, candidates []float64) (rot, effW, effH float64, oriented bool) {
+	if pk.opt.rotate && sat.distinctPins() == 2 {
+		if r, w, h, ok := orientFacing(sat, net, fx, fy, candidates); ok {
+			return r, w, h, true
+		}
+	}
+	return sat.rotation, sat.width(), sat.height(), false
+}
+
+// placeRfChain lays one chain on the straight line between the chip RF pad (P)
+// and the antenna feed pad (A): series parts from the antenna end, each shunt
+// beside the series part it hangs on. A part with no free slot on the line falls
+// back to the generic cost search; every part ends up measured against the line.
+func (pk *apPacker) placeRfChain(comps []apComp, mains []int, ch *rfChain, moves []apMove, diags []apDiag) ([]apMove, []apDiag) {
+	opt := pk.opt
+	chip, ant := comps[mains[ch.chip]], comps[ch.ant]
+	ax, ay, px, py := ch.feed.x, ch.feed.y, ch.rf.x, ch.rf.y
+	ux, uy := 1.0, 0.0
+	if l := math.Hypot(ax-px, ay-py); l > apEps {
+		ux, uy = (ax-px)/l, (ay-py)/l
+	}
+	vx, vy := -uy, ux // perpendicular to the feed line
+	horiz := math.Abs(ux) >= math.Abs(uy)
+	antZone := apInflate(layoutBBox{MinX: ant.minX, MinY: ant.minY, MaxX: ant.maxX, MaxY: ant.maxY}, apRfAntennaKeepMil)
+	skipKO := func(ko layoutBBox) bool { return apOverlaps(ko, antZone) }
+	via := "rf:" + ant.designator
+
+	box := func(cx, cy, w, h float64) layoutBBox {
+		return layoutBBox{MinX: cx - w/2, MaxX: cx + w/2, MinY: cy - h/2, MaxY: cy + h/2}
+	}
+	lineDist := func(b layoutBBox) float64 {
+		return apPointSegDist((b.MinX+b.MaxX)/2, (b.MinY+b.MaxY)/2, px, py, ax, ay)
+	}
+	emit := func(sat apComp, rot float64, oriented bool, b layoutBBox, net string) {
+		cx, cy := (b.MinX+b.MaxX)/2, (b.MinY+b.MaxY)/2
+		bcx, bcy := sat.bboxCenter()
+		odx, ody := rotateVec(bcx-sat.x, bcy-sat.y, rot-sat.rotation)
+		moves = append(moves, apMove{
+			ID: sat.id, Designator: sat.designator,
+			NewX: round2(cx - odx), NewY: round2(cy - ody),
+			NewRot: rot, SetRot: oriented,
+			Main: chip.designator, Edge: "rf-chain", TargetNet: net, Via: via,
+		})
+		pk.placed = append(pk.placed, apOccupant{box: b, des: strings.TrimSpace(sat.designator)})
+	}
+	offLine := func(sat apComp, b layoutBBox, limit float64) {
+		if d := lineDist(b); d > limit+apEps {
+			diags = append(diags, apDiag{sat.designator, fmt.Sprintf("%s sits %.0fmil off the RF feed line %s→%s (limit %.0fmil) — free the straight path between them",
+				sat.designator, math.Ceil(d-apEps), chip.designator, ant.designator, limit)})
+		}
+	}
+	// fallback: the generic cost search with the chip RF pad as the target. The part
+	// has left the feed line, which is always reported (the distance is for context).
+	fallback := func(si int) {
+		sat := comps[si]
+		e, along := edgeFor(chip, ch.rf)
+		a := &assignment{sat: si, mainIdx: ch.chip, edge: e, along: along, targetNet: "", via: via, pad: ch.rf, hasPad: true}
+		a.targetNet = rfFallbackNet(sat, ch)
+		before, nMoves := len(pk.placed), len(moves)
+		moves, diags = pk.packGroup(comps, chip, e, []*assignment{a}, moves, diags)
+		if len(moves) > nMoves {
+			moves[len(moves)-1].Edge = "rf-chain"
+		}
+		if len(pk.placed) > before {
+			d := math.Ceil(lineDist(pk.placed[len(pk.placed)-1].box) - apEps)
+			if d > apRfLineLimitMil {
+				diags = append(diags, apDiag{sat.designator, fmt.Sprintf("%s sits %.0fmil off the RF feed line %s→%s (limit %.0fmil) — free the straight path between them; no free slot on the line, placed by the generic search",
+					sat.designator, d, chip.designator, ant.designator, apRfLineLimitMil)})
+			} else {
+				diags = append(diags, apDiag{sat.designator, fmt.Sprintf("%s left the RF feed line %s→%s (no free slot on it; generic search placed it %.0fmil from it) — free the straight path between them",
+					sat.designator, chip.designator, ant.designator, d)})
+			}
+		}
+	}
+	axisSeries := []float64{0, 180}
+	axisShunt := []float64{90, 270}
+	if !horiz {
+		axisSeries, axisShunt = axisShunt, axisSeries
+	}
+
+	type seriesPos struct {
+		ok     bool
+		t      float64 // distance of the part's centre from A, towards the chip
+		across float64 // its extent across the line
+	}
+	pos := make([]seriesPos, len(ch.series))
+	cursor := apRfStartMil
+	for i, si := range ch.series {
+		sat := comps[si]
+		// The pad on the antenna-side net faces the antenna (+u).
+		rot, effW, effH, oriented := pk.rfOrient(sat, ch.nets[i], ux, uy, axisSeries)
+		ext, across := effW, effH
+		if !horiz {
+			ext, across = effH, effW
+		}
+		var body layoutBBox
+		var t float64
+		found := false
+	search:
+		for _, al := range apRfAlongTries {
+			for _, off := range apRfPerpTries {
+				t = cursor + ext/2 + al
+				b := box(ax-ux*t+vx*off, ay-uy*t+vy*off, effW, effH)
+				if pk.freeSkip(b, skipKO) {
+					body, found = b, true
+					cursor += ext + al + apRfPartGapMil
+					break search
+				}
+			}
+		}
+		if !found {
+			fallback(si)
+			continue
+		}
+		pos[i] = seriesPos{ok: true, t: t, across: across}
+		emit(sat, rot, oriented, body, ch.nets[i])
+		offLine(sat, body, apRfLineLimitMil)
+	}
+
+	for _, sh := range ch.shunts {
+		sat := comps[sh.part]
+		net := ch.nets[sh.netIdx]
+		anchor := max(sh.netIdx-1, 0) // the series part that ends on this net (first part for the feed net)
+		type sideRot struct {
+			rot, w, h float64
+			oriented  bool
+		}
+		var rots [2]sideRot
+		sides := [2]float64{1, -1}
+		for k, side := range sides {
+			// The path-net pad faces the line, i.e. against the side it sits on.
+			r, w, h, o := pk.rfOrient(sat, net, -side*vx, -side*vy, axisShunt)
+			rots[k] = sideRot{r, w, h, o}
+		}
+		if !pos[anchor].ok {
+			fallback(sh.part)
+			continue
+		}
+		var body layoutBBox
+		var chosen sideRot
+		limit := apRfLineLimitMil
+		found := false
+	shuntSearch:
+		for _, dl := range apRfShuntTries {
+			for k, side := range sides {
+				sr := rots[k]
+				own := sr.h // extent across the line
+				if !horiz {
+					own = sr.w
+				}
+				offMag := pos[anchor].across/2 + opt.pitch + own/2
+				t := pos[anchor].t + dl
+				b := box(ax-ux*t+vx*side*offMag, ay-uy*t+vy*side*offMag, sr.w, sr.h)
+				if pk.freeSkip(b, skipKO) {
+					body, chosen, limit, found = b, sr, apRfLineLimitMil+offMag, true
+					break shuntSearch
+				}
+			}
+		}
+		if !found {
+			fallback(sh.part)
+			continue
+		}
+		emit(sat, chosen.rot, chosen.oriented, body, net)
+		offLine(sat, body, limit)
+	}
+	return moves, diags
+}
+
+// rfFallbackNet is the net a fallback-placed chain member is oriented by: its pad
+// on a path net (the chip-ward one for a series part), else its first pad's net.
+func rfFallbackNet(sat apComp, ch *rfChain) string {
+	for i := len(ch.nets) - 1; i >= 0; i-- {
+		if _, ok := satPadOnNet(sat, ch.nets[i]); ok {
+			return ch.nets[i]
+		}
+	}
+	for _, p := range sat.pads {
+		if n := strings.TrimSpace(p.net); n != "" {
+			return n
+		}
+	}
+	return ""
 }
