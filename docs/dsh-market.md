@@ -66,11 +66,14 @@ GitHub 源码安装可用，但用户要拉整棵仓库（约 30 MB）并本地�
   1.13.1 而 Release 已到 v1.19.0。发版准备用
   `python3 scripts/sync-dsh-version.py X.Y.Z` 一次对齐（当前已对齐最新 Release 1.19.0）。
 
-第一次包含该资产的 Release 发布后，在目录条目里加一行（版本换成该 Release tag）：
+v1.20.0 起每个 Release 都带这个资产；目录条目已经指向它（条目 PR
+[#18440](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/18440)）：
 
 ```yaml
-tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/download/vX.Y.Z/easyeda-agent-dsh.tgz
+tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/download/v1.20.0/easyeda-agent-dsh.tgz
 ```
+
+每个新版本只需把 URL 里的 tag 换成新 Release；资产文件名不变，`checksums.txt` 里有对应 SHA256。
 
 市场和店铺页会优先展示这个预构建 tarball，用户也可以直接
 `dsh plugin --profile web add <tarball 地址>`；GitHub 源码安装退为后备。

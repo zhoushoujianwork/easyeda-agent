@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.21.0] - 2026-11-25
+
+- 新增 `pcb.silk.delete` / `easyeda pcb silk-delete --id`（#341）：按 primitiveId 只删一条自由丝印字符串（层 3/4），并用新 `pcb_PrimitiveString.getAll()` 核对已消失。位号/值属性、其他层、锁定、不存在的 ID 及多余 payload 键在调用 delete 前拒绝；库存读不到视为未验证（`verified:false`、`partial:true`），CLI、`easyeda call` 与 Apply 均非零退出，Apply 不允许 retry、通用 verify 或 continue。
+- 新增连接器动作，需要更新连接器才能使用，按中版本发布。现场在 EdaDesk DEV 的 `ceshi` 上验证了添加后按 ID 删除、保存重载与新回读，以及不存在 ID 的写前拒绝；锁定、非丝印层与属性 ID 的拒绝仅有自动测试。
+
 ## [1.20.0] - 2026-11-24
 
 - PCB 几何与检查（EDAD-8）：

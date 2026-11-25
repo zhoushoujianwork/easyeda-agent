@@ -197,3 +197,33 @@ func TestProjectTransferCatalog(t *testing.T) {
 		t.Fatal("incorrect side-effect metadata")
 	}
 }
+
+func TestPcbSilkDeleteIsCataloguedAsVerifiedDesignWrite(t *testing.T) {
+	var found *ActionSpec
+	for _, action := range AllActions() {
+		if action.Name == "pcb.silk.delete" {
+			copy := action
+			found = &copy
+		}
+	}
+	if found == nil {
+		t.Fatal("pcb.silk.delete missing from the catalog")
+	}
+	if found.Access != accessDesignWrite || found.Domain != DomainPcb || !found.Mutates || !found.NeedsWindow || found.Phase != 2 {
+		t.Fatalf("pcb.silk.delete catalog contract wrong: %+v", found)
+	}
+	if strings.Join(found.Inputs, " ") == "" || !strings.Contains(found.Inputs[0], "primitiveId") {
+		t.Fatalf("pcb.silk.delete inputs: %v", found.Inputs)
+	}
+	if got := strings.Join(found.Outputs, ","); got != "primitiveId,text,layer,deleted,verified,partial" {
+		t.Fatalf("pcb.silk.delete outputs: %s", got)
+	}
+	if len(found.VerifyWith) != 1 || found.VerifyWith[0] != "pcb.silk.list" {
+		t.Fatalf("pcb.silk.delete verifyWith: %v", found.VerifyWith)
+	}
+	for _, phrase := range []string{"ONE", "ATTRIBUTE", "locked", "fresh", "partial"} {
+		if !strings.Contains(found.Description, phrase) {
+			t.Errorf("pcb.silk.delete description missing %q: %s", phrase, found.Description)
+		}
+	}
+}

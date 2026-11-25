@@ -153,7 +153,7 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 		return libraryWriteFailureError(action, respBody, errors.Join(errActionFailed, &actionError{Action: action, Code: parsed.Error.Code,
 			Message: parsed.Error.Message, Detail: parsed.Error.Detail}))
 	}
-	if action == "pcb.silk.align" || action == "pcb.silk.set" || action == "schematic.attribute.move" {
+	if action == "pcb.silk.align" || action == "pcb.silk.set" || action == "pcb.silk.delete" || action == "schematic.attribute.move" {
 		var envelope struct {
 			Result map[string]any `json:"result"`
 		}
@@ -164,6 +164,9 @@ func dispatchTimed(cfg *appConfig, action, window string, payload any, timeout t
 			return err
 		}
 		if err := silkSetResultError(action, envelope.Result, respBody); err != nil {
+			return err
+		}
+		if err := silkDeleteResultError(action, envelope.Result, respBody); err != nil {
 			return err
 		}
 		return silkAlignmentError(action, envelope.Result)
@@ -317,6 +320,28 @@ type unverifiedSilkSetError struct{ rawResponse string }
 
 func (*unverifiedSilkSetError) Error() string {
 	return "pcb.silk.set: write not verified; preserve the raw response, appliedIds and fresh field values before recomputing; do not blindly retry"
+}
+
+// unverifiedSilkDeleteError keeps the raw response so apply can journal it and
+// refuse to hide or replay the delete through a generic verify/retry.
+type unverifiedSilkDeleteError struct{ rawResponse, primitiveID, detail string }
+
+func (e *unverifiedSilkDeleteError) Error() string {
+	return fmt.Sprintf("pcb.silk.delete: deletion not verified (primitiveId=%s, %s); read pcb.silk.list for the fresh state before retrying", e.primitiveID, e.detail)
+}
+
+// silkDeleteResultError accepts a pcb.silk.delete only when the connector
+// reports the delete acknowledged AND a fresh inventory shows the id gone.
+func silkDeleteResultError(action string, result map[string]any, raw []byte) error {
+	if action != "pcb.silk.delete" {
+		return nil
+	}
+	id := asString(result["primitiveId"])
+	if id == "" || result["deleted"] != true || result["verified"] != true || result["partial"] == true {
+		return &unverifiedSilkDeleteError{rawResponse: string(raw), primitiveID: id,
+			detail: fmt.Sprintf("deleted=%v verified=%v partial=%v", result["deleted"], result["verified"], result["partial"])}
+	}
+	return nil
 }
 
 func silkSetResultError(action string, result map[string]any, raw []byte) error {
@@ -582,6 +607,9 @@ func requestActionOnce(cfg *appConfig, action, window string, payload any, timeo
 	if err := silkSetResultError(action, res.Result, respBody); err != nil {
 		return res, err
 	}
+	if err := silkDeleteResultError(action, res.Result, respBody); err != nil {
+		return res, err
+	}
 	return res, pcbImportResultError(action, res.Result)
 }
 
@@ -667,6 +695,9 @@ func dispatchCaptureTimed(cfg *appConfig, action, window string, payload any, st
 		return res, err
 	}
 	if err := silkSetResultError(action, res.Result, respBody); err != nil {
+		return res, err
+	}
+	if err := silkDeleteResultError(action, res.Result, respBody); err != nil {
 		return res, err
 	}
 	return res, pcbImportResultError(action, res.Result)

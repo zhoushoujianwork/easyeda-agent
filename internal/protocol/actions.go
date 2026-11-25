@@ -1033,6 +1033,17 @@ func AllActions() []ActionSpec {
 			VerifyWith:  []string{"pcb.silk.list"},
 		},
 		{
+			Name: "pcb.silk.delete", Access: accessDesignWrite,
+			Domain:      DomainPcb,
+			Phase:       2,
+			Mutates:     true,
+			NeedsWindow: true,
+			Description: "Delete exactly ONE free silkscreen STRING (pcb_PrimitiveString on layer 3/4) by primitive id. Refuses, with no delete call, a missing id, a designator/value ATTRIBUTE id, a string on any other layer, a locked string, and any payload key other than primitiveId. Captures text and layer before deleting, then verifies absence from a fresh pcb_PrimitiveString.getAll(); an unreadable inventory is not proof of absence. verified:false or partial:true makes CLI/raw call/Apply exit non-zero and Apply refuses retry/verify/continue; read pcb.silk.list before any retry. Final acceptance still requires save, reload and fresh readback.",
+			Inputs:      []string{"primitiveId (required; a free silk string id from pcb.silk.list kind=string)"},
+			Outputs:     []string{"primitiveId", "text", "layer", "deleted", "verified", "partial"},
+			VerifyWith:  []string{"pcb.silk.list"},
+		},
+		{
 			Name: "pcb.silk.netnames", Access: accessDesignWrite,
 			Domain:      DomainPcb,
 			Phase:       2,

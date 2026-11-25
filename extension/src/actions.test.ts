@@ -5128,6 +5128,68 @@ test('pcb.image.delete verifies fresh absence; missing inventory cannot prove de
 	assert.equal(res.result.verified,false);assert.equal(res.result.partial,true);
 });
 
+function silkStringMock(id = 'silk-1', overrides: Record<string, unknown> = {}): any {
+	const state: any = {id, layer: 3, text: 'REV A', locked: false, ...overrides};
+	return {getState_PrimitiveId: () => state.id, getState_Layer: () => state.layer, getState_Text: () => state.text, getState_PrimitiveLock: () => state.locked};
+}
+
+function installSilkStringMock(t: any, initial: any[] = [silkStringMock()]) {
+	const g = globalThis as any;
+	let strings = [...initial];
+	const calls: any[] = [];
+	g.eda = {pcb_PrimitiveString: {
+		get: async (id: string) => strings.find(s => s.getState_PrimitiveId() === id),
+		getAll: async () => [...strings],
+		delete: async (id: string) => {calls.push(['delete', id]); strings = strings.filter(s => s.getState_PrimitiveId() !== id); return true;},
+	}};
+	t.after(() => {delete g.eda;});
+	return {calls, g};
+}
+
+test('pcb.silk.delete deletes one free silk string and verifies fresh absence', async t => {
+	const {calls} = installSilkStringMock(t, [silkStringMock('silk-1'), silkStringMock('silk-2', {layer: 4, text: 'KEEP'})]);
+	const res: any = await runAction('pcb.silk.delete', {primitiveId: 'silk-1'});
+	assert.deepEqual(calls, [['delete', 'silk-1']]);
+	assert.deepEqual(res.result, {primitiveId: 'silk-1', text: 'REV A', layer: 3, deleted: true, verified: true});
+	assert.equal('partial' in res.result, false);
+	const bottom: any = await runAction('pcb.silk.delete', {primitiveId: 'silk-2'});
+	assert.equal(bottom.result.layer, 4);assert.equal(bottom.result.verified, true);
+});
+
+test('pcb.silk.delete refuses missing, non-silk, locked ids and extra keys without calling delete', async t => {
+	const {calls} = installSilkStringMock(t, [silkStringMock('copper', {layer: 1}), silkStringMock('doc', {layer: 13}), silkStringMock('locked', {locked: true}), silkStringMock('ok')]);
+	for (const payload of [{primitiveId: 'attr-or-missing'}, {primitiveId: 'copper'}, {primitiveId: 'doc'}, {primitiveId: 'locked'}, {primitiveId: 'ok', force: true}, {primitiveId: 'ok', primitiveIds: ['ok']}]) {
+		await assert.rejects(() => runAction('pcb.silk.delete', payload), (err: any) => err?.code === 'PRECONDITION_REFUSED', JSON.stringify(payload));
+	}
+	await assert.rejects(() => runAction('pcb.silk.delete', {}), (err: any) => err?.code === 'MISSING_PAYLOAD_FIELD');
+	assert.equal(calls.length, 0);
+});
+
+test('pcb.silk.delete refuses an ID whose readback differs', async t => {
+	const {calls, g} = installSilkStringMock(t);
+	g.eda.pcb_PrimitiveString.get = async () => silkStringMock('other');
+	await assert.rejects(() => runAction('pcb.silk.delete', {primitiveId: 'silk-1'}), (err: any) => err?.code === 'PRECONDITION_REFUSED');
+	assert.equal(calls.length, 0);
+});
+
+test('pcb.silk.delete reports partial when the fresh inventory is unreadable or still lists the id', async t => {
+	const {g} = installSilkStringMock(t);
+	g.eda.pcb_PrimitiveString.get = async () => silkStringMock('silk-1');
+	g.eda.pcb_PrimitiveString.getAll = async () => {throw Error('unreadable');};
+	let res: any = await runAction('pcb.silk.delete', {primitiveId: 'silk-1'});
+	assert.equal(res.result.deleted, true);assert.equal(res.result.verified, false);assert.equal(res.result.partial, true);
+	g.eda.pcb_PrimitiveString.getAll = async () => undefined;
+	res = await runAction('pcb.silk.delete', {primitiveId: 'silk-1'});
+	assert.equal(res.result.verified, false);assert.equal(res.result.partial, true);
+	g.eda.pcb_PrimitiveString.getAll = async () => [silkStringMock('silk-1')];
+	res = await runAction('pcb.silk.delete', {primitiveId: 'silk-1'});
+	assert.equal(res.result.verified, false);assert.equal(res.result.partial, true);
+	g.eda.pcb_PrimitiveString.delete = async () => false;
+	g.eda.pcb_PrimitiveString.getAll = async () => [];
+	res = await runAction('pcb.silk.delete', {primitiveId: 'silk-1'});
+	assert.equal(res.result.deleted, false);assert.equal(res.result.verified, false);assert.equal(res.result.partial, true);
+});
+
 test('pcb layout ops refuse without primitiveIds and never read the canvas selection', async () => {
 	let selectionReads = 0;
 	(globalThis as any).eda = { pcb_SelectControl: { getAllSelectedPrimitives_PrimitiveId: async () => { selectionReads++; return ['user-picked']; } } };
