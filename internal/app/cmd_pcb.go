@@ -3185,12 +3185,28 @@ getDsnFile drops keep-out regions, so verify the DSN before trusting that path.`
 			Long: `Heuristic "hug the chip" placement, run in the daemon (not the connector, so
 'make dev' hot-reloads tweaks with no re-import). Main chips (>= --main-pins
 distinct pins) are anchors and stay put; every small satellite is moved to the
-chip edge nearest the pad it actually connects to, then packed along that edge so
-nothing overlaps — decoupling parts claim the slot nearest their pin first, every
-part takes the nearest free slot in either direction, and keep-out regions (e.g. the
-antenna) and the board outline are never entered:
-  • decoupling caps land by their power pin (3V3/VCC), resistors by their signal pin
+chip edge nearest the pad it actually connects to, then packed so nothing overlaps.
+Packing is a cost-based slot search (v2): every part scores candidate slots on up to
+3 rows parallel to the edge (a blocked inner row falls back to the next row out) and
+takes the cheapest free one — distance from its pin, plus a penalty for sitting in
+front of another net's pad (escape strip), plus (inductors only) a penalty for being
+near keep-outs and crystals. One occupancy map is shared by all edges, and every part
+that does not move (chips, locked parts, fixed group members, skipped connectors) is
+an obstacle, as are keep-out regions (e.g. the antenna) and the board outline:
+  • decoupling caps land by their power pin (3V3/VCC), smallest capacitance (from the
+    component Name, e.g. 100nF) nearest the pin; crystals next; resistors by their
+    signal pin
   • an LED chains next to its series resistor (shared signal net)
+  • a decoupling cap placed >100mil (crystal >160mil) from its pin is still moved, but
+    a diag says how far and what blocks the nearer slots
+  • an antenna (ANT*/AE* designator, or a Name containing "antenna") is a mechanical
+    anchor: never moved, an obstacle. Its RF matching chain is found by topology (the
+    netlist has no RF class): from the antenna feed net through 2-pin series parts to
+    a net with a main-chip pad (<= 6 hops), plus 2-pin shunts to ground. The chain is
+    placed first, on the straight line from the chip RF pad to the antenna feed pad,
+    antenna end first (moves carry edge "rf-chain", via "rf:<antenna>"); keep-outs
+    around the antenna do not block it, and a member more than 40mil off the line gets
+    a diag. No chain found -> diag on the antenna, parts fall back to normal packing
 With 2+ main chips, any that overlap / sit closer than --multi-gap are spread into a
 row (leftmost stays put) before satellites are placed. Use --multi-gap 0 to PRESERVE
 a pre-anchored layout untouched; spreading is also auto-skipped when the chips already
@@ -4922,10 +4938,12 @@ func parseApComps(result map[string]any) []apComp {
 		c := apComp{
 			id:         asString(cm["primitiveId"]),
 			designator: asString(cm["designator"]),
+			name:       asString(cm["name"]),
 			x:          asFloat(cm["x"]),
 			y:          asFloat(cm["y"]),
 			rotation:   asFloat(cm["rotation"]),
 			locked:     asBool(cm["locked"]),
+			layer:      int(asFloat(cm["layer"])),
 		}
 		if bb, ok := cm["bbox"].(map[string]any); ok {
 			c.hasBBox = true
