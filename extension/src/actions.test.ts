@@ -5258,6 +5258,55 @@ test('pcb.route.delete deletes a top-level track whose id merely starts with a c
 	finally { delete (globalThis as any).eda; }
 });
 
+test('pcb.route.delete on only locked ids says how to unlock instead of asking for fresh ids (#310)', async () => {
+	const prim = (id: string): any => ({
+		getState_PrimitiveId: () => id, getState_PrimitiveLock: () => true, getState_Net: () => 'GND', getState_Layer: () => 1,
+		getState_StartX: () => 0, getState_StartY: () => 0, getState_EndX: () => 10, getState_EndY: () => 0, getState_LineWidth: () => 10,
+	});
+	(globalThis as any).eda = {
+		pcb_PrimitiveLine: { getAll: async () => [prim('t1'), prim('t2')], delete: async () => { throw new Error('must not delete'); } },
+		pcb_PrimitiveArc: { getAll: async () => [] },
+		pcb_PrimitiveVia: { getAll: async () => [] },
+		pcb_PrimitiveComponent: { getAll: async () => [] },
+	};
+	try {
+		await assert.rejects(runAction('pcb.route.delete', { primitiveIds: ['t1', 't2'] }), (err: any) => {
+			const msg = String(err.message);
+			assert.match(msg, /2 locked/);
+			assert.match(msg, /track-lock --ids t1,t2 --unlock/);
+			assert.doesNotMatch(msg, /Pull fresh ids/);
+			return true;
+		});
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('pcb.report keeps unrecognised diff pairs, rounds skew and explains a missing length (#310)', async () => {
+	const lengths: Record<string, number | undefined> = { DP: 247.4, DN: 347.4, CP: 10 };
+	(globalThis as any).eda = {
+		pcb_Net: { getAllNetsName: async () => Object.keys(lengths), getNetLength: async (n: string) => lengths[n] },
+		pcb_Drc: {
+			getAllNetClasses: async () => [],
+			getAllDifferentialPairs: async () => ({
+				a: { name: 'USB', positiveNet: 'DP', negativeNet: 'DN' },
+				b: { name: 'CLK', positiveNet: 'CP', negativeNet: 'CN' },
+				c: { name: 'ODD', pos: 'X', neg: 'Y' },
+			}),
+			getAllEqualLengthNetGroups: async () => [],
+		},
+	};
+	try {
+		const res: any = await runAction('pcb.report', {});
+		const [usb, clk] = res.result.differentialPairs;
+		assert.equal(usb.skew, 100);
+		assert.equal(usb.skewUnavailable, undefined);
+		assert.equal(clk.skew, null);
+		assert.match(clk.skewUnavailable, /negative net CN/);
+		assert.deepEqual(res.result.differentialPairsUnrecognized, [{ name: 'ODD', pos: 'X', neg: 'Y' }]);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
 // ─── pcb.route.auto (official autoRouting, mock eda) ─────────────────────
 import { parsePcbAutoRouteProps, pcbRouteAuto } from './actions';
 
