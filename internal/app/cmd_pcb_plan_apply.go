@@ -114,6 +114,8 @@ func (b *planApplyLive) Read() (*planApplyState, error) {
 			Net         string  `json:"net"`
 			X           float64 `json:"x"`
 			Y           float64 `json:"y"`
+			Hole        float64 `json:"holeDiameter"`
+			Diameter    float64 `json:"diameter"`
 			Locked      bool    `json:"locked"`
 		} `json:"vias"`
 	}
@@ -121,7 +123,7 @@ func (b *planApplyLive) Read() (*planApplyState, error) {
 		return nil, fmt.Errorf("pcb.via.list: decode result: %w", err)
 	}
 	for _, v := range vias.Vias {
-		st.Vias = append(st.Vias, planApplyLiveVia{ID: v.PrimitiveID, Locked: v.Locked, planApplyVia: planApplyVia{Net: v.Net, X: v.X, Y: v.Y}})
+		st.Vias = append(st.Vias, planApplyLiveVia{ID: v.PrimitiveID, Locked: v.Locked, planApplyVia: planApplyVia{Net: v.Net, X: v.X, Y: v.Y, HoleMil: v.Hole, DiameterMil: v.Diameter}})
 	}
 	return st, nil
 }
@@ -142,8 +144,35 @@ func (b *planApplyLive) AddLine(t planApplyTrack) error {
 }
 
 func (b *planApplyLive) AddVia(v planApplyVia) error {
-	_, err := b.call("pcb.via.create", map[string]any{"x": v.X, "y": v.Y, "net": v.Net})
+	payload := map[string]any{"x": v.X, "y": v.Y, "net": v.Net}
+	if v.HoleMil > 0 && v.DiameterMil > 0 {
+		payload["holeDiameter"], payload["diameter"] = v.HoleMil, v.DiameterMil
+	}
+	_, err := b.call("pcb.via.create", payload)
 	return err
+}
+
+// Lock sets the primitive lock on exactly these ids and returns how many the
+// editor reports in the locked state. A short count or any failure is an error.
+func (b *planApplyLive) Lock(ids []string) (int, error) {
+	env, err := b.call("pcb.track.lock", map[string]any{"primitiveIds": ids, "locked": true})
+	if err != nil {
+		return 0, err
+	}
+	var res struct {
+		Total    int      `json:"total"`
+		Failures []string `json:"failures"`
+	}
+	if err := json.Unmarshal(env.Result, &res); err != nil {
+		return 0, fmt.Errorf("pcb.track.lock: decode result: %w", err)
+	}
+	if len(res.Failures) > 0 {
+		return res.Total, fmt.Errorf("pcb.track.lock: %d primitive(s) failed to lock, first: %s", len(res.Failures), res.Failures[0])
+	}
+	if res.Total != len(ids) {
+		return res.Total, fmt.Errorf("pcb.track.lock: locked %d of %d primitive(s)", res.Total, len(ids))
+	}
+	return res.Total, nil
 }
 
 func newPcbPlanApplyCmd(cfg *appConfig, window *string, stdout, stderr io.Writer) *cobra.Command {
