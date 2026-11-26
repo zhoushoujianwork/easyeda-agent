@@ -26,6 +26,7 @@
 | 新增或修复工具能力 | [cli-design.md](cli-design.md)、[protocol.md](protocol.md) | [connector-contract.md](connector-contract.md)、[ecosystem-survey.md](ecosystem-survey.md) |
 | 由已有 PCB 生成可打印的上下壳 | [参数化外壳设计](pcb-enclosure-design.md) | [参数、算法与检查](pcb-enclosure-design-detail.md) |
 | 基于已有 PCB 做 3D 模型核对、修正和导出 | [PCB 3D 建模设计](pcb-3d-design.md) | [字段、动作与测试](pcb-3d-design-detail.md) |
+| 整板布线：扇出、官方自动布线与未通诊断 | [整板布线流水线](pcb-route-pipeline-design.md) | [命令与测试约定](pcb-route-pipeline-design-detail.md) |
 | 社区贡献 PCB 布局布线算法 | [PCB 求解社区设计](pcb-solver-community-design.md) | [数学模型与 PR 验收](pcb-solver-community-design-detail.md)、[概念表](concepts.md) |
 | 维护 Skill 和知识 | [skill-design.md](skill-design.md)、[编写约定](../.agents/skills/README.md) | [Agent 协作设计](agent-collaboration.md) |
 | 判断是否需要发布新版本 | [下一版本发布评估](releases/next-release.md) | 修复范围、版本建议和待补验收 |

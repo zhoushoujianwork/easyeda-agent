@@ -3039,6 +3039,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	// ── dump: 板级几何快照（金标准 fixture 的生成器，#167 LEARNING 层）─────────
 	pcb.AddCommand(newPcbDumpCmd(cfg, &window, stdout, stderr))
 	pcb.AddCommand(newPcbPlanApplyCmd(cfg, &window, stdout, stderr))
+	pcb.AddCommand(newPcbFanoutCmd(cfg, &window, stdout, stderr))
 	// ── layout-score: 多维布局打分 + 归因梯度（#167）──────────────────────────
 	pcb.AddCommand(newPcbLayoutScoreCmd(cfg, &window, stdout, stderr))
 	// ── floorplan: 从 S0 flow 推布局骨架（只读规划，#167 ACHIEVE 层）──────────
@@ -3047,6 +3048,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	pcb.AddCommand(newPcbLayoutPlanCmd(stdout, stderr))
 	pcb.AddCommand(newPcbEscapePlanCmd(stdout, stderr))
 	pcb.AddCommand(newPcbRoutabilityCmd(stdout, stderr))
+	pcb.AddCommand(newPcbRouteDiagnoseCmd(stdout, stderr))
 	pcb.AddCommand(newPcbSilkPlanCmd(stdout))
 	for _, c := range newPcbPadEntryCmds(stdout) {
 		pcb.AddCommand(c)

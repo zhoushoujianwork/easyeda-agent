@@ -276,6 +276,9 @@ PCB 几何与保存判定补充：
 
 **已移至 [`pcb-routing.md`](pcb-routing.md)** —— 本节内容整体搬出，减少每次调用的上下文成本（RFC #178）。需要时读那个文件。
 
+- `easyeda pcb fanout --escapes <escape-plan.json> --board <dump.json> --project-uuid <uuid>` — 写入：把 `status=pass` 且语义哈希与 `--board` 一致的 `escape-plan` 预留写成走线与过孔，沿用 `plan-apply` 回读对账，成功后只锁新建图元（`--lock` 默认开，`--dry-run` 只读）。扇出网络上已有铜则拒绝，先 `pcb rip-up --net`；不保存，之后 `pcb save` → `doc reload` → 新 dump。见 [pcb-routing.md](pcb-routing.md#整板布线顺序p7与扇出诊断offline-verified未现场复验)。
+- `easyeda pcb route-diagnose --board <dump.json> --drc <drc.json> [--net N] [--out report.json]` — 只读离线：对 `pcb drc --json` 里 `Connection Error` 的每个网络，复用 `routability` 的泛洪给出 `trapped`（被困焊盘与阻挡对象）、`not-locally-trapped` 或 `unknown`；DRC 与 dump 须来自同一次保存重载后的状态，非 `pass` 退出非零。
+
 ### Schematic → PCB sync + component CRUD
 
 **已移至 [`pcb-layout.md`](pcb-layout.md)** —— 本节内容整体搬出，减少每次调用的上下文成本（RFC #178）。需要时读那个文件。
