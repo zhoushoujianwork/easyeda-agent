@@ -64,7 +64,7 @@ RECT/圆角 RECT/OVAL/圆焊盘、直线、实心多边形铜区、禁线区和�
 结果包含原始板文件与需求 SHA256、候选路径、搜索状态和 `preview` 路径；复验要求同一输入文件版本。
 `pass` 仅证明该端点对在声明规则下的离线路径，不能代替整板连通、差分/阻抗、回流或官方 DRC。
 有限搜索失败与预算耗尽均输出 incomplete 和非零退出码；报告不包含可直接执行的写入队列。
-应用候选后仍须 typed 写入、save → reload → fresh dump → 原生 DRC；整板布线遵守布局确认约定。
+应用候选后仍须 typed 写入、save → reload → fresh dump → 原生 DRC；整板布线遵守[写入授权](../SKILL.md#设计与执行边界)。
 
 ### 联合逃线与模块联动（offline-verified）
 
@@ -79,7 +79,7 @@ RECT/圆角 RECT/OVAL/圆焊盘、直线、实心多边形铜区、禁线区和�
 
 逐脚可布性：`pcb routability --board board.json --out routability.json [--component J1]`
 不需要 routing 声明，对每个有网络的贴片焊盘报告合法过孔位数量、最近过孔位和逃线方向；
-既无过孔位又无出口的焊盘列为 `trapped` 并给出阻挡对象，退出码非零。布局确认前必跑；
+既无过孔位又无出口的焊盘列为 `trapped` 并给出阻挡对象，退出码非零。布局复核包形成前必跑；
 关键网（电源干线、先打的过孔）手工布线后再跑一次，确认没有把相邻信号脚的唯一出口堵死。
 通过只是局部必要条件，相邻焊盘共用的窄通道仍需 `escape-plan` 联合预留。
 
@@ -223,14 +223,15 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   布线/铺铜/区域/丝印会静默残留(`components.list` 看着空了、铜其实还在)——要真正清板重来
   用这个。**默认保留锁定图元 + 板框(layer 11)**(板框是布局前提,和 `sch clear` 保留图框对称)。
   收窄:`--only components,routing,copper,regions,silk`(逗号子集,省略 = 全部);`--no-preserve-outline`
-  连板框一起删;`--include-locked` 连锁定图元一起删(危险)。**无 undo**,确认门控。
+  连板框一起删;`--include-locked` 连锁定图元一起删(危险)。**无 undo**,按写入授权走宿主审批。
   封装内嵌过孔(QFN 散热焊盘自带)不单独删,随所属器件删除或保留,计入 `skippedEmbeddedVias`。
   **默认自带 verify 复合流程(#121)**:清 → save → `doc reload` → 二遍清 → 最终 dry-run 计数——
   部分图元只在 save/reload 时被引擎物化,单次 handler 调用内任何枚举(含 #112 的循环)都看不到
   (R2 实测 reload 后冒出 3 条轨);返回 `{pass1, pass2, remainingAfterVerify, verified}`,
   `remainingAfterVerify` 非零 = 锁定/保留件或更深的引擎问题,绝不假报干净。`--no-verify` 回到
   单遍(快,但你要自己 reload 后 `--dry-run` 复查)。
-  ⚠️ **破坏性**:生产流程必须**先 `--dry-run` 报告删除计数、等用户确认**,再执行。
+  ⚠️ **破坏性**:生产流程必须**先 `--dry-run`**,把删除计数与范围写进执行计划和审批理由,由宿主审批机制确认后执行;
+  无宿主审批能力且用户未显式授权清板时才请求授权(见 [写入授权](../SKILL.md#设计与执行边界))。
   生成→检测→清板→重试闭环用这个。
 - `easyeda pcb via-delete --ids …` / `pcb track-delete --ids …` (`pcb.route.delete`) —
   **surgical delete by primitiveId**: one bad via no longer costs re-routing the whole

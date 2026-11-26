@@ -162,7 +162,7 @@ Region/keepout 是附加约束，不是换模型的理由。既有器件已经�
 fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未改设计的 PNG 字节必须变化；
 记录每轮 dump/render 路径、SHA256、检查项、findings 和 `fixesApplied`。只有第 1 轮与紧接着的
 第 2 轮都没有待修的明显布局/视觉 finding，且 `fixesApplied=false`，才可称整板 Layout 完成并
-进入用户确认；纯观察项可以保留，但必须说明为什么不需要修改。
+形成布局复核包；纯观察项可以保留，但必须说明为什么不需要修改。
 
 ### 实际回读辅助图
 
@@ -172,7 +172,7 @@ fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未�
 官方 `view-side bottom` 仍只是图层聚焦，不是翻板。SDK bbox、采样板框和浏览器字体的表示
 边界必须保留，未知孔径/样式不填造值。出图与图册见[清晰设计图交付](design-drawings.md)。
 
-### Layout 完成、局部电源铜与用户确认
+### Layout 完成、局部电源铜与布线授权
 
 模块候选全部执行不等于整板 Layout 已完成。先逐项落实板框、固定件、板边方向、机械/封装
 禁区、核心与专属外围、逐脚归属和预留通道；任何题目要求仍为 `incomplete` 时，都只能报告
@@ -188,20 +188,21 @@ fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未�
 - 为后续走线保留的出口/通道和仍需用户取舍的项目，不用综合分数替用户作决定；
 - 当前版本的未完成项。存在机械违规、缺测或保存重载失败时，不请求把它当成完成态确认。
 
-展示复核包后停止在 Layout，等待用户明确回复“OK”“布局确认”或“可以布线”，也接受用户
-描述继续调整。用户提出修改时更新参数、重新生成候选、typed 执行并再次复核。用户也可以
-自己调整 EDA；这不是 Agent 使用 GUI 兜底。用户说调整完成并确认后，Agent 必须先重新 dump，
-以现场 anchor/角度重建参数基线并重跑布局事实检查，避免用旧候选坐标开始走线。
+复核包随布线批次进入执行计划和审批理由，不另设“布局确认”的口头等待。整板布线按
+[写入授权](../SKILL.md#设计与执行边界)执行：宿主有审批卡或 Auto 模式时由宿主判定批次；没有宿主审批
+能力且用户尚未授权整板布线时，展示复核包并请求授权。用户提出修改时更新参数、重新生成候选、
+typed 执行并再次复核。用户也可以自己调整 EDA；这不是 Agent 使用 GUI 兜底。用户说调整完成后，
+Agent 必须先重新 dump，以现场 anchor/角度重建参数基线并重跑布局事实检查，避免用旧候选坐标开始走线。
 
 LDO、DCDC 等电源模块是例外：输入电容到芯片、芯片到输出电容、局部 GND 回流及必要的
-EP/地过孔直接决定模块布局，可以在整板确认前作为一个参数化整体完成。局部铜必须逐网回读、
+EP/地过孔直接决定模块布局，可以在整板布线前作为一个参数化整体完成。局部铜必须逐网回读、
 保存，作为候选比较和布局复核包的一部分；以后移动或旋转模块时，器件与这些 track/via 一起
 重算，不能只移动器件。已有局部铜而工具还不能整体变换时，候选应拒绝移动。该例外不包含
 跨模块电源主干、普通信号、全局铺铜或缝合孔。
 
-没有用户对**当前回读版本**的明确确认，不开始上述例外之外的 track/via/pour 写入，也不运行
-会改变整板铜的自动布线命令。确认记录写明基线哈希、时间和用户原话；它是设计评审记录，
-不是 `workflow/stage`、评分、版本许可或 CLI 解锁令牌。
+Layout 未完成或复核包存在未完成项时，不开始上述例外之外的 track/via/pour 写入，也不运行
+会改变整板铜的自动布线命令。布线批次必须基于当前 fresh dump 的基线哈希；授权或审批记录是执行
+依据，不是 `workflow/stage`、评分、版本许可或 CLI 解锁令牌。
 
 ### Layout adjustment (deterministic — EasyEDA exposes no align/grid API)
 
@@ -533,6 +534,6 @@ Operational order:
 3. **P6 coarse seed** — when the board has a clear main chip, `easyeda pcb auto-place` (module-aware: satellites hug the chip pin they connect to); otherwise `pcb.components.arrange mode=cluster` for a net-clustered seed. Run `--dry-run` first to review the plan.
 4. **P2/P4 local overrides** — decoupling caps tight to the IC power pin (≤2-layer ≤150 mil; 4+-layer ≤250 mil **but leave via room**); crystal + 2 load caps tight to the MCU osc pins inside a 200 mil guard; minimize the switcher input loop `{Cin + switch + catch-diode}` bbox; spread hot parts ≥400 mil; keep heat-sensitive parts (electrolytics/crystals/sensors) ≥200 mil from heat.
 5. **P7 tidy-up** — `pcb.align` / `pcb.distribute` / `pcb.grid_snap`, **without breaking any function-driven position**.
-6. **Verify** — `pcb.drc.check` (and the PCB linter once it lands); fix by rule number. Pull fresh primitiveIds before each mutation; confirm destructive ops; log before/after.
+6. **Verify** — `pcb.drc.check` (and the PCB linter once it lands); fix by rule number. Pull fresh primitiveIds before each mutation; put destructive-op `--dry-run` counts in the write plan for host approval (see SKILL.md write authorization); log before/after.
 
 **Key corrections from review** (see the conventions doc): decoupling effectiveness is governed by the cap's **mounting-loop inductance** (pad→via→plane), not raw distance; **default a single solid ground plane** partitioned by placement (do *not* split-ground by default); all hard thresholds are **conditioned on stackup / fab / enclosure** context.

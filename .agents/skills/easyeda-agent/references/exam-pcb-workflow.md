@@ -39,7 +39,7 @@ easyeda pcb config bind --class PWR_Class --track-rule PWR --project ceshi --doc
 按 [布局规则](pcb-layout.md)：板边接口朝外、滤波电容先大后小贴电源脚、DC-DC 输入电容近 IN、反馈分压近 FB、
 电感近 LX；**无源晶振近单片机、不放板边，负载电容夹在芯片振荡脚与晶振之间**
 （[晶振样例](examples/esp32s3r8-crystal/README.md)）。全部器件在顶层、不重叠、不出板。
-连续两轮自检（第二轮含保存重载），展示后等用户确认再布线。
+连续两轮自检（第二轮含保存重载），形成复核包后按[写入授权](../SKILL.md#设计与执行边界)进入布线。
 
 ## 4. 关键网手布并锁定
 

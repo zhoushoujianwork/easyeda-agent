@@ -257,7 +257,7 @@ PCB 几何与保存判定补充：
   显式 `--min-score` 或 `check --strict` 对必要覆盖不完整返回非零。普通动作不受评分许可门禁控制。
 - `refine` 同样输出评分输入的 `coverage` / `incomplete`，摘要和 warning 明示缺测。
   它的 `ok` 表示精修步骤执行与回退结果，`converged` 表示参与评分维度达到目标；
-  两者均不能代替完整布局几何检查、保存重载和用户确认。
+  两者均不能代替完整布局几何检查、保存重载和布局复核包。
 - 原生 `pcb drc` 的布尔 `passed:false` 或缺少可信结论均非零退出，`--json` 保留 `nativeResult`。
   `pcb save` / `sch save` 和 daemon 必须确认布尔 `saved:true`；后台 autosave 仅接受前后身份
   一致的 `mutationContextAvailable:true` / `mutationContext`，并在 FIFO 中检查 `expectedContext`。
