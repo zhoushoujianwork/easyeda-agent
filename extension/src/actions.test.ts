@@ -5308,7 +5308,7 @@ test('pcb.report keeps unrecognised diff pairs, rounds skew and explains a missi
 });
 
 // ─── pcb.route.auto (official autoRouting, mock eda) ─────────────────────
-import { parsePcbAutoRouteProps, pcbRouteAuto } from './actions';
+import { parsePcbAutoRouteProps, pcbRouteAuto, pcbScopeAutoRoute } from './actions';
 
 test('parsePcbAutoRouteProps: defaults keep existing copper, 45°, completion', () => {
 	assert.deepEqual(parsePcbAutoRouteProps({}), { cornerStyle: 0, existingPrimitiveMode: 'keep', optimization: 1 });
@@ -5326,6 +5326,7 @@ function installAutoRouteStub(route: (props: any, live: Record<string, any[]>) =
 		pcb_PrimitiveLine: { getAll: async () => [...live.lines] },
 		pcb_PrimitiveArc: { getAll: async () => [...live.arcs] },
 		pcb_PrimitiveVia: { getAll: async () => [...live.vias] },
+		pcb_Net: { getAllNetsName: async () => ['GND', 'SPIQ'] },
 		pcb_Document: { autoRouting: async (props: any) => { seen.push(props); return route(props, live); } },
 	};
 	return seen;
@@ -5343,6 +5344,36 @@ test('pcbRouteAuto: reports created copper and that locked copper survived', asy
 	assert.deepEqual(res.result.lockedLost, []);
 	assert.equal(res.result.lockedBefore, 1);
 	assert.equal(res.result.before.tracks, 1, 'the layer-11 outline line is not routing copper');
+	delete (globalThis as any).eda;
+});
+
+function netPrim(id: string, net: string, layer = 1): any {
+	const o = pcbPrim(id, layer); o.getState_Net = () => net; return o;
+}
+
+test('pcbScopeAutoRoute: --net is enforced through ignoreNets (host ignores the RoutingNets list)', async () => {
+	(globalThis as any).eda = { pcb_Net: { getAllNetsName: async () => ['GND', 'NRST', 'OSC_IN', 'VCC'] } };
+	try {
+		const scoped = await pcbScopeAutoRoute({ RoutingNets: ['NRST'], ignoreNets: ['VCC'] });
+		assert.deepEqual(scoped.RoutingNets, ['NRST']);
+		assert.deepEqual(scoped.ignoreNets, ['GND', 'OSC_IN', 'VCC']);
+		assert.deepEqual(await pcbScopeAutoRoute({ ignoreNets: ['GND'] }), { ignoreNets: ['GND'] }, 'no --net: props untouched');
+		await assert.rejects(() => pcbScopeAutoRoute({ RoutingNets: ['NRST', 'TYPO'] }), /not on this board: TYPO/);
+		await assert.rejects(() => pcbScopeAutoRoute({ RoutingNets: ['NRST'], ignoreNets: ['NRST'] }), /both requested and ignored: NRST/);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('pcbRouteAuto: reports created copper per net and nets outside the --net scope', async () => {
+	const seen = installAutoRouteStub((_p, live) => {
+		live.lines.push(netPrim('t1', 'NRST'), netPrim('t2', 'GND'));
+		return { success: true, totalNetsCount: 1, successNetsCount: 1, failedNets: [], duration: 1 };
+	});
+	(globalThis as any).eda.pcb_Net = { getAllNetsName: async () => ['GND', 'NRST'] }; // override the stub's names
+	const res: any = await pcbRouteAuto({ nets: ['NRST'] });
+	assert.deepEqual(seen[0].ignoreNets, ['GND']);
+	assert.deepEqual(res.result.createdByNet, { NRST: 1, GND: 1 });
+	assert.deepEqual(res.result.outOfScopeNets, ['GND']);
 	delete (globalThis as any).eda;
 });
 
@@ -5380,6 +5411,7 @@ function installAutoJobStub() {
 		pcb_PrimitiveLine: { getAll: async () => [...live.lines] },
 		pcb_PrimitiveArc: { getAll: async () => [...live.arcs] },
 		pcb_PrimitiveVia: { getAll: async () => [...live.vias] },
+		pcb_Net: { getAllNetsName: async () => ['GND', 'SPID'] },
 		pcb_Document: {
 			startAutoRouting: async (props: any) => { host.started.push(props); return { jobId: `job-${host.started.length}` }; },
 			getAutoJobStatus: async (id: string) => (id.startsWith('job-') ? { jobId: id, state: host.state, progress: host.progress, partial: host.partial } : undefined),
@@ -5395,6 +5427,7 @@ test('pcbRouteAutoStart: returns a jobId at once and keeps existing copper', asy
 	const res: any = await pcbRouteAutoStart({ nets: ['SPID'] });
 	assert.equal(res.result.jobId, 'job-1');
 	assert.equal(host.started[0].existingPrimitiveMode, 'keep');
+	assert.deepEqual(host.started[0].ignoreNets, ['GND'], 'the job is scoped through ignoreNets too');
 	assert.equal(res.result.lockedBefore, 1);
 	delete (globalThis as any).eda;
 });

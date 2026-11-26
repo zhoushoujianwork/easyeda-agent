@@ -174,6 +174,9 @@ at checkpoints. 布线方式见 [`design-flow.md`](./design-flow.md) P7：关键
 和已布关键网，`--layers 1,2` 限定层；返回逐网结果、新建铜计数与锁定铜是否丢失。完成后
 save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
 - 路由器报 `success:true` 只表示已启动；以 `successNetsCount`/`failedNets` 与新建铜为准。
+- `--net` 的限定由连接器把其余全部网络写入 `ignoreNets` 实现：宿主会忽略 `RoutingNets` 名单
+  （2026-11-26 Web 4.1.105 实测：`--net` 三个网却布了全板）。结果的 `createdByNet` 按网络列出新铜，
+  `outOfScopeNets` 非空时命令失败；不存在的网名在布线前拒绝。
 - 失败网先换顺序：rip-up 挡路的同类网（save→reload 证实 0 轨）→ 先布失败网 → 再布其余；
   仍不通再手布（换层绕行）。路由器会把孔贴近已锁定的宽 RF 线（实测 2.8 mil），每轮跑
   `pcb check` 找间距。

@@ -15306,16 +15306,41 @@ export function parsePcbAutoRouteProps(payload: Record<string, unknown>): Record
 	};
 }
 
-type PcbCopperInventory = { lines: Set<string>; arcs: Set<string>; vias: Set<string>; locked: Set<string> };
+type PcbCopperInventory = { lines: Set<string>; arcs: Set<string>; vias: Set<string>; locked: Set<string>; nets: Map<string, string> };
+
+/**
+ * Make a `nets` request actually scope the router. The host turns RoutingNets
+ * into `routingRange` but its engine ignores a list of names (live 2026-11-26,
+ * Web 4.1.105: `--net OSC_IN,OSC_OUT,NRST` routed every net), while
+ * `ignoreNets` is honoured. So every other board net is added to ignoreNets.
+ * An unknown requested net, or one that is also ignored, is refused upfront.
+ */
+export async function pcbScopeAutoRoute(props: Record<string, unknown>): Promise<Record<string, unknown>> {
+	const requested = props.RoutingNets;
+	if (!Array.isArray(requested) || !requested.length) return props;
+	let names: Array<string>;
+	try { names = ((await eda.pcb_Net.getAllNetsName()) ?? []) as Array<string>; }
+	catch (err) { throw edaError(err, 'Net names are unavailable, so the --net scope cannot be enforced; nothing was routed.'); }
+	const want = new Set(requested as Array<string>);
+	const unknown = [...want].filter(n => !names.includes(n));
+	if (unknown.length) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Requested net(s) not on this board: ${unknown.join(', ')}; nothing was routed.`);
+	const ignored = new Set((props.ignoreNets as Array<string> | undefined) ?? []);
+	const both = [...want].filter(n => ignored.has(n));
+	if (both.length) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Net(s) both requested and ignored: ${both.join(', ')}; nothing was routed.`);
+	for (const n of names) if (!want.has(n)) ignored.add(n);
+	return { ...props, ignoreNets: [...ignored].sort() };
+}
 
 async function pcbCopperInventory(): Promise<PcbCopperInventory> {
-	const inv: PcbCopperInventory = { lines: new Set(), arcs: new Set(), vias: new Set(), locked: new Set() };
+	const inv: PcbCopperInventory = { lines: new Set(), arcs: new Set(), vias: new Set(), locked: new Set(), nets: new Map() };
 	const take = (items: Array<SchPrimitiveLike> | undefined, into: Set<string>, layerFilter: boolean) => {
 		for (const p of items ?? []) {
 			if (layerFilter && !onPcbCopperLayer(pcbPrimLayer(p))) continue;
 			const id = p.getState_PrimitiveId();
 			into.add(id);
 			if (pcbPrimLocked(p)) inv.locked.add(id);
+			const net = (p as { getState_Net?: () => unknown }).getState_Net?.();
+			inv.nets.set(id, typeof net === 'string' ? net : '');
 		}
 	};
 	take(await eda.pcb_PrimitiveLine.getAll(), inv.lines, true);
@@ -15325,7 +15350,7 @@ async function pcbCopperInventory(): Promise<PcbCopperInventory> {
 }
 
 export const pcbRouteAuto: Handler = async (payload) => {
-	const props = parsePcbAutoRouteProps(payload);
+	const props = await pcbScopeAutoRoute(parsePcbAutoRouteProps(payload));
 	const route = (eda.pcb_Document as unknown as { autoRouting?: (p: unknown) => Promise<unknown> }).autoRouting;
 	if (typeof route !== 'function') {
 		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'unsupported: eda.pcb_Document.autoRouting is not available on this EasyEDA build.');
@@ -15347,7 +15372,7 @@ export const pcbRouteAuto: Handler = async (payload) => {
 	if (!changed && (ok !== true || (Array.isArray(failedNets) && failedNets.length > 0))) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `autoRouting changed nothing (router report: ${JSON.stringify(report)}).`);
 	}
-	return { result: { router: report ?? null, props, ...pcbCopperReport(before, after) } };
+	return { result: { router: report ?? null, props, ...pcbCopperReport(before, after, props) } };
 };
 
 /** Copper added/removed between two inventories, and locked copper that vanished. */
@@ -15361,10 +15386,22 @@ function pcbCopperDelta(before: PcbCopperInventory, after: PcbCopperInventory) {
 	};
 }
 
-function pcbCopperReport(before: PcbCopperInventory, after: PcbCopperInventory) {
+function pcbCopperReport(before: PcbCopperInventory, after: PcbCopperInventory, props?: Record<string, unknown>) {
 	const { created, removedIds, lockedLost } = pcbCopperDelta(before, after);
+	// Per-net count of the copper the router created, so a scoped run can be
+	// proven to have stayed inside its nets (outOfScopeNets non-empty = it did not).
+	const createdByNet: Record<string, number> = {};
+	for (const set of ['lines', 'arcs', 'vias'] as const) {
+		for (const id of after[set]) if (!before[set].has(id)) {
+			const net = after.nets.get(id) ?? '';
+			createdByNet[net] = (createdByNet[net] ?? 0) + 1;
+		}
+	}
+	const scope = Array.isArray(props?.RoutingNets) ? new Set(props.RoutingNets as Array<string>) : undefined;
 	return {
 		created,
+		createdByNet,
+		...(scope ? { outOfScopeNets: Object.keys(createdByNet).filter(n => !scope.has(n)).sort() } : {}),
 		removedPrimitiveIds: removedIds,
 		lockedBefore: before.locked.size,
 		lockedLost,
@@ -15410,7 +15447,7 @@ function requiredJobId(payload: Record<string, unknown>): string {
 }
 
 export const pcbRouteAutoStart: Handler = async (payload) => {
-	const props = parsePcbAutoRouteProps(payload);
+	const props = await pcbScopeAutoRoute(parsePcbAutoRouteProps(payload));
 	const api = pcbAutoJobApi();
 	let before: PcbCopperInventory;
 	try { before = await pcbCopperInventory(); }
@@ -15460,7 +15497,7 @@ export const pcbRouteAutoStatus: Handler = async (payload) => {
 	try { after = await pcbCopperInventory(); }
 	catch (err) { throw edaError(err, 'Copper inventory after auto-routing is unavailable; poll status again.'); }
 	const errorLogs = logs.filter(l => l?.level === 'error').slice(-5);
-	job.final = { ...base, terminal: true, props: job.props, errorLogs, ...pcbCopperReport(job.before, after) };
+	job.final = { ...base, terminal: true, props: job.props, errorLogs, ...pcbCopperReport(job.before, after, job.props) };
 	return { result: job.final };
 };
 
