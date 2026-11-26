@@ -662,6 +662,7 @@ func (s *boardSnapshot) toCheckPads() []pcbPadP {
 				continue
 			}
 			measured, _, _ := pcbMeasuredPad(p, c.Designator)
+			measured.Hole = pcbPadHoleGeometry(p)
 			out = append(out, measured)
 		}
 	}

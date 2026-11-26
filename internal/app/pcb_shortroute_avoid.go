@@ -96,7 +96,8 @@ const nominalPadHalf = 12
 //
 // The judge is `pcb check`'s (obPad.edgeDistSeg → rectSegDist over the real extent),
 // so the router can no longer emit what the checker will flag. Layer-aware exactly
-// like the check (an SMD pad only obstructs copper on its own layer); the hop's own
+// like the check (an SMD pad only obstructs copper on its own layer, a through-hole
+// MULTI pad obstructs every layer — padLayerMatches); the hop's own
 // endpoint pads are not obstacles.
 //
 // UNNAMED pads are obstacles too — the one place this is deliberately stricter than
@@ -132,8 +133,8 @@ func hopFeasible(cand []rtSeg, net string, a, b rtPad, placed []rtSeg, obPads []
 	slotClr := math.Max(clearance, 8)
 	for _, s := range cand {
 		for _, pd := range obPads {
-			if pd.net == net || pd.layer != s.Layer {
-				continue
+			if pd.net == net || !padLayerMatches(pd.layer, s.Layer) {
+				continue // a through-hole pad obstructs every layer, like `pcb check`
 			}
 			if samePoint(pd.x, pd.y, a.x, a.y) || samePoint(pd.x, pd.y, b.x, b.y) {
 				continue // this hop's own endpoints
@@ -228,8 +229,8 @@ func hopCost(cand []rtSeg, net string, a, b rtPad, placed []rtSeg, obstacles []o
 			}
 		}
 		for _, pd := range obstacles {
-			if pd.net == net || pd.net == "" || pd.layer != s.Layer {
-				continue // layer-aware: a segment only clashes with a pad on its own layer
+			if pd.net == net || pd.net == "" || !padLayerMatches(pd.layer, s.Layer) {
+				continue // layer-aware: an SMD pad only clashes on its own layer, a through-hole pad on all
 			}
 			if samePoint(pd.x, pd.y, a.x, a.y) || samePoint(pd.x, pd.y, b.x, b.y) {
 				continue // this hop's own endpoints
