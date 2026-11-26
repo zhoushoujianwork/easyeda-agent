@@ -29,7 +29,7 @@
 | 分档记录 | `pcb stage confirm-tier 1-4` / `set-assembly` | 兼容保留孔→边缘件→主芯片+RF→卫星的历史记录；不决定后续动作能否执行 |
 | 布局检查 | `pcb layout-lint` | 报告重叠/紧间距/可布性(飞线 MST+交叉)/手焊可达性(no-access)的具体事实 |
 | 二层协同求解 | `pcb layout solve/check/render` | 纯离线：从完整 board dump 与参数请求生成/独立复验/渲染布局+共同路由候选；solve 输出基线、失败尝试、候选的整板与自动聚焦局部 SVG；固定装配面，支持 TOP/BOTTOM 与最多两个过孔；可用 `--apply-project/--apply-doc` 输出绑定目标工程/文档的 layout-only playbook，执行前仍须 fresh dump 核对候选来源哈希；本命令本身不写 EDA |
-| 摆放模拟(离线) | `pcb layout simulate --board dump.json [--poses poses.json] --out sim.json` | 手动摆好主芯片/连接器/天线(poses)后,按 `pcb auto-place` 同一规划器(v2 + RF 链)重排卫星,输出每个件的最终位姿、ratsnest、交叉数、拥挤峰值与问题清单;纯本地,不连接 EasyEDA;见下节 |
+| 摆放模拟(离线) | `pcb layout simulate --board dump.json [--poses poses.json] [--owners owners.json] [--keep-unmoved] --out sim.json` | 手动摆好主芯片/连接器/天线(poses)后,按 `pcb auto-place` 同一规划器(v2 + RF 链)重排卫星,输出每个件的最终位姿、ratsnest、交叉数、拥挤峰值与问题清单;纯本地,不连接 EasyEDA;见下节 |
 | 布局质量分 | `pcb layout-score` | 九维 0-100+逐器件归因(partition/flow-order/edge-io/protection/tidy/compact/rf/routable/clearance),blocking 一票否决;`--part` 器件聚焦视角;金标准五真板校准(`make layout-calibrate`) |
 | 打分驱动精修 | `pcb refine` | 读归因对最弱维做确定性变换,每步复核可回滚;锁定件不动，历史签字档仅作提示 |
 | 编组式移动 | `pcb components move` 类 | 无状态刚体移动(持久编组见路线 §1) |
@@ -41,6 +41,10 @@
 - 输入 `--poses`(可选):`{"boardSemanticSha256":"<须等于 board 的 semanticSha256>","poses":[{"primitiveId","x","y","rotation"}]}`。只能给非卫星件定位姿(主芯片、连接器、天线、其他未锁定件);卫星(规划器会移动的件,含 RF 匹配链成员)、锁定件、未知 id、重复 id、非有限数、非 90° 整数倍的旋转均报错并点名。位姿 = 绕锚点旋转 bbox 与焊盘(焊盘宽高随奇数个 90° 互换),再把锚点平移到 (x,y)。不给 `--poses` 则按现状模拟(卫星围着当前芯片位置重排)。
 - 规划:`defaultApOptions()` 的固定间距(gap 40 / pitch 30 mil;`pcb auto-place` 在线时按 DRC 规则推导,离线不读),不做主芯片间距重排(芯片只随显式位姿移动);禁布区取自 dump 的 `copper.regions`,板界取自 `outline`,缺失时不使用并在 `issues` 里 P3 说明;PCB 虚拟组固定在离线下不可用,只有锁定件固定。
 - 输出 `--out`(缩进 2 空格,原子写入,同输入逐字节相同;stdout 打印路径;`--out` 不得覆盖 `--board`/`--poses`):`outline`、`keepouts`、`components`(每个件的最终位姿、`role`=main|satellite|connector|antenna|fixed|other、`owner`、bbox、pads、`moved`)、`moves`(位姿与规划结果和 dump 不同的件,`via` 为 `pose` 或规划器的 via,按位号排序)、`ratsnest`(每网焊盘中心的最小生成树,含全局网)、`metrics`(`ratsnestMil`、`crossings` 不同网线段真交叉对数、`congestionPeak` 50 mil 网格内焊盘中心数加触及线段数的最大值、`unplaced`)、`issues`(规划诊断:P1 未放置/无空位/无网络路径;P2 超距离上限或偏离射频馈线;P3 说明)。
+- 主芯片:≥8 个不同引脚(连接器除外),或位号前缀为 U/IC/VR/REG/PS 且 ≥3 个不同引脚(LDO、DC-DC 等小芯片,`pcb auto-place` 同此规则);R/C/L/D/LED/FB/Y/X/F/TP/Q 不按前缀提升。同一电源轨上每颗主芯片至少保留一个该轨电容(从持有 ≥2 个的芯片调最近的一个,固定归属的不动)。
+- `--owners owners.json`(可选):`{"boardSemanticSha256","owners":{"C5":"U2"}}`,把卫星固定归给某主芯片,不再按最近焊盘重算;目标不是主芯片或位号未知时 P3 提示并忽略该项。初始归属取结果的 `components[].owner`。
+- `--keep-unmoved`(可选):只重排被位姿影响的卫星——被定位芯片(及其 RF 链)的卫星重排,其余卫星留在 dump 位置并作障碍;与被定位件或新放卫星重叠的,改为在**自己的**主芯片旁重排,`components[].displacedBy` 记录让位原因(最多 8 轮,未收敛 P2)。归属按未定位的板子固定。不加时保持全量重排。
+- `routing`(与位姿无关):`availability`(available|unknown,unknown 表示 dump 没读到布线,不等于没有布线)、`tracks`、`vias`,以及有布线的网 `nets[]{net,tracks,vias,locked,parts}`。锁定走线端点或锁定过孔落在某件同网焊盘上时,该件 `role=fixed`、`reason=locked-routing`,不能定位姿、不被重排。
 - 只读计算,不证明布局可用:结果仍须经 `pcb auto-place`/typed 写入、保存、重载、回读与 DRC。
 
 ### 3. 布线
