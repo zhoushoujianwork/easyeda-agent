@@ -589,3 +589,100 @@ func TestRoutabilityCopperLayerMustBeMeasured(t *testing.T) {
 		t.Fatalf("non-copper poured layer must be incomplete: %s", rep.Status)
 	}
 }
+
+// polygonPad builds an absolute-coordinate POLYGON pad (straight edges) with
+// its origin at (x, y) and copper over the rectangle [x0,x1]x[y0,y1].
+func polygonPad(id, num, net string, layer int, x, y, x0, y0, x1, y1 float64) boardPad {
+	return boardPad{ID: id, Number: num, Net: net, Layer: layer, X: x, Y: y,
+		Shape: []any{"POLYGON", []any{x0, y0, "L", x1, y0, x1, y1, x0, y1, x0, y0}}}
+}
+
+// #306: straight-edged POLYGON pads (e.g. USB-C TYPE-C-31-M-12 shell pins)
+// are exact copper for clearance, so they no longer make the board incomplete
+// and they still block like any other pad.
+func TestRoutabilityStraightPolygonPadIsMeasuredObstacle(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Components = append(s.Components, boardComp{ID: "u2", Designator: "U2", X: 200, Y: 186, Layer: 1,
+		Pads: []boardPad{polygonPad("u2-1", "1", "PWR", 1, 200, 186, 155, 156, 245, 216)}})
+	if c := s.geometryCoverage(false); c.Complete || c.ExactClearancePads != 1 {
+		t.Fatalf("pad-contact coverage must stay incomplete and count the polygon: %+v", c)
+	}
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	if err == nil || rep.Status != "fail" {
+		t.Fatalf("expected fail, got %s err=%v", rep.Status, err)
+	}
+	if p := routabilityPad(t, rep, "J1.3"); p.Status != "trapped" || !routabilityHasBlocker(p, "pad", "U2.1") {
+		t.Fatalf("polygon pad should trap J1.3: %+v", p)
+	}
+}
+
+// A POLYGON source pad need not contain its origin: the flood starts on its
+// copper, not at the origin.
+func TestRoutabilityPolygonSourcePadSeedsOnCopper(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Components = append(s.Components, boardComp{ID: "p1", Designator: "P1", X: 320, Y: 320, Layer: 2,
+		Pads: []boardPad{polygonPad("p1-1", "1", "SIGP", 2, 300, 300, 330, 330, 350, 350)}},
+		// A foreign pad covers the origin: a flood seeded there finds nothing.
+		boardComp{ID: "r9", Designator: "R9", X: 300, Y: 300, Layer: 2,
+			Pads: []boardPad{{ID: "r9-1", Number: "1", Net: "OTHER", Layer: 2, X: 300, Y: 300, W: 20, H: 20, Shape: []any{"RECT", 20.0, 20.0, 0.0}}}})
+	opt := defaultRoutabilityOptions()
+	opt.Components = []string{"P1"}
+	rep, err := analyzePCBRoutability(s, opt)
+	if err != nil || rep.Status != "pass" {
+		t.Fatalf("status=%s err=%v reason=%s", rep.Status, err, rep.Reason)
+	}
+	if p := routabilityPad(t, rep, "P1.1"); p.ViaSites == 0 || len(p.EscapeDirections) == 0 {
+		t.Fatalf("open-field polygon pad should escape: %+v", p)
+	}
+}
+
+// Arc-edged POLYGON pads are not chord-flattened: still incomplete.
+func TestRoutabilityArcPolygonPadStaysIncomplete(t *testing.T) {
+	s := routabilityPocketFixture()
+	s.Components = append(s.Components, boardComp{ID: "u3", Designator: "U3", X: 320, Y: 320, Layer: 1,
+		Pads: []boardPad{{ID: "u3-1", Number: "1", Net: "X", Layer: 1, X: 320, Y: 320,
+			Shape: []any{"POLYGON", []any{310.0, 320.0, "ARC", 180.0, 330.0, 320.0, "L", 310.0, 320.0}}}}})
+	rep, err := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	if err == nil || rep.Status != "incomplete" || !strings.Contains(rep.Reason, "unsupported by exact clearance") {
+		t.Fatalf("got %s err=%v reason=%s", rep.Status, err, rep.Reason)
+	}
+}
+
+// Live USB-C fixture (testdata/pcb_polygon_pad): its 4 straight-edged POLYGON
+// shell pads made the first live run incomplete; they are now measured.
+func TestRoutabilityLiveUSBCPolygonPadsAreMeasured(t *testing.T) {
+	data, err := os.ReadFile("testdata/pcb_polygon_pad/usb-c-component.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var comp map[string]any
+	if err := json.Unmarshal(data, &comp); err != nil {
+		t.Fatal(err)
+	}
+	// The 2026-09 capture predates per-pad rotation; these pads are unrotated.
+	for _, raw := range comp["pads"].([]any) {
+		if pad := raw.(map[string]any); pad["rotation"] == nil {
+			pad["rotation"] = 0.0
+		}
+	}
+	s := routabilityPocketFixture()
+	s.Components = parseBoardComponents(map[string]any{"components": []any{comp}})
+	s.Outline = &boardOutline{Source: "polygon", Format: "polyline", BBox: layoutBBox{MinX: 1500, MinY: -1100, MaxX: 2100, MaxY: -500},
+		Points: [][2]float64{{1500, -1100}, {2100, -1100}, {2100, -500}, {1500, -500}}}
+	if c := s.geometryCoverage(false); c.UnsupportedGeometryPads != 4 || c.ExactClearancePads != 4 {
+		t.Fatalf("fixture should carry 4 exact-clearance polygon pads: %+v", c)
+	}
+	rep, _ := analyzePCBRoutability(s, defaultRoutabilityOptions())
+	if rep.Status == "incomplete" {
+		t.Fatalf("polygon pads must not make the board incomplete: %s", rep.Reason)
+	}
+	polygons := 0
+	for _, p := range rep.Pads {
+		if p.Net == "GND" || p.Net == "USB_VBUS" {
+			polygons++
+		}
+	}
+	if polygons < 4 {
+		t.Fatalf("polygon pads missing from report: %+v", rep.Pads)
+	}
+}

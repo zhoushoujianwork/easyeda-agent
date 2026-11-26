@@ -33,6 +33,9 @@ reaching the radius and no proven layer change is "trapped" and is listed with
 the pads, tracks, vias, copper, slots, keepouts or board edge bounding its
 reachable region; one whose only way out is an unproven transition is
 "unverified" and makes the result incomplete.
+Straight-edged POLYGON pads are exact copper here (the flood seeds on the
+pad's own copper, which need not contain its origin); arc-edged POLYGON,
+specialPad and unknown shapes still make the result incomplete.
 Passing pads report via-site count, nearest site, escape directions and
 existing transitions.
 
