@@ -481,7 +481,7 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 
 	if len(mains) == 0 {
 		for _, s := range sats {
-			diags = append(diags, apDiag{comps[s].designator, "no main chip on board (>= mainPins distinct pins) to anchor against"})
+			diags = append(diags, apDiag{comps[s].designator, "no main chip on board (>= mainPins distinct pins, or a U/IC/VR/REG/PS part with >= 3) to anchor against"})
 		}
 		return nil, diags, info
 	}
@@ -699,6 +699,12 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 			assigned[s] = &assignment{sat: s, mainIdx: best, edge: e, along: along, targetNet: bestNet, via: "power", pad: bestPad, hasPad: true}
 		}
 	}
+
+	// Pass 3b — every chip on a rail keeps one cap of it: nearest-pad assignment
+	// hands all +3V3 caps to the MCU and leaves the LDO that drives +3V3 with no
+	// output cap. A main with a pad on a non-ground rail but no power-assigned cap
+	// on it takes the nearest unpinned one from a main that has two or more.
+	balanceRailCaps(comps, mains, mainPadsByNet, assigned, pinned)
 
 	// Diagnostics for the genuinely unplaceable (no net path to any chip).
 	for _, s := range sats {
@@ -1897,4 +1903,60 @@ func rfFallbackNet(sat apComp, ch *rfChain) string {
 		}
 	}
 	return ""
+}
+
+// balanceRailCaps is pass 3b of planAutoPlaceDetailed: for each non-ground rail,
+// a main with a pad on it but no power-assigned satellite of that rail takes the
+// nearest one (to its rail pad) from a main that holds two or more. Pinned
+// satellites (pin(s) >= 0) never move. Deterministic: rails and mains in order.
+func balanceRailCaps(comps []apComp, mains []int, mainPadsByNet []map[string][]apPad, assigned map[int]*assignment, pin func(int) int) {
+	rails := map[string]bool{}
+	for _, a := range assigned {
+		if a.via == "power" && !strings.Contains(strings.ToLower(a.targetNet), "gnd") {
+			rails[a.targetNet] = true
+		}
+	}
+	names := make([]string, 0, len(rails))
+	for r := range rails {
+		names = append(names, r)
+	}
+	sort.Strings(names)
+	for _, rail := range names {
+		count := make([]int, len(mains))
+		var sats []int
+		for s, a := range assigned {
+			if a.via == "power" && a.targetNet == rail {
+				count[a.mainIdx]++
+				sats = append(sats, s)
+			}
+		}
+		sort.Ints(sats)
+		for mi := range mains {
+			pads := mainPadsByNet[mi][rail]
+			if len(pads) == 0 || count[mi] > 0 {
+				continue
+			}
+			best, bestDist := -1, math.MaxFloat64
+			var bestPad apPad
+			for _, s := range sats {
+				a := assigned[s]
+				if count[a.mainIdx] < 2 || pin(s) >= 0 {
+					continue
+				}
+				scx, scy := comps[s].bboxCenter()
+				if pad, ok := nearestPad(pads, scx, scy); ok {
+					if d := math.Hypot(pad.x-scx, pad.y-scy); d < bestDist {
+						best, bestDist, bestPad = s, d, pad
+					}
+				}
+			}
+			if best < 0 {
+				continue
+			}
+			count[assigned[best].mainIdx]--
+			count[mi]++
+			e, along := edgeFor(comps[mains[mi]], bestPad)
+			assigned[best] = &assignment{sat: best, mainIdx: mi, edge: e, along: along, targetNet: rail, via: "power", pad: bestPad, hasPad: true}
+		}
+	}
 }

@@ -1213,3 +1213,31 @@ func TestPlanAutoPlace_StaySatelliteIsAnObstacle(t *testing.T) {
 		t.Errorf("owners = %v (baseline %v), want both caps owned by the chip", info.Owner, base.Owner)
 	}
 }
+
+// Pass 3b: when every 3V3 cap sits by the MCU, nearest-pad assignment would leave
+// the LDO that drives 3V3 with no output cap. It takes the one nearest to its
+// 3V3 pad, but never the MCU's last one, and never a pinned one.
+func TestPlanAutoPlace_RegulatorKeepsOneRailCap(t *testing.T) {
+	board := func() []apComp {
+		comps := ldoBoard()
+		comps[3] = mkComp("c6", "C6", -300, 300, 60, 30, []apPad{p("1", "3V3", -320, 300), p("2", "GND", -280, 300)}) // by the MCU now
+		return comps
+	}
+	by := movesByDes(func() []apMove { m, _, _ := planAutoPlaceDetailed(board(), defaultApOptions()); return m }())
+	if by["C6"].Main != "U1" || by["C2"].Main != "U2" {
+		t.Errorf("C6 → %q, C2 → %q; want the LDO to take C6 (nearer its 3V3 pad) and the MCU to keep C2", by["C6"].Main, by["C2"].Main)
+	}
+	// The MCU's only 3V3 cap is never taken.
+	b := board()
+	only := append(b[:4:4], b[5]) // drop C2: C6 is the single 3V3 cap
+	if m := movesByDes(func() []apMove { m, _, _ := planAutoPlaceDetailed(only, defaultApOptions()); return m }())["C6"]; m.Main != "U2" {
+		t.Errorf("single 3V3 cap went to %q, want it to stay with U2", m.Main)
+	}
+	// A pinned cap stays with its pinned owner.
+	opt := defaultApOptions()
+	opt.owners = map[string]string{"C6": "U2"}
+	m, _, _ := planAutoPlaceDetailed(board(), opt)
+	if got := movesByDes(m); got["C6"].Main != "U2" || got["C2"].Main != "U1" {
+		t.Errorf("with C6 pinned to U2: C6 → %q, C2 → %q; want C6 on U2 and the LDO to take C2", got["C6"].Main, got["C2"].Main)
+	}
+}
