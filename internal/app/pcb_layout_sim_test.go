@@ -1131,3 +1131,21 @@ func TestLayoutSimulate_KeepUnmovedDeterministicBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestLayoutSimulate_RoleOverrides(t *testing.T) {
+	snap := simLdoSnap(t)
+	r, err := simulatePcbLayoutOpts(snap, nil, false, lsSimOptions{ExcludeMain: map[string]bool{"U2": true}, Anchors: map[string]bool{"Q1": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u2 := simComp(t, r, "U2"); u2.Role != "satellite" || u2.Owner != "U1" {
+		t.Errorf("demoted small IC U2 = role %q owner %q, want a satellite of U1", u2.Role, u2.Owner)
+	}
+	if q := simComp(t, r, "Q1"); q.Role != "main" || q.Owner != "Q1" {
+		t.Errorf("anchored Q1 = role %q owner %q, want a main", q.Role, q.Owner)
+	}
+	if _, err := simulatePcbLayoutOpts(snap, simPoses(snap.SemanticSHA256, lsPose{PrimitiveID: "p-u2", X: fp(0), Y: fp(0), Rotation: fp(0)}), true,
+		lsSimOptions{ExcludeMain: map[string]bool{"U2": true}}); err == nil {
+		t.Error("a pose on a demoted (satellite) part was accepted")
+	}
+}

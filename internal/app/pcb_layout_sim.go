@@ -55,8 +55,10 @@ type lsOwnerFile struct {
 // lsSimOptions are the optional simulate behaviours; the zero value is the plain
 // "re-plan every satellite" run.
 type lsSimOptions struct {
-	Owners      *lsOwnerFile // --owners: pinned owners (nil = computed by the planner)
-	KeepUnmoved bool         // --keep-unmoved: only re-plan what the poses disturb
+	Owners      *lsOwnerFile    // --owners: pinned owners (nil = computed by the planner)
+	KeepUnmoved bool            // --keep-unmoved: only re-plan what the poses disturb
+	Anchors     map[string]bool // --anchor: designators forced into the main set
+	ExcludeMain map[string]bool // --exclude-main: designators barred from it
 }
 
 // ── output ───────────────────────────────────────────────────────────────────
@@ -162,7 +164,7 @@ type lsResult struct {
 // ── command ──────────────────────────────────────────────────────────────────
 
 func newPcbLayoutSimulateCmd(stdout, stderr io.Writer) *cobra.Command {
-	var boardPath, posesPath, ownersPath, outPath string
+	var boardPath, posesPath, ownersPath, outPath, anchorCSV, excludeMainCSV string
 	var keepUnmoved bool
 	cmd := &cobra.Command{
 		Use:   "simulate",
@@ -235,6 +237,10 @@ for nets with any. A part whose pad has a locked track end or locked via of the
 same net on it is role "fixed" with reason "locked-routing" and cannot be posed or
 re-planned (other parts on that net stay free).
 
+--anchor / --exclude-main override which parts are mains, exactly as in
+'pcb auto-place': a demoted small IC becomes a satellite, a demoted high-pin
+part stays put.
+
 Planner inputs are the 'pcb auto-place' defaults (gap 40, pitch 30 mil) with three
 differences: 'pcb auto-place' derives gap/pitch from the live DRC rules, which
 this offline command does not read; main chips are never re-spaced (they move
@@ -283,6 +289,7 @@ moves a component. Output is deterministic: identical inputs give identical byte
 			}
 			var so lsSimOptions
 			so.KeepUnmoved = keepUnmoved
+			so.Anchors, so.ExcludeMain = designatorSet(anchorCSV), designatorSet(excludeMainCSV)
 			if ownersPath != "" {
 				raw, err := os.ReadFile(ownersPath)
 				if err != nil {
@@ -309,6 +316,8 @@ moves a component. Output is deterministic: identical inputs give identical byte
 	cmd.Flags().StringVar(&posesPath, "poses", "", "optional poses JSON: non-satellite parts placed by hand (bound to the board's semanticSha256)")
 	cmd.Flags().StringVar(&ownersPath, "owners", "", "optional owners JSON: satellite → main pins (bound to the board's semanticSha256)")
 	cmd.Flags().BoolVar(&keepUnmoved, "keep-unmoved", false, "re-plan only satellites disturbed by the poses; the rest stay at their dump pose")
+	cmd.Flags().StringVar(&anchorCSV, "anchor", "", "designator(s) forced to be main parts (CSV), as in `pcb auto-place`")
+	cmd.Flags().StringVar(&excludeMainCSV, "exclude-main", "", "designator(s) barred from the main set (CSV): a small IC becomes a satellite, a high-pin part stays put")
 	cmd.Flags().StringVar(&outPath, "out", "", "result JSON output path (easyeda.pcb.layout-sim/v1)")
 	return cmd
 }
@@ -448,6 +457,7 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 	// bounds from the dump instead of live calls.
 	opt := defaultApOptions()
 	opt.multiGap = 0 // chips move only by an explicit pose, never by re-spacing
+	opt.anchors, opt.excludeMain = so.Anchors, so.ExcludeMain
 	var issues []lsIssue
 	keepouts := []layoutBBox{}
 	if snap.Copper != nil && (snap.Copper.Availability["regions"] == "available" || len(snap.Copper.Regions) > 0) {

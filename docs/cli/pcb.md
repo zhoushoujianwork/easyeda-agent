@@ -29,7 +29,7 @@
 | 分档记录 | `pcb stage confirm-tier 1-4` / `set-assembly` | 兼容保留孔→边缘件→主芯片+RF→卫星的历史记录；不决定后续动作能否执行 |
 | 布局检查 | `pcb layout-lint` | 报告重叠/紧间距/可布性(飞线 MST+交叉)/手焊可达性(no-access)的具体事实 |
 | 二层协同求解 | `pcb layout solve/check/render` | 纯离线：从完整 board dump 与参数请求生成/独立复验/渲染布局+共同路由候选；solve 输出基线、失败尝试、候选的整板与自动聚焦局部 SVG；固定装配面，支持 TOP/BOTTOM 与最多两个过孔；可用 `--apply-project/--apply-doc` 输出绑定目标工程/文档的 layout-only playbook，执行前仍须 fresh dump 核对候选来源哈希；本命令本身不写 EDA |
-| 摆放模拟(离线) | `pcb layout simulate --board dump.json [--poses poses.json] [--owners owners.json] [--keep-unmoved] --out sim.json` | 手动摆好主芯片/连接器/天线(poses)后,按 `pcb auto-place` 同一规划器(v2 + RF 链)重排卫星,输出每个件的最终位姿、ratsnest、交叉数、拥挤峰值与问题清单;纯本地,不连接 EasyEDA;见下节 |
+| 摆放模拟(离线) | `pcb layout simulate --board dump.json [--poses poses.json] [--owners owners.json] [--keep-unmoved] [--anchor U5] [--exclude-main U1] --out sim.json` | 手动摆好主芯片/连接器/天线(poses)后,按 `pcb auto-place` 同一规划器(v2 + RF 链)重排卫星,输出每个件的最终位姿、ratsnest、交叉数、拥挤峰值与问题清单;纯本地,不连接 EasyEDA;见下节 |
 | 布局质量分 | `pcb layout-score` | 九维 0-100+逐器件归因(partition/flow-order/edge-io/protection/tidy/compact/rf/routable/clearance),blocking 一票否决;`--part` 器件聚焦视角;金标准五真板校准(`make layout-calibrate`) |
 | 打分驱动精修 | `pcb refine` | 读归因对最弱维做确定性变换,每步复核可回滚;锁定件不动，历史签字档仅作提示 |
 | 编组式移动 | `pcb components move` 类 | 无状态刚体移动(持久编组见路线 §1) |
@@ -44,6 +44,7 @@
 - 主芯片:≥8 个不同引脚(连接器除外),或位号前缀为 U/IC/VR/REG/PS 且 ≥3 个不同引脚(LDO、DC-DC 等小芯片,`pcb auto-place` 同此规则);R/C/L/D/LED/FB/Y/X/F/TP/Q 不按前缀提升。同一电源轨上每颗主芯片至少保留一个该轨电容(从持有 ≥2 个的芯片调最近的一个,固定归属的不动)。
 - `--owners owners.json`(可选):`{"boardSemanticSha256","owners":{"C5":"U2"}}`,把卫星固定归给某主芯片,不再按最近焊盘重算;目标不是主芯片或位号未知时 P3 提示并忽略该项。初始归属取结果的 `components[].owner`。
 - `--keep-unmoved`(可选):只重排被位姿影响的卫星——被定位芯片(及其 RF 链)的卫星重排,其余卫星留在 dump 位置并作障碍;与被定位件或新放卫星重叠的,改为在**自己的**主芯片旁重排,`components[].displacedBy` 记录让位原因(最多 8 轮,未收敛 P2)。归属按未定位的板子固定。不加时保持全量重排。
+- `--anchor` / `--exclude-main`(可选,CSV 位号):与 `pcb auto-place` 相同的角色覆盖。被排除的小芯片(低于 8 脚)成为卫星、跟随最近主芯片;被排除的多脚件留在原位。被降级件的旧位姿会被拒绝(卫星不能定位)。
 - `routing`(与位姿无关):`availability`(available|unknown,unknown 表示 dump 没读到布线,不等于没有布线)、`tracks`、`vias`,以及有布线的网 `nets[]{net,tracks,vias,locked,parts}`。锁定走线端点或锁定过孔落在某件同网焊盘上时,该件 `role=fixed`、`reason=locked-routing`,不能定位姿、不被重排。
 - 只读计算,不证明布局可用:结果仍须经 `pcb auto-place`/typed 写入、保存、重载、回读与 DRC。
 
