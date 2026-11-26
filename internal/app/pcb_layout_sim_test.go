@@ -818,7 +818,8 @@ func TestLayoutSimulate_KeepUnmoved(t *testing.T) {
 
 	// Drop the LDO onto the MCU's 3V3 cap C8 (U2's 100×100 body also overlaps C1): both
 	// give way, are displaced by U2, are re-planned around their own owner U1 only
-	// and end clear of U2. C2/C3 and the other satellites are not touched.
+	// and end clear of U2. The MCU is now next to the LDO, so all its satellites are
+	// re-planned together (reflow), not only the two it landed on.
 	c8 := simComp(t, tidy2r(t, tidy), "C8")
 	onto := lsPose{PrimitiveID: "p-u2", X: fp(c8.X), Y: fp(c8.Y), Rotation: fp(0)}
 	r = simKeep(t, tidy, nil, onto)
@@ -832,8 +833,13 @@ func TestLayoutSimulate_KeepUnmoved(t *testing.T) {
 	if c1 := simComp(t, r, "C1"); c1.DisplacedBy != "U2" || c1.Owner != "U1" || apOverlaps(*c1.BBox, *simComp(t, r, "U2").BBox) {
 		t.Errorf("C1 = displacedBy %q owner %q: want it displaced by U2, still owned by U1, clear of U2", c1.DisplacedBy, c1.Owner)
 	}
-	if got := movedSet(r); got != "C1,C6,C7,C8,U2" {
-		t.Errorf("moves = %s, want the LDO, its caps and the displaced C1, C8", got)
+	if got := movedSet(r); got != "C1,C2,C3,C6,C7,C8,U2,Y1" {
+		t.Errorf("moves = %s, want the LDO, its caps and every MCU satellite (reflow)", got)
+	}
+	for _, des := range []string{"C2", "C3", "Y1"} {
+		if c := simComp(t, r, des); c.Owner != "U1" || c.DisplacedBy != "U2" {
+			t.Errorf("%s = owner %q displacedBy %q, want reflowed around U1 because of U2", des, c.Owner, c.DisplacedBy)
+		}
 	}
 	// Nothing in the final layout overlaps a main/obstacle or another satellite.
 	simNoOverlaps(t, r)
@@ -883,14 +889,11 @@ func TestLayoutSimulate_KeepUnmovedUnplacedIsP1NamingOwner(t *testing.T) {
 	tidy.Copper.Regions = []any{region}
 	simRehash(t, tidy)
 	c8 := simComp(t, simKeep(t, tidy, nil), "C8")
-	// Posing U2 frees its own caps (C6, C7) and, by overlap, C1 and C8: none of the four fits anywhere.
+	// Posing U2 frees its own caps (C6, C7) and, by overlap and then by reflow next to U1,
+	// all six MCU satellites: none of the eight fits anywhere.
 	r := simKeep(t, tidy, nil, lsPose{PrimitiveID: "p-u2", X: fp(c8.X), Y: fp(c8.Y), Rotation: fp(0)})
-	if r.Metrics.Unplaced != 4 {
-		t.Fatalf("with the whole board keep-out the 4 freed satellites cannot be re-placed, unplaced=%d moves=%s", r.Metrics.Unplaced, movedSet(r))
-	}
-	// Satellites that stayed are not "unplaced".
-	if c2 := simComp(t, r, "C2"); c2.Moved || c2.Owner != "U1" {
-		t.Errorf("C2 stays put: %+v", c2)
+	if r.Metrics.Unplaced != 8 {
+		t.Fatalf("with the whole board keep-out the 8 freed satellites cannot be re-placed, unplaced=%d moves=%s", r.Metrics.Unplaced, movedSet(r))
 	}
 	found := false
 	for _, is := range r.Issues {
@@ -1174,4 +1177,31 @@ func TestLayoutSimulate_SatelliteKeepsClearOfStayingParts(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Moving a chip away frees room next to its neighbour: the neighbour's satellites are
+// re-planned too (reflow), while a chip far from both the old and new spot is left alone.
+func TestLayoutSimulate_ReflowNeighbourOfMovedChip(t *testing.T) {
+	tidy := simTidy(t, simLdoSnap(t))
+	base := tidy2r(t, tidy)
+	u2 := simComp(t, base, "U2")
+	// LDO U2 sits next to MCU U1 on this board: moving it far away reflows U1's satellites.
+	away := simKeep(t, tidy, nil, lsPose{PrimitiveID: "p-u2", X: fp(2500), Y: fp(-1500), Rotation: fp(0)})
+	reflowed := 0
+	for _, c := range away.Components {
+		if c.Owner == "U1" && c.Role == "satellite" && c.Moved {
+			reflowed++
+			if c.DisplacedBy != "U2" {
+				t.Errorf("%s moved without displacedBy U2: %q", c.Designator, c.DisplacedBy)
+			}
+		}
+		if c.Role == "satellite" && !c.Moved && c.DisplacedBy != "" {
+			t.Errorf("%s did not move but reports displacedBy %q", c.Designator, c.DisplacedBy)
+		}
+	}
+	near := math.Hypot(u2.X-simComp(t, base, "U1").X, u2.Y-simComp(t, base, "U1").Y) <= 2000
+	if near && reflowed == 0 {
+		t.Errorf("the LDO left U1's side but none of U1's satellites was re-planned: moves=%s", movedSet(away))
+	}
+	simNoOverlaps(t, away)
 }
