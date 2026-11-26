@@ -681,3 +681,51 @@ func TestFindClearance_CrossingTracksAreReported(t *testing.T) {
 		t.Errorf("cross-layer crossing is legal, got %d: %+v", len(out), out)
 	}
 }
+
+// #310: the clearance rule used an axis-aligned W×H box for every pad, so it
+// false-flagged copper beside rotated pads and around round pads. Pads with a
+// known shape now use their exact rotated copper.
+func TestFindClearance_RotatedAndRoundPadsUseExactShape(t *testing.T) {
+	// 60×10 RECT rotated 90°: copper runs along Y (x ±5, y ±30). A 6mil
+	// horizontal track at y=10, x from 15 to 100 has 7mil copper-to-copper
+	// (15-5-3, > 6) but would be inside the unrotated 60-wide box.
+	rotated := pcbPadP{Designator: "U1", Number: "1", Net: "A", Layer: 1, X: 0, Y: 0, W: 60, H: 10, Rotation: 90,
+		Shape: "RECT", ShapeW: 60, ShapeH: 10, ShapeOK: true}
+	track := pcbTrack{ID: "t", Net: "B", Layer: 1, X1: 15, Y1: 10, X2: 100, Y2: 10, Width: 6}
+	if out := findClearanceViolations([]pcbTrack{track}, []pcbPadP{rotated}, nil, nil, 6, 6); len(out) != 0 {
+		t.Fatalf("rotated pad false positive: %+v", out)
+	}
+	// Same pad, track 4mil from the real (rotated) copper edge → still flagged.
+	near := pcbTrack{ID: "t2", Net: "B", Layer: 1, X1: 9, Y1: 0, X2: 9, Y2: 100, Width: 6}
+	if out := findClearanceViolations([]pcbTrack{near}, []pcbPadP{rotated}, nil, nil, 6, 6); len(out) != 1 {
+		t.Fatalf("real violation beside a rotated pad must still fail, got %+v", out)
+	}
+	// Round 40mil pad (ELLIPSE w=h).
+	round := pcbPadP{Designator: "J1", Number: "1", Net: "A", Layer: 1, X: 0, Y: 0, W: 40, H: 40,
+		Shape: "ELLIPSE", ShapeW: 40, ShapeH: 40, ShapeOK: true}
+	// Via (dia 10) centred at (25,25): 15.36mil from the circle's edge, so
+	// 10.36mil copper gap (> 6); the box corner (20,20) is only 7.07mil away,
+	// which left 2.07mil — a false violation under the box model.
+	via := pcbViaP{ID: "v", Net: "B", X: 25, Y: 25, Dia: 10}
+	if out := findClearanceViolations(nil, []pcbPadP{round}, []pcbViaP{via}, nil, 6, 6); len(out) != 0 {
+		t.Fatalf("round pad false positive: %+v", out)
+	}
+	// A pad without a usable shape keeps the old box model.
+	legacy := pcbPadP{Designator: "J2", Number: "1", Net: "A", Layer: 1, X: 0, Y: 0, W: 40, H: 40}
+	if out := findClearanceViolations(nil, []pcbPadP{legacy}, []pcbViaP{via}, nil, 6, 6); len(out) != 1 {
+		t.Fatalf("legacy pad must keep the conservative box model, got %+v", out)
+	}
+}
+
+// #310 live (ceshi, J1 at 45°): native DRC reports "SMD Pad to Track … distance
+// is 5mil" for a 6mil track whose centerline is 8mil from the pad. Track↔pad is
+// copper to copper, so the track's half-width counts.
+func TestFindClearance_TrackToPadIsCopperToCopper(t *testing.T) {
+	pad := []pcbPadP{{Designator: "J1", Number: "A1B12", Net: "GND", Layer: 1, X: 0, Y: 0, W: 20, H: 20,
+		Shape: "RECT", ShapeW: 20, ShapeH: 20, ShapeOK: true}}
+	track := pcbTrack{ID: "t", Net: "DN", Layer: 1, X1: 18, Y1: -50, X2: 18, Y2: 50, Width: 6}
+	out := findClearanceViolations([]pcbTrack{track}, pad, nil, nil, 6, 6)
+	if len(out) != 1 || !strings.Contains(out[0].Message, "5.0mil") {
+		t.Fatalf("centerline 8mil from the pad edge is 5mil copper gap, want one finding at 5.0mil, got %+v", out)
+	}
+}
