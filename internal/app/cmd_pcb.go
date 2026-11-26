@@ -3047,6 +3047,7 @@ external router (Freerouting) would route under the antenna. The result reports
 	pcb.AddCommand(newPcbLayoutPlanCmd(stdout, stderr))
 	pcb.AddCommand(newPcbEscapePlanCmd(stdout, stderr))
 	pcb.AddCommand(newPcbRoutabilityCmd(stdout, stderr))
+	pcb.AddCommand(newPcbRouteDiagnoseCmd(stdout, stderr))
 	pcb.AddCommand(newPcbSilkPlanCmd(stdout))
 	for _, c := range newPcbPadEntryCmds(stdout) {
 		pcb.AddCommand(c)
