@@ -45,6 +45,20 @@ type lsPoseFile struct {
 	Poses               []lsPose `json:"poses"`
 }
 
+// lsOwnerFile pins satellites to a main: designator → main designator, bound to
+// the board by its semanticSha256 like the poses.
+type lsOwnerFile struct {
+	BoardSemanticSHA256 string            `json:"boardSemanticSha256"`
+	Owners              map[string]string `json:"owners"`
+}
+
+// lsSimOptions are the optional simulate behaviours; the zero value is the plain
+// "re-plan every satellite" run.
+type lsSimOptions struct {
+	Owners      *lsOwnerFile // --owners: pinned owners (nil = computed by the planner)
+	KeepUnmoved bool         // --keep-unmoved: only re-plan what the poses disturb
+}
+
 // ── output ───────────────────────────────────────────────────────────────────
 
 type lsOutline struct {
@@ -65,11 +79,16 @@ type lsPad struct {
 }
 
 type lsComponent struct {
-	PrimitiveID string      `json:"primitiveId"`
-	Designator  string      `json:"designator"`
-	Name        string      `json:"name"`
-	Role        string      `json:"role"`
-	Owner       string      `json:"owner"`
+	PrimitiveID string `json:"primitiveId"`
+	Designator  string `json:"designator"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	// Reason says why a part is "fixed" beyond its own lock: "locked-routing".
+	Reason string `json:"reason,omitempty"`
+	Owner  string `json:"owner"`
+	// DisplacedBy is the posed part or placed satellite that first forced this
+	// satellite out of its dump pose under --keep-unmoved.
+	DisplacedBy string      `json:"displacedBy,omitempty"`
 	Layer       int         `json:"layer"`
 	X           float64     `json:"x"`
 	Y           float64     `json:"y"`
@@ -109,6 +128,24 @@ type lsIssue struct {
 	Fix        string `json:"fix"`
 }
 
+// lsRoutingNet is the routing found on one net of the dump.
+type lsRoutingNet struct {
+	Net    string   `json:"net"`
+	Tracks int      `json:"tracks"`
+	Vias   int      `json:"vias"`
+	Locked int      `json:"locked"` // locked tracks + vias
+	Parts  []string `json:"parts"`  // designators with a pad on the net
+}
+
+// lsRouting describes the dump's copper routing (pose independent). Availability
+// "unknown" means the dump could not be read for it: it never means "no routing".
+type lsRouting struct {
+	Availability string         `json:"availability"`
+	Tracks       int            `json:"tracks"`
+	Vias         int            `json:"vias"`
+	Nets         []lsRoutingNet `json:"nets"`
+}
+
 type lsResult struct {
 	Schema              string        `json:"schema"`
 	BoardSemanticSHA256 string        `json:"boardSemanticSha256"`
@@ -118,13 +155,15 @@ type lsResult struct {
 	Moves               []lsMove      `json:"moves"`
 	Ratsnest            []lsRat       `json:"ratsnest"`
 	Metrics             lsMetrics     `json:"metrics"`
+	Routing             lsRouting     `json:"routing"`
 	Issues              []lsIssue     `json:"issues"`
 }
 
 // ── command ──────────────────────────────────────────────────────────────────
 
 func newPcbLayoutSimulateCmd(stdout, stderr io.Writer) *cobra.Command {
-	var boardPath, posesPath, outPath string
+	var boardPath, posesPath, ownersPath, outPath string
+	var keepUnmoved bool
 	cmd := &cobra.Command{
 		Use:   "simulate",
 		Short: "Re-plan satellites around hand-placed chips/connectors/antennas and report the result (offline)",
@@ -166,6 +205,36 @@ result.json (units mil, y-up, degrees CCW, same frame as pcb dump):
                              P2 (over a distance limit, off the RF feed line) or
                              P3 (information), sorted by severity
 
+Small chips count as main chips here and in 'pcb auto-place': a part whose
+designator prefix is U, IC, VR, REG or PS with at least 3 distinct pins (an LDO,
+a DC-DC) owns its own satellites. R/C/L/D/LED/FB/Y/X/F/TP/Q parts are never
+promoted. Every main on a rail keeps at least one cap of that rail (taken from a
+main holding two or more; pinned caps never move).
+
+--owners owners.json pins satellites to a main so the planner never re-derives
+the owner from the nearest pad (take the first one from a result's
+components[].owner):
+  {"boardSemanticSha256":"<must equal the board's semanticSha256>",
+   "owners":{"C5":"U2","C7":"U1"}}
+A pin to a part that is not a main (e.g. demoted) is ignored with a P3 issue;
+unknown designators are a P3 issue too; an empty owner is no pin. RF chain members
+follow their antenna.
+
+--keep-unmoved re-plans only what the poses disturb: satellites whose owner was
+posed (and the RF chain of a posed chip/antenna) are re-planned, every other
+satellite stays at its dump pose and is an obstacle. A staying satellite whose
+bbox overlaps a posed part, or a newly placed satellite, is freed too and is
+re-planned around ITS OWN owner only (up to 8 rounds, then a P2 issue);
+components[].displacedBy names the part that first forced it free. Without the
+flag every satellite is re-planned.
+
+routing (from the dump, pose independent): availability (available|unknown;
+unknown = the dump could not read tracks/vias, never "no routing"), tracks (lines
++ arcs on copper layers), vias, and per net {net, tracks, vias, locked, parts}
+for nets with any. A part whose pad has a locked track end or locked via of the
+same net on it is role "fixed" with reason "locked-routing" and cannot be posed or
+re-planned (other parts on that net stay free).
+
 Planner inputs are the 'pcb auto-place' defaults (gap 40, pitch 30 mil) with three
 differences: 'pcb auto-place' derives gap/pitch from the live DRC rules, which
 this offline command does not read; main chips are never re-spaced (they move
@@ -178,7 +247,8 @@ This command is pure local computation: it never connects to EasyEDA and never
 moves a component. Output is deterministic: identical inputs give identical bytes.`,
 		Example: `  easyeda pcb dump --include-copper --out board.json
   easyeda pcb layout simulate --board board.json --out sim.json
-  easyeda pcb layout simulate --board board.json --poses poses.json --out sim.json`,
+  easyeda pcb layout simulate --board board.json --poses poses.json --out sim.json
+  easyeda pcb layout simulate --board board.json --poses poses.json --owners owners.json --keep-unmoved --out sim.json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if boardPath == "" || outPath == "" {
@@ -187,6 +257,9 @@ moves a component. Output is deterministic: identical inputs give identical byte
 			inputs := []string{boardPath}
 			if posesPath != "" {
 				inputs = append(inputs, posesPath)
+			}
+			if ownersPath != "" {
+				inputs = append(inputs, ownersPath)
 			}
 			if err := rejectLayoutOutputAliases(inputs, []string{outPath}); err != nil {
 				return err
@@ -208,7 +281,19 @@ moves a component. Output is deterministic: identical inputs give identical byte
 					return fmt.Errorf("decode poses: %w", err)
 				}
 			}
-			res, err := simulatePcbLayout(snap, &poses, posesPath != "")
+			var so lsSimOptions
+			so.KeepUnmoved = keepUnmoved
+			if ownersPath != "" {
+				raw, err := os.ReadFile(ownersPath)
+				if err != nil {
+					return fmt.Errorf("read owners: %w", err)
+				}
+				so.Owners = &lsOwnerFile{}
+				if err := decodeStrict(raw, so.Owners); err != nil {
+					return fmt.Errorf("decode owners: %w", err)
+				}
+			}
+			res, err := simulatePcbLayoutOpts(snap, &poses, posesPath != "", so)
 			if err != nil {
 				return err
 			}
@@ -222,6 +307,8 @@ moves a component. Output is deterministic: identical inputs give identical byte
 	}
 	cmd.Flags().StringVar(&boardPath, "board", "", "fresh pcb dump --include-copper JSON (must carry semanticSha256)")
 	cmd.Flags().StringVar(&posesPath, "poses", "", "optional poses JSON: non-satellite parts placed by hand (bound to the board's semanticSha256)")
+	cmd.Flags().StringVar(&ownersPath, "owners", "", "optional owners JSON: satellite → main pins (bound to the board's semanticSha256)")
+	cmd.Flags().BoolVar(&keepUnmoved, "keep-unmoved", false, "re-plan only satellites disturbed by the poses; the rest stay at their dump pose")
 	cmd.Flags().StringVar(&outPath, "out", "", "result JSON output path (easyeda.pcb.layout-sim/v1)")
 	return cmd
 }
@@ -323,6 +410,10 @@ func simDesLess(a, b string) bool {
 // ── simulation ───────────────────────────────────────────────────────────────
 
 func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*lsResult, error) {
+	return simulatePcbLayoutOpts(snap, pf, havePoses, lsSimOptions{})
+}
+
+func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, so lsSimOptions) (*lsResult, error) {
 	if snap == nil || strings.TrimSpace(snap.SemanticSHA256) == "" {
 		return nil, fmt.Errorf("board snapshot has no semanticSha256; take a fresh `easyeda pcb dump --include-copper`")
 	}
@@ -338,6 +429,19 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 		}
 		byID[c.ID] = i
 		ap[i] = boardCompToAP(c)
+	}
+
+	// Routing facts come from the dump alone. A part is fixed when locked copper
+	// (a locked track/arc end or a locked via) lands on one of its pads of the same
+	// net: the planner sees it as locked (never moved, an obstacle) and it cannot
+	// be posed. A locked via elsewhere on GND does not freeze every GND part.
+	routing, lockedPts := simRoutingFacts(snap)
+	lockedRoute := make([]bool, n)
+	for i := range ap {
+		if simPadsTouchLocked(ap[i].pads, lockedPts) {
+			lockedRoute[i] = true
+			ap[i].locked = true
+		}
 	}
 
 	// Planner inputs: same defaults as `pcb auto-place`; keep-outs and board
@@ -381,12 +485,27 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 		issues = append(issues, lsIssue{Severity: "P3", Message: "the dump has no usable board outline: satellites were not bounded by the board", Fix: "take a fresh `easyeda pcb dump --include-copper` with the board outline set"})
 	}
 
+	// Pinned owners (--owners): validated against the board, then honoured by the
+	// planner's assignment passes.
+	var pins map[string]string
+	if so.Owners != nil {
+		if so.Owners.BoardSemanticSHA256 != snap.SemanticSHA256 {
+			return nil, fmt.Errorf("owners boardSemanticSha256 %q does not match the board's semanticSha256 %q; re-sync: take a fresh `easyeda pcb dump --include-copper` and recompute the owners", so.Owners.BoardSemanticSHA256, snap.SemanticSHA256)
+		}
+		var err error
+		if pins, err = simNormalizeOwners(so.Owners.Owners); err != nil {
+			return nil, err
+		}
+		opt.owners = pins
+	}
+
 	// Classify on the unposed board (pose-independent) and validate the poses.
 	_, _, pre := planAutoPlaceDetailed(ap, opt)
 	movable := map[int]bool{}
 	for _, i := range pre.Movable {
 		movable[i] = true
 	}
+	issues = append(issues, simOwnerIssues(snap, pins, pre, ap)...)
 	posed := ap
 	posedIdx := map[int]bool{}
 	if havePoses {
@@ -406,6 +525,8 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 			switch {
 			case c.Locked:
 				return nil, fmt.Errorf("pose for %s (%s): the part is locked", c.Designator, c.ID)
+			case lockedRoute[i]:
+				return nil, fmt.Errorf("pose for %s (%s): part has locked routing", c.Designator, c.ID)
 			case movable[i]:
 				return nil, fmt.Errorf("pose for %s (%s): a satellite cannot be posed; the planner places it around its chip", c.Designator, c.ID)
 			}
@@ -426,7 +547,27 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 		}
 	}
 
-	moves, diags, info := planAutoPlaceDetailed(posed, opt)
+	var moves []apMove
+	var diags []apDiag
+	var info apPlanInfo
+	var displaced map[int]string // satellite index → part that forced it free (--keep-unmoved)
+	if so.KeepUnmoved {
+		// Owners are fixed on the unposed board, whether or not a file said so: the
+		// file's pins stay (an unreachable pin stays unplaced instead of hopping to
+		// another main), the rest come from the unposed plan.
+		opt.owners = map[string]string{}
+		for k, v := range pins {
+			opt.owners[k] = v
+		}
+		for s, mi := range pre.Owner {
+			opt.owners[strings.ToUpper(strings.TrimSpace(ap[s].designator))] = strings.ToUpper(strings.TrimSpace(ap[mi].designator))
+		}
+		var extra []lsIssue
+		moves, diags, info, displaced, extra = simPlanKeepUnmoved(posed, opt, pre, posedIdx)
+		issues = append(issues, extra...)
+	} else {
+		moves, diags, info = planAutoPlaceDetailed(posed, opt)
+	}
 
 	// Final poses: posed parts as given, satellites as planned.
 	final := append([]apComp(nil), posed...)
@@ -455,6 +596,8 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 	role := func(i int) string {
 		c := ap[i]
 		switch {
+		case lockedRoute[i]:
+			return "fixed"
 		case mainSet[i]:
 			return "main"
 		case movable[i]:
@@ -477,6 +620,9 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 		}
 		if ci, ok := info.AntChip[i]; ok {
 			return ap[ci].designator
+		}
+		if mi, ok := info.Owner[i]; ok && so.KeepUnmoved { // left in place, or freed but unplaced
+			return ap[mi].designator
 		}
 		return ""
 	}
@@ -506,7 +652,10 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 			rot = simNormDeg(f.rotation)
 		}
 		comp := lsComponent{PrimitiveID: src.ID, Designator: src.Designator, Name: src.Name, Role: role(i), Owner: owner(i),
-			Layer: src.Layer, X: round4(f.x), Y: round4(f.y), Rotation: round4(rot), Moved: moved, Pads: []lsPad{}}
+			DisplacedBy: displaced[i], Layer: src.Layer, X: round4(f.x), Y: round4(f.y), Rotation: round4(rot), Moved: moved, Pads: []lsPad{}}
+		if lockedRoute[i] {
+			comp.Reason = "locked-routing"
+		}
 		if f.hasBBox {
 			comp.BBox = &layoutBBox{MinX: round4(f.minX), MinY: round4(f.minY), MaxX: round4(f.maxX), MaxY: round4(f.maxY)}
 		}
@@ -539,10 +688,11 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 	res.Metrics.Crossings = simCountCrossings(res.Ratsnest)
 	res.Metrics.CongestionPeak = simCongestionPeak(pts, res.Ratsnest)
 	for _, i := range pre.Movable {
-		if _, ok := planned[i]; !ok {
+		if _, ok := planned[i]; !ok && !info.Stayed[i] {
 			res.Metrics.Unplaced++
 		}
 	}
+	res.Routing = routing
 
 	for _, d := range diags {
 		issues = append(issues, simIssueFor(d))
@@ -559,6 +709,310 @@ func simulatePcbLayout(snap *boardSnapshot, pf *lsPoseFile, havePoses bool) (*ls
 	})
 	res.Issues = append([]lsIssue{}, issues...)
 	return res, nil
+}
+
+// ── routing facts ────────────────────────────────────────────────────────────
+
+// simRoutingFacts reads the dump's copper routing: tracks (lines + arcs on copper
+// layers), vias, and per net the counts, the locked ones and the parts with a pad
+// on it. It also returns the end points of locked copper (track/arc ends, via
+// centres) with their net. Availability is
+// "unknown" when the dump has no copper section or its lines/vias were not read
+// ("routing"/"vias" not "available", or arcsAvailable explicitly false): a missing
+// read is never "no routing", so counts stay 0 and nets empty. (A real dump with
+// no arcsAvailable already carries routing "unknown", see fetchCopper.)
+func simRoutingFacts(snap *boardSnapshot) (lsRouting, []lsPadPt) {
+	out := lsRouting{Availability: "unknown", Nets: []lsRoutingNet{}}
+	var locked []lsPadPt
+	c := snap.Copper
+	if c == nil || c.Availability["routing"] != "available" || c.Availability["vias"] != "available" ||
+		(c.ArcsAvailable != nil && !*c.ArcsAvailable) {
+		return out, locked // lines, vias or arcs unread: absence of routing cannot be shown
+	}
+	out.Availability = "available"
+	byNet := map[string]*lsRoutingNet{}
+	add := func(m map[string]any, isVia bool) {
+		net, isLocked := asString(m["net"]), asBool(m["locked"])
+		if isLocked {
+			for _, k := range [][2]string{{"x", "y"}, {"startX", "startY"}, {"endX", "endY"}} {
+				x, okx := finiteFloat(m[k[0]])
+				y, oky := finiteFloat(m[k[1]])
+				if okx && oky {
+					locked = append(locked, lsPadPt{Net: strings.TrimSpace(net), X: x, Y: y})
+				}
+			}
+		}
+		if isVia {
+			out.Vias++
+		} else {
+			out.Tracks++
+		}
+		net = strings.TrimSpace(net)
+		if net == "" {
+			return // netless copper counts in the totals but belongs to no net row
+		}
+		n := byNet[net]
+		if n == nil {
+			n = &lsRoutingNet{Net: net, Parts: []string{}}
+			byNet[net] = n
+		}
+		if isVia {
+			n.Vias++
+		} else {
+			n.Tracks++
+		}
+		if isLocked {
+			n.Locked++
+		}
+	}
+	for _, group := range [][]any{c.Lines, c.Arcs} {
+		for _, raw := range group {
+			m, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			layer, ok := finiteFloat(m["layer"])
+			if !ok || layer != math.Trunc(layer) || !netPathCopperLayer(int(layer)) {
+				continue // outline, silk and other non-copper line primitives are not routing
+			}
+			add(m, false)
+		}
+	}
+	for _, raw := range c.Vias {
+		if m, ok := raw.(map[string]any); ok {
+			add(m, true)
+		}
+	}
+	parts := map[string]map[string]bool{}
+	for _, comp := range snap.Components {
+		for _, pad := range comp.Pads {
+			net := strings.TrimSpace(pad.Net)
+			if byNet[net] == nil {
+				continue
+			}
+			if parts[net] == nil {
+				parts[net] = map[string]bool{}
+			}
+			parts[net][comp.Designator] = true
+		}
+	}
+	for net, n := range byNet {
+		for des := range parts[net] {
+			n.Parts = append(n.Parts, des)
+		}
+		sort.Slice(n.Parts, func(i, j int) bool { return simDesLess(n.Parts[i], n.Parts[j]) })
+		out.Nets = append(out.Nets, *n)
+	}
+	sort.Slice(out.Nets, func(i, j int) bool { return out.Nets[i].Net < out.Nets[j].Net })
+	return out, locked
+}
+
+// simPadsTouchLocked reports whether a locked copper point of a pad's net lies on
+// that pad (its copper extent plus simLockTolMil; a pad of unknown size counts
+// within simLockTolMil of its centre).
+func simPadsTouchLocked(pads []apPad, pts []lsPadPt) bool {
+	for _, p := range pads {
+		net := strings.TrimSpace(p.net)
+		if net == "" {
+			continue
+		}
+		for _, q := range pts {
+			if q.Net == net && math.Abs(q.X-p.x) <= p.w/2+simLockTolMil && math.Abs(q.Y-p.y) <= p.h/2+simLockTolMil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+const simLockTolMil = 1.0
+
+// ── owner pins ───────────────────────────────────────────────────────────────
+
+// simNormalizeOwners upper-cases and trims the designators of an owners file. An
+// empty owner means "no pin" and is skipped (a result's components[].owner is ""
+// for connectors and fixed parts, so a file built from it may carry such entries);
+// an empty part designator, or two entries for one part that disagree, is an error.
+func simNormalizeOwners(in map[string]string) (map[string]string, error) {
+	out := make(map[string]string, len(in))
+	keys := make([]string, 0, len(in))
+	for k := range in {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		part, owner := strings.ToUpper(strings.TrimSpace(k)), strings.ToUpper(strings.TrimSpace(in[k]))
+		if part == "" {
+			return nil, fmt.Errorf("owners entry %q has an empty part designator", k)
+		}
+		if owner == "" {
+			continue
+		}
+		if prev, dup := out[part]; dup && prev != owner {
+			return nil, fmt.Errorf("owners lists %s twice with different owners (%s, %s)", part, prev, owner)
+		}
+		out[part] = owner
+	}
+	return out, nil
+}
+
+// simOwnerIssues reports pins the planner cannot honour: a designator that is not
+// on the board, or an owner that is not a main on it (e.g. it was demoted). Both
+// are P3: the pin is ignored for that part and the planner derives the owner.
+func simOwnerIssues(snap *boardSnapshot, pins map[string]string, pre apPlanInfo, ap []apComp) []lsIssue {
+	if len(pins) == 0 {
+		return nil
+	}
+	onBoard := map[string]string{} // upper-cased designator → designator as written
+	for _, c := range snap.Components {
+		onBoard[strings.ToUpper(strings.TrimSpace(c.Designator))] = c.Designator
+	}
+	mains := map[string]bool{}
+	for _, i := range pre.Mains {
+		mains[strings.ToUpper(strings.TrimSpace(ap[i].designator))] = true
+	}
+	keys := make([]string, 0, len(pins))
+	for k := range pins {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var out []lsIssue
+	for _, k := range keys {
+		owner := pins[k]
+		switch {
+		case onBoard[k] == "":
+			out = append(out, lsIssue{Severity: "P3", Designator: k, Message: fmt.Sprintf("owners: %s is not on this board; the pin is ignored", k), Fix: "drop it from --owners or take fresh owners from a new simulate result"})
+		case !mains[owner]:
+			why := "is not a main chip on this board"
+			if onBoard[owner] == "" {
+				why = "is not on this board"
+			}
+			out = append(out, lsIssue{Severity: "P3", Designator: onBoard[k], Message: fmt.Sprintf("owners: %s's owner %s %s; the pin is ignored and the planner picks the owner", onBoard[k], owner, why), Fix: "pin it to a main chip or drop it from --owners"})
+		}
+	}
+	return out
+}
+
+// ── minimal disturbance (--keep-unmoved) ─────────────────────────────────────
+
+// simKeepRounds caps the free-the-colliders loop of --keep-unmoved.
+const simKeepRounds = 8
+
+// simPlanKeepUnmoved plans only the satellites the poses disturb. Owners were
+// pinned by the caller (opt.owners). A satellite is free when its owner (or, for
+// an RF chain member, its antenna) was posed; every other assigned satellite stays
+// at its dump pose and is an obstacle for the packer. A staying satellite whose
+// bbox overlaps (positive area, same board side) a posed part's new bbox is freed
+// before the first plan; after each plan, staying satellites overlapping a newly
+// placed satellite's bbox are freed and the plan is redone, until nothing changes
+// (at most simKeepRounds plans, then a P2 issue). An RF chain moves as a whole: a
+// freed member frees its siblings. displaced names, per freed satellite, the
+// smallest designator (simDesLess) among the parts that overlapped it in the first
+// round it was freed.
+func simPlanKeepUnmoved(posed []apComp, opt apOptions, pre apPlanInfo, posedIdx map[int]bool) ([]apMove, []apDiag, apPlanInfo, map[int]string, []lsIssue) {
+	free := map[int]bool{}
+	displaced := map[int]string{}
+	chainOf := map[int][]int{} // antenna → its chain members
+	for _, s := range pre.Movable {
+		if ant, ok := pre.ChainAnt[s]; ok {
+			chainOf[ant] = append(chainOf[ant], s)
+		}
+	}
+	for _, s := range pre.Movable {
+		if owner, ok := pre.Owner[s]; ok && posedIdx[owner] {
+			free[s] = true
+		} else if ant, ok := pre.ChainAnt[s]; ok && posedIdx[ant] {
+			free[s] = true
+		}
+	}
+	type src struct {
+		des  string
+		box  layoutBBox
+		side int
+	}
+	// release frees every staying satellite overlapping one of the boxes.
+	release := func(boxes []src) bool {
+		hit := map[int]string{}
+		for _, s := range pre.Movable {
+			c := posed[s]
+			if _, owned := pre.Owner[s]; !owned || free[s] || !c.hasBBox {
+				continue
+			}
+			sb := layoutBBox{MinX: c.minX, MinY: c.minY, MaxX: c.maxX, MaxY: c.maxY}
+			for _, b := range boxes {
+				if sameSide(c.side(), b.side) && apOverlaps(sb, b.box) {
+					if cur, ok := hit[s]; !ok || simDesLess(b.des, cur) {
+						hit[s] = b.des
+					}
+				}
+			}
+		}
+		for s, by := range hit {
+			group := []int{s}
+			if ant, ok := pre.ChainAnt[s]; ok {
+				group = chainOf[ant]
+				for _, m := range group { // the smallest collider over the whole chain
+					if o, ok := hit[m]; ok && simDesLess(o, by) {
+						by = o
+					}
+				}
+			}
+			for _, m := range group {
+				if !free[m] {
+					free[m] = true
+					displaced[m] = by
+				}
+			}
+		}
+		return len(hit) > 0
+	}
+	idx := make(map[string]int, len(posed))
+	for i, c := range posed {
+		idx[c.id] = i
+	}
+	var posedBoxes []src
+	for i := range posed {
+		if c := posed[i]; posedIdx[i] && c.hasBBox {
+			posedBoxes = append(posedBoxes, src{strings.TrimSpace(c.designator), layoutBBox{MinX: c.minX, MinY: c.minY, MaxX: c.maxX, MaxY: c.maxY}, c.side()})
+		}
+	}
+	release(posedBoxes)
+
+	var issues []lsIssue
+	for round := 1; ; round++ {
+		o := opt
+		o.stay = map[int]bool{}
+		for _, s := range pre.Movable {
+			if _, owned := pre.Owner[s]; owned && !free[s] {
+				o.stay[s] = true
+			}
+		}
+		moves, diags, info := planAutoPlaceDetailed(posed, o)
+		var placed []src
+		for _, m := range moves {
+			i, ok := idx[m.ID]
+			if !ok {
+				continue
+			}
+			rot := posed[i].rotation
+			if m.SetRot {
+				rot = m.NewRot
+			}
+			if f := simTransform(posed[i], m.NewX, m.NewY, rot); f.hasBBox {
+				// Moves are rounded to 0.01 mil: a slot flush against a staying
+				// satellite must not count as overlapping it by rounding noise.
+				box := apInflate(layoutBBox{MinX: f.minX, MinY: f.minY, MaxX: f.maxX, MaxY: f.maxY}, -simPosEps)
+				placed = append(placed, src{strings.TrimSpace(f.designator), box, f.side()})
+			}
+		}
+		if !release(placed) {
+			return moves, diags, info, displaced, issues
+		}
+		if round >= simKeepRounds {
+			issues = append(issues, lsIssue{Severity: "P2", Message: fmt.Sprintf("--keep-unmoved did not settle within %d rounds: staying satellites may still overlap newly placed ones", simKeepRounds), Fix: "re-run, or move the posed part so fewer satellites are displaced"})
+			return moves, diags, info, displaced, issues
+		}
+	}
 }
 
 // ── issues ───────────────────────────────────────────────────────────────────
@@ -585,10 +1039,12 @@ func simIssueFor(d apDiag) lsIssue {
 	case "P1", "P2":
 		if _, hint, ok := strings.Cut(d.Reason, " — "); ok {
 			is.Fix = hint
+		} else if strings.Contains(d.Reason, "pinned owner") {
+			is.Fix = "pin it to a main chip it connects to, or drop the pin from --owners"
 		} else if strings.Contains(d.Reason, "no shared net path") {
 			is.Fix = "connect the part to a net that reaches a main chip, or place it by hand"
 		} else if strings.Contains(d.Reason, "no main chip") {
-			is.Fix = "add a main chip (>= 8 distinct pins) to anchor the satellites against"
+			is.Fix = "add a main chip (>= 8 distinct pins, or a U/IC/VR/REG/PS part with >= 3) to anchor the satellites against"
 		}
 	}
 	return is

@@ -297,6 +297,18 @@ type apOptions struct {
 	// moved. A fixed satellite stays put and becomes a keep-out for the others;
 	// a fixed main stays an anchor and vetoes multi-chip spacing.
 	fixed map[string]bool
+	// owners pins satellites to a main (upper-cased designator → upper-cased main
+	// designator): a pinned satellite is only ever assigned to that main (pass 1
+	// and 3 look at that main's pads only; pass 2 only inherits from a parent on
+	// that main). A pin whose target is not a main on this board is ignored for
+	// that part (the caller reports it). RF chain members are not affected: they
+	// follow their antenna's chip.
+	owners map[string]string
+	// stay lists comps indices of satellites that keep their current pose. They
+	// are still assigned (so pass-2 chains and owners resolve as without stay) but
+	// are then not packed and become obstacles for everything else. An RF chain
+	// stays only when ALL its members are in stay; otherwise it is placed whole.
+	stay map[int]bool
 }
 
 // Satellite slot search along an edge: step and how far from the target pad.
@@ -333,6 +345,11 @@ func designatorSet(csv string) map[string]bool {
 // part (J*/CN*/USB*/… — connectorDesRe) NEVER competes for main, whatever its
 // pin count: connectors are mechanical anchors for place-constrained, not
 // electrical owners. Explicit --anchor / --exclude-main win over everything.
+//
+// Small chips count too: an IC-style designator (apMainPrefixes: U, IC, VR, REG,
+// PS) with at least apMainPrefixMinPins distinct pins is a main even below
+// mainPins, so an LDO or DC-DC owns its own caps instead of being dragged to the
+// MCU. Passive prefixes (R C L D LED FB Y X F TP Q…) are never promoted.
 func isMainComp(c apComp, opt apOptions) bool {
 	des := strings.ToUpper(strings.TrimSpace(c.designator))
 	if opt.excludeMain[des] {
@@ -344,7 +361,30 @@ func isMainComp(c apComp, opt apOptions) bool {
 	if isAntennaComp(c) {
 		return false // mechanical anchor, never the owner of satellites
 	}
-	return c.distinctPins() >= opt.mainPins && !connectorDesRe.MatchString(des)
+	if connectorDesRe.MatchString(des) {
+		return false
+	}
+	if c.distinctPins() >= opt.mainPins {
+		return true
+	}
+	return apMainPrefixes[apDesPrefix(des)] && c.distinctPins() >= apMainPrefixMinPins
+}
+
+// apMainPrefixes are the designator prefixes of IC-style parts that are mains
+// from apMainPrefixMinPins distinct pins on, whatever mainPins says.
+var apMainPrefixes = map[string]bool{"U": true, "IC": true, "VR": true, "REG": true, "PS": true}
+
+const apMainPrefixMinPins = 3
+
+// apDesPrefix is the upper-cased run of letters before the first non-letter
+// of a designator ("u12" → "U", "LED3" → "LED", "1U" → "").
+func apDesPrefix(des string) string {
+	des = strings.ToUpper(strings.TrimSpace(des))
+	end := 0
+	for end < len(des) && des[end] >= 'A' && des[end] <= 'Z' {
+		end++
+	}
+	return des[:end]
 }
 
 // assignment is the planner's per-satellite decision before packing: which chip,
@@ -378,13 +418,22 @@ type apPlanInfo struct {
 	Mains   []int       // anchors (chips)
 	Movable []int       // every part the planner may move: satellites AND RF chain members
 	AntChip map[int]int // antenna index → index of the chip its RF chain ends on
+	// Owner maps every satellite the planner assigned (including stay ones and
+	// RF chain members) to the index of the main it belongs to. A satellite with
+	// no net path to a main has no entry.
+	Owner map[int]int
+	// ChainAnt maps an RF chain member to the index of the antenna it serves.
+	ChainAnt map[int]int
+	// Stayed holds the satellites (and chain members) left in place because of
+	// opt.stay; they are neither moved nor unplaced.
+	Stayed map[int]bool
 }
 
 // planAutoPlaceDetailed is planAutoPlace plus the classification of the parts.
 func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, apPlanInfo) {
 	var mains, sats, ants []int
 	var diags []apDiag
-	info := apPlanInfo{AntChip: map[int]int{}}
+	info := apPlanInfo{AntChip: map[int]int{}, Owner: map[int]int{}, ChainAnt: map[int]int{}, Stayed: map[int]bool{}}
 	for i, c := range comps {
 		if !c.hasBBox {
 			continue
@@ -413,8 +462,10 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 			// satellites. Leave it for place-constrained, like its low-pin kin.
 			diags = append(diags, apDiag{c.designator, "high-pin connector — mechanical anchor, not a main (#131); `place-constrained` seats it, satellites go to the ICs they serve"})
 		case highPin:
-			// Only reachable via --exclude-main: a demoted big part stays put —
-			// dragging an IC around as a "satellite" would be worse than the bug.
+			// Only reachable via --exclude-main (isMainComp above already took every
+			// promoted part, small ICs included): a demoted big part stays put —
+			// dragging an IC around as a "satellite" would be worse than the bug. A
+			// demoted small IC (below mainPins) is a satellite, like any peripheral.
 			diags = append(diags, apDiag{c.designator, "excluded from main by --exclude-main — left in place"})
 		case isEdgeConnector(c, opt.mainPins):
 			// Board-edge connector (J*/CN*/…): leave it where the user (or
@@ -430,7 +481,7 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 
 	if len(mains) == 0 {
 		for _, s := range sats {
-			diags = append(diags, apDiag{comps[s].designator, "no main chip on board (>= mainPins distinct pins) to anchor against"})
+			diags = append(diags, apDiag{comps[s].designator, "no main chip on board (>= mainPins distinct pins, or a U/IC/VR/REG/PS part with >= 3) to anchor against"})
 		}
 		return nil, diags, info
 	}
@@ -493,24 +544,59 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 		var cd []apDiag
 		chains, cd = discoverRfChains(comps, sats, mains, ants, mainPadsByNet)
 		diags = append(diags, cd...)
+		var kept []*rfChain
+		chainOut := map[int]bool{} // members that leave the normal passes
 		for _, ch := range chains {
 			info.AntChip[ch.ant] = mains[ch.chip]
-			for _, m := range ch.members() {
+			members := ch.members()
+			allStay := len(members) > 0
+			for _, m := range members {
+				allStay = allStay && opt.stay[m]
+				info.Owner[m] = mains[ch.chip]
+				info.ChainAnt[m] = ch.ant
+				chainOut[m] = true
+			}
+			if allStay {
+				for _, m := range members {
+					info.Stayed[m] = true // stays put: an obstacle, not placed
+				}
+				continue
+			}
+			kept = append(kept, ch)
+			for _, m := range members {
 				chainMoving[m] = true
 			}
 		}
-		if len(chainMoving) > 0 {
-			kept := make([]int, 0, len(sats))
+		chains = kept
+		if len(chainOut) > 0 {
+			keptSats := make([]int, 0, len(sats))
 			for _, s := range sats {
-				if !chainMoving[s] {
-					kept = append(kept, s)
+				if !chainOut[s] {
+					keptSats = append(keptSats, s)
 				}
 			}
-			sats = kept
+			sats = keptSats
 		}
 	}
 
 	assigned := make(map[int]*assignment) // sat index → decision
+
+	// Pinned owners (opt.owners): the main a satellite must belong to, -1 = free.
+	mainByDes := make(map[string]int, len(mains))
+	for mi, m := range mains {
+		mainByDes[strings.ToUpper(strings.TrimSpace(comps[m].designator))] = mi
+	}
+	pinned := func(s int) int {
+		if len(opt.owners) == 0 {
+			return -1
+		}
+		if want, ok := opt.owners[strings.ToUpper(strings.TrimSpace(comps[s].designator))]; ok {
+			if mi, ok := mainByDes[want]; ok {
+				return mi
+			}
+		}
+		return -1
+	}
 
 	// Pass 1 — direct: a satellite sharing a LOCAL (signal) net with a main pad
 	// hugs that pad. Prefer the nearest (main, same-net pad) when several match.
@@ -520,8 +606,12 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 		var bestPad apPad
 		var bestNet string
 		bestDist := math.MaxFloat64
+		pin := pinned(s)
 		for _, ln := range comps[s].localNets() {
 			for mi := range mains {
+				if pin >= 0 && mi != pin {
+					continue
+				}
 				if pad, ok := nearestPad(mainPadsByNet[mi][ln], scx, scy); ok {
 					d := math.Hypot(pad.x-scx, pad.y-scy)
 					if d < bestDist {
@@ -548,9 +638,13 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 			}
 			for _, ln := range comps[s].localNets() {
 				parent := -1
+				pin := pinned(s)
 				for _, o := range sats {
 					if o == s || assigned[o] == nil {
 						continue
+					}
+					if pin >= 0 && assigned[o].mainIdx != pin {
+						continue // a pinned part only inherits from a neighbour on its own main
 					}
 					if compHasLocalNet(comps[o], ln) {
 						parent = o
@@ -583,8 +677,12 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 		var bestPad apPad
 		var bestNet string
 		bestDist := math.MaxFloat64
+		pin := pinned(s)
 		for _, pn := range pnets {
 			for mi := range mains {
+				if pin >= 0 && mi != pin {
+					continue
+				}
 				if pad, ok := nearestPad(mainPadsByNet[mi][pn], scx, scy); ok {
 					d := math.Hypot(pad.x-scx, pad.y-scy)
 					if d < bestDist {
@@ -602,20 +700,42 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 		}
 	}
 
+	// Pass 3b — every chip on a rail keeps one cap of it: nearest-pad assignment
+	// hands all +3V3 caps to the MCU and leaves the LDO that drives +3V3 with no
+	// output cap. A main with a pad on a non-ground rail but no power-assigned cap
+	// on it takes the nearest unpinned one from a main that has two or more.
+	balanceRailCaps(comps, mains, mainPadsByNet, assigned, pinned)
+
 	// Diagnostics for the genuinely unplaceable (no net path to any chip).
 	for _, s := range sats {
 		if assigned[s] == nil {
-			diags = append(diags, apDiag{comps[s].designator, "no shared net path to a main chip"})
+			reason := "no shared net path to a main chip"
+			if pin := pinned(s); pin >= 0 {
+				reason = fmt.Sprintf("no shared net path to its pinned owner %s", comps[mains[pin]].designator)
+			}
+			diags = append(diags, apDiag{comps[s].designator, reason})
+		}
+	}
+
+	// Owners are final here. A stay satellite keeps its pose: it is not packed
+	// below and acts as an obstacle instead.
+	for _, s := range sats {
+		if a := assigned[s]; a != nil {
+			info.Owner[s] = mains[a.mainIdx]
+			if opt.stay[s] {
+				info.Stayed[s] = true
+			}
 		}
 	}
 
 	// Obstacles: every placed part that stays where it is — mains (after the
 	// chip-spacing shift), locked parts, fixed group members, skipped connectors,
-	// excluded high-pin parts and satellites with no net path (they are not
-	// moved either). Moving satellites are NOT obstacles: they vacate their spot.
+	// excluded high-pin parts, stay satellites (opt.stay) and satellites with no
+	// net path (they are not moved either). Moving satellites are NOT obstacles:
+	// they vacate their spot.
 	pk := &apPacker{opt: opt}
 	for i, c := range comps {
-		if !c.hasBBox || assigned[i] != nil || chainMoving[i] {
+		if !c.hasBBox || (assigned[i] != nil && !info.Stayed[i]) || chainMoving[i] {
 			continue
 		}
 		pk.obstacles = append(pk.obstacles, apOccupant{
@@ -639,7 +759,7 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 	}
 	groups := map[key][]*assignment{}
 	for _, s := range sats {
-		if a := assigned[s]; a != nil {
+		if a := assigned[s]; a != nil && !info.Stayed[s] {
 			k := key{a.mainIdx, a.edge}
 			groups[k] = append(groups[k], a)
 		}
@@ -1783,4 +1903,60 @@ func rfFallbackNet(sat apComp, ch *rfChain) string {
 		}
 	}
 	return ""
+}
+
+// balanceRailCaps is pass 3b of planAutoPlaceDetailed: for each non-ground rail,
+// a main with a pad on it but no power-assigned satellite of that rail takes the
+// nearest one (to its rail pad) from a main that holds two or more. Pinned
+// satellites (pin(s) >= 0) never move. Deterministic: rails and mains in order.
+func balanceRailCaps(comps []apComp, mains []int, mainPadsByNet []map[string][]apPad, assigned map[int]*assignment, pin func(int) int) {
+	rails := map[string]bool{}
+	for _, a := range assigned {
+		if a.via == "power" && !strings.Contains(strings.ToLower(a.targetNet), "gnd") {
+			rails[a.targetNet] = true
+		}
+	}
+	names := make([]string, 0, len(rails))
+	for r := range rails {
+		names = append(names, r)
+	}
+	sort.Strings(names)
+	for _, rail := range names {
+		count := make([]int, len(mains))
+		var sats []int
+		for s, a := range assigned {
+			if a.via == "power" && a.targetNet == rail {
+				count[a.mainIdx]++
+				sats = append(sats, s)
+			}
+		}
+		sort.Ints(sats)
+		for mi := range mains {
+			pads := mainPadsByNet[mi][rail]
+			if len(pads) == 0 || count[mi] > 0 {
+				continue
+			}
+			best, bestDist := -1, math.MaxFloat64
+			var bestPad apPad
+			for _, s := range sats {
+				a := assigned[s]
+				if count[a.mainIdx] < 2 || pin(s) >= 0 {
+					continue
+				}
+				scx, scy := comps[s].bboxCenter()
+				if pad, ok := nearestPad(pads, scx, scy); ok {
+					if d := math.Hypot(pad.x-scx, pad.y-scy); d < bestDist {
+						best, bestDist, bestPad = s, d, pad
+					}
+				}
+			}
+			if best < 0 {
+				continue
+			}
+			count[assigned[best].mainIdx]--
+			count[mi]++
+			e, along := edgeFor(comps[mains[mi]], bestPad)
+			assigned[best] = &assignment{sat: best, mainIdx: mi, edge: e, along: along, targetNet: rail, via: "power", pad: bestPad, hasPad: true}
+		}
+	}
 }
