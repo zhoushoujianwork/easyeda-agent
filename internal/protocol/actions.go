@@ -137,6 +137,15 @@ func AllActions() []ActionSpec {
 			Outputs:     []string{"document uuid", "document type", "tab id"},
 		},
 		{
+			Name: "selection.get", Access: accessDocumentRead,
+			Domain:      DomainDocument,
+			Phase:       1,
+			NeedsWindow: true,
+			Description: "Read-only: list the objects the user currently has selected on the active schematic page or PCB. Only for locating objects; write actions still take explicit ids and never read the selection. Fails with page drift if the active document changes during the read.",
+			Outputs:     []string{"documentType", "count", "items[] (primitiveId, primitiveType, optional designator/name/net/layer/x/y/rotation/footprint/locked)", "detail"},
+			VerifyWith:  []string{"document.current"},
+		},
+		{
 			Name: "document.source.get", Access: accessSourceRead, Domain: DomainDocument, Phase: 1, NeedsWindow: true,
 			Description: "Read the official Beta document source for an exact project/document. Only schematic and PCB documents; identity is checked before and after. Returns raw source, not an eprj3 project or validated design.",
 			Inputs:      []string{"projectUuid (exact, required)", "documentUuid (exact, required)"},
