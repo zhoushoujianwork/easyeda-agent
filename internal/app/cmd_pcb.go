@@ -4426,6 +4426,26 @@ read the actual state before recomputing. Snapshot is supplementary evidence.`,
 		pcb.AddCommand(c)
 	}
 
+	// pcb.silk.list — read every silkscreen text (designator/value attributes + free strings).
+	{
+		c := &cobra.Command{
+			Use:   "silk-list",
+			Short: "List silkscreen texts: component designator/value attributes and free strings",
+			Long: `List every SILKSCREEN TEXT on the active PCB (read-only): component designator/value
+attributes (kind "attribute", with the parent componentId + componentLayer) and free strings
+(kind "string" — what 'pcb silk-add' creates and 'pcb silk-delete' removes). Each entry carries
+primitiveId, text, layer (3=top silk, 4=bottom), mirror, fontFamily, fontSize and x/y; the
+result also has count. SVG images from 'pcb silk-import-svg' are a different primitive and are
+not listed. Same action as 'easyeda call pcb.silk.list'.`,
+			Args:    cobra.NoArgs,
+			Example: `  easyeda pcb silk-list               # then: easyeda pcb silk-delete --id <primitiveId>`,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return dispatch(cfg, "pcb.silk.list", window, nil, stdout, stderr)
+			},
+		}
+		pcb.AddCommand(c)
+	}
+
 	// pcb.silk.add — create a free silkscreen string (board marking / credit / note).
 	{
 		var text string
@@ -4483,14 +4503,14 @@ restyle later with 'pcb silk-set'.`,
 			Use:   "silk-delete",
 			Short: "Delete one free silkscreen string by id and verify its absence",
 			Long: `Delete exactly ONE free silkscreen STRING by primitive id (--id from
-'easyeda call pcb.silk.list', kind "string"). Refuses — without calling delete — a missing id, a
+'easyeda pcb silk-list', kind "string"). Refuses — without calling delete — a missing id, a
 designator/value attribute id, a string on a non-silk layer, and a locked string.
 Success needs delete acknowledged AND a fresh string inventory without the id; an
 unreadable inventory is reported partial/unverified and exits non-zero. Returns
-primitiveId, text, layer, deleted, verified. Save, reload and re-read pcb.silk.list
+primitiveId, text, layer, deleted, verified. Save, reload and re-run 'pcb silk-list'
 before accepting the result.`,
-			Args:    cobra.NoArgs,
-			Example: `  easyeda call pcb.silk.list                  # find the string id (kind "string")
+			Args: cobra.NoArgs,
+			Example: `  easyeda pcb silk-list                       # find the string id (kind "string")
   easyeda pcb silk-delete --id <primitiveId>`,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if strings.TrimSpace(id) == "" {
