@@ -103,6 +103,32 @@ RECT/圆角 RECT/OVAL/圆焊盘、直线、实心多边形铜区、禁线区和�
 `plan-apply` 已内置。验证范围：一块 4 层板上 42 个网络、约 600 个对象的替换，一轮对账一致，保存重载后复核一致，
 原生 DRC 无新增违例；批量写入仍是逐个对象调用。
 
+### 整板布线顺序（P7）与扇出、诊断（offline-verified，未现场复验）
+
+细间距板按固定顺序走，每步都以回读为准，不放宽规则：
+
+1. `pcb routability` 通过（`fail` 先回布局，`incomplete` 先补几何）。
+2. `pcb route-critical`：电源与差分对先布并锁定。
+3. 有细间距器件时：`pcb escape-plan` → `pcb fanout`。
+4. `pcb autoroute --ignore-net <已布网络>`（官方路由器）。
+5. `pcb save` → `doc reload` → `pcb drc --json` → `pcb route-diagnose --drc`。
+6. 未通网络按诊断回到布局或扇出。
+
+`pcb fanout --escapes escapes.json --board board.json --project-uuid <uuid> [--dry-run] [--lock=false]`
+把 `status=pass` 的 escape-plan 预留路径写成真实走线与过孔。`escapes.boardSemanticSha256` 必须等于
+`--board` 的语义哈希，否则拒绝；折线拆成逐段走线，过孔取报告里的孔径，缺失时用板子实测过孔规则。
+扇出网络上不能已有走线、圆弧或过孔（dump 与实时板都检查），已有铜时拒绝并提示先 `pcb rip-up --net`，
+因为写入沿用 `plan-apply` 的替换语义。写入后按 `plan-apply` 回读对账，过孔大小另行核对；通过后用
+`pcb.track.lock` 只锁新建图元，锁定失败保留报告并退出非零。命令不保存、不重铺、不跑 DRC，之后必须
+`pcb save` → `doc reload` → 新 `pcb dump --include-copper`，再 `pcb autoroute`。
+
+`pcb route-diagnose --board board.json --drc drc.json [--net N] [--out report.json]` 只读。未通网络只取
+`pcb drc --json` 中 `Connection Error` 行的网络，不自行重建连通性。每个未通网络的网络级结论：
+`trapped`（有焊盘既无出线也无过孔位，列出这些焊盘和阻挡对象并集）、`not-locally-trapped`（各焊盘都有出口，
+断点在焊盘之间的通道，报告不说是哪条通道，`drcObjs` 给出 DRC 点名的对象）、`unknown`（几何不完整或焊盘
+未验证，不算通过）。几何准备与 `routability` 共用同一实现。DRC 与 dump 必须来自同一次保存重载后的状态，
+命令无法核对这一点；有未通网络时退出非零，`unknown` 使整体 `incomplete`。
+
 职责边界固定为：Layout 求解器枚举模块位置、旋转、移动组与外部连接重算；每个布局候选
 投影为临时板状态后，调用 PCB Router 公共内核验证固定几何下的端点路径和共同通道。
 Layout 不复制通用 Router。Router 单网通过也不批准器件位置，必须由 Layout 汇总同一候选中
