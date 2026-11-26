@@ -850,16 +850,10 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			if centerD <= pcbOverPadEps {
 				continue // over-pad short is track-over-pad's
 			}
-			// Edge distance: with a real extent the pad is its axis-aligned RECT —
-			// a radial max(W,H)/2 would false-flag a track running legitimately
-			// beside an elongated pad (USB-C 1.0mm pads: half-length 19.7mil ≫
-			// half-width 5.9mil, seen on ceshi). Nominal radius only as fallback.
-			var edgeD float64
-			if p.W > 0 && p.H > 0 {
-				edgeD = rectSegDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, t.X1, t.Y1, t.X2, t.Y2)
-			} else {
-				edgeD = centerD - nominalPadHalf
-			}
+			// Copper to copper, as native DRC measures it ("SMD Pad to Track"):
+			// pad edge to the track's edge, not its centerline (#310). route-short's
+			// hopFeasible gates on the same measure.
+			edgeD := pcbCheckPadGap(p, [2]float64{t.X1, t.Y1}, [2]float64{t.X2, t.Y2}, centerD) - t.Width/2
 			if edgeD >= clearance {
 				continue
 			}
@@ -935,14 +929,8 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			if p.Net == v.Net || strings.TrimSpace(p.Net) == "" {
 				continue
 			}
-			// Rect model for real-extent pads (see track↔pad above) — a radial
-			// max-half would false-flag vias beside elongated connector pads.
-			var d float64
-			if p.W > 0 && p.H > 0 {
-				d = rectPtDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, v.X, v.Y) - v.Dia/2
-			} else {
-				d = math.Hypot(v.X-p.X, v.Y-p.Y) - v.Dia/2 - nominalPadHalf
-			}
+			c := [2]float64{v.X, v.Y}
+			d := pcbCheckPadGap(p, c, c, math.Hypot(v.X-p.X, v.Y-p.Y)) - v.Dia/2
 			if d < clearance {
 				ref := p.Designator
 				if p.Number != "" {
@@ -1009,6 +997,23 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 		})
 	}
 	return out
+}
+
+// pcbCheckPadGap is the distance from segment a–z to the pad's copper edge.
+// A pad with known geometry uses its exact rotated shape (rounded RECT corners,
+// OVAL, round ELLIPSE, straight-edged POLYGON); an axis-aligned W×H box would
+// false-flag copper beside rotated or rounded pads (#310). Otherwise the
+// axis-aligned extent, then the nominal radius from the center distance.
+func pcbCheckPadGap(p pcbPadP, a, z [2]float64, centerD float64) float64 {
+	if p.exactClearanceKnown() {
+		if g, err := pcbExactPadSegmentGap(p, a, z); err == nil {
+			return g
+		}
+	}
+	if p.W > 0 && p.H > 0 {
+		return rectSegDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, a[0], a[1], z[0], z[1])
+	}
+	return centerD - nominalPadHalf
 }
 
 // ── R5: via issues — stacked/redundant + pointless single-layer ─────────────

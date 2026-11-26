@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -194,5 +195,18 @@ func TestFlattenDrcResultEmpty(t *testing.T) {
 	_ = json.Unmarshal(out, &round)
 	if _, ok := round["violations"].([]any); !ok {
 		t.Fatalf("violations should be an array, got %T", round["violations"])
+	}
+}
+
+// #310: native Connection Errors are one row per missing ratsnest line; the
+// report and the failure message also give distinct nets per rule.
+func TestFlattenDrcResultCountsNetsPerRule(t *testing.T) {
+	report := flattenDrcResult(loadDrcFixture(t))
+	if report.Counts["Connection Error"] != 2 || report.NetCounts["Connection Error"] != 1 {
+		t.Fatalf("rows=%d nets=%d, want 2 rows on 1 net (+3V3)", report.Counts["Connection Error"], report.NetCounts["Connection Error"])
+	}
+	err := pcbDrcVerdictError(loadDrcFixture(t))
+	if err == nil || !strings.Contains(err.Error(), "Connection Error 2 row(s) across 1 net(s)") {
+		t.Fatalf("verdict must summarise rows and nets: %v", err)
 	}
 }

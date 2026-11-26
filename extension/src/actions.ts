@@ -11067,14 +11067,20 @@ const pcbReport: Handler = async () => {
 		const pairsRaw = await eda.pcb_Drc.getAllDifferentialPairs();
 		// Since EDA v3.4 this may return an object map instead of an array (a
 		// documented breaking change) — normalize both shapes to a list of pairs.
-		const pairs = (Array.isArray(pairsRaw) ? pairsRaw : Object.values(pairsRaw ?? {}))
-			.filter((p): p is { name: string; positiveNet: string; negativeNet: string } =>
-				!!p && typeof p === 'object' && 'positiveNet' in p && 'negativeNet' in p);
-		result.differentialPairs = await Promise.all(pairs.map(async (p) => {
+		const entries: Array<unknown> = Array.isArray(pairsRaw) ? pairsRaw : Object.values(pairsRaw ?? {});
+		const isPair = (p: unknown): p is { name: string; positiveNet: string; negativeNet: string } =>
+			!!p && typeof p === 'object' && typeof (p as any).positiveNet === 'string' && typeof (p as any).negativeNet === 'string';
+		// #310: a declared pair in an unrecognised shape must not vanish — an empty
+		// list reads as "no skew value" with nothing to say why.
+		const unrecognized = entries.filter(p => !isPair(p));
+		if (unrecognized.length) result.differentialPairsUnrecognized = unrecognized;
+		result.differentialPairs = await Promise.all(entries.filter(isPair).map(async (p) => {
 			const lp = await len(p.positiveNet);
 			const ln = await len(p.negativeNet);
-			const skew = (typeof lp === 'number' && typeof ln === 'number') ? Math.abs(lp - ln) : null;
-			return { name: p.name, positiveNet: p.positiveNet, negativeNet: p.negativeNet, positiveLength: lp, negativeLength: ln, skew };
+			const skew = (typeof lp === 'number' && typeof ln === 'number') ? Math.round(Math.abs(lp - ln) * 1000) / 1000 : null;
+			const missing = [typeof lp === 'number' ? '' : `positive net ${p.positiveNet}`, typeof ln === 'number' ? '' : `negative net ${p.negativeNet}`].filter(Boolean);
+			return { name: p.name, positiveNet: p.positiveNet, negativeNet: p.negativeNet, positiveLength: lp, negativeLength: ln, skew,
+				...(skew === null ? { skewUnavailable: `pcb_Net.getNetLength returned no number for ${missing.join(' and ')}` } : {}) };
 		}));
 	}
 	catch (err) { result.differentialPairsError = describeThrown(err); }
@@ -15554,7 +15560,11 @@ const pcbRouteDelete: Handler = async (payload) => {
 		if (notDeletable.length) {
 			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing deletable: ${notDeletable.length} id(s) are FOOTPRINT-EMBEDDED (e.g. EPAD thermal vias — part of ${notDeletable[0].parentComponent}); the primitive API cannot delete them. To bond them to a net use \`easyeda pcb via-bond\`; to remove them edit the footprint or delete the component.`);
 		}
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing to delete: ${notFound.length} id(s) not found among routing primitives${skippedLocked.length ? `, ${skippedLocked.length} locked` : ''}. Pull fresh ids from pcb.line.list / pcb.via.list.`);
+		// #310: when locked ids are the reason, fresh ids would not help — say how to unlock.
+		const lockedHint = skippedLocked.length
+			? ` Locked copper is never deleted: unlock it first with \`easyeda pcb track-lock --ids ${skippedLocked.length <= 8 ? skippedLocked.join(',') : '<the locked ids>'} --unlock\` (or --net <net> / --all with --unlock), then delete again.`
+			: '';
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing to delete: ${notFound.length} id(s) not found among routing primitives${skippedLocked.length ? `, ${skippedLocked.length} locked` : ''}.${lockedHint}${notFound.length ? ' Pull fresh ids for the missing ones from pcb.line.list / pcb.via.list.' : ''}`);
 	}
 
 	const results: Record<string, { requested: number; ok: boolean }> = {};

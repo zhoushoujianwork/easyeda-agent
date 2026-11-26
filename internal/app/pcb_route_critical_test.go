@@ -85,7 +85,9 @@ func TestPlanPairRoute(t *testing.T) {
 		c := apComp{id: des, designator: des, x: x, y: y, hasBBox: true,
 			minX: x - 10, minY: y - 10, maxX: x + 10, maxY: y + 10}
 		for i, n := range nets {
-			c.pads = append(c.pads, apPad{num: string(rune('1' + i)), net: n, x: x, y: y + float64(i)*20, layer: 1})
+			// Real 10×10 pads: a sizeless pad is a nominal 24mil circle, which at
+			// 20mil pitch leaves no copper-to-copper room for any track (#310).
+			c.pads = append(c.pads, apPad{num: string(rune('1' + i)), net: n, x: x, y: y + float64(i)*20, layer: 1, w: 10, h: 10})
 		}
 		return c
 	}

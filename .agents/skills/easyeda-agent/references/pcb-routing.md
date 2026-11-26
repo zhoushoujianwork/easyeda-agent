@@ -256,7 +256,8 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   in `notDeleted`). **Exit contract (#312)**: any non-empty `notFound` / `notDeleted` /
   `notDeletable` / `skippedLocked` makes the command (and an `easyeda apply` step) exit
   non-zero with a `partial delete` error, while stdout still carries the full result —
-  one valid id no longer turns a batch into a success. **Ids are only valid until the
+  one valid id no longer turns a batch into a success. Locked copper is skipped on
+  purpose: the error names the exact `pcb track-lock --ids … --unlock` to run first. **Ids are only valid until the
   next copper write or delete**: a T-branch splits the trunk into two NEW ids, and
   deleting the branch merges them back into a third NEW id. So when deleting across
   several calls, re-export ids before each call (or put related segments in ONE call),

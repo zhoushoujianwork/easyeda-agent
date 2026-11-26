@@ -159,3 +159,23 @@ func TestApplyRouteDeletePartialFailsStep(t *testing.T) {
 		t.Fatalf("apply must keep the result for the journal: %#v", res)
 	}
 }
+
+// #310: a locked id is skipped on purpose; the error must say how to unlock it
+// rather than only suggesting fresh ids.
+func TestRouteDeleteResultErrorLockedSaysHowToUnlock(t *testing.T) {
+	err := routeDeleteResultError("pcb.route.delete", map[string]any{"count": 1.0, "skippedLocked": []any{"l1", "l2"}})
+	if err == nil || !strings.Contains(err.Error(), "track-lock --ids l1,l2 --unlock") {
+		t.Fatalf("locked hint missing: %v", err)
+	}
+	many := make([]any, 9)
+	for i := range many {
+		many[i] = fmt.Sprintf("l%d", i)
+	}
+	err = routeDeleteResultError("pcb.route.delete", map[string]any{"count": 0.0, "skippedLocked": many})
+	if err == nil || !strings.Contains(err.Error(), "--ids <the skippedLocked ids> --unlock") {
+		t.Fatalf("long locked list must not print a truncated id list as a command: %v", err)
+	}
+	if err := routeDeleteResultError("pcb.route.delete", map[string]any{"count": 1.0, "notFound": []any{"a"}}); err == nil || strings.Contains(err.Error(), "track-lock") {
+		t.Fatalf("unlock hint must only appear for locked ids: %v", err)
+	}
+}
