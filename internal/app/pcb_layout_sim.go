@@ -573,7 +573,7 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 			opt.owners[strings.ToUpper(strings.TrimSpace(ap[s].designator))] = strings.ToUpper(strings.TrimSpace(ap[mi].designator))
 		}
 		var extra []lsIssue
-		moves, diags, info, displaced, extra = simPlanKeepUnmoved(posed, opt, pre, posedIdx)
+		moves, diags, info, displaced, extra = simPlanKeepUnmoved(ap, posed, opt, pre, posedIdx)
 		issues = append(issues, extra...)
 	} else {
 		moves, diags, info = planAutoPlaceDetailed(posed, opt)
@@ -662,7 +662,7 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 			rot = simNormDeg(f.rotation)
 		}
 		comp := lsComponent{PrimitiveID: src.ID, Designator: src.Designator, Name: src.Name, Role: role(i), Owner: owner(i),
-			DisplacedBy: displaced[i], Layer: src.Layer, X: round4(f.x), Y: round4(f.y), Rotation: round4(rot), Moved: moved, Pads: []lsPad{}}
+			DisplacedBy: simIf(moved, displaced[i]), Layer: src.Layer, X: round4(f.x), Y: round4(f.y), Rotation: round4(rot), Moved: moved, Pads: []lsPad{}}
 		if lockedRoute[i] {
 			comp.Reason = "locked-routing"
 		}
@@ -908,6 +908,26 @@ func simOwnerIssues(snap *boardSnapshot, pins map[string]string, pre apPlanInfo,
 // simKeepRounds caps the free-the-colliders loop of --keep-unmoved.
 const simKeepRounds = 8
 
+// simReflowMil: a chip whose zone (its body and its satellites, at their dump
+// poses) comes within this distance of a posed part's old zone or new body has all
+// of its satellites re-planned, so room a move frees (or crowds) is used again.
+const simReflowMil = 200.0
+
+func simIf(ok bool, s string) string {
+	if ok {
+		return s
+	}
+	return ""
+}
+
+func simBox(c apComp) (layoutBBox, bool) {
+	return layoutBBox{MinX: c.minX, MinY: c.minY, MaxX: c.maxX, MaxY: c.maxY}, c.hasBBox
+}
+
+func simUnion(a, b layoutBBox) layoutBBox {
+	return layoutBBox{MinX: math.Min(a.MinX, b.MinX), MinY: math.Min(a.MinY, b.MinY), MaxX: math.Max(a.MaxX, b.MaxX), MaxY: math.Max(a.MaxY, b.MaxY)}
+}
+
 // simPlanKeepUnmoved plans only the satellites the poses disturb. Owners were
 // pinned by the caller (opt.owners). A satellite is free when its owner (or, for
 // an RF chain member, its antenna) was posed; every other assigned satellite stays
@@ -918,8 +938,10 @@ const simKeepRounds = 8
 // (at most simKeepRounds plans, then a P2 issue). An RF chain moves as a whole: a
 // freed member frees its siblings. displaced names, per freed satellite, the
 // smallest designator (simDesLess) among the parts that overlapped it in the first
-// round it was freed.
-func simPlanKeepUnmoved(posed []apComp, opt apOptions, pre apPlanInfo, posedIdx map[int]bool) ([]apMove, []apDiag, apPlanInfo, map[int]string, []lsIssue) {
+// round it was freed. Before that, every chip near a posed part's old zone or new
+// body (simReflowMil) has all its satellites freed too ("reflow"), named after the
+// smallest such posed designator; `orig` is the board before the poses.
+func simPlanKeepUnmoved(orig, posed []apComp, opt apOptions, pre apPlanInfo, posedIdx map[int]bool) ([]apMove, []apDiag, apPlanInfo, map[int]string, []lsIssue) {
 	free := map[int]bool{}
 	displaced := map[int]string{}
 	chainOf := map[int][]int{} // antenna → its chain members
@@ -987,6 +1009,63 @@ func simPlanKeepUnmoved(posed []apComp, opt apOptions, pre apPlanInfo, posedIdx 
 		}
 	}
 	release(posedBoxes)
+
+	// Reflow: zones at dump poses (a chip plus its satellites), compared with where
+	// each posed part was (with its satellites) and where it is now.
+	zone := func(m int) (layoutBBox, bool) {
+		z, ok := simBox(orig[m])
+		for s, owner := range pre.Owner {
+			if owner != m {
+				continue
+			}
+			if b, has := simBox(orig[s]); has {
+				if ok {
+					z = simUnion(z, b)
+				} else {
+					z, ok = b, true
+				}
+			}
+		}
+		return z, ok
+	}
+	var moved []src
+	for i := range posed {
+		if !posedIdx[i] {
+			continue
+		}
+		des := strings.TrimSpace(posed[i].designator)
+		if z, ok := zone(i); ok {
+			moved = append(moved, src{des, z, orig[i].side()})
+		}
+		if b, ok := simBox(posed[i]); ok {
+			moved = append(moved, src{des, b, posed[i].side()})
+		}
+	}
+	for _, m := range pre.Mains {
+		if posedIdx[m] {
+			continue
+		}
+		z, ok := zone(m)
+		if !ok {
+			continue
+		}
+		near := apInflate(z, simReflowMil)
+		by := ""
+		for _, b := range moved {
+			if sameSide(orig[m].side(), b.side) && apOverlaps(near, b.box) && (by == "" || simDesLess(b.des, by)) {
+				by = b.des
+			}
+		}
+		if by == "" {
+			continue
+		}
+		for s, owner := range pre.Owner {
+			if owner == m && !free[s] {
+				free[s] = true
+				displaced[s] = by
+			}
+		}
+	}
 
 	var issues []lsIssue
 	for round := 1; ; round++ {
