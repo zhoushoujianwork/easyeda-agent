@@ -32,6 +32,7 @@
 | 判断是否需要发布新版本 | [下一版本发布评估](releases/next-release.md) | 修复范围、版本建议和待补验收 |
 | 准备已获批准的版本发布 | [release-workflow.md](release-workflow.md) | [v1.8.0 发布准备](releases/release-1.8.md)、[仓库发布授权规则](../AGENTS.md) |
 | 日常测试收尾、从需求到成品 | [最小点灯板原始需求](test-case-esp32-blink.md)第一节 | [执行详细稿](test-case-esp32-blink-detail.md)、[验收标准](e2e-automation-acceptance.md)、[仓库规则](../AGENTS.md)；四层开发板为扩展回归 |
+| 新用户示例、演示与审图素材、中档回归 | [体感小板原始需求](test-case-esp32-tilt.md)第一节 | [块映射、埋雷与回放](test-case-esp32-tilt-detail.md)；状态 planned |
 | 复现缺陷、查验证边界 | [布局回归输入](../internal/app/testdata/schematic-layout/README.md)、[发布证据](releases/evidence/README.md) | 必要旧引用见[历史证据索引](reviews/README.md)，过程记录查 Git 历史 |
 
 ## 信息只有一个维护位置
