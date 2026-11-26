@@ -486,6 +486,16 @@ func fetchSkillTree(ctx context.Context, version string) (root string, cleanup f
 	return root, cleanup, nil
 }
 
+// SkillVersionAt returns metadata.version from dir/SKILL.md ("" when the entry
+// declares none).
+func SkillVersionAt(dir string) (string, error) {
+	body, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		return "", err
+	}
+	return skillMetadataVersion(string(body))
+}
+
 // skillMetadataVersion reads the published frontmatter contract: metadata is a
 // top-level mapping and its version is an indented scalar. It does not scan
 // prose or accept a similarly named field elsewhere in the document.
