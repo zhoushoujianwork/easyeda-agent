@@ -61,6 +61,9 @@ func pcbDrcVerdictError(result map[string]any) error {
 		return fmt.Errorf("pcb drc: native verdict unavailable (boolean passed required); preserve the returned result")
 	}
 	if !passed {
+		if summary := drcRuleSummary(flattenDrcResult(result)); summary != "" {
+			return fmt.Errorf("pcb drc: native verdict failed (%s); inspect the returned violations", summary)
+		}
 		return fmt.Errorf("pcb drc: native verdict failed; inspect the returned violations")
 	}
 	return nil
