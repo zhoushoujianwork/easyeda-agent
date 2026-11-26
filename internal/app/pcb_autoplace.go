@@ -376,6 +376,10 @@ var apMainPrefixes = map[string]bool{"U": true, "IC": true, "VR": true, "REG": t
 
 const apMainPrefixMinPins = 3
 
+// apObstacleClearMil is the least gap between a placed satellite and any part
+// that does not move (chips, stay satellites, locked or fixed parts).
+const apObstacleClearMil = 10.0
+
 // apDesPrefix is the upper-cased run of letters before the first non-letter
 // of a designator ("u12" → "U", "LED3" → "LED", "1U" → "").
 func apDesPrefix(des string) string {
@@ -1024,7 +1028,7 @@ type apOccupant struct {
 // apPacker holds the occupancy shared by every (main, edge) group.
 type apPacker struct {
 	opt       apOptions
-	obstacles []apOccupant // parts that do not move (zero clearance)
+	obstacles []apOccupant // parts that do not move (apObstacleClearMil clearance)
 	placed    []apOccupant // satellites already placed (pitch clearance)
 }
 
@@ -1183,8 +1187,8 @@ func apDistLimit(via string, crystal bool) float64 {
 }
 
 // free reports whether a body on `side` may be placed: on the board, outside
-// keep-outs (every side) and every non-moving part on the same side (zero
-// clearance), and pitch away from placed satellites on the same side.
+// keep-outs (every side), apObstacleClearMil away from every non-moving part
+// and pitch away from every placed satellite on the same side.
 func (pk *apPacker) free(b layoutBBox, side int) bool { return pk.freeSkip(b, side, nil) }
 
 // freeSkip is free() that ignores the keep-outs for which skipKO returns true
@@ -1201,8 +1205,11 @@ func (pk *apPacker) freeSkip(b layoutBBox, side int, skipKO func(layoutBBox) boo
 			return false
 		}
 	}
+	// A satellite never touches a part that stays: flush against another chip
+	// (0.8 mil on ceshi) reads, and assembles, as a collision.
+	clear := apInflate(b, apObstacleClearMil)
 	for _, o := range pk.obstacles {
-		if sameSide(side, o.side) && apOverlaps(b, o.box) {
+		if sameSide(side, o.side) && apOverlaps(clear, o.box) {
 			return false
 		}
 	}

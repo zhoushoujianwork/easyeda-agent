@@ -540,8 +540,8 @@ func TestPlanAutoPlaceV2_LockedPartIsAvoided(t *testing.T) {
 		t.Fatalf("unexpected diags %+v", diags)
 	}
 	m := v2Move(t, moves, "R1")
-	if m.NewX != -270 || m.NewY != -30 {
-		t.Errorf("R1 at (%.1f,%.1f), want (-270,-30): beside the locked part, still in ring 0", m.NewX, m.NewY)
+	if m.NewX != -270 || m.NewY != -40 {
+		t.Errorf("R1 at (%.1f,%.1f), want (-270,-40): beside the locked part with apObstacleClearMil, still in ring 0", m.NewX, m.NewY)
 	}
 	for _, mv := range moves {
 		if mv.Designator == "Q1" {
@@ -623,11 +623,11 @@ func TestPlanAutoPlaceV2_InductorMovesAwayFromKeepout(t *testing.T) {
 		}
 		return v2Move(t, moves, des)
 	}
-	if m := run("R1"); m.NewY != -30 {
-		t.Errorf("resistor y=%.1f, want -30 (tie → -d side first)", m.NewY)
+	if m := run("R1"); m.NewY != -40 {
+		t.Errorf("resistor y=%.1f, want -40 (tie → -d side first, clear of the blocker)", m.NewY)
 	}
-	if m := run("L1"); m.NewY != 30 {
-		t.Errorf("inductor y=%.1f, want +30 (away from the keep-out below)", m.NewY)
+	if m := run("L1"); m.NewY != 40 {
+		t.Errorf("inductor y=%.1f, want +40 (away from the keep-out below)", m.NewY)
 	}
 }
 
@@ -945,7 +945,7 @@ func TestPlanAutoPlaceRF_BlockedPathReportsOffLineMember(t *testing.T) {
 	comps := append(rfBoard(), wall)
 	moves, diags := planAutoPlace(comps, defaultApOptions())
 	r := diagFor(diags, "C1")
-	for _, want := range []string{"C1 sits 75mil off the RF feed line U1→ANT1 (limit 40mil)", "free the straight path"} {
+	for _, want := range []string{"C1 sits 85mil off the RF feed line U1→ANT1 (limit 40mil)", "free the straight path"} {
 		if !strings.Contains(r, want) {
 			t.Errorf("C1 diag %q lacks %q", r, want)
 		}
@@ -1200,14 +1200,14 @@ func TestPlanAutoPlace_StaySatelliteIsAnObstacle(t *testing.T) {
 		t.Error("the stay satellite must not be moved")
 	}
 	c2 := v2Move(t, moves, "C2")
-	// C2 now avoids C1's body (zero clearance), i.e. cannot sit on the same spot.
+	// C2 now avoids C1's body (with apObstacleClearMil), i.e. cannot sit on the same spot.
 	body := layoutBBox{MinX: c2.NewX - 30, MaxX: c2.NewX + 30, MinY: c2.NewY - 15, MaxY: c2.NewY + 15}
 	if apOverlaps(body, layoutBBox{MinX: ideal.minX, MinY: ideal.minY, MaxX: ideal.maxX, MaxY: ideal.maxY}) {
 		t.Errorf("C2 %+v overlaps the stay satellite", c2)
 	}
-	// An obstacle needs zero clearance (touching is fine), not the satellite pitch: ±30, not ±60.
-	if math.Abs(math.Abs(c2.NewY)-30) > 1 {
-		t.Errorf("C2 y = %.0f, want it flush against the stay body (±30)", c2.NewY)
+	// An obstacle needs apObstacleClearMil (never touching), not the satellite pitch: ±40, not ±30 or ±60.
+	if math.Abs(math.Abs(c2.NewY)-40) > 1 {
+		t.Errorf("C2 y = %.0f, want it 10 mil clear of the stay body (±40)", c2.NewY)
 	}
 	if info.Owner[1] != 0 || info.Owner[2] != 0 || len(base.Owner) != 2 {
 		t.Errorf("owners = %v (baseline %v), want both caps owned by the chip", info.Owner, base.Owner)

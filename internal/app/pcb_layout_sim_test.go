@@ -1149,3 +1149,29 @@ func TestLayoutSimulate_RoleOverrides(t *testing.T) {
 		t.Error("a pose on a demoted (satellite) part was accepted")
 	}
 }
+
+// A satellite is never placed touching a part that stays: on ceshi C6 (U1's)
+// landed 0.8 mil from U2 with zero obstacle clearance.
+func TestLayoutSimulate_SatelliteKeepsClearOfStayingParts(t *testing.T) {
+	snap := simLdoSnap(t)
+	r, err := simulatePcbLayoutOpts(snap, simPoses(snap.SemanticSHA256, lsPose{PrimitiveID: "p-u2", X: fp(-2000), Y: fp(1000), Rotation: fp(0)}), true, lsSimOptions{KeepUnmoved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range r.Components {
+		if s.Role != "satellite" || !s.Moved {
+			continue
+		}
+		for _, o := range r.Components {
+			if o.PrimitiveID == s.PrimitiveID || o.Moved && o.Role == "satellite" {
+				continue
+			}
+			if s.BBox == nil || o.BBox == nil {
+				continue
+			}
+			if g := rectGap(*s.BBox, *o.BBox); g < apObstacleClearMil-0.01 {
+				t.Errorf("%s is %.1f mil from %s, want >= %.0f", s.Designator, g, o.Designator, apObstacleClearMil)
+			}
+		}
+	}
+}
