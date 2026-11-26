@@ -316,7 +316,7 @@ moves a component. Output is deterministic: identical inputs give identical byte
 	cmd.Flags().StringVar(&posesPath, "poses", "", "optional poses JSON: non-satellite parts placed by hand (bound to the board's semanticSha256)")
 	cmd.Flags().StringVar(&ownersPath, "owners", "", "optional owners JSON: satellite → main pins (bound to the board's semanticSha256)")
 	cmd.Flags().BoolVar(&keepUnmoved, "keep-unmoved", false, "re-plan only satellites disturbed by the poses; the rest stay at their dump pose")
-	cmd.Flags().StringVar(&anchorCSV, "anchor", "", "designator(s) forced to be main parts (CSV), as in `pcb auto-place`")
+	cmd.Flags().StringVar(&anchorCSV, "anchor", "", "designator(s) forced to be main parts (CSV), as in pcb auto-place")
 	cmd.Flags().StringVar(&excludeMainCSV, "exclude-main", "", "designator(s) barred from the main set (CSV): a small IC becomes a satellite, a high-pin part stays put")
 	cmd.Flags().StringVar(&outPath, "out", "", "result JSON output path (easyeda.pcb.layout-sim/v1)")
 	return cmd
