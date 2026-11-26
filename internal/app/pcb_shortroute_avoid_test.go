@@ -84,6 +84,30 @@ func TestHopFeasible_OtherNetTrack(t *testing.T) {
 	}
 }
 
+// A through-hole (MULTI) pad has copper on every layer: route-short must gate it
+// on any routing layer, the same judge as `pcb check` (padLayerMatches); an SMD
+// pad still only obstructs its own layer.
+func TestHopFeasible_ThroughHolePadBlocksEveryLayer(t *testing.T) {
+	a := rtPad{x: 0, y: 0, layer: 2}
+	b := rtPad{x: 100, y: 0, layer: 2}
+	cand := []rtSeg{{Net: "S", X1: 0, Y1: 0, X2: 100, Y2: 0, Layer: 2, Width: 10}}
+	th := []obPad{{net: "P", x: 50, y: 20, layer: pcbLayerMulti, half: 10, w: 20, h: 20}} // edge gap 10-5=5 < 6
+	if hopFeasible(cand, "S", a, b, nil, th, nil, nil, 6) {
+		t.Error("a BOTTOM track under the spacing rule to a TH pad must be infeasible")
+	}
+	if hopCost(cand, "S", a, b, nil, th, nil, 6+nominalPadHalf) == 0 {
+		t.Error("hopCost must price a TH pad on another layer too")
+	}
+	smd := []obPad{{net: "P", x: 50, y: 20, layer: 1, half: 10, w: 20, h: 20}}
+	if !hopFeasible(cand, "S", a, b, nil, smd, nil, nil, 6) {
+		t.Error("a TOP SMD pad does not obstruct a BOTTOM track")
+	}
+	far := []obPad{{net: "P", x: 50, y: 30, layer: pcbLayerMulti, half: 10, w: 20, h: 20}} // edge gap 20-5=15
+	if !hopFeasible(cand, "S", a, b, nil, far, nil, nil, 6) {
+		t.Error("a TH pad beyond the spacing rule must stay feasible")
+	}
+}
+
 // TestHopFeasible_Slot is #122: copper within max(clearance,8) of a board
 // cutout's milled edge is a hard veto (native DRC: Slot Region to Track), no
 // longer a +6 preference.
