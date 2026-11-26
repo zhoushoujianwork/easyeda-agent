@@ -997,3 +997,219 @@ func TestPlanAutoPlaceV2_OppositeSideDoesNotCollide(t *testing.T) {
 		t.Errorf("a through-hole part blocks the bottom side too")
 	}
 }
+
+// ── small-IC mains, owner pins, stay satellites ──────────────────────────────
+
+// ldoBoard: MCU U2 (10 pins, origin), a 4-pin LDO U1 at x=1000 sharing 3V3 with
+// the MCU, the LDO's own input/output caps (C5 on VIN, C6 on 3V3 beside the LDO),
+// an MCU decoupling cap C2, and a SOT-23 Q1 whose GATE net reaches the MCU.
+func ldoBoard() []apComp {
+	mcu := []apPad{
+		p("1", "3V3", -190, 0), p("2", "GND", -190, -60), p("3", "GATE", 190, -60), p("4", "", 190, 0),
+		p("5", "", 0, 190), p("6", "", 40, 190), p("7", "", 80, 190), p("8", "", 120, 190),
+		p("9", "", 0, -190), p("10", "", 40, -190),
+	}
+	ldo := []apPad{p("1", "VIN", 950, 20), p("2", "GND", 950, -20), p("3", "3V3", 1050, 0), p("4", "", 1050, 20)}
+	return []apComp{
+		mkComp("u2", "U2", 0, 0, 400, 400, mcu),
+		mkComp("u1", "U1", 1000, 0, 100, 100, ldo),
+		mkComp("c5", "C5", 700, 300, 60, 30, []apPad{p("1", "VIN", 680, 300), p("2", "GND", 720, 300)}),
+		mkComp("c6", "C6", 1300, 300, 60, 30, []apPad{p("1", "3V3", 1280, 300), p("2", "GND", 1320, 300)}),
+		mkComp("c2", "C2", -600, 300, 60, 30, []apPad{p("1", "3V3", -620, 300), p("2", "GND", -580, 300)}),
+		mkComp("q1", "Q1", 400, -300, 60, 40, []apPad{p("1", "GATE", 390, -300), p("2", "LOAD", 410, -300), p("3", "GND", 400, -310)}),
+	}
+}
+
+func movesByDes(moves []apMove) map[string]apMove {
+	out := map[string]apMove{}
+	for _, m := range moves {
+		out[m.Designator] = m
+	}
+	return out
+}
+
+// A 3–4 pin regulator with an IC-style designator is a main: it keeps its own
+// input/output caps instead of being dragged to the MCU it shares 3V3 with.
+func TestPlanAutoPlace_SmallICIsMainAndKeepsItsCaps(t *testing.T) {
+	comps := ldoBoard()
+	moves, diags, info := planAutoPlaceDetailed(comps, defaultApOptions())
+	var mains []string
+	for _, i := range info.Mains {
+		mains = append(mains, comps[i].designator)
+	}
+	if strings.Join(mains, ",") != "U2,U1" {
+		t.Fatalf("mains = %v, want U2 and the LDO U1", mains)
+	}
+	by := movesByDes(moves)
+	if _, ok := by["U1"]; ok {
+		t.Errorf("the LDO is a main and must not be moved: %+v", by["U1"])
+	}
+	for des, want := range map[string]string{"C5": "U1", "C6": "U1", "C2": "U2", "Q1": "U2"} {
+		if m, ok := by[des]; !ok || m.Main != want {
+			t.Errorf("%s main = %q (placed=%v), want %s; diags=%+v", des, m.Main, ok, want, diags)
+		}
+	}
+	// C5 hangs on VIN, which only the LDO has: with U1 a satellite it had no chip at all.
+	if v := by["C5"].Via; v != "power" {
+		t.Errorf("C5 via = %q, want power", v)
+	}
+}
+
+// --exclude-main still beats the new rule: a demoted LDO is a satellite again.
+func TestPlanAutoPlace_ExcludeMainDemotesSmallIC(t *testing.T) {
+	opt := defaultApOptions()
+	opt.excludeMain = designatorSet("u1")
+	moves, _, info := planAutoPlaceDetailed(ldoBoard(), opt)
+	if len(info.Mains) != 1 {
+		t.Fatalf("mains = %v, want only the MCU", info.Mains)
+	}
+	if m, ok := movesByDes(moves)["U1"]; !ok || m.Main != "U2" {
+		t.Errorf("demoted U1 must be placed as a satellite of U2, got %+v (placed=%v)", m, ok)
+	}
+}
+
+func TestIsMainComp_DesignatorPrefixRule(t *testing.T) {
+	mk := func(des string, pins int) apComp {
+		var pads []apPad
+		for i := 1; i <= pins; i++ {
+			pads = append(pads, p(fmt.Sprintf("%d", i), "N", 0, 0))
+		}
+		return mkComp("x", des, 0, 0, 100, 100, pads)
+	}
+	opt := defaultApOptions()
+	for _, tc := range []struct {
+		des  string
+		pins int
+		want bool
+	}{
+		{"U1", 3, true}, {"u1", 3, true}, {"U12", 4, true}, {"IC1", 3, true}, {"VR1", 3, true}, {"REG1", 5, true}, {"PS1", 3, true},
+		{"U1", 2, false}, // below 3 pins
+		{"R1", 3, false}, {"C1", 3, false}, {"L1", 3, false}, {"D1", 3, false}, {"LED1", 3, false}, {"FB1", 3, false},
+		{"Y1", 3, false}, {"X1", 3, false}, {"F1", 3, false}, {"TP1", 3, false}, {"Q1", 3, false}, // passive prefixes
+		{"UF1", 3, false}, {"J1", 3, false}, {"USB1", 3, false}, // not in the list / connector
+		{"Q1", 8, true}, {"R1", 8, true}, {"J1", 8, false}, // >= mainPins exactly as before
+	} {
+		if got := isMainComp(mk(tc.des, tc.pins), opt); got != tc.want {
+			t.Errorf("isMainComp(%s, %d pins) = %v, want %v", tc.des, tc.pins, got, tc.want)
+		}
+	}
+	// Precedence: exclude-main > anchor > antenna > rules.
+	both := defaultApOptions()
+	both.excludeMain = designatorSet("U1")
+	both.anchors = designatorSet("U1")
+	if isMainComp(mk("U1", 3), both) {
+		t.Error("exclude-main must beat anchor")
+	}
+	anc := defaultApOptions()
+	anc.anchors = designatorSet("R1")
+	if !isMainComp(mk("R1", 2), anc) {
+		t.Error("an anchor is a main whatever its prefix or pin count")
+	}
+	ant := mk("U9", 3)
+	ant.name = "PCB ANTENNA"
+	if isMainComp(ant, opt) {
+		t.Error("an antenna is never promoted by the prefix rule")
+	}
+	hi := mk("U9", 3)
+	hi.name = "ESP32 (PCB antenna)"
+	if isMainComp(hi, opt) {
+		t.Error("an antenna-named U part with few pins is an antenna, not a main")
+	}
+}
+
+// A pinned satellite is only assigned to its owner, pass 1 (signal net) and pass 3
+// (power net) alike; a pin on a part or main that does not exist is ignored.
+func TestPlanAutoPlace_OwnerPins(t *testing.T) {
+	two := func() []apComp {
+		l := []apPad{p("1", "3V3", -190, 0), p("2", "SIG", -190, 60), p("3", "", 190, 0), p("4", "", 190, 40),
+			p("5", "", 190, 80), p("6", "", 190, 120), p("7", "", 190, -40), p("8", "", 190, -80)}
+		r := []apPad{p("1", "3V3", 1010, 0), p("2", "SIG", 1010, 60), p("3", "", 1390, 0), p("4", "", 1390, 40),
+			p("5", "", 1390, 80), p("6", "", 1390, 120), p("7", "", 1390, -40), p("8", "", 1390, -80)}
+		return []apComp{
+			mkComp("u1", "U1", 0, 0, 400, 400, l),
+			mkComp("u2", "U2", 1200, 0, 400, 400, r),
+			mkComp("c1", "C1", -500, 0, 60, 30, []apPad{p("1", "3V3", 0, 0), p("2", "GND", 0, 0)}), // power: nearest U1
+			mkComp("r1", "R1", -500, 100, 60, 30, []apPad{p("1", "SIG", 0, 0), p("2", "X", 0, 0)}), // signal: nearest U1
+		}
+	}
+	by := movesByDes(func() []apMove { m, _ := planAutoPlace(two(), defaultApOptions()); return m }())
+	if by["C1"].Main != "U1" || by["R1"].Main != "U1" {
+		t.Fatalf("unpinned baseline: C1→%s R1→%s, want U1", by["C1"].Main, by["R1"].Main)
+	}
+	opt := defaultApOptions()
+	opt.owners = map[string]string{"C1": "U2", "R1": "U2"}
+	by = movesByDes(func() []apMove { m, _ := planAutoPlace(two(), opt); return m }())
+	if by["C1"].Main != "U2" || by["C1"].Via != "power" {
+		t.Errorf("pinned C1 = %+v, want a power placement on U2", by["C1"])
+	}
+	if by["R1"].Main != "U2" || by["R1"].Via != "local" {
+		t.Errorf("pinned R1 = %+v, want a local placement on U2", by["R1"])
+	}
+	// A pin whose target is not a main is ignored for that part.
+	opt.owners = map[string]string{"C1": "U9", "R1": "C1"}
+	by = movesByDes(func() []apMove { m, _ := planAutoPlace(two(), opt); return m }())
+	if by["C1"].Main != "U1" || by["R1"].Main != "U1" {
+		t.Errorf("pins to non-mains must be ignored: C1→%s R1→%s", by["C1"].Main, by["R1"].Main)
+	}
+	// A pin the part cannot honour (no pad of that net on the owner) leaves it unplaced with a clear diag.
+	one := two()
+	one[3].pads = []apPad{p("1", "ONLY_U1", 0, 0), p("2", "X", 0, 0)}
+	one[0].pads = append(one[0].pads, p("9", "ONLY_U1", -190, 100))
+	opt.owners = map[string]string{"R1": "U2"}
+	moves, diags := planAutoPlace(one, opt)
+	if _, ok := movesByDes(moves)["R1"]; ok || !strings.Contains(diagFor(diags, "R1"), "pinned owner U2") {
+		t.Errorf("R1 pinned to a chip it cannot reach must be unplaced naming U2: %q", diagFor(diags, "R1"))
+	}
+	// Chain pass: a pinned part only inherits from a neighbour on its own owner.
+	chain := two()
+	chain = append(chain,
+		mkComp("r3", "R3", -500, 200, 60, 30, []apPad{p("1", "SIG", 0, 0), p("2", "LA", 0, 0)}),
+		mkComp("d1", "D1", -500, 300, 60, 30, []apPad{p("1", "LA", 0, 0), p("2", "GND", 0, 0)}))
+	by = movesByDes(func() []apMove { m, _ := planAutoPlace(chain, defaultApOptions()); return m }())
+	if by["D1"].Main != "U1" || by["D1"].Via != "chain:R3" {
+		t.Fatalf("unpinned D1 = %+v, want chain:R3 on U1", by["D1"])
+	}
+	opt.owners = map[string]string{"R3": "U2"}
+	by = movesByDes(func() []apMove { m, _ := planAutoPlace(chain, opt); return m }())
+	if by["R3"].Main != "U2" || by["D1"].Main != "U2" {
+		t.Errorf("D1 must follow R3 to U2: R3→%s D1→%s (%+v)", by["R3"].Main, by["D1"].Main, by["D1"])
+	}
+}
+
+// A stay satellite is neither moved nor reported unplaced; it is an obstacle for
+// the satellites that are still planned.
+func TestPlanAutoPlace_StaySatelliteIsAnObstacle(t *testing.T) {
+	opt := v2Opt()
+	chip := v2Chip(p("L1", "3V3", -190, 0))
+	// Where the 3V3 cap would like to sit: ring 0 on the left edge, centred on the pad.
+	ideal := mkComp("c1", "C1", -200-opt.gap-30, 0, 60, 30, []apPad{p("1", "3V3", 0, 0), p("2", "GND", 0, 0)})
+	cap2 := mkComp("c2", "C2", 500, 500, 60, 30, []apPad{p("1", "3V3", 0, 0), p("2", "GND", 0, 0)})
+	comps := []apComp{chip, ideal, cap2}
+
+	moves, _, base := planAutoPlaceDetailed(comps, opt)
+	// Baseline: both caps are re-planned; C1 takes the on-pin slot, C2 the next one a pitch (30) further.
+	if c1, c2 := v2Move(t, moves, "C1"), v2Move(t, moves, "C2"); math.Abs(c1.NewY) > 1 || math.Abs(c2.NewY) < 59 {
+		t.Fatalf("baseline: C1/C2 y = %.0f/%.0f, want 0 and ±60", c1.NewY, c2.NewY)
+	}
+	opt.stay = map[int]bool{1: true}
+	moves, _, info := planAutoPlaceDetailed(comps, opt)
+	if !info.Stayed[1] || len(info.Stayed) != 1 {
+		t.Errorf("Stayed = %v, want only C1 (idx 1)", info.Stayed)
+	}
+	if _, moved := movesByDes(moves)["C1"]; moved {
+		t.Error("the stay satellite must not be moved")
+	}
+	c2 := v2Move(t, moves, "C2")
+	// C2 now avoids C1's body (zero clearance), i.e. cannot sit on the same spot.
+	body := layoutBBox{MinX: c2.NewX - 30, MaxX: c2.NewX + 30, MinY: c2.NewY - 15, MaxY: c2.NewY + 15}
+	if apOverlaps(body, layoutBBox{MinX: ideal.minX, MinY: ideal.minY, MaxX: ideal.maxX, MaxY: ideal.maxY}) {
+		t.Errorf("C2 %+v overlaps the stay satellite", c2)
+	}
+	// An obstacle needs zero clearance (touching is fine), not the satellite pitch: ±30, not ±60.
+	if math.Abs(math.Abs(c2.NewY)-30) > 1 {
+		t.Errorf("C2 y = %.0f, want it flush against the stay body (±30)", c2.NewY)
+	}
+	if info.Owner[1] != 0 || info.Owner[2] != 0 || len(base.Owner) != 2 {
+		t.Errorf("owners = %v (baseline %v), want both caps owned by the chip", info.Owner, base.Owner)
+	}
+}
