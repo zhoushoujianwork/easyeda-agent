@@ -230,6 +230,9 @@ func finishAutorouteJob(st map[string]any, stopReason string, stdout, stderr io.
 	if lost, _ := st["lockedLost"].([]any); len(lost) > 0 {
 		return fmt.Errorf("the router removed %d locked primitive(s) %v — restore them (no undo) before continuing", len(lost), lost)
 	}
+	if err := autorouteScopeError(st); err != nil {
+		return err
+	}
 	fmt.Fprintln(stderr, "next: pcb save → doc reload → pcb drc / pcb check (routing results read before a reload may be stale)")
 	newCopper := 0.0
 	for _, k := range []string{"tracks", "arcs", "vias"} {
@@ -270,6 +273,21 @@ func runBlockingAutoroute(cfg *appConfig, window string, payload map[string]any,
 	if lost, _ := res.Result["lockedLost"].([]any); len(lost) > 0 {
 		return fmt.Errorf("the router removed %d locked primitive(s) %v — restore them (no undo) before continuing", len(lost), lost)
 	}
+	if err := autorouteScopeError(res.Result); err != nil {
+		return err
+	}
 	fmt.Fprintln(stderr, "next: pcb save → doc reload → pcb drc / pcb check (routing results read before a reload may be stale)")
 	return nil
+}
+
+// autorouteScopeError fails a --net run that created copper on other nets. The
+// connector scopes the router through ignoreNets (the host ignores RoutingNets'
+// name list) and reports outOfScopeNets from its before/after inventory, so a
+// host that still strays is caught instead of silently routing the whole board.
+func autorouteScopeError(result map[string]any) error {
+	out := asSlice(result["outOfScopeNets"])
+	if len(out) == 0 {
+		return nil
+	}
+	return fmt.Errorf("auto-route created copper outside the requested --net scope on %d net(s) %v (createdByNet %v) — inspect, then `pcb rip-up --net` those nets before continuing", len(out), out, result["createdByNet"])
 }

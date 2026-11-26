@@ -3163,7 +3163,7 @@ getDsnFile drops keep-out regions, so verify the DSN before trusting that path.`
 		}
 		c.Flags().StringVar(&routerCmd, "router", "", "external router command with {in}/{out} (or FREEROUTING_CMD env)")
 		c.Flags().BoolVar(&keep, "keep", false, "external router: keep the intermediate SES file")
-		c.Flags().StringSliceVar(&nets, "net", nil, "official router: route only these nets (repeat or comma-separate; omit = all unrouted)")
+		c.Flags().StringSliceVar(&nets, "net", nil, "official router: route only these nets (repeat or comma-separate; omit = all unrouted). Every other board net is passed as ignoreNets, because the host ignores the RoutingNets name list; copper created on any other net fails the command")
 		c.Flags().StringSliceVar(&ignoreNets, "ignore-net", nil, "official router: nets to leave alone, e.g. GND (poured later) and hand-routed critical nets")
 		c.Flags().IntSliceVar(&layers, "layers", nil, "official router: copper layer ids it may use, e.g. 1,2 (omit = all signal layers)")
 		c.Flags().StringVar(&corner, "corner", "45", "official router: corner style 45|90")
