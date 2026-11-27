@@ -158,6 +158,7 @@ type lsResult struct {
 	Ratsnest            []lsRat       `json:"ratsnest"`
 	Metrics             lsMetrics     `json:"metrics"`
 	Routing             lsRouting     `json:"routing"`
+	Ripup               lsRipup       `json:"ripup"`
 	Issues              []lsIssue     `json:"issues"`
 }
 
@@ -703,6 +704,11 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 		}
 	}
 	res.Routing = routing
+	movedIDs := map[string]bool{}
+	for _, m := range res.Moves {
+		movedIDs[m.PrimitiveID] = true
+	}
+	res.Ripup = simRipup(snap, routing.Availability == "available", movedIDs)
 
 	for _, d := range diags {
 		issues = append(issues, simIssueFor(d))
