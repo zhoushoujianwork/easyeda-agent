@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.22.0] - 2026-11-27
+
+- 新增 `easyeda selection`（连接器动作 `selection.get`，#360）：只读列出用户在当前原理图页或 PCB 上选中的对象（primitiveId、类型及可读到的位号/网络/层/坐标等）；读取期间活动文档变化报 `page drift`，非原理图/PCB 拒绝，空选区不是错误。选区只用于定位，写入仍须显式传 id。
+- 多单元器件（#362、#365）：
+  - `sch apply` 的工程级位号门禁与 `sch connectivity --all-pages` 按器件实例判定，同一器件的多个单元可共享位号（#363）。
+  - `sch designators bind/allocate/plan/verify` 同样按器件实例处理：各单元一起改号并写入同一稳定绑定，全工程清点按器件计数；不同器件同号、只绑一半仍拒绝，单元分在多页时页级修复拒绝只改一部分。compose（含 `--preserve-instances`）与 materialize 仍不重新放置多单元器件。
+- PCB 布线流水线（#307）：
+  - 新增 `pcb fanout`：把通过校验的 escape-plan 写成真实走线与过孔并锁定。
+  - 新增 `pcb route-diagnose`：按 DRC 的 Connection Error 逐网络解释未布通原因。
+  - `pcb autoroute --net` 只布指定网络：其余网络写入 `ignoreNets`，出现越界新铜即失败。
+  - Skill 写明整板布线 P7 顺序及上述命令用法。
+- PCB 布局：
+  - 新增离线 `pcb layout simulate`：按 `pcb dump` 与主器件位姿重算周边件贴放，输出最终位姿、移动、飞线、指标、布线情况和本次移动需清除的布线（ripup）；支持 `--owners` 固定归属、`--keep-unmoved` 最小扰动让位、`--anchor` / `--exclude-main` 角色覆盖；芯片移动后旧位置与新位置附近的外围一起重新布局。
+  - `pcb auto-place` 卫星贴放改为代价制 v2（二维占位、三圈候选、出线通道与电感避让惩罚、去耦按容值排序、距离上限与挡路诊断）；新增射频匹配链贴放（天线为机械锚点，匹配件沿“芯片 RF 引脚 → 天线馈点”排成一串）；U/IC/VR/REG/PS 前缀且至少 3 个不同引脚的小芯片识别为主器件；同一电源轨上每颗主芯片至少保留一个该轨电容；外围器件与不移动的器件至少留 10 mil。
+- 检查与 DRC（#306、#310）：
+  - `pcb routability` 对直边多边形焊盘按精确铜形判定，泛洪从焊盘自身铜上起步。
+  - `pcb check` 焊盘间距按精确形状、铜到铜判定；通孔焊盘对所有铜层判间距，新增 Hole↔Track；`route-short` 同口径。
+  - `pcb drc` 按规则给出涉及的网络数，失败信息同时报行数和网络数；删除锁定铜时给出解锁命令；`pcb report` 差分对不再静默丢失或无故为空。
+- 新增 `pcb silk-list`：只读列出丝印位号属性与自由文字，Skill 与 `silk-delete` 帮助改用它。
+- `skill status` 显示命令实际加载的 Skill（来源与路径），与 `skill read` 使用同一解析顺序。
+- Skill 写入确认改由宿主审批承担（#340）。
+- 新增 ESP32-S3 USB-C 体感小板用例设计（新用户示例、演示回放与审图素材）。
+- 连接器运行时有变化（`selection.get`、autoroute `ignoreNets`、锁定铜提示），用户需更新连接器，按中版本发布。
+
 ## [1.21.0] - 2026-11-25
 
 - 新增 `pcb.silk.delete` / `easyeda pcb silk-delete --id`（#341）：按 primitiveId 只删一条自由丝印字符串（层 3/4），并用新 `pcb_PrimitiveString.getAll()` 核对已消失。位号/值属性、其他层、锁定、不存在的 ID 及多余 payload 键在调用 delete 前拒绝；库存读不到视为未验证（`verified:false`、`partial:true`），CLI、`easyeda call` 与 Apply 均非零退出，Apply 不允许 retry、通用 verify 或 continue。
