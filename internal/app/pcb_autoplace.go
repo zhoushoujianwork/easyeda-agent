@@ -77,6 +77,7 @@ type apComp struct {
 	id         string
 	designator string
 	name       string  // component Name attribute (usually the value, e.g. "100nF"); "" if unknown
+	device     string  // device / manufacturer part from the dump ("ESP32-S3-WROOM-1-N16R8"); "" if unknown
 	x, y       float64 // component anchor (what modify sets)
 	rotation   float64 // current rotation (deg, y-up CCW) — needed to re-orient
 	locked     bool
@@ -428,6 +429,9 @@ type apPlanInfo struct {
 	Owner map[int]int
 	// ChainAnt maps an RF chain member to the index of the antenna it serves.
 	ChainAnt map[int]int
+	// AntPads maps an antenna with a chain to its feed pad number and the chip's RF
+	// pad number (both pose independent).
+	AntPads map[int][2]string
 	// Stayed holds the satellites (and chain members) left in place because of
 	// opt.stay; they are neither moved nor unplaced.
 	Stayed map[int]bool
@@ -437,7 +441,7 @@ type apPlanInfo struct {
 func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, apPlanInfo) {
 	var mains, sats, ants []int
 	var diags []apDiag
-	info := apPlanInfo{AntChip: map[int]int{}, Owner: map[int]int{}, ChainAnt: map[int]int{}, Stayed: map[int]bool{}}
+	info := apPlanInfo{AntChip: map[int]int{}, Owner: map[int]int{}, ChainAnt: map[int]int{}, AntPads: map[int][2]string{}, Stayed: map[int]bool{}}
 	for i, c := range comps {
 		if !c.hasBBox {
 			continue
@@ -552,6 +556,7 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 		chainOut := map[int]bool{} // members that leave the normal passes
 		for _, ch := range chains {
 			info.AntChip[ch.ant] = mains[ch.chip]
+			info.AntPads[ch.ant] = [2]string{ch.feed.num, ch.rf.num}
 			members := ch.members()
 			allStay := len(members) > 0
 			for _, m := range members {

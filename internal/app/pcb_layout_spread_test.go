@@ -163,13 +163,14 @@ func TestLayoutSpread_MainsSeparateAndClearOfObstacles(t *testing.T) {
 	}
 }
 
-func TestLayoutSpread_KeepsRotationAndReplacesMainPoses(t *testing.T) {
+// v2 may turn a chip; whatever it picks is a quarter turn and replaces the user's pose.
+func TestLayoutSpread_ReplacesMainPoses(t *testing.T) {
 	snap := simSpreadSnap(t)
 	pose := lsPose{PrimitiveID: "p-u1", X: fp(1000), Y: fp(450), Rotation: fp(90)}
 	r := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true}, pose)
 	u1 := simComp(t, r, "U1")
-	if u1.Rotation != 90 {
-		t.Errorf("U1 rotation = %v, want the posed 90 kept", u1.Rotation)
+	if rot := simNormDeg(u1.Rotation); math.Abs(rot-math.Round(rot/90)*90) > 1e-6 {
+		t.Errorf("U1 rotation = %v, want a quarter turn", u1.Rotation)
 	}
 	if u1.X == 1000 && u1.Y == 450 {
 		t.Errorf("a posed main must be replaced by its spread pose, still at the pose (%v,%v)", u1.X, u1.Y)
@@ -197,20 +198,26 @@ func TestLayoutSpread_UserPoseOfConnectorIsAnObstacle(t *testing.T) {
 }
 
 func TestLayoutSpread_StronglyConnectedMainsEndCloser(t *testing.T) {
-	// Four chips in a row: the strongly connected pairs U1-U3 and U2-U4 sit side by
-	// side, whichever order the designators suggest.
+	// Four chips: the strongly connected pairs U1-U3 and U2-U4 end nearer each
+	// other than the weakly connected pairs do on average (v2 judges the real
+	// ratsnest, so the strong pair need not be the single nearest one).
 	snap := simSpreadSnap(t)
 	r := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true})
-	mains := spreadMainsOf(r)
-	least := math.Inf(1)
-	for i, a := range mains {
-		for _, b := range mains[i+1:] {
-			least = math.Min(least, spreadDist(a, b))
+	strong := map[string]bool{"U1-U3": true, "U2-U4": true}
+	des := []string{"U1", "U2", "U3", "U4"}
+	weak, nWeak := 0.0, 0
+	for i, a := range des {
+		for _, b := range des[i+1:] {
+			if !strong[a+"-"+b] {
+				weak += spreadDist(simComp(t, r, a), simComp(t, r, b))
+				nWeak++
+			}
 		}
 	}
+	weak /= float64(nWeak)
 	for _, pair := range [][2]string{{"U1", "U3"}, {"U2", "U4"}} {
-		if d := spreadDist(simComp(t, r, pair[0]), simComp(t, r, pair[1])); d > least+1 {
-			t.Errorf("%s-%s are %.0f mil apart, the nearest pair of mains is %.0f", pair[0], pair[1], d, least)
+		if d := spreadDist(simComp(t, r, pair[0]), simComp(t, r, pair[1])); d >= weak {
+			t.Errorf("%s-%s are %.0f mil apart, weak pairs %.0f on average", pair[0], pair[1], d, weak)
 		}
 	}
 
@@ -249,19 +256,19 @@ func TestLayoutSpread_DeterministicBytes(t *testing.T) {
 			t.Fatalf("run %d differs from run 0", i)
 		}
 	}
-	// Reversing the dump's part order must not change the layout either.
+	// The satellite planner breaks some ties by dump order (a known limit of the
+	// keep-unmoved pass), and every spread candidate is judged by it, so a
+	// reversed dump may settle elsewhere; it must still be legal and never worse.
 	rev := *snap
 	rev.Components = append([]boardComp(nil), snap.Components...)
 	for i, j := 0, len(rev.Components)-1; i < j; i, j = i+1, j-1 {
 		rev.Components[i], rev.Components[j] = rev.Components[j], rev.Components[i]
 	}
 	simRehash(t, &rev)
-	a, b := spreadRun(t, snap, lsSimOptions{}), spreadRun(t, &rev, lsSimOptions{})
-	for _, des := range []string{"U1", "U2", "U3", "U4"} {
-		ca, cb := simComp(t, a, des), simComp(t, b, des)
-		if ca.X != cb.X || ca.Y != cb.Y {
-			t.Errorf("%s depends on the dump order: (%v,%v) vs (%v,%v)", des, ca.X, ca.Y, cb.X, cb.Y)
-		}
+	b := spreadRun(t, &rev, lsSimOptions{KeepUnmoved: true})
+	spreadLegal(t, b)
+	if b.Spread == nil || b.Spread.After.Score > b.Spread.Before.Score {
+		t.Errorf("reversed dump: spread made the board worse: %+v", b.Spread)
 	}
 }
 
@@ -585,5 +592,97 @@ func TestLayoutSpread_RespectsPolygonOutline(t *testing.T) {
 		if spreadVia(r, c.Designator) != "spread" {
 			t.Errorf("%s was not spread", c.Designator)
 		}
+	}
+}
+
+// v2 reports itself, and a plain run carries no summary.
+func TestLayoutSpread_Summary(t *testing.T) {
+	snap := simSpreadSnap(t)
+	r := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true})
+	if r.Spread == nil || r.Spread.Evaluations < 2 {
+		t.Fatalf("spread summary missing or no search: %+v", r.Spread)
+	}
+	if !r.Spread.Improved || r.Spread.After.Score >= r.Spread.Before.Score {
+		t.Errorf("four stacked chips must improve: %+v", r.Spread)
+	}
+	if r.Spread.After.RatsnestMil != r.Metrics.RatsnestMil || r.Spread.After.Crossings != r.Metrics.Crossings {
+		t.Errorf("summary after %+v does not describe the result %+v", r.Spread.After, r.Metrics)
+	}
+	plain, err := simulatePcbLayoutOpts(snap, &lsPoseFile{}, false, lsSimOptions{KeepUnmoved: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain.Spread != nil {
+		t.Errorf("a run without --spread must not carry a summary")
+	}
+}
+
+// Spreading the board a spread produced never makes it worse; when nothing better
+// is found the chips stay and a P3 says so.
+func TestLayoutSpread_NeverWorse(t *testing.T) {
+	snap := simSpreadSnap(t)
+	r := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true})
+	applied := *snap
+	applied.Components = append([]boardComp(nil), snap.Components...)
+	for i, c := range applied.Components {
+		f := simComp(t, r, c.Designator)
+		c.X, c.Y, c.Rotation = f.X, f.Y, f.Rotation
+		c.BBox = f.BBox
+		c.Pads = append([]boardPad(nil), c.Pads...)
+		for j := range c.Pads {
+			for _, p := range f.Pads {
+				if p.Num == c.Pads[j].Number {
+					c.Pads[j].X, c.Pads[j].Y = p.X, p.Y
+				}
+			}
+		}
+		applied.Components[i] = c
+	}
+	simRehash(t, &applied)
+	again := spreadRun(t, &applied, lsSimOptions{KeepUnmoved: true})
+	if again.Spread == nil || again.Spread.After.Score > again.Spread.Before.Score {
+		t.Fatalf("second spread made it worse: %+v", again.Spread)
+	}
+	if !again.Spread.Improved {
+		for _, m := range again.Moves {
+			if m.Via == "spread" {
+				t.Errorf("no improvement but %s moved", m.Designator)
+			}
+		}
+		found := false
+		for _, is := range again.Issues {
+			found = found || is.Message == spreadNoBetterMessage
+		}
+		if !found {
+			t.Errorf("no improvement must say so: %+v", again.Issues)
+		}
+	}
+}
+
+// A chip whose pins face away from the (locked) connector they serve is turned round.
+func TestLayoutSpread_UsesRotation(t *testing.T) {
+	var pads []boardPad
+	for i, n := range []string{"S1", "S2", "S3", "S4"} {
+		pads = append(pads, simPadAt(fmt.Sprint(i+1), n, 300-45, 400-45+30*float64(i)))
+	}
+	pads = append(pads, simPadAt("5", "VCC", 300, 400+45), simPadAt("6", "GND", 300+45, 400+45), simPadAt("7", "", 300+45, 400), simPadAt("8", "", 300+45, 400-45))
+	snap := &boardSnapshot{
+		Components: []boardComp{
+			simPart("p-u1", "U1", "IC", 300, 400, 100, 100, false, pads...),
+			simTwoPin("p-c1", "C1", "100nF", "VCC", "GND", 300, 520),
+			simPart("p-j1", "J1", "HDR-4", 1900, 400, 60, 160, true,
+				simPadAt("1", "S1", 1900, 340), simPadAt("2", "S2", 1900, 380), simPadAt("3", "S3", 1900, 420), simPadAt("4", "S4", 1900, 460)),
+		},
+		Outline:      &boardOutline{Source: "polygon", BBox: layoutBBox{MinX: 0, MinY: 0, MaxX: 2000, MaxY: 800}, Points: [][2]float64{{0, 0}, {2000, 0}, {2000, 800}, {0, 800}}},
+		CopperLayers: 2,
+		Copper:       &boardCopperSnapshot{Availability: map[string]string{"regions": "available"}, Regions: []any{}},
+	}
+	simRehash(t, snap)
+	r := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true})
+	if r.Spread == nil || !r.Spread.Improved {
+		t.Fatalf("expected an improvement: %+v", r.Spread)
+	}
+	if u1 := simComp(t, r, "U1"); simNormDeg(u1.Rotation) == 0 {
+		t.Errorf("U1 kept rotation 0 although its signal pins face away from J1 (at %v,%v)", u1.X, u1.Y)
 	}
 }

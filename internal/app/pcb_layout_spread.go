@@ -65,19 +65,46 @@ type spreadPlan struct {
 	W, H     []float64 // footprint size
 	wMM      [][]float64
 	wMO      [][]float64
+	obstIdx  []int // posed index of each obstacle column
+	gap      float64
 }
 
 // simSpreadMains returns the anchor pose (x, y) of every spreadable main, keyed by
 // its index in posed, or nil with an issue when it moves nothing. posed already
 // carries the user poses; a posed main only contributes its rotation (its bbox).
 func simSpreadMains(posed []apComp, opt apOptions, pre apPlanInfo, movable map[int]bool, lockedRoute []bool, poly [][2]float64) (map[int][2]float64, []lsIssue) {
-	noFit := []lsIssue{{Severity: "P1", Message: spreadNoFitMessage, Fix: "enlarge the board, move connectors/antennas or keep-outs away, or demote a chip with --exclude-main"}}
+	p, extra := spreadSetup(posed, opt, pre, movable, lockedRoute, poly)
+	if p == nil {
+		return nil, extra
+	}
+	pos, _, ok := p.packSeed()
+	if !ok {
+		return nil, spreadNoFit()
+	}
+	out := make(map[int][2]float64, len(p.mains))
+	for k, m := range p.mains {
+		out[m.idx] = pos[k]
+	}
+	return out, nil
+}
+
+func spreadNoFit() []lsIssue {
+	return []lsIssue{{Severity: "P1", Message: spreadNoFitMessage, Fix: "enlarge the board, move connectors/antennas or keep-outs away, or demote a chip with --exclude-main"}}
+}
+
+// spreadSetup collects the spreadable mains, the packing area, the blockers and
+// the connection weights. A nil plan comes with the issue that explains it.
+func spreadSetup(posed []apComp, opt apOptions, pre apPlanInfo, movable map[int]bool, lockedRoute []bool, poly [][2]float64) (*spreadPlan, []lsIssue) {
+	noFit := spreadNoFit()
 	var mains []spreadMain
 	isMain := map[int]int{}
 	for _, i := range pre.Mains {
 		c := posed[i]
 		if !c.hasBBox || c.locked || (i < len(lockedRoute) && lockedRoute[i]) || opt.fixed[strings.ToUpper(strings.TrimSpace(c.designator))] {
 			continue
+		}
+		if r := simNormDeg(c.rotation); math.Abs(r-math.Round(r/90)*90) > 1e-6 {
+			continue // a pose must be a multiple of 90°: an odd angle stays where it is
 		}
 		cx, cy := c.bboxCenter()
 		mains = append(mains, spreadMain{idx: i, des: strings.TrimSpace(c.designator), w: c.width(), h: c.height(), offX: c.x - cx, offY: c.y - cy, side: c.side()})
@@ -123,7 +150,7 @@ func simSpreadMains(posed []apComp, opt apOptions, pre apPlanInfo, movable map[i
 	if board.MaxX <= board.MinX || board.MaxY <= board.MinY {
 		return nil, noFit
 	}
-	p := &spreadPlan{board: board, poly: poly, mains: mains}
+	p := &spreadPlan{board: board, poly: poly, mains: mains, gap: opt.gap}
 	for _, ko := range opt.keepouts {
 		p.blockers = append(p.blockers, spreadBlock{box: ko})
 	}
@@ -143,26 +170,56 @@ func simSpreadMains(posed []apComp, opt apOptions, pre apPlanInfo, movable map[i
 		cx, cy := c.bboxCenter()
 		p.obst = append(p.obst, [2]float64{cx, cy})
 	}
-	p.wMM, p.wMO = spreadWeights(posed, mains, isMain, obstIdx)
-
-	for _, full := range []bool{true, false} {
-		p.W, p.H = make([]float64, len(mains)), make([]float64, len(mains))
-		for k, m := range mains {
-			r := opt.gap // fallback: plain bbox + 2*gap between neighbours
-			if full {
-				r = spreadRing(m.w, m.h, m.sat, m.satSide, opt.gap)
-			}
-			p.W[k], p.H[k] = m.w+2*r, m.h+2*r
+	// Obstacle columns in designator order: every sum over them is then independent
+	// of the dump order.
+	sort.SliceStable(obstIdx, func(a, b int) bool {
+		da, db := strings.TrimSpace(posed[obstIdx[a]].designator), strings.TrimSpace(posed[obstIdx[b]].designator)
+		if da != db {
+			return simDesLess(da, db)
 		}
+		return posed[obstIdx[a]].id < posed[obstIdx[b]].id
+	})
+	p.obst = p.obst[:0]
+	for _, i := range obstIdx {
+		cx, cy := posed[i].bboxCenter()
+		p.obst = append(p.obst, [2]float64{cx, cy})
+	}
+	p.wMM, p.wMO = spreadWeights(posed, mains, isMain, obstIdx)
+	p.obstIdx = obstIdx
+	return p, nil
+}
+
+// packSeed is the v1 layout: footprints with the full satellite ring, or the
+// plain bbox + gap when those do not fit, shelf-packed. It returns the anchor
+// (x, y) of each main (rotation unchanged) and the ring used.
+func (p *spreadPlan) packSeed() ([][2]float64, []float64, bool) {
+	for _, full := range []bool{true, false} {
+		ring := p.rings(full)
 		if pos, ok := p.solve(); ok {
-			out := make(map[int][2]float64, len(mains))
-			for k, m := range mains {
-				out[m.idx] = [2]float64{round4(pos[k][0] + p.W[k]/2 + m.offX), round4(pos[k][1] + p.H[k]/2 + m.offY)}
+			out := make([][2]float64, len(p.mains))
+			for k, m := range p.mains {
+				out[k] = [2]float64{round4(pos[k][0] + p.W[k]/2 + m.offX), round4(pos[k][1] + p.H[k]/2 + m.offY)}
 			}
-			return out, nil
+			return out, ring, true
 		}
 	}
-	return nil, noFit
+	return nil, p.rings(false), false
+}
+
+// rings sets the footprint sizes p.W × p.H for the full satellite ring (or the
+// plain gap) and returns the ring of each main.
+func (p *spreadPlan) rings(full bool) []float64 {
+	ring := make([]float64, len(p.mains))
+	p.W, p.H = make([]float64, len(p.mains)), make([]float64, len(p.mains))
+	for k, m := range p.mains {
+		r := p.gap // fallback: plain bbox + 2*gap between neighbours
+		if full {
+			r = spreadRing(m.w, m.h, m.sat, m.satSide, p.gap)
+		}
+		ring[k] = r
+		p.W[k], p.H[k] = m.w+2*r, m.h+2*r
+	}
+	return ring
 }
 
 // spreadRing is the satellite ring r around a main of w×h: the larger of the
