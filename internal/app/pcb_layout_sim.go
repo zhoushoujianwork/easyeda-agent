@@ -59,6 +59,7 @@ type lsSimOptions struct {
 	KeepUnmoved bool            // --keep-unmoved: only re-plan what the poses disturb
 	Anchors     map[string]bool // --anchor: designators forced into the main set
 	ExcludeMain map[string]bool // --exclude-main: designators barred from it
+	Spread      bool            // --spread: re-distribute the spreadable main chips over the board first
 }
 
 // ── output ───────────────────────────────────────────────────────────────────
@@ -166,7 +167,7 @@ type lsResult struct {
 
 func newPcbLayoutSimulateCmd(stdout, stderr io.Writer) *cobra.Command {
 	var boardPath, posesPath, ownersPath, outPath, anchorCSV, excludeMainCSV string
-	var keepUnmoved bool
+	var keepUnmoved, spread bool
 	cmd := &cobra.Command{
 		Use:   "simulate",
 		Short: "Re-plan satellites around hand-placed chips/connectors/antennas and report the result (offline)",
@@ -231,6 +232,20 @@ re-planned around ITS OWN owner only (up to 8 rounds, then a P2 issue);
 components[].displacedBy names the part that first forced it free. Without the
 flag every satellite is re-planned.
 
+--spread re-distributes the main chips over the whole board before the satellites
+are planned. Spreadable mains are the planner's mains (after --anchor /
+--exclude-main) that are not locked, have no locked routing and have a bbox; their
+x/y come from the spread (rotation as on the posed board; a pose of a main is
+replaced, "via" is "spread"). Connectors, antennas, fixed/locked parts and
+keep-outs never move and are obstacles (a pose of a connector is honoured). Each
+main is given its bbox plus a ring that holds the satellites it owns; footprints are
+packed in rows in the board's outline bbox, the most strongly connected chips next
+to each other (shared nets weigh 1/(parts-1)), then the set is centred. If the
+footprints do not fit, plain bboxes plus 2 gaps are tried; if even that fails the
+chips stay and a P1 issue says so. The poses are written like user poses, so a later
+run given them without --spread (same --owners, --keep-unmoved) gives the same
+layout. Use it with --keep-unmoved on a laid-out board.
+
 routing (from the dump, pose independent): availability (available|unknown;
 unknown = the dump could not read tracks/vias, never "no routing"), tracks (lines
 + arcs on copper layers), vias, and per net {net, tracks, vias, locked, parts}
@@ -255,7 +270,8 @@ moves a component. Output is deterministic: identical inputs give identical byte
 		Example: `  easyeda pcb dump --include-copper --out board.json
   easyeda pcb layout simulate --board board.json --out sim.json
   easyeda pcb layout simulate --board board.json --poses poses.json --out sim.json
-  easyeda pcb layout simulate --board board.json --poses poses.json --owners owners.json --keep-unmoved --out sim.json`,
+  easyeda pcb layout simulate --board board.json --poses poses.json --owners owners.json --keep-unmoved --out sim.json
+  easyeda pcb layout simulate --board board.json --owners owners.json --keep-unmoved --spread --out sim.json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if boardPath == "" || outPath == "" {
@@ -289,7 +305,7 @@ moves a component. Output is deterministic: identical inputs give identical byte
 				}
 			}
 			var so lsSimOptions
-			so.KeepUnmoved = keepUnmoved
+			so.KeepUnmoved, so.Spread = keepUnmoved, spread
 			so.Anchors, so.ExcludeMain = designatorSet(anchorCSV), designatorSet(excludeMainCSV)
 			if ownersPath != "" {
 				raw, err := os.ReadFile(ownersPath)
@@ -317,6 +333,7 @@ moves a component. Output is deterministic: identical inputs give identical byte
 	cmd.Flags().StringVar(&posesPath, "poses", "", "optional poses JSON: non-satellite parts placed by hand (bound to the board's semanticSha256)")
 	cmd.Flags().StringVar(&ownersPath, "owners", "", "optional owners JSON: satellite → main pins (bound to the board's semanticSha256)")
 	cmd.Flags().BoolVar(&keepUnmoved, "keep-unmoved", false, "re-plan only satellites disturbed by the poses; the rest stay at their dump pose")
+	cmd.Flags().BoolVar(&spread, "spread", false, "re-distribute the movable main chips over the whole board (connection order, shelf-packed with a satellite ring), then plan satellites as usual; poses of mains are replaced")
 	cmd.Flags().StringVar(&anchorCSV, "anchor", "", "designator(s) forced to be main parts (CSV), as in pcb auto-place")
 	cmd.Flags().StringVar(&excludeMainCSV, "exclude-main", "", "designator(s) barred from the main set (CSV): a small IC becomes a satellite, a high-pin part stays put")
 	cmd.Flags().StringVar(&outPath, "out", "", "result JSON output path (easyeda.pcb.layout-sim/v1)")
@@ -558,6 +575,34 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 		}
 	}
 
+	// --spread: poses for the spreadable mains, written exactly like user poses so
+	// everything below is the unchanged posed pipeline (a later run given these
+	// poses without --spread yields the same layout).
+	spreadVia := map[int]bool{}
+	if so.Spread {
+		var poly [][2]float64
+		if o := snap.Outline; o != nil && opt.board != nil {
+			poly = o.Points
+		}
+		if pos, extra := simSpreadMains(posed, opt, pre, movable, lockedRoute, poly); pos != nil {
+			if !havePoses {
+				posed = append([]apComp(nil), ap...)
+			}
+			spreadIdx := make([]int, 0, len(pos))
+			for i := range pos {
+				spreadIdx = append(spreadIdx, i)
+			}
+			sort.Ints(spreadIdx)
+			for _, i := range spreadIdx {
+				posed[i] = simTransform(ap[i], pos[i][0], pos[i][1], simNormDeg(posed[i].rotation))
+				posedIdx[i] = true
+				spreadVia[i] = true
+			}
+		} else {
+			issues = append(issues, extra...)
+		}
+	}
+
 	var moves []apMove
 	var diags []apDiag
 	var info apPlanInfo
@@ -678,6 +723,9 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 			continue
 		}
 		via := "pose"
+		if spreadVia[i] {
+			via = "spread"
+		}
 		if m, ok := planned[i]; ok {
 			via = m.Via
 		}
