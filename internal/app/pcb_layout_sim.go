@@ -161,6 +161,8 @@ type lsResult struct {
 	Routing             lsRouting     `json:"routing"`
 	Ripup               lsRipup       `json:"ripup"`
 	Issues              []lsIssue     `json:"issues"`
+	// Spread reports a --spread run: scores before/after and the evaluations spent.
+	Spread *lsSpreadSummary `json:"spread,omitempty"`
 }
 
 // ── command ──────────────────────────────────────────────────────────────────
@@ -232,19 +234,34 @@ re-planned around ITS OWN owner only (up to 8 rounds, then a P2 issue);
 components[].displacedBy names the part that first forced it free. Without the
 flag every satellite is re-planned.
 
---spread re-distributes the main chips over the whole board before the satellites
-are planned. Spreadable mains are the planner's mains (after --anchor /
---exclude-main) that are not locked, have no locked routing and have a bbox; their
-x/y come from the spread (rotation as on the posed board; a pose of a main is
-replaced, "via" is "spread"). Connectors, antennas, fixed/locked parts and
-keep-outs never move and are obstacles (a pose of a connector is honoured). Each
-main is given its bbox plus a ring that holds the satellites it owns; footprints are
-packed in rows in the board's outline bbox, the most strongly connected chips next
-to each other (shared nets weigh 1/(parts-1)), then the set is centred. If the
-footprints do not fit, plain bboxes plus 2 gaps are tried; if even that fails the
-chips stay and a P1 issue says so. The poses are written like user poses, so a later
-run given them without --spread (same --owners, --keep-unmoved) gives the same
-layout. Use it with --keep-unmoved on a laid-out board.
+--spread searches new places and quarter-turn rotations for the main chips before
+the satellites are planned. Spreadable mains are the planner's mains (after
+--anchor / --exclude-main) that are not locked, have no locked routing, have a bbox
+and sit at a multiple of 90°; a pose of a main is replaced and "via" is "spread".
+Connectors, antennas, fixed/locked parts and keep-outs never move and are obstacles
+(a pose of a connector is honoured). Every candidate is judged by the real result
+of this pipeline: score = ratsnest + 150·crossings + 20·congestion + 400·P2 +
+5000·P1 + 20000·unplaced + 3·RF chain length (chip RF pad → antenna feed); mains on
+top of each other count as P1. Seeds (row packing with a satellite ring, the
+current places, a force layout pulling each chip to its connections and the RF chip
+to its antenna) are legalised, then annealed with nudges, turns and swaps under an
+evaluation budget (70000/parts^1.5, 20..400) and a fixed seed: identical input,
+identical output. Chips stay clear of the board edge, blockers, keep-outs and
+antenna zones; an RF module (WROOM/WROVER/MINI/…) must keep its pad-free antenna
+end on the board edge. The board is never made worse: without a lower score the
+chips stay and a P3 says so (P1 when chips overlap and nothing legal exists). The
+result carries "spread": {improved, evaluations, before, after} with score,
+ratsnestMil, crossings and rfIssues. The poses are written like user poses, so a
+later run given them without --spread (same --owners, --keep-unmoved) gives the
+same layout. Use it with --keep-unmoved on a laid-out board.
+
+Every run also checks RF placement (adapted from the MIT layout planner of
+github.com/donghuixin/low-power-iot-hardware-design): P1 for a part in an antenna
+clearance zone (3 mm, open towards its chip; matching parts allowed), an inductor
+within 8 mm of an antenna or RF module, or an RF module whose antenna end is off
+the board edge; P2 for an inductor within 4 mm of a crystal, a crystal within 4 mm
+of an antenna, RF module or switching regulator, and an antenna within 5 mm of a
+connector or battery.
 
 routing (from the dump, pose independent): availability (available|unknown;
 unknown = the dump could not read tracks/vias, never "no routing"), tracks (lines
@@ -333,7 +350,7 @@ moves a component. Output is deterministic: identical inputs give identical byte
 	cmd.Flags().StringVar(&posesPath, "poses", "", "optional poses JSON: non-satellite parts placed by hand (bound to the board's semanticSha256)")
 	cmd.Flags().StringVar(&ownersPath, "owners", "", "optional owners JSON: satellite → main pins (bound to the board's semanticSha256)")
 	cmd.Flags().BoolVar(&keepUnmoved, "keep-unmoved", false, "re-plan only satellites disturbed by the poses; the rest stay at their dump pose")
-	cmd.Flags().BoolVar(&spread, "spread", false, "re-distribute the movable main chips over the whole board (connection order, shelf-packed with a satellite ring), then plan satellites as usual; poses of mains are replaced")
+	cmd.Flags().BoolVar(&spread, "spread", false, "search better places and quarter turns for the movable main chips (scored by the real result incl. RF rules, never worse than the board), then plan satellites as usual; poses of mains are replaced")
 	cmd.Flags().StringVar(&anchorCSV, "anchor", "", "designator(s) forced to be main parts (CSV), as in pcb auto-place")
 	cmd.Flags().StringVar(&excludeMainCSV, "exclude-main", "", "designator(s) barred from the main set (CSV): a small IC becomes a satellite, a high-pin part stays put")
 	cmd.Flags().StringVar(&outPath, "out", "", "result JSON output path (easyeda.pcb.layout-sim/v1)")
@@ -579,27 +596,47 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 	// everything below is the unchanged posed pipeline (a later run given these
 	// poses without --spread yields the same layout).
 	spreadVia := map[int]bool{}
+	rfc := newRfCtx(ap, pre)
+	var spreadSum *lsSpreadSummary
 	if so.Spread {
 		var poly [][2]float64
 		if o := snap.Outline; o != nil && opt.board != nil {
 			poly = o.Points
 		}
-		if pos, extra := simSpreadMains(posed, opt, pre, movable, lockedRoute, poly); pos != nil {
+		plain := so
+		plain.Spread = false
+		base, err := simulatePcbLayoutOpts(snap, pf, havePoses, plain)
+		if err != nil {
+			return nil, err
+		}
+		// A candidate is the user's poses with the spreadable mains replaced.
+		eval := func(m map[int]spreadPose) (*lsResult, error) {
+			file := lsPoseFile{BoardSemanticSHA256: snap.SemanticSHA256}
+			if havePoses {
+				for _, ps := range pf.Poses {
+					if _, spread := m[byID[ps.PrimitiveID]]; !spread {
+						file.Poses = append(file.Poses, ps)
+					}
+				}
+			}
+			for _, i := range simSortedKeys(m) {
+				x, y, r := m[i].x, m[i].y, simNormDeg(m[i].rot)
+				file.Poses = append(file.Poses, lsPose{PrimitiveID: snap.Components[i].ID, X: &x, Y: &y, Rotation: &r})
+			}
+			return simulatePcbLayoutOpts(snap, &file, true, plain)
+		}
+		pos, sum, extra := simSpreadSearch(ap, posed, opt, pre, movable, lockedRoute, poly, rfc, base, eval)
+		spreadSum = sum
+		issues = append(issues, extra...)
+		if pos != nil {
 			if !havePoses {
 				posed = append([]apComp(nil), ap...)
 			}
-			spreadIdx := make([]int, 0, len(pos))
-			for i := range pos {
-				spreadIdx = append(spreadIdx, i)
-			}
-			sort.Ints(spreadIdx)
-			for _, i := range spreadIdx {
-				posed[i] = simTransform(ap[i], pos[i][0], pos[i][1], simNormDeg(posed[i].rotation))
+			for _, i := range simSortedKeys(pos) {
+				posed[i] = simTransform(ap[i], pos[i].x, pos[i].y, simNormDeg(pos[i].rot))
 				posedIdx[i] = true
 				spreadVia[i] = true
 			}
-		} else {
-			issues = append(issues, extra...)
 		}
 	}
 
@@ -761,6 +798,8 @@ func simulatePcbLayoutOpts(snap *boardSnapshot, pf *lsPoseFile, havePoses bool, 
 	for _, d := range diags {
 		issues = append(issues, simIssueFor(d))
 	}
+	issues = append(issues, rfc.issues(res.Components, opt.board)...)
+	res.Spread = spreadSum
 	sort.SliceStable(issues, func(a, b int) bool {
 		x, y := issues[a], issues[b]
 		if x.Severity != y.Severity {
@@ -1299,4 +1338,13 @@ func simCongestionPeak(pads []lsPadPt, rat []lsRat) int {
 		peak = max(peak, v)
 	}
 	return peak
+}
+
+func simSortedKeys[V any](m map[int]V) []int {
+	out := make([]int, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Ints(out)
+	return out
 }
