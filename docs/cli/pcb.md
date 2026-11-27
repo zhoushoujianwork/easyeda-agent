@@ -46,6 +46,7 @@
 - `--keep-unmoved`(可选):只重排被位姿影响的卫星——被定位芯片(及其 RF 链)的卫星重排,其余卫星留在 dump 位置并作障碍;与被定位件或新放卫星重叠的,改为在**自己的**主芯片旁重排,`components[].displacedBy` 记录让位原因(最多 8 轮,未收敛 P2)。归属按未定位的板子固定。不加时保持全量重排。
 - `--anchor` / `--exclude-main`(可选,CSV 位号):与 `pcb auto-place` 相同的角色覆盖。被排除的小芯片(低于 8 脚)成为卫星、跟随最近主芯片;被排除的多脚件留在原位。被降级件的旧位姿会被拒绝(卫星不能定位)。
 - `routing`(与位姿无关):`availability`(available|unknown,unknown 表示 dump 没读到布线,不等于没有布线)、`tracks`、`vias`,以及有布线的网 `nets[]{net,tracks,vias,locked,parts}`。锁定走线端点或锁定过孔落在某件同网焊盘上时,该件 `role=fixed`、`reason=locked-routing`,不能定位姿、不被重排。
+- `ripup`:本次 `moves` 要清除的布线，供应用前用 `pcb.route.delete` 逐 id 删除。`availability`(同 `routing`,unknown 时列表为空)、`tracks`/`arcs`/`vias`(排序去重的 primitive id)、`nets[]{net,tracks,arcs,vias}`、`pourNets`(被清网络里有铺铜的，需重新铺铜)。规则：按网络，从被移动件的焊盘出发，清掉悬空的走线/过孔，直到铜仍连着未移动件的焊盘或分叉处为止；锁定铜、封装内嵌铜、其他网和无网铜从不列出；与被移动件不连通的铜不动。
 - 只读计算,不证明布局可用:结果仍须经 `pcb auto-place`/typed 写入、保存、重载、回读与 DRC。
 
 ### 3. 布线
