@@ -149,6 +149,9 @@ type Component struct {
 	Placement    *Placement     `json:"placement,omitempty"`
 	PageID       string         `json:"pageId,omitempty"`
 	PageName     string         `json:"pageName,omitempty"`
+	// SubParts lists the placed units of a multi-unit device. Placement is
+	// then nil: each unit keeps its own placement and page here.
+	SubParts []SubPart `json:"subParts,omitempty"`
 }
 type Placement struct {
 	// X/Y and orientation are part of the authored 1.4 placement plan. BBox is
@@ -178,6 +181,8 @@ type Pin struct {
 	ConnectionState string  `json:"connectionState,omitempty"`
 	X               float64 `json:"x,omitempty"`
 	Y               float64 `json:"y,omitempty"`
+	// SubPart names the unit that owns this pin on a multi-unit device.
+	SubPart string `json:"subPart,omitempty"`
 }
 type Net struct {
 	ID    string `json:"id"`
