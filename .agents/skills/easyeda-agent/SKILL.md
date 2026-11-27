@@ -75,6 +75,7 @@ metadata:
 | 新建、打开、导出或迁移工程 | [工程操作](references/project-import.md) |
 | 交付原理图、PCB 正反面与图册 | [清晰设计图交付](references/design-drawings.md) |
 | 由已有 PCB 生成 3D 打印外壳（上下壳/推盖、开孔、螺丝柱、卡扣） | [参数化外壳](references/pcb.md#参数化外壳离线生成-stl) |
+| 用户说“选中的/这几个/这里” | 先 `easyeda selection --project <名>` 读选区取得 id；选区只用于定位，写入仍显式传 id（[Action 边界](references/actions.md)） |
 | 连接、升级或保存异常 | [环境配置](references/environment-setup.md)、[Action 边界](references/actions.md) |
 | 原始文档源码探针 | [源码读取与同源回写](references/document-source.md)；不接受任意新源码替代设计接口 |
 | 复用案例与历史限制 | [样例索引](references/examples/index.md)；旧案例仅适用于其记录的范围 |

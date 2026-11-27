@@ -690,6 +690,125 @@ const documentCurrent: Handler = async () => {
 	};
 };
 
+type SelectionScalar = string | number | boolean;
+
+/**
+ * Call one optional `getState_<name>` getter on a selected primitive. A missing
+ * method, a throw, or anything that is not a plain string/number/boolean (null,
+ * undefined, NaN, empty string, objects) yields undefined so the field is omitted.
+ */
+function selectionScalar(item: unknown, name: string): SelectionScalar | undefined {
+	try {
+		const getter = (item as Record<string, unknown> | null | undefined)?.[`getState_${name}`];
+		if (typeof getter !== 'function') return undefined;
+		const value: unknown = (getter as () => unknown).call(item);
+		if (typeof value === 'string') return value === '' ? undefined : value;
+		if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+		if (typeof value === 'boolean') return value;
+	}
+	catch { /* optional field: omit */ }
+	return undefined;
+}
+
+/** Footprint is either a plain string or an object carrying uuid/name; keep the string only. */
+function selectionFootprint(item: unknown): string | undefined {
+	try {
+		const getter = (item as Record<string, unknown> | null | undefined)?.getState_Footprint;
+		if (typeof getter !== 'function') return undefined;
+		const value: unknown = (getter as () => unknown).call(item);
+		if (typeof value === 'string') return value === '' ? undefined : value;
+		if (value && typeof value === 'object') {
+			const record = value as Record<string, unknown>;
+			for (const key of ['uuid', 'name']) {
+				const text = record[key];
+				if (typeof text === 'string' && text !== '') return text;
+			}
+		}
+	}
+	catch { /* optional field: omit */ }
+	return undefined;
+}
+
+function selectionItem(item: unknown, index: number): Record<string, SelectionScalar> {
+	const primitiveId = selectionScalar(item, 'PrimitiveId');
+	if (typeof primitiveId !== 'string') {
+		throw new ActionError(ErrorCodes.INVALID_STATE, `Selected primitive #${index} has no readable primitiveId.`);
+	}
+	const ctorName = (item as { constructor?: { name?: unknown } } | null)?.constructor?.name;
+	const type = selectionScalar(item, 'PrimitiveType');
+	const out: Record<string, SelectionScalar> = {
+		primitiveId,
+		primitiveType: type !== undefined ? String(type)
+			: typeof ctorName === 'string' && ctorName && ctorName !== 'Object' ? ctorName : 'unknown',
+	};
+	const put = (key: string, value: SelectionScalar | undefined): void => {
+		if (value !== undefined) out[key] = value;
+	};
+	put('designator', selectionScalar(item, 'Designator'));
+	for (const field of ['Name', 'DeviceName', 'Content']) {
+		const value = selectionScalar(item, field);
+		if (value !== undefined) { out.name = value; break; }
+	}
+	put('net', selectionScalar(item, 'Net'));
+	put('layer', selectionScalar(item, 'Layer'));
+	for (const [xField, yField] of [['X', 'Y'], ['StartX', 'StartY']]) {
+		const x = selectionScalar(item, xField), y = selectionScalar(item, yField);
+		if (typeof x === 'number' && typeof y === 'number') { out.x = x; out.y = y; break; }
+	}
+	put('rotation', selectionScalar(item, 'Rotation'));
+	put('footprint', selectionFootprint(item));
+	put('locked', selectionScalar(item, 'PrimitiveLock'));
+	return out;
+}
+
+/**
+ * Read-only: report what the user currently has selected on the active schematic
+ * or PCB canvas. Never selects, clears, or targets anything; callers use the ids
+ * only to locate objects and must pass them explicitly to any write action.
+ */
+const selectionGet: Handler = async () => {
+	const before = await readResponseContext();
+	const documentType = before.documentType;
+	if (documentType !== 'schematic' && documentType !== 'pcb') {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'当前活动文档不是原理图或 PCB，无法读取选区',
+			`documentType=${documentType ?? 'unknown'}`);
+	}
+	const control = documentType === 'schematic' ? eda.sch_SelectControl : eda.pcb_SelectControl;
+	const controlName = documentType === 'schematic' ? 'sch_SelectControl' : 'pcb_SelectControl';
+	let raw: unknown[];
+	let detail: boolean;
+	try {
+		if (typeof control?.getAllSelectedPrimitives === 'function') {
+			raw = (await control.getAllSelectedPrimitives()) as unknown[];
+			detail = true;
+		}
+		else if (typeof control?.getAllSelectedPrimitives_PrimitiveId === 'function') {
+			raw = (await control.getAllSelectedPrimitives_PrimitiveId()) as unknown[];
+			detail = false;
+		}
+		else {
+			throw new ActionError(ErrorCodes.EDA_API_UNAVAILABLE, `eda.${controlName} cannot read the current selection.`);
+		}
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to read the current selection.');
+	}
+	if (!Array.isArray(raw)) {
+		throw new ActionError(ErrorCodes.INVALID_STATE, 'The selection read did not return a list.');
+	}
+	const after = await readResponseContext();
+	if (after.projectUuid !== before.projectUuid || after.documentUuid !== before.documentUuid || after.tabId !== before.tabId) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'Selection read refused: page drift, the active project/document/tab changed while reading; the selection may belong to another page.');
+	}
+	const items = raw.map((entry, index) => detail
+		? selectionItem(entry, index)
+		: { primitiveId: String(entry), primitiveType: 'unknown' });
+	return { result: { documentType, count: items.length, items, detail } };
+};
+
 /** Reload the whole Web editor after its response has left the connector queue. */
 const systemPageReload: Handler = async (payload) => {
 	const projectUuid = requireString(payload, 'projectUuid');
@@ -16567,6 +16686,7 @@ const HANDLERS: Record<string, Handler> = {
 	'project.export': projectExport,
 	'project.import': projectImport,
 	'document.current': documentCurrent,
+	'selection.get': selectionGet,
 	'document.source.get': documentSourceGet,
 	'document.source.roundtrip': documentSourceRoundtrip,
 	'document.source.restore': documentSourceRestore,
