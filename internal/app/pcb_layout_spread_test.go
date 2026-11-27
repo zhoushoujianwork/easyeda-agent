@@ -256,19 +256,36 @@ func TestLayoutSpread_DeterministicBytes(t *testing.T) {
 			t.Fatalf("run %d differs from run 0", i)
 		}
 	}
-	// The satellite planner breaks some ties by dump order (a known limit of the
-	// keep-unmoved pass), and every spread candidate is judged by it, so a
-	// reversed dump may settle elsewhere; it must still be legal and never worse.
+	// The planner breaks every tie by designator, so a reversed dump settles on
+	// the same spread.
 	rev := *snap
 	rev.Components = append([]boardComp(nil), snap.Components...)
 	for i, j := 0, len(rev.Components)-1; i < j; i, j = i+1, j-1 {
 		rev.Components[i], rev.Components[j] = rev.Components[j], rev.Components[i]
 	}
 	simRehash(t, &rev)
+	a := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true})
 	b := spreadRun(t, &rev, lsSimOptions{KeepUnmoved: true})
-	spreadLegal(t, b)
-	if b.Spread == nil || b.Spread.After.Score > b.Spread.Before.Score {
-		t.Errorf("reversed dump: spread made the board worse: %+v", b.Spread)
+	for _, m := range spreadMainsOf(a) {
+		var got *lsComponent
+		for i := range b.Components {
+			if b.Components[i].Designator == m.Designator {
+				got = &b.Components[i]
+			}
+		}
+		if got == nil || got.X != m.X || got.Y != m.Y || got.Rotation != m.Rotation {
+			t.Errorf("reversed dump: main %s at %+v, want (%v,%v,%v)", m.Designator, got, m.X, m.Y, m.Rotation)
+		}
+	}
+	for _, part := range []struct {
+		what string
+		a, b any
+	}{{"spread", a.Spread, b.Spread}, {"metrics", a.Metrics, b.Metrics}} {
+		ja, _ := json.Marshal(part.a)
+		jb, _ := json.Marshal(part.b)
+		if part.a == nil || !bytes.Equal(ja, jb) {
+			t.Errorf("reversed dump: %s differs:\n%s\n%s", part.what, ja, jb)
+		}
 	}
 }
 
@@ -684,5 +701,50 @@ func TestLayoutSpread_UsesRotation(t *testing.T) {
 	}
 	if u1 := simComp(t, r, "U1"); simNormDeg(u1.Rotation) == 0 {
 		t.Errorf("U1 kept rotation 0 although its signal pins face away from J1 (at %v,%v)", u1.X, u1.Y)
+	}
+}
+
+// The keep-unmoved planner breaks every tie by designator, never by dump order:
+// the same board listed in reverse with the same poses gives the same layout.
+func TestLayoutSim_KeepUnmovedIndependentOfDumpOrder(t *testing.T) {
+	snap := simSpreadSnap(t)
+	rev := *snap
+	rev.Components = append([]boardComp(nil), snap.Components...)
+	for i, j := 0, len(rev.Components)-1; i < j; i, j = i+1, j-1 {
+		rev.Components[i], rev.Components[j] = rev.Components[j], rev.Components[i]
+	}
+	simRehash(t, &rev)
+	poses := []lsPose{
+		// The spread poses of the fixture: before the fix C2 and C4 settled
+		// differently in the reversed dump (3 vs 10 crossings).
+		{PrimitiveID: "p-u1", X: fp(1207.7998), Y: fp(154.474), Rotation: fp(0)},
+		{PrimitiveID: "p-u2", X: fp(1687.5), Y: fp(262.5), Rotation: fp(0)},
+		{PrimitiveID: "p-u3", X: fp(1426.2253), Y: fp(139.7722), Rotation: fp(0)},
+		{PrimitiveID: "p-u4", X: fp(1831.5991), Y: fp(316.5104), Rotation: fp(270)},
+	}
+	run := func(s *boardSnapshot) *lsResult {
+		so := lsSimOptions{KeepUnmoved: true}
+		so.Owners = &lsOwnerFile{BoardSemanticSHA256: s.SemanticSHA256, Owners: spreadOwners(t, s, so)}
+		r, err := simulatePcbLayoutOpts(s, simPoses(s.SemanticSHA256, poses...), true, so)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	a, b := run(snap), run(&rev)
+	byDes := func(cs []lsComponent) []lsComponent {
+		out := append([]lsComponent(nil), cs...)
+		sort.Slice(out, func(i, j int) bool { return out[i].Designator < out[j].Designator })
+		return out
+	}
+	for _, part := range []struct {
+		what string
+		a, b any
+	}{{"components", byDes(a.Components), byDes(b.Components)}, {"metrics", a.Metrics, b.Metrics}} {
+		ja, _ := json.Marshal(part.a)
+		jb, _ := json.Marshal(part.b)
+		if !bytes.Equal(ja, jb) {
+			t.Errorf("%s differ between the dump and the reversed dump:\n%s\n%s", part.what, ja, jb)
+		}
 	}
 }

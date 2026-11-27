@@ -1037,7 +1037,7 @@ func TestPlanAutoPlace_SmallICIsMainAndKeepsItsCaps(t *testing.T) {
 	for _, i := range info.Mains {
 		mains = append(mains, comps[i].designator)
 	}
-	if strings.Join(mains, ",") != "U2,U1" {
+	if strings.Join(mains, ",") != "U1,U2" { // by designator, not dump order
 		t.Fatalf("mains = %v, want U2 and the LDO U1", mains)
 	}
 	by := movesByDes(moves)
