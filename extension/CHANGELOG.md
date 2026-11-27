@@ -23,6 +23,7 @@
 - Skill 写入确认改由宿主审批承担（#340）。
 - 新增 ESP32-S3 USB-C 体感小板用例设计（新用户示例、演示回放与审图素材）。
 - 连接器运行时有变化（`selection.get`、autoroute `ignoreNets`、锁定铜提示），用户需更新连接器，按中版本发布。
+- 验证范围：用户于 2026-11-27 选择 schema 3 定向范围。全量 Go、连接器、typecheck 与仓库检查通过；在 EdaDesk DEV 的一次性测试工程上用 1.22.0-dev.7（与本版源码基准相同）现场验证了多单元器件位号绑定（放置三单元 → 导入 PCB → bind → apply → 保存重载回读）、`autoroute --net` 只布指定网络并回读、`selection` 读取 PCB 上的真实选区；v1.21.0 负对照复现 #365 的 `duplicate component binding` 且无 `selection`。原理图页选区、`page drift`、跨页单元拒绝与越界新铜失败仅有自动测试。完整设计 E2E 延期至 follow-up，未执行。证据见 `docs/releases/evidence/v1.22.0/`。
 
 ## [1.21.0] - 2026-11-25
 
