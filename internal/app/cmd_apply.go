@@ -25,6 +25,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -133,7 +134,36 @@ func newApplyCmd(cfg *appConfig, stdout, stderr io.Writer) *cobra.Command {
 		Short: "Replay a declarative step file (playbook) against EasyEDA",
 		Long: `Execute a playbook (see docs/design-apply-playbook.md) step by step:
 typed actions, CLI subcommands, capture/assert gates, journal + resume.
-Precedence: CLI flag > playbook file > built-in default.`,
+Precedence: CLI flag > playbook file > built-in default.
+
+Playbook format (version 1):
+
+  {"version": 1,
+   "meta": {"name": "<required>", "doc": "<page or PCB uuid, optional>"},
+   "defaults": {"timeoutSec": 60, "retry": 0, "continueOnError": false},
+   "vars": {"NAME": "value"},
+   "steps": [
+     {"id": "baseline", "action": "schematic.text.list", "assert": {"$.texts": "len==0"}},
+     {"id": "add", "action": "schematic.text.create",
+      "payload": {"content": "NOTE", "x": 900, "y": 100}, "capture": {"TXT": "$.primitiveId"}},
+     {"id": "check", "action": "schematic.text.list",
+      "assert": {"$.count": "==1", "$.texts[0].primitiveId": "==${TXT}"}},
+     {"id": "remove", "action": "schematic.primitives.delete",
+      "payload": {"primitiveIds": ["${TXT}"]}, "confirm": true},
+     {"id": "save", "action": "schematic.save", "assert": {"$.saved": "true"}}]}
+
+Each step has exactly one of "action" + "payload" (typed action, see
+"easyeda actions"), "run" + "flags"/"args" (CLI subcommand, no shell) or
+"notify". Optional: capture, assert, timeoutSec, retry, continueOnError,
+confirm (needs --yes), verify, checkpoint.
+
+assert and capture paths are relative to the action's "result" object and must
+start with "$": "$.count", "$.texts[0].x" (dots and numeric indexes only).
+Do not prefix them with "result". Predicates: "==X", "!=X", ">=N", "<=N",
+">N", "<N", "exists", "true", "false", "len==N" (also len>=, len<=, len>,
+len<). ${NAME} is replaced in payload, flags, args, notify and predicates;
+never in paths. --dry-run checks this syntax before anything runs; it cannot
+know which fields an action returns, so read the action once if unsure.`,
 		Example: `  easyeda apply sch.playbook.json
   easyeda apply pcb.playbook.json --project demo2 --var LIB=<uuid>
   easyeda apply pcb.playbook.json --resume
@@ -431,6 +461,11 @@ func preflight(pb *playbook, vars map[string]string) []string {
 		if err := validateSchematicExpectationStep(s); err != nil {
 			errs = append(errs, fmt.Sprintf("step %s: %v", ref, err))
 		}
+		errs = append(errs, gateSyntaxErrors(ref, "assert", s.Assert)...)
+		errs = append(errs, gateSyntaxErrors(ref, "capture", s.Capture)...)
+		if s.Verify != nil {
+			errs = append(errs, gateSyntaxErrors(ref, "verify.assert", s.Verify.Assert)...)
+		}
 		// static ${var} resolution: names must be file vars or a prior capture
 		for _, miss := range unresolvedVars(s, known) {
 			errs = append(errs, fmt.Sprintf("step %s: ${%s} is not a var and not captured by any earlier step", ref, miss))
@@ -478,11 +513,17 @@ func unresolvedVars(s *playbookStep, known map[string]bool) []string {
 	for _, a := range s.Args {
 		walk(a)
 	}
+	for _, pred := range s.Assert {
+		walk(pred)
+	}
 	if s.Verify != nil {
 		walk(s.Verify.Payload)
 		walk(s.Verify.Flags)
 		for _, a := range s.Verify.Args {
 			walk(a)
+		}
+		for _, pred := range s.Verify.Assert {
+			walk(pred)
 		}
 	}
 	return missing
@@ -559,6 +600,123 @@ func replaceVarRefs(s string, vars map[string]string, missing *[]string) string 
 }
 
 // ── jsonpath-lite + predicates ─────────────────────────────────────────────
+
+// substPredicate replaces ${NAME} in an assert predicate with the current vars.
+func (r *applyRunner) substPredicate(pred string) (string, error) {
+	v, err := substVars(pred, r.vars)
+	if err != nil {
+		return "", err
+	}
+	out, _ := v.(string)
+	return out, nil
+}
+
+// resultKeysHint names the result's top-level fields so a wrong path (the
+// common mistake is "result.count" or "count" for "$.count") can be corrected
+// without another round trip.
+func resultKeysHint(result any) string {
+	m, ok := result.(map[string]any)
+	if !ok {
+		return fmt.Sprintf("; result is %T, not an object", result)
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, "$."+k)
+	}
+	sort.Strings(keys)
+	if len(keys) > 20 {
+		keys = append(keys[:20], "…")
+	}
+	return "; result fields: " + strings.Join(keys, ", ")
+}
+
+// validJSONPath accepts exactly the syntax jsonPathLite resolves: "$" then any
+// number of ".key" or "[N]" hops.
+func validJSONPath(path string) bool {
+	p := strings.TrimSpace(path)
+	if !strings.HasPrefix(p, "$") {
+		return false
+	}
+	p = p[1:]
+	for len(p) > 0 {
+		switch p[0] {
+		case '.':
+			p = p[1:]
+			end := strings.IndexAny(p, ".[")
+			key := p
+			if end >= 0 {
+				key, p = p[:end], p[end:]
+			} else {
+				p = ""
+			}
+			if key == "" || strings.Contains(key, "]") {
+				return false
+			}
+		case '[':
+			end := strings.IndexByte(p, ']')
+			if end < 1 {
+				return false
+			}
+			if _, err := strconv.Atoi(p[1:end]); err != nil || strings.HasPrefix(p[1:end], "-") || strings.HasPrefix(p[1:end], "+") {
+				return false
+			}
+			p = p[end+1:]
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validPredicate accepts exactly the predicate forms evalPredicate understands.
+// ${NAME} references are checked as if they held a number.
+func validPredicate(pred string) bool {
+	p := strings.TrimSpace(pred)
+	for _, name := range varRefs(p) {
+		p = strings.ReplaceAll(p, "${"+name+"}", "0")
+	}
+	switch p {
+	case "exists", "true", "false":
+		return true
+	}
+	if strings.HasPrefix(p, "len") {
+		_, detail := compareNumeric(0, strings.TrimPrefix(p, "len"))
+		return detail != "bad-op"
+	}
+	if strings.HasPrefix(p, "==") || strings.HasPrefix(p, "!=") {
+		return true
+	}
+	_, detail := compareNumeric(0, p)
+	return detail != "bad-op"
+}
+
+func gateSyntaxErrors(ref, field string, gates map[string]string) []string {
+	var errs []string
+	paths := make([]string, 0, len(gates))
+	for k := range gates {
+		paths = append(paths, k)
+	}
+	sort.Strings(paths)
+	pathOf := func(k string) string {
+		if field == "capture" {
+			return gates[k]
+		}
+		return k
+	}
+	for _, k := range paths {
+		path := pathOf(k)
+		switch {
+		case strings.Contains(path, "${"):
+			errs = append(errs, fmt.Sprintf("step %s: %s path %q: ${...} is not replaced in paths", ref, field, path))
+		case !validJSONPath(path):
+			errs = append(errs, fmt.Sprintf("step %s: %s path %q must start with \"$\" and be relative to the action result, e.g. \"$.count\" or \"$.texts[0].primitiveId\" (not \"result.count\")", ref, field, path))
+		}
+		if field != "capture" && !validPredicate(gates[k]) {
+			errs = append(errs, fmt.Sprintf("step %s: %s %q: unsupported predicate %q (use ==X, !=X, >=N, <=N, >N, <N, exists, true, false, len==N)", ref, field, path, gates[k]))
+		}
+	}
+	return errs
+}
 
 // jsonPathLite resolves a "$.a.b[2].c" style path (dots + numeric indexes
 // only — no filters) against a decoded JSON value. Returns (nil, false) when
@@ -1505,9 +1663,16 @@ func normalizeResult(v any) any {
 // captureAndAssert evaluates assert gates then captures variables.
 func (r *applyRunner) captureAndAssert(capture, assert map[string]string, result any) (map[string]string, error) {
 	for path, pred := range assert {
+		pred, err := r.substPredicate(pred)
+		if err != nil {
+			return nil, fmt.Errorf("assert %s: %w", path, err)
+		}
 		val, found := jsonPathLite(result, path)
 		ok, detail := evalPredicate(val, found, pred)
 		if !ok {
+			if !found {
+				detail += resultKeysHint(result)
+			}
 			return nil, fmt.Errorf("assert %s %s failed (%s)", path, pred, detail)
 		}
 	}
@@ -1518,7 +1683,7 @@ func (r *applyRunner) captureAndAssert(capture, assert map[string]string, result
 	for name, path := range capture {
 		val, found := jsonPathLite(result, path)
 		if !found {
-			return nil, fmt.Errorf("capture %s: path %s not found in result", name, path)
+			return nil, fmt.Errorf("capture %s: path %s not found in result%s", name, path, resultKeysHint(result))
 		}
 		captured[name] = formatCaptured(val)
 		r.vars[name] = captured[name]
@@ -1567,6 +1732,11 @@ func (r *applyRunner) runVerify(v *verifyBlock, timeout time.Duration) bool {
 		return false
 	}
 	for path, pred := range v.Assert {
+		pred, err := r.substPredicate(pred)
+		if err != nil {
+			fmt.Fprintf(r.stderr, "  verify assert %s: %v\n", path, err)
+			return false
+		}
 		val, found := jsonPathLite(result, path)
 		if ok, _ := evalPredicate(val, found, pred); !ok {
 			return false
