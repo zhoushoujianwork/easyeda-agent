@@ -383,6 +383,19 @@ const apObstacleClearMil = 10.0
 
 // apDesPrefix is the upper-cased run of letters before the first non-letter
 // of a designator ("u12" → "U", "LED3" → "LED", "1U" → "").
+// apDesCmp orders parts by designator (natural order, C2 before C10), then by
+// primitive id: the tie-break of the planner, independent of the dump order.
+func apDesCmp(a, b apComp) int {
+	da, db := strings.TrimSpace(a.designator), strings.TrimSpace(b.designator)
+	switch {
+	case simDesLess(da, db):
+		return -1
+	case simDesLess(db, da):
+		return 1
+	}
+	return strings.Compare(a.id, b.id)
+}
+
 func apDesPrefix(des string) string {
 	des = strings.ToUpper(strings.TrimSpace(des))
 	end := 0
@@ -483,6 +496,14 @@ func planAutoPlaceDetailed(comps []apComp, opt apOptions) ([]apMove, []apDiag, a
 			sats = append(sats, i)
 		}
 	}
+
+	// Every pass below breaks its ties by visiting order (first nearest pad, first
+	// chain parent, packing order of the groups): visit parts by designator, then
+	// primitive id, never by their position in the board dump.
+	byDes := func(a, b int) int { return apDesCmp(comps[a], comps[b]) }
+	slices.SortStableFunc(mains, byDes)
+	slices.SortStableFunc(sats, byDes)
+	slices.SortStableFunc(ants, byDes)
 
 	info.Mains = append([]int(nil), mains...)
 	info.Movable = append([]int(nil), sats...)
@@ -831,8 +852,12 @@ func spaceMains(comps []apComp, mains []int, multiGap float64) []float64 {
 	for i := range mains {
 		order[i] = i
 	}
-	sort.Slice(order, func(a, b int) bool {
-		return comps[mains[order[a]]].minX < comps[mains[order[b]]].minX
+	sort.SliceStable(order, func(a, b int) bool {
+		ca, cb := comps[mains[order[a]]], comps[mains[order[b]]]
+		if ca.minX != cb.minX {
+			return ca.minX < cb.minX
+		}
+		return apDesCmp(ca, cb) < 0
 	})
 	prevRight := math.Inf(-1)
 	for _, mi := range order {
@@ -1942,7 +1967,7 @@ func balanceRailCaps(comps []apComp, mains []int, mainPadsByNet []map[string][]a
 				sats = append(sats, s)
 			}
 		}
-		sort.Ints(sats)
+		slices.SortFunc(sats, func(a, b int) int { return apDesCmp(comps[a], comps[b]) })
 		for mi := range mains {
 			pads := mainPadsByNet[mi][rail]
 			if len(pads) == 0 || count[mi] > 0 {
