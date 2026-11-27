@@ -15,7 +15,7 @@ func FromRead(m map[string]any) (Document, error) {
 	if !ok {
 		return d, fmt.Errorf("missing components inventory")
 	}
-	nets := map[string]string{}
+	records := []map[string]any{}
 	for _, v := range cs {
 		x, ok := v.(map[string]any)
 		if !ok {
@@ -24,115 +24,19 @@ func FromRead(m map[string]any) (Document, error) {
 		if x["componentType"] != "part" {
 			continue
 		}
-		if available, declared := m["pinNetsAvailable"].(bool); declared && !available {
-			return d, fmt.Errorf("pin net evidence unavailable; cannot construct connectivity")
+		records = append(records, x)
+	}
+	nets := map[string]string{}
+	// One multi-unit device is placed as several records that share the
+	// native uniqueId and repeat the reference designator. They form one
+	// device instance, so they are read as one canonical component.
+	for _, group := range GroupPartInstances(records) {
+		c, connections, err := readDeviceInstance(m, group, nets)
+		if err != nil {
+			return d, err
 		}
-		ref, _ := x["designator"].(string)
-		if ambiguous, _ := x["netAmbiguous"].(bool); ambiguous {
-			return d, fmt.Errorf("%s: pin net attribution ambiguous; cannot construct connectivity", ref)
-		}
-		if unavailable, _ := x["pinNetsUnavailable"].(bool); unavailable {
-			return d, fmt.Errorf("%s: pin net evidence unavailable; cannot construct connectivity", ref)
-		}
-		if available, declared := x["netlistAvailable"].(bool); declared && !available {
-			return d, fmt.Errorf("%s: pin net evidence unavailable; cannot construct connectivity", ref)
-		}
-		c := Component{ID: "cmp-" + ref, Ref: ref, UniqueID: stringField(x, "uniqueId")}
-		if properties, ok := x["otherProperty"].(map[string]any); ok {
-			if id, exists, err := componentBinding(properties, ComponentIDProperty); err != nil {
-				return d, fmt.Errorf("%s: %w", ref, err)
-			} else if exists {
-				c.ID = id
-			}
-			if role, _, err := componentBinding(properties, ComponentRoleProperty); err != nil {
-				return d, fmt.Errorf("%s: %w", ref, err)
-			} else {
-				c.Role = role
-			}
-		}
-		if dev, ok := x["device"].(map[string]any); ok {
-			c.Device = Device{LibraryUUID: stringField(dev, "libraryUuid"), UUID: stringField(dev, "uuid"), Name: stringField(dev, "name")}
-		}
-		if c.Device.UUID == "" {
-			if dev, ok := x["component"].(map[string]any); ok {
-				c.Device = Device{LibraryUUID: stringField(dev, "libraryUuid"), UUID: stringField(dev, "uuid"), Name: stringField(dev, "name")}
-			}
-		}
-		c.Footprint = stringField(x, "footprint")
-		if footprint, ok := x["footprint"].(map[string]any); ok {
-			c.Footprint = stringField(footprint, "uuid")
-			c.FootprintRef = make(map[string]any, len(footprint))
-			for key, value := range footprint {
-				c.FootprintRef[key] = value
-			}
-		}
-		if xv, xok := numberValue(x["x"]); xok {
-			if yv, yok := numberValue(x["y"]); yok {
-				c.Placement = &Placement{X: xv, Y: yv}
-				if rv, rok := numberValue(x["rotation"]); rok {
-					c.Placement.Rotation = rv
-				}
-				if mv, mok := x["mirror"].(bool); mok {
-					c.Placement.Mirror = mv
-				}
-			}
-		}
-		if bb, ok := x["bbox"].(map[string]any); ok {
-			if minx, a := numberValue(bb["minX"]); a {
-				if miny, b := numberValue(bb["minY"]); b {
-					if maxx, c1 := numberValue(bb["maxX"]); c1 {
-						if maxy, d := numberValue(bb["maxY"]); d {
-							if c.Placement == nil {
-								c.Placement = &Placement{}
-							}
-							c.Placement.BBox = &BBox{MinX: minx, MinY: miny, MaxX: maxx, MaxY: maxy}
-						}
-					}
-				}
-			}
-		}
-		ps, ok := x["pins"].([]any)
-		if !ok || len(ps) == 0 {
-			return d, fmt.Errorf("%s: pin inventory unavailable; read each active page separately", ref)
-		}
-		for _, v := range ps {
-			p, ok := v.(map[string]any)
-			if !ok {
-				return d, fmt.Errorf("%s: invalid pin", ref)
-			}
-			n, _ := p["number"].(string)
-			if n == "" {
-				n, _ = p["pinNumber"].(string)
-			}
-			name, _ := p["name"].(string)
-			if name == "" {
-				name, _ = p["pinName"].(string)
-			}
-			if _, ok := p["net"]; !ok {
-				return d, fmt.Errorf("%s.%s: missing net evidence", ref, n)
-			}
-			nc, ncKnown := p["noConnected"].(bool)
-			pin := Pin{Number: n, Name: name, NoConnected: nc}
-			if net, known := p["net"].(string); known && net == "" && ncKnown && !nc {
-				pin.ConnectionState = "unconnected"
-			}
-			pin.X, _ = numberValue(p["x"])
-			pin.Y, _ = numberValue(p["y"])
-			c.Pins = append(c.Pins, pin)
-			if p["net"] != nil {
-				net, ok := p["net"].(string)
-				if !ok {
-					return d, fmt.Errorf("invalid net value")
-				}
-				if net != "" {
-					id := fmt.Sprintf("net-%x", sha256.Sum256([]byte(net)))
-					nets[net] = id
-					d.Connections = append(d.Connections, Connection{ComponentID: c.ID, PinNumber: n, NetID: id, Kind: "netlist"})
-				}
-			}
-		}
-		sort.Slice(c.Pins, func(i, j int) bool { return c.Pins[i].Number < c.Pins[j].Number })
 		d.Components = append(d.Components, c)
+		d.Connections = append(d.Connections, connections...)
 	}
 	for name, id := range nets {
 		scope, role := classifyNet(name)
@@ -148,6 +52,193 @@ func FromRead(m map[string]any) (Document, error) {
 		return a.PinNumber < b.PinNumber
 	})
 	return d, d.Validate()
+}
+
+// readDeviceInstance reads the placed records of one device instance into a
+// canonical component. A multi-unit device contributes one record per unit;
+// their pins form one physical inventory, so a pin number may only appear
+// once across the whole instance.
+func readDeviceInstance(m map[string]any, records []map[string]any, nets map[string]string) (Component, []Connection, error) {
+	var c Component
+	connections := []Connection{}
+	ref, unique, bound := "", "", ""
+	hasBound := false
+	designators := []string{}
+	seenRef := map[string]bool{}
+	for _, x := range records {
+		r, _ := x["designator"].(string)
+		if !seenRef[r] {
+			seenRef[r] = true
+			designators = append(designators, r)
+		}
+		if ref == "" {
+			ref = r
+		}
+		if uid := stringField(x, "uniqueId"); uid != "" {
+			if unique == "" {
+				unique = uid
+			} else if unique != uid {
+				return c, connections, fmt.Errorf("%s: device instance carries conflicting uniqueIds %s and %s", ref, unique, uid)
+			}
+		}
+		if properties, ok := x["otherProperty"].(map[string]any); ok {
+			id, exists, err := componentBinding(properties, ComponentIDProperty)
+			if err != nil {
+				return c, connections, fmt.Errorf("%s: %w", ref, err)
+			} else if exists {
+				if hasBound && bound != id {
+					return c, connections, fmt.Errorf("%s: conflicting canonical component bindings %s and %s", ref, bound, id)
+				}
+				bound, hasBound = id, true
+			}
+			if role, _, err := componentBinding(properties, ComponentRoleProperty); err != nil {
+				return c, connections, fmt.Errorf("%s: %w", ref, err)
+			} else if role != "" {
+				c.Role = role
+			}
+		}
+	}
+	// One device identity must name one device. Records that claim the same
+	// identity under different designators are two devices, not a multi-unit
+	// device, and the identity stays unusable for both.
+	if len(designators) > 1 {
+		identity := "cmp-" + ref
+		if hasBound {
+			identity = bound
+		}
+		sort.Strings(designators)
+		return c, connections, fmt.Errorf("duplicate component %s; one device identity carries the designators %s", identity, strings.Join(designators, ", "))
+	}
+	c.Ref, c.UniqueID = ref, unique
+	c.ID = "cmp-" + ref
+	if hasBound {
+		c.ID = bound
+	}
+	for _, x := range records {
+		if available, declared := m["pinNetsAvailable"].(bool); declared && !available {
+			return c, connections, fmt.Errorf("pin net evidence unavailable; cannot construct connectivity")
+		}
+		if ambiguous, _ := x["netAmbiguous"].(bool); ambiguous {
+			return c, connections, fmt.Errorf("%s: pin net attribution ambiguous; cannot construct connectivity", ref)
+		}
+		if unavailable, _ := x["pinNetsUnavailable"].(bool); unavailable {
+			return c, connections, fmt.Errorf("%s: pin net evidence unavailable; cannot construct connectivity", ref)
+		}
+		if available, declared := x["netlistAvailable"].(bool); declared && !available {
+			return c, connections, fmt.Errorf("%s: pin net evidence unavailable; cannot construct connectivity", ref)
+		}
+	}
+	primary := records[0]
+	if dev, ok := primary["device"].(map[string]any); ok {
+		c.Device = Device{LibraryUUID: stringField(dev, "libraryUuid"), UUID: stringField(dev, "uuid"), Name: stringField(dev, "name")}
+	}
+	if c.Device.UUID == "" {
+		if dev, ok := primary["component"].(map[string]any); ok {
+			c.Device = Device{LibraryUUID: stringField(dev, "libraryUuid"), UUID: stringField(dev, "uuid"), Name: stringField(dev, "name")}
+		}
+	}
+	c.Footprint = stringField(primary, "footprint")
+	if footprint, ok := primary["footprint"].(map[string]any); ok {
+		c.Footprint = stringField(footprint, "uuid")
+		c.FootprintRef = make(map[string]any, len(footprint))
+		for key, value := range footprint {
+			c.FootprintRef[key] = value
+		}
+	}
+	c.Placement = readPlacement(primary)
+	if len(records) > 1 {
+		for _, x := range records {
+			c.SubParts = append(c.SubParts, SubPart{
+				PrimitiveID: stringField(x, "primitiveId"),
+				SubPartName: stringField(x, "subPartName"),
+				UniqueID:    stringField(x, "uniqueId"),
+				Placement:   readPlacement(x),
+			})
+		}
+	}
+	seen := map[string]bool{}
+	for _, x := range records {
+		ps, ok := x["pins"].([]any)
+		if !ok || len(ps) == 0 {
+			return c, connections, fmt.Errorf("%s: pin inventory unavailable; read each active page separately", ref)
+		}
+		for _, v := range ps {
+			p, ok := v.(map[string]any)
+			if !ok {
+				return c, connections, fmt.Errorf("%s: invalid pin", ref)
+			}
+			n, _ := p["number"].(string)
+			if n == "" {
+				n, _ = p["pinNumber"].(string)
+			}
+			name, _ := p["name"].(string)
+			if name == "" {
+				name, _ = p["pinName"].(string)
+			}
+			if _, ok := p["net"]; !ok {
+				return c, connections, fmt.Errorf("%s.%s: missing net evidence", ref, n)
+			}
+			nc, ncKnown := p["noConnected"].(bool)
+			pin := Pin{Number: n, Name: name, NoConnected: nc}
+			if net, known := p["net"].(string); known && net == "" && ncKnown && !nc {
+				pin.ConnectionState = "unconnected"
+			}
+			pin.X, _ = numberValue(p["x"])
+			pin.Y, _ = numberValue(p["y"])
+			if seen[n] {
+				return c, connections, fmt.Errorf("%s: duplicate pin number %s across the device instance", ref, n)
+			}
+			seen[n] = true
+			c.Pins = append(c.Pins, pin)
+			if p["net"] != nil {
+				net, ok := p["net"].(string)
+				if !ok {
+					return c, connections, fmt.Errorf("invalid net value")
+				}
+				if net != "" {
+					id := fmt.Sprintf("net-%x", sha256.Sum256([]byte(net)))
+					nets[net] = id
+					connections = append(connections, Connection{ComponentID: c.ID, PinNumber: n, NetID: id, Kind: "netlist"})
+				}
+			}
+		}
+	}
+	sort.Slice(c.Pins, func(i, j int) bool { return c.Pins[i].Number < c.Pins[j].Number })
+	return c, connections, nil
+}
+
+// readPlacement reads the measured placement of one placed record. A
+// multi-unit device places each unit separately, so the device-level
+// placement is the first placed unit and every unit keeps its own geometry
+// in the component sub-parts.
+func readPlacement(record map[string]any) *Placement {
+	var placement *Placement
+	if xv, xok := numberValue(record["x"]); xok {
+		if yv, yok := numberValue(record["y"]); yok {
+			placement = &Placement{X: xv, Y: yv}
+			if rv, rok := numberValue(record["rotation"]); rok {
+				placement.Rotation = rv
+			}
+			if mv, mok := record["mirror"].(bool); mok {
+				placement.Mirror = mv
+			}
+		}
+	}
+	if bb, ok := record["bbox"].(map[string]any); ok {
+		if minx, a := numberValue(bb["minX"]); a {
+			if miny, b := numberValue(bb["minY"]); b {
+				if maxx, c1 := numberValue(bb["maxX"]); c1 {
+					if maxy, d := numberValue(bb["maxY"]); d {
+						if placement == nil {
+							placement = &Placement{}
+						}
+						placement.BBox = &BBox{MinX: minx, MinY: miny, MaxX: maxx, MaxY: maxy}
+					}
+				}
+			}
+		}
+	}
+	return placement
 }
 
 // classifyNet keeps the connectivity IR useful to layout/materialization code

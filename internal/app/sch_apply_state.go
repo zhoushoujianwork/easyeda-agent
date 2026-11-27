@@ -7,6 +7,8 @@ import (
 	"math"
 	"slices"
 	"strings"
+
+	"github.com/zhoushoujianwork/easyeda-agent/internal/connectivity"
 )
 
 // These expectations refer to physical part designators and pin numbers, never
@@ -340,27 +342,9 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 	if !ok {
 		return fmt.Errorf("components must be an available array")
 	}
-	parts := map[string]map[string]any{}
-	for _, entry := range components {
-		part, ok := entry.(map[string]any)
-		if !ok {
-			return fmt.Errorf("malformed component record")
-		}
-		kind, ok := part["componentType"].(string)
-		if !ok || kind == "" {
-			return fmt.Errorf("component %v has unknown componentType", part["primitiveId"])
-		}
-		if kind != "part" {
-			continue
-		}
-		ref, ok := part["designator"].(string)
-		if !ok || ref == "" {
-			return fmt.Errorf("part %v has no designator", part["primitiveId"])
-		}
-		if _, exists := parts[ref]; exists {
-			return fmt.Errorf("duplicate part designator %s; cannot attribute pins unambiguously", ref)
-		}
-		parts[ref] = part
+	parts, err := schPartsByDesignator(components)
+	if err != nil {
+		return err
 	}
 	for _, ref := range expected.AbsentParts {
 		if _, exists := parts[ref]; exists {
@@ -384,11 +368,12 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 	}
 	for _, ref := range sortedStateKeys(expected.Parts) {
 		want := expected.Parts[ref]
-		have, exists := parts[ref]
+		records, exists := parts[ref]
 		if !exists {
 			return fmt.Errorf("missing part %s", ref)
 		}
-		if want.PrimitiveID != "" && have["primitiveId"] != want.PrimitiveID {
+		have := records[0]
+		if want.PrimitiveID != "" && !schHasPrimitiveID(records, want.PrimitiveID) {
 			return fmt.Errorf("%s primitiveId: got %v, want %s", ref, have["primitiveId"], want.PrimitiveID)
 		}
 		if expected.DesignatorsOnly {
@@ -399,25 +384,36 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 				return err
 			}
 		}
-		if want.Device != nil {
-			device, err := measuredSchematicDevice(ref, have)
-			if err != nil {
-				return err
+		for _, record := range records {
+			if want.Device != nil {
+				device, err := measuredSchematicDevice(ref, record)
+				if err != nil {
+					return err
+				}
+				if *device != *want.Device {
+					return fmt.Errorf("%s device identity: got %s/%s, want %s/%s", ref, device.LibraryUUID, device.UUID, want.Device.LibraryUUID, want.Device.UUID)
+				}
 			}
-			if *device != *want.Device {
-				return fmt.Errorf("%s device identity: got %s/%s, want %s/%s", ref, device.LibraryUUID, device.UUID, want.Device.LibraryUUID, want.Device.UUID)
+		}
+		// A multi-unit device places every unit separately, so the expected
+		// geometry belongs to the unit the expectation names.
+		primary := have
+		for _, record := range records {
+			if stringVal(record["primitiveId"]) == want.PrimitiveID {
+				primary = record
+				break
 			}
 		}
 		for field, value := range map[string]*float64{"x": want.X, "y": want.Y, "rotation": want.Rotation} {
-			if err := compareStateCoordinate(ref, field, have, value); err != nil {
+			if err := compareStateCoordinate(ref, field, primary, value); err != nil {
 				return err
 			}
 		}
-		if want.Mirror != nil && have["mirror"] != *want.Mirror {
-			return fmt.Errorf("%s mirror: got %v, want %v", ref, have["mirror"], *want.Mirror)
+		if want.Mirror != nil && primary["mirror"] != *want.Mirror {
+			return fmt.Errorf("%s mirror: got %v, want %v", ref, primary["mirror"], *want.Mirror)
 		}
 		if want.BBox != nil {
-			box, ok := have["bbox"].(map[string]any)
+			box, ok := primary["bbox"].(map[string]any)
 			if !ok {
 				return fmt.Errorf("%s.bbox must be available measured geometry", ref)
 			}
@@ -427,30 +423,40 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 				}
 			}
 		}
-		if available, exists := have["pinsAvailable"]; exists && available != true {
-			return fmt.Errorf("%s pins unavailable", ref)
-		}
-		pinList, ok := have["pins"].([]any)
-		if !ok {
-			return fmt.Errorf("%s pins must be an available array", ref)
+		ambiguous := false
+		for _, record := range records {
+			if available, exists := record["pinsAvailable"]; exists && available != true {
+				return fmt.Errorf("%s pins unavailable", ref)
+			}
+			if record["netAmbiguous"] == true {
+				ambiguous = true
+			}
 		}
 		pins := map[string]map[string]any{}
-		for _, entry := range pinList {
-			pin, ok := entry.(map[string]any)
+		for _, record := range records {
+			pinList, ok := record["pins"].([]any)
 			if !ok {
-				return fmt.Errorf("%s has a malformed pin", ref)
+				return fmt.Errorf("%s pins must be an available array", ref)
 			}
-			number, ok := pin["pinNumber"].(string)
-			if !ok || number == "" {
-				return fmt.Errorf("%s has an unknown pin number", ref)
+			for _, entry := range pinList {
+				pin, ok := entry.(map[string]any)
+				if !ok {
+					return fmt.Errorf("%s has a malformed pin", ref)
+				}
+				number, ok := pin["pinNumber"].(string)
+				if !ok || number == "" {
+					return fmt.Errorf("%s has an unknown pin number", ref)
+				}
+				if _, exists := pins[number]; exists {
+					return fmt.Errorf("%s has duplicate pin number %s", ref, number)
+				}
+				pins[number] = pin
 			}
-			if _, exists := pins[number]; exists {
-				return fmt.Errorf("%s has duplicate pin number %s", ref, number)
-			}
+		}
+		for _, number := range sortedStateKeys(pins) {
 			if _, exists := want.Pins[number]; !exists {
 				return fmt.Errorf("%s has unexpected pin %s", ref, number)
 			}
-			pins[number] = pin
 		}
 		for _, number := range sortedStateKeys(want.Pins) {
 			wantPin := want.Pins[number]
@@ -479,7 +485,7 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 			}
 			if wantPin.Net != nil {
 				net, known := pin["net"].(string)
-				if have["netAmbiguous"] == true || !known {
+				if ambiguous || !known {
 					return fmt.Errorf("%s.%s net is unknown or ambiguous", ref, number)
 				}
 				if net != *wantPin.Net {
@@ -488,7 +494,7 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 			}
 			if wantPin.AutoNet != nil {
 				net, known := pin["net"].(string)
-				if have["netAmbiguous"] == true || !known || net == "" {
+				if ambiguous || !known || net == "" {
 					return fmt.Errorf("%s.%s net is unknown or ambiguous", ref, number)
 				}
 				key := *wantPin.AutoNet
@@ -525,6 +531,69 @@ func compareStateCoordinate(ref, field string, have map[string]any, want *float6
 		return fmt.Errorf("%s.%s: got %v, want %g (tolerance 1e-6)", ref, field, have[field], *want)
 	}
 	return nil
+}
+
+// schPartsByDesignator maps a reference designator to the placed records of
+// its device instance.
+//
+// EasyEDA Pro places one multi-unit device as several records that share the
+// native uniqueId and repeat the reference designator, and the PCB keeps a
+// single footprint for them. Those records are one device, so they are not a
+// duplicate; two different devices wearing one designator still fail, and a
+// device instance may not span two pages.
+func schPartsByDesignator(components []any) (map[string][]map[string]any, error) {
+	records := []map[string]any{}
+	for _, entry := range components {
+		part, ok := entry.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("malformed component record")
+		}
+		kind, ok := part["componentType"].(string)
+		if !ok || kind == "" {
+			return nil, fmt.Errorf("component %v has unknown componentType", part["primitiveId"])
+		}
+		if kind != "part" {
+			continue
+		}
+		ref, ok := part["designator"].(string)
+		if !ok || ref == "" {
+			return nil, fmt.Errorf("part %v has no designator", part["primitiveId"])
+		}
+		records = append(records, part)
+	}
+	parts := map[string][]map[string]any{}
+	for _, group := range connectivity.GroupPartInstances(records) {
+		ref := stringVal(group[0]["designator"])
+		page := ""
+		for _, record := range group {
+			if stringVal(record["designator"]) != ref {
+				return nil, fmt.Errorf("device instance carries conflicting designators %s and %s", ref, stringVal(record["designator"]))
+			}
+			if current := stringVal(record["pageUuid"]); current != "" {
+				if page == "" {
+					page = current
+				} else if page != current {
+					return nil, fmt.Errorf("device instance %s spans pages %s and %s", ref, page, current)
+				}
+			}
+		}
+		if _, exists := parts[ref]; exists {
+			return nil, fmt.Errorf("duplicate part designator %s; cannot attribute pins unambiguously", ref)
+		}
+		parts[ref] = group
+	}
+	return parts, nil
+}
+
+// schHasPrimitiveID reports whether one of the placed records of a device
+// instance carries the named primitive id.
+func schHasPrimitiveID(records []map[string]any, primitiveID string) bool {
+	for _, record := range records {
+		if stringVal(record["primitiveId"]) == primitiveID {
+			return true
+		}
+	}
+	return false
 }
 
 func finiteStateNumber(n float64) bool { return !math.IsNaN(n) && !math.IsInf(n, 0) }

@@ -149,6 +149,20 @@ type Component struct {
 	Placement    *Placement     `json:"placement,omitempty"`
 	PageID       string         `json:"pageId,omitempty"`
 	PageName     string         `json:"pageName,omitempty"`
+	// SubParts lists the placed units of a multi-unit device. It stays empty
+	// for a single-unit device, whose one placement is the device placement.
+	SubParts []SubPart `json:"subParts,omitempty"`
+}
+
+// SubPart is one placed unit of a device instance. A multi-unit device is
+// placed as one record per unit; the canonical component keeps every unit's
+// identity and geometry so the per-unit evidence is not lost when the units
+// are merged into one component.
+type SubPart struct {
+	PrimitiveID string     `json:"primitiveId"`
+	SubPartName string     `json:"subPartName,omitempty"`
+	UniqueID    string     `json:"uniqueId,omitempty"`
+	Placement   *Placement `json:"placement,omitempty"`
 }
 type Placement struct {
 	// X/Y and orientation are part of the authored 1.4 placement plan. BBox is

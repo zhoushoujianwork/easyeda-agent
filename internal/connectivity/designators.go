@@ -195,6 +195,18 @@ func cloneDesignatorDocument(d Document) Document {
 			}
 			c.Placement = &placement
 		}
+		c.SubParts = slices.Clone(c.SubParts)
+		for j := range c.SubParts {
+			sub := &c.SubParts[j]
+			if sub.Placement != nil {
+				placement := *sub.Placement
+				if placement.BBox != nil {
+					box := *placement.BBox
+					placement.BBox = &box
+				}
+				sub.Placement = &placement
+			}
+		}
 	}
 	out.Nets = slices.Clone(d.Nets)
 	out.Connections = slices.Clone(d.Connections)
