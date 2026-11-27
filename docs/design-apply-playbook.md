@@ -76,9 +76,9 @@ easyeda sch apply steps.json --from 12 --to 30
 | `checkpoint` | 日志语义标记，本身不会保存；需要真实 `schematic.save` 步骤。 |
 | `verify` | 普通步骤失败后执行的只读核对；成功可将原步骤记为 `ok(verified)`，不能绕过强制状态守卫。 |
 
-`capture/assert` 路径相对于响应的 `result`，支持 `.key` 和 `[index]`，不支持筛选表达式。
+`capture/assert` 路径相对于响应的 `result`，必须以 `$` 开头（`$.count`、`$.texts[0].x`，不写 `result.`），支持 `.key` 和 `[index]`，不支持筛选表达式；路径缺失时错误列出 `result` 的顶层字段。
 判定式支持数值比较、`==字符串`、`exists`、`true/false` 和 `len==N/len>=N/len<=N` 等长度比较。
-除显式 `literalPayloadKeys` 外，字符串值支持 `${变量}`；没有条件分支或循环，生成侧须先展开步骤。
+除显式 `literalPayloadKeys` 外，payload、flags、args、notify 中的字符串和 `assert` 判定式（如 `"==${TXT}"`）支持 `${变量}`；路径不替换。`--dry-run` 预检会拒绝不以 `$` 开头或语法不合法的路径、不支持的判定式和未定义的变量。没有条件分支或循环，生成侧须先展开步骤。
 
 ## `expectSchematic`：完整回读约束
 

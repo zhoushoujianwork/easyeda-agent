@@ -24,6 +24,7 @@ metadata:
    求解器、样例或模型生成的数据均须满足[数据契约](references/schematic-data.md#数据驱动架构基准)；不强制某个求解器。
 5. 用当前 `--help` / `easyeda actions` 核对接口，从新鲜快照生成计划，支持 dry-run 时先检查。
    仅经 Cobra 子命令、typed action 或 `easyeda apply` 写入；同一窗口的调用串行执行。
+   手写 playbook 的字段、`$.` 断言/捕获路径与判定式写法见 `easyeda sch apply --help`，先 `--dry-run` 校验。
 6. 操作后检查宿主弹窗/进度阻塞，按[恢复流程](references/environment-setup.md#宿主弹窗与进度阻塞)处理；CLI 成功不等于界面无阻塞。
    回读身份、逐脚连接和实际几何，与目标对账。部分成功、超时或 stale ID 时先回读，再修源并重算。
 7. 稳定检查点显式保存；最终完成 `save → doc reload → fresh readback/render`。
