@@ -1,0 +1,83 @@
+{
+  "_source": "EasyEDA Pro V4 4.1.105 `schematic.components.list` of one multi-unit device, trimmed to three pins per placed unit. The device is PI7C9X2G608GPBNJEX (LCSC C5116335, FCBGA-196); the editor places it as three unit symbols that share the native uniqueId and repeat the reference designator, and the PCB keeps one footprint. Pin numbers stay unique across the units (63 + 41 + 92 = 196 in the full read).",
+  "components": [
+    {
+      "componentType": "part",
+      "designator": "U18",
+      "primitiveId": "8e793fcaea865558",
+      "subPartName": "PI7C9X2G608GPBNJEX_C5116335.1",
+      "uniqueId": "gge1_3",
+      "x": 280,
+      "y": 845,
+      "rotation": 0,
+      "mirror": false,
+      "pinsAvailable": true,
+      "netlistAvailable": true,
+      "device": {
+        "libraryUuid": "b3f7b33189a14088aa30416e034eca7f",
+        "uuid": "2e23ed671f8d45a5bb9963d0293662b9",
+        "name": ""
+      },
+      "otherProperty": {
+        "Multi-Part Group": ""
+      },
+      "pins": [
+        {"primitiveId": "8e793fcaea865558-e8", "pinNumber": "F11", "pinName": "CLKREQ_L[1]", "x": 180, "y": 865, "rotation": 180, "net": "$2N52", "noConnected": false, "otherProperty": {}},
+        {"primitiveId": "8e793fcaea865558-e12", "pinNumber": "D12", "pinName": "CLKREQ_L[2]", "x": 180, "y": 855, "rotation": 180, "net": "CLKREQ1", "noConnected": false, "otherProperty": {}},
+        {"primitiveId": "8e793fcaea865558-e16", "pinNumber": "C13", "pinName": "CLKREQ_L[3]", "x": 180, "y": 845, "rotation": 180, "net": "CLKREQ2", "noConnected": false, "otherProperty": {}}
+      ]
+    },
+    {
+      "componentType": "part",
+      "designator": "U18",
+      "primitiveId": "b38fb51864b86433",
+      "subPartName": "PI7C9X2G608GPBNJEX_C5116335.2",
+      "uniqueId": "gge1_3",
+      "x": 850,
+      "y": 940,
+      "rotation": 0,
+      "mirror": false,
+      "pinsAvailable": true,
+      "netlistAvailable": true,
+      "device": {
+        "libraryUuid": "b3f7b33189a14088aa30416e034eca7f",
+        "uuid": "2e23ed671f8d45a5bb9963d0293662b9",
+        "name": ""
+      },
+      "otherProperty": {
+        "Multi-Part Group": ""
+      },
+      "pins": [
+        {"primitiveId": "b38fb51864b86433-e1218", "pinNumber": "L2", "pinName": "CLKBUF_PD", "x": 980, "y": 1050, "rotation": 0, "net": "$2N240", "noConnected": false, "otherProperty": {}},
+        {"primitiveId": "b38fb51864b86433-e1230", "pinNumber": "J3", "pinName": "DBO[1]", "x": 980, "y": 1030, "rotation": 0, "net": "$2N235", "noConnected": false, "otherProperty": {}},
+        {"primitiveId": "b38fb51864b86433-e1234", "pinNumber": "K3", "pinName": "DBO[2]", "x": 980, "y": 1020, "rotation": 0, "net": "$2N233", "noConnected": false, "otherProperty": {}}
+      ]
+    },
+    {
+      "componentType": "part",
+      "designator": "U18",
+      "primitiveId": "5cd9ed3a44aed304",
+      "subPartName": "PI7C9X2G608GPBNJEX_C5116335.3",
+      "uniqueId": "gge1_3",
+      "x": 940,
+      "y": 420,
+      "rotation": 0,
+      "mirror": false,
+      "pinsAvailable": true,
+      "netlistAvailable": true,
+      "device": {
+        "libraryUuid": "b3f7b33189a14088aa30416e034eca7f",
+        "uuid": "2e23ed671f8d45a5bb9963d0293662b9",
+        "name": ""
+      },
+      "otherProperty": {
+        "Multi-Part Group": ""
+      },
+      "pins": [
+        {"primitiveId": "5cd9ed3a44aed304-e608", "pinNumber": "C5", "pinName": "AGND", "x": 1150, "y": 380, "rotation": 0, "net": "GND", "noConnected": false, "otherProperty": {}},
+        {"primitiveId": "5cd9ed3a44aed304-e612", "pinNumber": "C6", "pinName": "AGND", "x": 1150, "y": 390, "rotation": 0, "net": "GND", "noConnected": false, "otherProperty": {}},
+        {"primitiveId": "5cd9ed3a44aed304-e616", "pinNumber": "C9", "pinName": "AGND", "x": 1150, "y": 400, "rotation": 0, "net": "GND", "noConnected": false, "otherProperty": {}}
+      ]
+    }
+  ]
+}

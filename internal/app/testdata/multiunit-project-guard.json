@@ -1,0 +1,53 @@
+{
+  "_source": "Project-wide `schematic.components.list --all-pages` inventory of a project that carries one multi-unit device. The device is PI7C9X2G608GPBNJEX (LCSC C5116335, FCBGA-196) placed as three unit symbols on the PCI Express bridge page; they share the native uniqueId and repeat the reference designator, and the PCB keeps one footprint. The page ids are symbolic: the editor reports them per read, and the guard only needs to know that the units share one page while the other parts live on another.",
+  "components": [
+    {
+      "componentType": "part",
+      "designator": "U18",
+      "primitiveId": "8e793fcaea865558",
+      "pageUuid": "page-pcie",
+      "subPartName": "PI7C9X2G608GPBNJEX_C5116335.1",
+      "uniqueId": "gge1_3"
+    },
+    {
+      "componentType": "part",
+      "designator": "U18",
+      "primitiveId": "b38fb51864b86433",
+      "pageUuid": "page-pcie",
+      "subPartName": "PI7C9X2G608GPBNJEX_C5116335.2",
+      "uniqueId": "gge1_3"
+    },
+    {
+      "componentType": "part",
+      "designator": "U18",
+      "primitiveId": "5cd9ed3a44aed304",
+      "pageUuid": "page-pcie",
+      "subPartName": "PI7C9X2G608GPBNJEX_C5116335.3",
+      "uniqueId": "gge1_3"
+    },
+    {
+      "componentType": "part",
+      "designator": "U17",
+      "primitiveId": "u17",
+      "pageUuid": "page-pwr",
+      "subPartName": "",
+      "uniqueId": "gge2_1"
+    },
+    {
+      "componentType": "part",
+      "designator": "U20",
+      "primitiveId": "u20",
+      "pageUuid": "page-pwr",
+      "subPartName": "",
+      "uniqueId": "gge3_1"
+    },
+    {
+      "componentType": "part",
+      "designator": "CN1",
+      "primitiveId": "cn1",
+      "pageUuid": "page-pwr",
+      "subPartName": "",
+      "uniqueId": "gge4_1"
+    }
+  ]
+}
