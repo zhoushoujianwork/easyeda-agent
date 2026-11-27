@@ -44,6 +44,7 @@
 - 主芯片:≥8 个不同引脚(连接器除外),或位号前缀为 U/IC/VR/REG/PS 且 ≥3 个不同引脚(LDO、DC-DC 等小芯片,`pcb auto-place` 同此规则);R/C/L/D/LED/FB/Y/X/F/TP/Q 不按前缀提升。同一电源轨上每颗主芯片至少保留一个该轨电容(从持有 ≥2 个的芯片调最近的一个,固定归属的不动)。
 - `--owners owners.json`(可选):`{"boardSemanticSha256","owners":{"C5":"U2"}}`,把卫星固定归给某主芯片,不再按最近焊盘重算;目标不是主芯片或位号未知时 P3 提示并忽略该项。初始归属取结果的 `components[].owner`。
 - `--keep-unmoved`(可选):只重排被位姿影响的卫星——被定位芯片(及其 RF 链)的卫星重排,其余卫星留在 dump 位置并作障碍;与被定位件或新放卫星重叠的,改为在**自己的**主芯片旁重排,`components[].displacedBy` 记录让位原因(最多 8 轮,未收敛 P2)。归属按未定位的板子固定。不加时保持全量重排。
+- `--spread`(可选,常与 `--keep-unmoved`、`--owners` 一起用):先在板框内铺开可移动的主芯片(规划器的主芯片,不含锁定、锁定布线、无 bbox 的件),再照常排卫星。连接器、天线、固定/锁定件和禁布区不动并作障碍(连接器、天线的位姿照用);主芯片的旧位姿被替换,旋转保持。每颗主芯片占地 = bbox + 容纳其卫星的环带(面积约 2.5 倍卫星 bbox 总面积),按共享网络权重 1/(k−1) 排序、分行打包(强连接相邻)、两两互换降低加权距离、整体向板中心靠拢;排不下时退回 bbox + 2·gap,仍不行则主芯片不动并给 P1,没有可铺开的主芯片给 P3。主芯片的 `moves[].via` 为 `spread`;保留这些位姿、不加 `--spread` 再跑(同 owners、`--keep-unmoved`)得到同一结果。v1 板界按外框 bbox 与多边形顶点判断,确定性,无随机。
 - `--anchor` / `--exclude-main`(可选,CSV 位号):与 `pcb auto-place` 相同的角色覆盖。被排除的小芯片(低于 8 脚)成为卫星、跟随最近主芯片;被排除的多脚件留在原位。被降级件的旧位姿会被拒绝(卫星不能定位)。
 - `routing`(与位姿无关):`availability`(available|unknown,unknown 表示 dump 没读到布线,不等于没有布线)、`tracks`、`vias`,以及有布线的网 `nets[]{net,tracks,vias,locked,parts}`。锁定走线端点或锁定过孔落在某件同网焊盘上时,该件 `role=fixed`、`reason=locked-routing`,不能定位姿、不被重排。
 - `ripup`:本次 `moves` 要清除的布线，供应用前用 `pcb.route.delete` 逐 id 删除。`availability`(同 `routing`,unknown 时列表为空)、`tracks`/`arcs`/`vias`(排序去重的 primitive id)、`nets[]{net,tracks,arcs,vias}`、`pourNets`(被清网络里有铺铜的，需重新铺铜)。规则：按网络，从被移动件的焊盘出发，清掉悬空的走线/过孔，直到铜仍连着未移动件的焊盘或分叉处为止；锁定铜、封装内嵌铜、其他网和无网铜从不列出；与被移动件不连通的铜不动。

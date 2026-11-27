@@ -75,7 +75,7 @@
 | 字体 | `pcb.silk.create/modify` / `pcb silk-add/set --font-family` | 写入后回读实际字体；modify 静默失败会被识别。 |
 | 封装区域 | `footprint.region.create` / `lib footprint region` | 在已可写封装中创建区域并核对 layer、rule、线宽、锁定和 polygon；宿主忽略可选 name 时保留已验证区域并报警，材料差异或保存失败才回滚。系统库封装无损复制到**当前工程库**后再写 region 的组合路径在 EasyEDA 4.1.60 两次现场调用均失败，当前标 `unsupported`；个人库试验不能外推为当前工程 U3 已完成。 |
 | 模块候选布局 | `pcb layout-plan --from --board --module --candidates --out` | footprint anchor 为写坐标；bbox/pads/板框中心线用于变换、避让与事实测量；报告最小间隙及对应对象对，输出目录整体替换，候选绑定原始输入 SHA256。 |
-| 二层布局/布线协同 | `pcb layout solve/check/render`(另有只读的 `pcb layout simulate`,支持 `--owners` 固定归属、`--keep-unmoved` 最小扰动并输出 `routing` 与移动需清除的布线 `ripup`,见 [CLI 速查](cli/pcb.md)) | 纯离线读取 fresh `pcb dump --include-copper`；完整移动组与内部铜刚体投影，多网共同路径、路由反馈让位、共享状态预算和独立复验；输出基线/失败尝试/最终候选的整板与局部 SVG。四层联合求解 planned。 |
+| 二层布局/布线协同 | `pcb layout solve/check/render`(另有只读的 `pcb layout simulate`,支持 `--owners` 固定归属、`--keep-unmoved` 最小扰动、`--spread` 整板铺开主芯片并输出 `routing` 与移动需清除的布线 `ripup`,见 [CLI 速查](cli/pcb.md)) | 纯离线读取 fresh `pcb dump --include-copper`；完整移动组与内部铜刚体投影，多网共同路径、路由反馈让位、共享状态预算和独立复验；输出基线/失败尝试/最终候选的整板与局部 SVG。四层联合求解 planned。 |
 | 铜完整快照 | `pcb dump --include-copper` | 串行采集 tracks/arcs、vias、pour 边界、实际 poured fills、regions、静态 fills；每类保留 available/unknown，并生成忽略采集时间、项目显示标签和哈希自身的语义 SHA256。 |
 | 边界与铺铜排序 | `pcb pour` / `pcb region` / `pcb fill create` | 本地 dev.5 候选仅接受省略或 0.2mil 边界宽度；显式铺铜 priority 用原生每层插入顺序（0最高、0..count），等待公开 setter 完成并在重建前后核对原生源。填充/区域核对独立请求几何及唯一 fresh ID；不以 SDK order 回显证明排序，也不签材料化铜连通。 |
 | 实际铺铜读取 | `pcb.poured.list` / `pcb poured-list` | 将宿主材料化 fill 的 0.1mil 坐标/线宽归一化为 mil，保留 nested contours 与 degree ARC sweep；`fill:false` 标为带线宽的 thermal-spoke path。只有完整 inventory 的真实 `[]` 是 known-empty，fill/boundary/net/layer/polygon 任一缺测均为 unknown/error。 |

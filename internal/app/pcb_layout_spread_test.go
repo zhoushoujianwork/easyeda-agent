@@ -563,3 +563,27 @@ func TestLayoutSpreadCommand_Flag(t *testing.T) {
 		t.Errorf("components not sorted: %v", des)
 	}
 }
+
+// An L-shaped outline: the notch in the lower left is not board, so no main may
+// reach into it even though its bbox is inside the outline's bbox (the shelf
+// starts in that corner and has to skip right past it).
+func TestLayoutSpread_RespectsPolygonOutline(t *testing.T) {
+	snap := simSpreadSnap(t)
+	l := [][2]float64{{1300, 0}, {2000, 0}, {2000, 900}, {0, 900}, {0, 600}, {1300, 600}}
+	snap.Outline = &boardOutline{Source: "polygon", BBox: layoutBBox{MinX: 0, MinY: 0, MaxX: 2000, MaxY: 900}, Points: l}
+	snap.Components = snap.Components[:8] // the four chips and their caps
+	simRehash(t, snap)
+	r := spreadRun(t, snap, lsSimOptions{KeepUnmoved: true})
+	spreadLegal(t, r)
+	for _, c := range spreadMainsOf(r) {
+		if !simplePolygonContainsBBox(l, *c.BBox) {
+			t.Errorf("main %s %+v is outside the L-shaped outline", c.Designator, *c.BBox)
+		}
+		if c.BBox.MinX < 1300 && c.BBox.MinY < 600 {
+			t.Errorf("main %s %+v sits in the notch", c.Designator, *c.BBox)
+		}
+		if spreadVia(r, c.Designator) != "spread" {
+			t.Errorf("%s was not spread", c.Designator)
+		}
+	}
+}
