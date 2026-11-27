@@ -153,7 +153,7 @@ dev.8 对旧 `group-move`/`disconnect` 增加写前安全拒绝：不能可靠�
 
 | 对象 | 权威数据与约束 |
 |---|---|
-| `component` | `id` 为稳定、不透明实例 ID；`ref` 为显示位号；可选 `role` 保存功能名。`device.libraryUuid/deviceUuid` 是器件库身份，不能用 16 位放置实例 UUID 替代 32 位库 UUID。 |
+| `component` | `id` 为稳定、不透明实例 ID；`ref` 为显示位号；可选 `role` 保存功能名。`device.libraryUuid/deviceUuid` 是器件库身份，不能用 16 位放置实例 UUID 替代 32 位库 UUID。多单元器件（每功能单元一条 `subPartName`、共享原生 `uniqueId`、重复同一位号、PCB 只留一个封装）按器件实例归并成一个 component，引脚取各单元并集，各单元证据保留在 `subParts`。 |
 | `pin` | `number` 是完整物理引脚编号，`name` 是符号脚名；明确 NC 用 `noConnected:true`；已确认悬空用 `connectionState:"unconnected"`。保留器件所有物理引脚。 |
 | `net` | 稳定 `id`、名称 `name`、可选 `scope/role`。电源与地通常为 `global/power|ground`，信号通常为 `local/signal`；作用域是规划提示，不替代连接记录。 |
 | `connections` | 每条为 `{componentId,pinNumber,netId,kind}`；导出使用 `kind:"netlist"`，它不表示导线几何。通过稳定 ID 引用对象。 |

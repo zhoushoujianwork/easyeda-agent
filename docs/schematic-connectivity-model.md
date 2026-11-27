@@ -9,6 +9,7 @@
 ## Connectivity IR
 
 - `component`：稳定实例 `id`、显示位号 `ref`、可选功能 `role`、`libraryUuid`、`deviceUuid`、封装和属性；
+  多单元器件的各已放置单元记录在 `subParts` 中；
 - `pin`：所属器件、pin number、名称、方向和电气类型；明确 NC 为 `noConnected:true`，已知悬空为 `connectionState:"unconnected"`；
 - `net`：项目内稳定 `netId`、规范名称、作用域和角色；1.4 快照会把电源/地识别为
   `scope=global`（`role=power|ground`），普通信号识别为 `scope=local`、
@@ -34,6 +35,20 @@
 `compose` 与 `materialize` 在生成放置队列前拒绝此类位号及未分配的 `?`，防止把
 功能名称再次写回画布。修复以全工程数据分配编号：按官方库前缀、已有数字占用和
 输入声明顺序，只修复非标准项；不得全量重新编号正常器件。
+
+一颗多单元器件在 EasyEDA Pro 里被放置成多条记录：每个功能单元一条 `subPartName`，
+它们共享原生 `uniqueId`、重复同一个显示位号，PCB 上只对应一个封装。因此位号字符串
+不能单独标识器件实例，也不能据此判重。
+
+- 一个器件实例导出为一个 canonical component：引脚取各单元的并集，引脚编号在实例内
+  必须唯一；每个已放置单元的 `primitiveId`、`subPartName`、`uniqueId` 与几何保留在
+  `component.subParts`，器件级 `placement` 是首个已放置单元的位置。
+- 实例归并按原生 `uniqueId` 或 agent 写入的 canonical 绑定进行；两者都缺失的记录
+  各自独立，不会与其它记录合并。
+- 工程级位号唯一性按器件实例判定：同一实例重复位号不是冲突，两台不同器件共用一个
+  位号仍然是冲突，一个器件实例也不得跨页。
+
+详见[多单元器件（子部件）](concepts.md#多单元器件子部件)。
 
 ## Lib 复用
 

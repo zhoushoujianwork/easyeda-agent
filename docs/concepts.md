@@ -857,6 +857,23 @@ net ID、全量 verification、provenance 和复杂 PCB constraints；否则保�
 已有合法数字位号保留原拼写、前导零和声明顺序。只为非标准名称或未编号占位符分配
 未占用数字，功能名称保留在 role。原生 `uniqueId` 保持不变，避免影响 PCB 关联。
 
+### 多单元器件（子部件）
+
+EasyEDA Pro 把一颗多单元器件（多通道 PHY、四运放、BGA 控制器等）放置成多条记录：
+每个功能单元一条 `subPartName`，它们共享原生 `uniqueId`、重复同一个显示位号，
+PCB 上只对应一个封装。位号字符串因此不能单独标识器件实例，也不能据此判重。
+
+- **实例归并**：同一器件实例的记录按原生 `uniqueId` 归并；agent 写入的
+  `otherProperty["EasyEDA Agent Component ID"]` 绑定同样指向同一实例。两者都缺失的
+  记录各自独立，不与任何其它记录合并。
+- **连接图**：一个器件实例导出为一个 canonical component，引脚取各单元的并集；
+  每个已放置单元的 `primitiveId`、`subPartName`、`uniqueId` 与几何保留在
+  `component.subParts`，器件级 `placement` 是首个已放置单元的位置。
+- **唯一性判据**：工程级位号唯一性按器件实例判定。同一实例重复位号是官方表示法，
+  不是冲突；两台不同器件共用一个位号仍然是冲突；一个器件实例也不得跨页。
+- **不放宽电气判据**：引脚编号在实例内必须唯一，重号立即失败；合并不改变任何
+  pin→net 事实，也不改变 NC 与已知悬空的互斥规则。
+
 ## 四、可信判据(reliable oracles)——判对错只信这些
 
 | 判什么 | ✅ 唯一可信 | ❌ 不可信 |
