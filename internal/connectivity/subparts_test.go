@@ -78,3 +78,18 @@ func TestFromReadSingleUnitPartUnchanged(t *testing.T) {
 		t.Fatalf("single-unit part changed shape: %+v", c)
 	}
 }
+
+// Renumbering keeps existing instances, so a folded multi-unit device passes
+// the designator check that placement refuses (#365).
+func TestValidateDesignatorsAcceptsMultiUnitDevice(t *testing.T) {
+	d, err := FromRead(map[string]any{"components": []any{
+		multiUnitRecord("BRIDGE.1", [2]string{"A1", "PCIE_TXP"}),
+		multiUnitRecord("BRIDGE.2", [2]string{"B1", "PCIE_TXP"}),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateDesignators(d); err != nil {
+		t.Fatalf("designator check must accept a multi-unit device: %v", err)
+	}
+}
