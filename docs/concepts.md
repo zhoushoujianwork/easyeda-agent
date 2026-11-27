@@ -857,6 +857,15 @@ net ID、全量 verification、provenance 和复杂 PCB constraints；否则保�
 已有合法数字位号保留原拼写、前导零和声明顺序。只为非标准名称或未编号占位符分配
 未占用数字，功能名称保留在 role。原生 `uniqueId` 保持不变，避免影响 PCB 关联。
 
+多单元器件（传统多单元符号）在图上每个单元是独立实例，共享同一位号和 `uniqueId`，
+以 `<器件>.<单元>` 形式的 `subPartName` 区分，PCB 上只有一个封装。位号唯一性按器件实例判定：
+同一位号的多个实例只有在 `uniqueId` 相同且非空、`subPartName` 互不相同且同属一个器件、
+Agent 组件绑定一致、已解析的器件 UUID 不冲突时，才视为同一器件；任一身份缺失或冲突都按重复位号拒绝。
+连通性导出把这些单元合成一个 component：`subParts` 记录各单元名称、`primitiveId`、页面和摆放，
+`pins[].subPart` 记录引脚归属，component 自身不再有单一 `placement`。各单元引脚号必须互不重复。
+跨页单元同样合并。含 `subParts` 的 component 不能经 compose、materialize 或位号计划重新放置或改号，
+应保留原实例。
+
 ## 四、可信判据(reliable oracles)——判对错只信这些
 
 | 判什么 | ✅ 唯一可信 | ❌ 不可信 |

@@ -97,6 +97,9 @@ func ValidatePlacementDesignators(d Document) error {
 		return err
 	}
 	for _, c := range d.Components {
+		if len(c.SubParts) > 0 {
+			return fmt.Errorf("%s (%s): multi-unit device with %d sub-parts cannot be placed from connectivity; keep its existing instances", c.ID, c.Ref, len(c.SubParts))
+		}
 		if !matcher.MatchString(c.Ref) {
 			if d.DesignatorPolicy != nil && d.DesignatorPolicy.Mode == "custom" {
 				return fmt.Errorf("%s (%s): designator does not match the declared V4 custom designator policy", c.ID, c.Ref)
