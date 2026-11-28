@@ -66,14 +66,18 @@ GitHub 源码安装可用，但用户要拉整棵仓库（约 30 MB）并本地�
   1.13.1 而 Release 已到 v1.19.0。发版准备用
   `python3 scripts/sync-dsh-version.py X.Y.Z` 一次对齐（当前已对齐最新 Release 1.19.0）。
 
-v1.20.0 起每个 Release 都带这个资产；目录条目已经指向它（条目 PR
-[#18440](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/18440)）：
+v1.20.0 起每个 Release 都带这个资产。目录条目最初固定到 v1.20.0（条目 PR
+[#18440](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/18440)），
+2026-11-28 提交 [#19638](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/19638)
+改为 GitHub 的 latest 地址（待维护者合并）：
 
 ```yaml
-tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/download/v1.22.0/easyeda-agent-dsh.tgz  # #19638 待合并，此前为 v1.20.0
+tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/latest/download/easyeda-agent-dsh.tgz
 ```
 
-每个新版本只需把 URL 里的 tag 换成新 Release；资产文件名不变，`checksums.txt` 里有对应 SHA256。
+资产文件名不带版本号，这个地址总是跳到最新 Release 的 tarball，合并后发新版不必再提目录 PR。
+代价：目录的 release-manifest 探测只读固定 tag，条目不再显示版本号；Release 资产名一旦改变，
+这个地址就会失效。
 
 市场和店铺页会优先展示这个预构建 tarball，用户也可以直接
 `dsh plugin --profile web add <tarball 地址>`；GitHub 源码安装退为后备。
