@@ -104,13 +104,16 @@ type boardComp struct {
 // unsupported shapes. Legacy extents remain usable for layout diagnostics, but
 // do not certify a copper shape or a complete inspection.
 type pcbGeometryCoverage struct {
-	Complete                      bool               `json:"complete"`
-	ComponentsInventoryKnown      bool               `json:"componentsInventoryKnown"`
-	PadsInventoryKnown            bool               `json:"padsInventoryKnown"`
-	ComponentCount                int                `json:"componentCount"`
-	TotalPads                     int                `json:"totalPads"`
-	KnownGeometryPads             int                `json:"knownGeometryPads"`
-	UnsupportedGeometryPads       int                `json:"unsupportedGeometryPads"`
+	Complete                 bool `json:"complete"`
+	ComponentsInventoryKnown bool `json:"componentsInventoryKnown"`
+	PadsInventoryKnown       bool `json:"padsInventoryKnown"`
+	ComponentCount           int  `json:"componentCount"`
+	TotalPads                int  `json:"totalPads"`
+	KnownGeometryPads        int  `json:"knownGeometryPads"`
+	UnsupportedGeometryPads  int  `json:"unsupportedGeometryPads"`
+	// ExactClearancePads counts unsupported pads whose copper is still exact
+	// for clearance (straight-edged POLYGON); see clearanceComplete.
+	ExactClearancePads            int                `json:"exactClearancePads"`
 	UnknownGeometryPads           int                `json:"unknownGeometryPads"`
 	LegacyGeometryPads            int                `json:"legacyGeometryPads"`
 	UnverifiedPads                []pcbUnverifiedPad `json:"unverifiedPads,omitempty"`
@@ -235,7 +238,7 @@ func (s *boardSnapshot) geometryCoverage(requireBBox bool) pcbGeometryCoverage {
 		}
 		for _, p := range component.Pads {
 			c.TotalPads++
-			_, status, reason := pcbLayoutPadGeometry(p, component.Designator)
+			parsed, status, reason := pcbLayoutPadGeometry(p, component.Designator)
 			if status != "available" {
 				c.UnverifiedPads = append(c.UnverifiedPads, pcbUnverifiedPad{ComponentPrimitiveID: component.ID,
 					Designator: component.Designator, PrimitiveID: p.ID, PadNumber: p.Number, Status: status, Reason: reason,
@@ -246,6 +249,9 @@ func (s *boardSnapshot) geometryCoverage(requireBBox bool) pcbGeometryCoverage {
 				c.KnownGeometryPads++
 			case "unsupported":
 				c.UnsupportedGeometryPads++
+				if parsed.exactClearanceKnown() {
+					c.ExactClearancePads++
+				}
 			default:
 				c.UnknownGeometryPads++
 				if p.Shape == nil && p.W > 0 && p.H > 0 {
@@ -268,6 +274,29 @@ func (s *boardSnapshot) geometryCoverage(requireBBox bool) pcbGeometryCoverage {
 	}
 	c.Complete = c.ComponentsInventoryKnown && c.PadsInventoryKnown && len(c.MissingBBoxComponents) == 0 && c.UnknownGeometryPads == 0 && c.UnsupportedGeometryPads == 0
 	return c
+}
+
+// clearanceComplete is Complete for checks that only measure distances to pad
+// copper (pcbExactPadSegmentGap), not pad contact: a straight-edged POLYGON
+// pad is exact copper there. limitations lists what still blocks it.
+func (c pcbGeometryCoverage) clearanceComplete() (bool, []string) {
+	var out []string
+	if !c.ComponentsInventoryKnown {
+		out = append(out, "components inventory is unavailable")
+	}
+	if len(c.MissingPadInventoryComponents) > 0 {
+		out = append(out, "pad inventory unavailable/incomplete for "+joinCapped(c.MissingPadInventoryComponents, 12))
+	}
+	if len(c.MissingBBoxComponents) > 0 {
+		out = append(out, "rendered bbox unavailable for "+joinCapped(c.MissingBBoxComponents, 12))
+	}
+	if n := c.UnsupportedGeometryPads - c.ExactClearancePads; n > 0 {
+		out = append(out, fmt.Sprintf("%d pad(s) have captured source shapes unsupported by exact clearance (arc-edged POLYGON, specialPad or unknown shape)", n))
+	}
+	if c.UnknownGeometryPads > 0 {
+		out = append(out, fmt.Sprintf("%d pad(s) have unknown source geometry (%d legacy extent-only)", c.UnknownGeometryPads, c.LegacyGeometryPads))
+	}
+	return len(out) == 0 && c.PadsInventoryKnown, out
 }
 
 func pcbReadbackCoverage(result map[string]any, requireBBox bool) pcbGeometryCoverage {
@@ -633,6 +662,7 @@ func (s *boardSnapshot) toCheckPads() []pcbPadP {
 				continue
 			}
 			measured, _, _ := pcbMeasuredPad(p, c.Designator)
+			measured.Hole = pcbPadHoleGeometry(p)
 			out = append(out, measured)
 		}
 	}

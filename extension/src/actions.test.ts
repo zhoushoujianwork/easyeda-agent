@@ -5202,6 +5202,173 @@ test('pcb layout ops refuse without primitiveIds and never read the canvas selec
 	finally { delete (globalThis as any).eda; }
 });
 
+/** Install a minimal eda global for selection.get; restores globals after the test. */
+function installSelectionStub(t: import('node:test').TestContext, options: {
+	documentType: number;
+	selectControl?: 'sch_SelectControl' | 'pcb_SelectControl';
+	control?: Record<string, unknown>;
+	documents?: Array<Record<string, unknown>>;
+}) {
+	const globals = globalThis as any;
+	const previousEda = globals.eda;
+	const previousTypes = globals.EDMT_EditorDocumentType;
+	t.after(() => {
+		if (previousEda === undefined) delete globals.eda;
+		else globals.eda = previousEda;
+		if (previousTypes === undefined) delete globals.EDMT_EditorDocumentType;
+		else globals.EDMT_EditorDocumentType = previousTypes;
+	});
+	globals.EDMT_EditorDocumentType = { HOME: -1, BLANK: 0, SCHEMATIC_PAGE: 1, PCB: 3 };
+	const documents = options.documents ?? [{ uuid: 'doc-1', tabId: 'tab-1', documentType: options.documentType }];
+	let reads = 0;
+	globals.eda = {
+		dmt_Project: { getCurrentProjectInfo: async () => ({ uuid: 'project-1', friendlyName: 'Demo' }) },
+		dmt_SelectControl: { getCurrentDocumentInfo: async () => documents[Math.min(reads++, documents.length - 1)] },
+		...(options.selectControl ? { [options.selectControl]: options.control } : {}),
+	};
+}
+
+function selectedPrimitive(state: Record<string, unknown>, ctorName?: string): unknown {
+	const item: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(state)) item[`getState_${key}`] = () => value;
+	if (ctorName) {
+		const Ctor = { [ctorName]: class {} }[ctorName];
+		return Object.assign(new Ctor(), item);
+	}
+	return item;
+}
+
+test('selection.get summarizes a schematic selection with the optional fields that exist', async (t) => {
+	const calls: string[] = [];
+	installSelectionStub(t, {
+		documentType: 1, selectControl: 'sch_SelectControl',
+		control: {
+			getAllSelectedPrimitives: async () => {
+				calls.push('getAllSelectedPrimitives');
+				return [
+					selectedPrimitive({ PrimitiveId: 'c1', PrimitiveType: 'Component', Designator: 'U1', Name: 'ESP32', X: 100, Y: -50, Rotation: 90, PrimitiveLock: false }),
+					selectedPrimitive({ PrimitiveId: 'w1', PrimitiveType: 'Wire', Net: 'GND', StartX: 10, StartY: 20 }),
+				];
+			},
+		},
+	});
+	const res: any = await runAction('selection.get', {});
+	assert.deepEqual(calls, ['getAllSelectedPrimitives']);
+	assert.equal(res.result.documentType, 'schematic');
+	assert.equal(res.result.count, 2);
+	assert.equal(res.result.detail, true);
+	assert.deepEqual(res.result.items[0], {
+		primitiveId: 'c1', primitiveType: 'Component', designator: 'U1', name: 'ESP32',
+		x: 100, y: -50, rotation: 90, locked: false,
+	});
+	assert.deepEqual(res.result.items[1], { primitiveId: 'w1', primitiveType: 'Wire', net: 'GND', x: 10, y: 20 });
+	assert.equal(res.context.documentUuid, 'doc-1');
+});
+
+test('selection.get summarizes a PCB selection with net, layer, designator and footprint', async (t) => {
+	installSelectionStub(t, {
+		documentType: 3, selectControl: 'pcb_SelectControl',
+		control: {
+			getAllSelectedPrimitives: async () => [
+				selectedPrimitive({ PrimitiveId: 'cmp1', PrimitiveType: 'Component', Designator: 'R1', Layer: 1, X: 1200, Y: 800, Rotation: 270, Footprint: { uuid: 'fp-uuid', name: 'R0603' }, PrimitiveLock: true }),
+				selectedPrimitive({ PrimitiveId: 'trk1', PrimitiveType: 'Line', Net: 'VCC', Layer: 2, StartX: 0, StartY: 5 }),
+				selectedPrimitive({ PrimitiveId: 'via1', Net: 'GND', X: 7, Y: 8, Footprint: 'plain-footprint' }, 'Via'),
+			],
+		},
+	});
+	const res: any = await runAction('selection.get', {});
+	assert.equal(res.result.documentType, 'pcb');
+	assert.equal(res.result.count, 3);
+	assert.deepEqual(res.result.items[0], {
+		primitiveId: 'cmp1', primitiveType: 'Component', designator: 'R1', layer: 1,
+		x: 1200, y: 800, rotation: 270, footprint: 'fp-uuid', locked: true,
+	});
+	assert.deepEqual(res.result.items[1], { primitiveId: 'trk1', primitiveType: 'Line', net: 'VCC', layer: 2, x: 0, y: 5 });
+	assert.deepEqual(res.result.items[2], { primitiveId: 'via1', primitiveType: 'Via', net: 'GND', x: 7, y: 8, footprint: 'plain-footprint' },
+		'a missing getState_PrimitiveType falls back to the constructor name');
+});
+
+test('selection.get omits missing, throwing, undefined and non-scalar getter fields without failing', async (t) => {
+	installSelectionStub(t, {
+		documentType: 3, selectControl: 'pcb_SelectControl',
+		control: {
+			getAllSelectedPrimitives: async () => [{
+				getState_PrimitiveId: () => 'odd1',
+				getState_Designator: () => { throw new Error('getter exploded'); },
+				getState_Net: () => undefined,
+				getState_Layer: () => ({ nested: true }),
+				getState_X: () => 12,
+				getState_Rotation: () => Number.NaN,
+				getState_Name: () => { throw new Error('no name'); },
+				getState_DeviceName: () => 'Device-A',
+			}],
+		},
+	});
+	const res: any = await runAction('selection.get', {});
+	assert.deepEqual(res.result.items, [{ primitiveId: 'odd1', primitiveType: 'unknown', name: 'Device-A' }],
+		'X without Y is dropped, bad fields are omitted, and the first usable name wins');
+});
+
+test('selection.get reports an empty selection as count 0, not an error', async (t) => {
+	installSelectionStub(t, { documentType: 1, selectControl: 'sch_SelectControl', control: { getAllSelectedPrimitives: async () => [] } });
+	const res: any = await runAction('selection.get', {});
+	assert.equal(res.result.count, 0);
+	assert.deepEqual(res.result.items, []);
+	assert.equal(res.result.detail, true);
+});
+
+test('selection.get refuses a document that is neither schematic nor PCB', async (t) => {
+	let reads = 0;
+	const unreadable = async () => { reads++; return []; };
+	installSelectionStub(t, { documentType: 0 });
+	(globalThis as any).eda.sch_SelectControl = { getAllSelectedPrimitives: unreadable };
+	(globalThis as any).eda.pcb_SelectControl = { getAllSelectedPrimitives: unreadable };
+	await assert.rejects(runAction('selection.get', {}), /当前活动文档不是原理图或 PCB，无法读取选区/);
+	assert.equal(reads, 0, 'no selection API is touched on the wrong document type');
+});
+
+test('selection.get fails with page drift when the document changes during the read', async (t) => {
+	installSelectionStub(t, {
+		documentType: 1, selectControl: 'sch_SelectControl',
+		control: { getAllSelectedPrimitives: async () => [selectedPrimitive({ PrimitiveId: 'c1', PrimitiveType: 'Component' })] },
+		// runAction samples the context first, then the handler's before/after pair.
+		documents: [
+			{ uuid: 'doc-1', tabId: 'tab-1', documentType: 1 },
+			{ uuid: 'doc-1', tabId: 'tab-1', documentType: 1 },
+			{ uuid: 'doc-2', tabId: 'tab-2', documentType: 1 },
+		],
+	});
+	await assert.rejects(runAction('selection.get', {}), (err: any) => /page drift/.test(err.message) && err.code === 'PRECONDITION_REFUSED');
+});
+
+test('selection.get falls back to ids only when getAllSelectedPrimitives is unavailable', async (t) => {
+	installSelectionStub(t, {
+		documentType: 3, selectControl: 'pcb_SelectControl',
+		control: { getAllSelectedPrimitives_PrimitiveId: async () => ['a1', 'b2'] },
+	});
+	const res: any = await runAction('selection.get', {});
+	assert.equal(res.result.detail, false);
+	assert.equal(res.result.count, 2);
+	assert.deepEqual(res.result.items, [
+		{ primitiveId: 'a1', primitiveType: 'unknown' },
+		{ primitiveId: 'b2', primitiveType: 'unknown' },
+	]);
+});
+
+test('selection.get never calls a selection write API', async (t) => {
+	const writes: string[] = [];
+	installSelectionStub(t, {
+		documentType: 1, selectControl: 'sch_SelectControl',
+		control: {
+			getAllSelectedPrimitives: async () => [],
+			doSelectPrimitives: async () => { writes.push('doSelectPrimitives'); },
+			clearSelected: async () => { writes.push('clearSelected'); },
+		},
+	});
+	await runAction('selection.get', {});
+	assert.deepEqual(writes, []);
+});
+
 test('settleWithGrace adopts a late host result instead of abandoning it (#208)', async () => {
 	const delay = <T>(ms: number, v: T, fail = false) => new Promise<T>((res, rej) => setTimeout(() => (fail ? rej(new Error('host')) : res(v)), ms));
 	const onTime: any = await settleWithGrace(delay(5, 'flag'), 50, 50);
@@ -5258,8 +5425,57 @@ test('pcb.route.delete deletes a top-level track whose id merely starts with a c
 	finally { delete (globalThis as any).eda; }
 });
 
+test('pcb.route.delete on only locked ids says how to unlock instead of asking for fresh ids (#310)', async () => {
+	const prim = (id: string): any => ({
+		getState_PrimitiveId: () => id, getState_PrimitiveLock: () => true, getState_Net: () => 'GND', getState_Layer: () => 1,
+		getState_StartX: () => 0, getState_StartY: () => 0, getState_EndX: () => 10, getState_EndY: () => 0, getState_LineWidth: () => 10,
+	});
+	(globalThis as any).eda = {
+		pcb_PrimitiveLine: { getAll: async () => [prim('t1'), prim('t2')], delete: async () => { throw new Error('must not delete'); } },
+		pcb_PrimitiveArc: { getAll: async () => [] },
+		pcb_PrimitiveVia: { getAll: async () => [] },
+		pcb_PrimitiveComponent: { getAll: async () => [] },
+	};
+	try {
+		await assert.rejects(runAction('pcb.route.delete', { primitiveIds: ['t1', 't2'] }), (err: any) => {
+			const msg = String(err.message);
+			assert.match(msg, /2 locked/);
+			assert.match(msg, /track-lock --ids t1,t2 --unlock/);
+			assert.doesNotMatch(msg, /Pull fresh ids/);
+			return true;
+		});
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('pcb.report keeps unrecognised diff pairs, rounds skew and explains a missing length (#310)', async () => {
+	const lengths: Record<string, number | undefined> = { DP: 247.4, DN: 347.4, CP: 10 };
+	(globalThis as any).eda = {
+		pcb_Net: { getAllNetsName: async () => Object.keys(lengths), getNetLength: async (n: string) => lengths[n] },
+		pcb_Drc: {
+			getAllNetClasses: async () => [],
+			getAllDifferentialPairs: async () => ({
+				a: { name: 'USB', positiveNet: 'DP', negativeNet: 'DN' },
+				b: { name: 'CLK', positiveNet: 'CP', negativeNet: 'CN' },
+				c: { name: 'ODD', pos: 'X', neg: 'Y' },
+			}),
+			getAllEqualLengthNetGroups: async () => [],
+		},
+	};
+	try {
+		const res: any = await runAction('pcb.report', {});
+		const [usb, clk] = res.result.differentialPairs;
+		assert.equal(usb.skew, 100);
+		assert.equal(usb.skewUnavailable, undefined);
+		assert.equal(clk.skew, null);
+		assert.match(clk.skewUnavailable, /negative net CN/);
+		assert.deepEqual(res.result.differentialPairsUnrecognized, [{ name: 'ODD', pos: 'X', neg: 'Y' }]);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
 // ─── pcb.route.auto (official autoRouting, mock eda) ─────────────────────
-import { parsePcbAutoRouteProps, pcbRouteAuto } from './actions';
+import { parsePcbAutoRouteProps, pcbRouteAuto, pcbScopeAutoRoute } from './actions';
 
 test('parsePcbAutoRouteProps: defaults keep existing copper, 45°, completion', () => {
 	assert.deepEqual(parsePcbAutoRouteProps({}), { cornerStyle: 0, existingPrimitiveMode: 'keep', optimization: 1 });
@@ -5277,6 +5493,7 @@ function installAutoRouteStub(route: (props: any, live: Record<string, any[]>) =
 		pcb_PrimitiveLine: { getAll: async () => [...live.lines] },
 		pcb_PrimitiveArc: { getAll: async () => [...live.arcs] },
 		pcb_PrimitiveVia: { getAll: async () => [...live.vias] },
+		pcb_Net: { getAllNetsName: async () => ['GND', 'SPIQ'] },
 		pcb_Document: { autoRouting: async (props: any) => { seen.push(props); return route(props, live); } },
 	};
 	return seen;
@@ -5294,6 +5511,36 @@ test('pcbRouteAuto: reports created copper and that locked copper survived', asy
 	assert.deepEqual(res.result.lockedLost, []);
 	assert.equal(res.result.lockedBefore, 1);
 	assert.equal(res.result.before.tracks, 1, 'the layer-11 outline line is not routing copper');
+	delete (globalThis as any).eda;
+});
+
+function netPrim(id: string, net: string, layer = 1): any {
+	const o = pcbPrim(id, layer); o.getState_Net = () => net; return o;
+}
+
+test('pcbScopeAutoRoute: --net is enforced through ignoreNets (host ignores the RoutingNets list)', async () => {
+	(globalThis as any).eda = { pcb_Net: { getAllNetsName: async () => ['GND', 'NRST', 'OSC_IN', 'VCC'] } };
+	try {
+		const scoped = await pcbScopeAutoRoute({ RoutingNets: ['NRST'], ignoreNets: ['VCC'] });
+		assert.deepEqual(scoped.RoutingNets, ['NRST']);
+		assert.deepEqual(scoped.ignoreNets, ['GND', 'OSC_IN', 'VCC']);
+		assert.deepEqual(await pcbScopeAutoRoute({ ignoreNets: ['GND'] }), { ignoreNets: ['GND'] }, 'no --net: props untouched');
+		await assert.rejects(() => pcbScopeAutoRoute({ RoutingNets: ['NRST', 'TYPO'] }), /not on this board: TYPO/);
+		await assert.rejects(() => pcbScopeAutoRoute({ RoutingNets: ['NRST'], ignoreNets: ['NRST'] }), /both requested and ignored: NRST/);
+	}
+	finally { delete (globalThis as any).eda; }
+});
+
+test('pcbRouteAuto: reports created copper per net and nets outside the --net scope', async () => {
+	const seen = installAutoRouteStub((_p, live) => {
+		live.lines.push(netPrim('t1', 'NRST'), netPrim('t2', 'GND'));
+		return { success: true, totalNetsCount: 1, successNetsCount: 1, failedNets: [], duration: 1 };
+	});
+	(globalThis as any).eda.pcb_Net = { getAllNetsName: async () => ['GND', 'NRST'] }; // override the stub's names
+	const res: any = await pcbRouteAuto({ nets: ['NRST'] });
+	assert.deepEqual(seen[0].ignoreNets, ['GND']);
+	assert.deepEqual(res.result.createdByNet, { NRST: 1, GND: 1 });
+	assert.deepEqual(res.result.outOfScopeNets, ['GND']);
 	delete (globalThis as any).eda;
 });
 
@@ -5331,6 +5578,7 @@ function installAutoJobStub() {
 		pcb_PrimitiveLine: { getAll: async () => [...live.lines] },
 		pcb_PrimitiveArc: { getAll: async () => [...live.arcs] },
 		pcb_PrimitiveVia: { getAll: async () => [...live.vias] },
+		pcb_Net: { getAllNetsName: async () => ['GND', 'SPID'] },
 		pcb_Document: {
 			startAutoRouting: async (props: any) => { host.started.push(props); return { jobId: `job-${host.started.length}` }; },
 			getAutoJobStatus: async (id: string) => (id.startsWith('job-') ? { jobId: id, state: host.state, progress: host.progress, partial: host.partial } : undefined),
@@ -5346,6 +5594,7 @@ test('pcbRouteAutoStart: returns a jobId at once and keeps existing copper', asy
 	const res: any = await pcbRouteAutoStart({ nets: ['SPID'] });
 	assert.equal(res.result.jobId, 'job-1');
 	assert.equal(host.started[0].existingPrimitiveMode, 'keep');
+	assert.deepEqual(host.started[0].ignoreNets, ['GND'], 'the job is scoped through ignoreNets too');
 	assert.equal(res.result.lockedBefore, 1);
 	delete (globalThis as any).eda;
 });

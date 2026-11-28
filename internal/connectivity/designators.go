@@ -83,10 +83,25 @@ func (d Document) designatorRegexp() (*regexp.Regexp, error) {
 	return r, nil
 }
 
-// ValidatePlacementDesignators is the mutation preflight. Legacy functional
-// references remain readable through Validate, but cannot be replayed as newly
-// placed reference designators. This function does not rename or mutate input.
+// ValidatePlacementDesignators is the placement preflight: every reference
+// must be placeable, and a multi-unit device cannot be placed from
+// connectivity (that would replay only one of its units). This function does
+// not rename or mutate input.
 func ValidatePlacementDesignators(d Document) error {
+	for _, c := range d.Components {
+		if len(c.SubParts) > 0 {
+			return fmt.Errorf("%s (%s): multi-unit device with %d sub-parts cannot be placed from connectivity; keep its existing instances", c.ID, c.Ref, len(c.SubParts))
+		}
+	}
+	return ValidateDesignators(d)
+}
+
+// ValidateDesignators checks references without placing anything: legacy
+// functional references remain readable through Validate, but are not valid
+// numbered references. A multi-unit device is one component here, so renaming
+// or binding it is allowed; ValidatePlacementDesignators adds the placement
+// refusal. This function does not rename or mutate input.
+func ValidateDesignators(d Document) error {
 	probe := d
 	probe.Issues = nil
 	if err := probe.Validate(); err != nil {
@@ -118,7 +133,7 @@ func AllocateDesignators(d Document, prefixes map[string]string) (Document, []De
 		return Document{}, nil, err
 	}
 	if d.DesignatorPolicy != nil && d.DesignatorPolicy.Mode == "custom" {
-		if err := ValidatePlacementDesignators(d); err != nil {
+		if err := ValidateDesignators(d); err != nil {
 			return Document{}, nil, fmt.Errorf("V4 custom designators are preserved, not auto-incremented: %w", err)
 		}
 		out := cloneDesignatorDocument(d)
@@ -187,6 +202,7 @@ func cloneDesignatorDocument(d Document) Document {
 	for i := range out.Components {
 		c := &out.Components[i]
 		c.Pins = slices.Clone(c.Pins)
+		c.SubParts = slices.Clone(c.SubParts)
 		if c.Placement != nil {
 			placement := *c.Placement
 			if placement.BBox != nil {

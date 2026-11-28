@@ -4,7 +4,7 @@ description: "通过本地 easyeda CLI、daemon 和连接器操作嘉立创EDA�
 license: MIT
 metadata:
   author: zhoushoujianwork
-  version: "1.21.0"
+  version: "1.22.0"
   homepage: "https://github.com/zhoushoujianwork/easyeda-agent"
 ---
 
@@ -24,6 +24,7 @@ metadata:
    求解器、样例或模型生成的数据均须满足[数据契约](references/schematic-data.md#数据驱动架构基准)；不强制某个求解器。
 5. 用当前 `--help` / `easyeda actions` 核对接口，从新鲜快照生成计划，支持 dry-run 时先检查。
    仅经 Cobra 子命令、typed action 或 `easyeda apply` 写入；同一窗口的调用串行执行。
+   手写 playbook 的字段、`$.` 断言/捕获路径与判定式写法见 `easyeda sch apply --help`，先 `--dry-run` 校验。
 6. 操作后检查宿主弹窗/进度阻塞，按[恢复流程](references/environment-setup.md#宿主弹窗与进度阻塞)处理；CLI 成功不等于界面无阻塞。
    回读身份、逐脚连接和实际几何，与目标对账。部分成功、超时或 stale ID 时先回读，再修源并重算。
 7. 稳定检查点显式保存；最终完成 `save → doc reload → fresh readback/render`。
@@ -43,7 +44,12 @@ metadata:
 - 位号参与碰撞与入框检查；其余属性保留原值，最终导图仍须检查全部可见文字，不能由零碰撞推断无叠字。
 - PCB 按真实机械、回流与器件要求安排布局；采集缺测不等于空，检查须说明几何与铜的覆盖范围。
   完成前按[布局规则](references/pcb-layout.md)通过连续两轮自检，第二轮包含保存重载和新回读；修复后重来。
-  展示最新回读版本并获用户确认后进入整板布线；确认前仅允许规则范围内的电源模块局部连接。
+  完成后展示最新回读版本的布局复核包，再按下条写入授权进入整板布线。
+- 写入授权：用户已给出范围或判定规则（如“完成布线”“删孤立过孔”）时，按新鲜回读筛选目标对象，
+  直接提出写入批次，把目标、dry-run 计数和影响写进执行计划与审批理由，不再停下来口头确认。
+  宿主提供审批卡或 Auto 模式时，由宿主按原有权限判定该批次；没有宿主审批能力时，整板布线和破坏性操作
+  （`pcb clear`、`--include-locked`、批量删除）仍须用户已显式授权该范围，未授权时展示计划并请求授权。
+  只有回读无法确定目标对象、需求冲突或须用户取舍时才提问。授权不豁免新鲜回读和写后 `save → reload → readback`。
 - 临时隐藏属性只能使用可恢复的 typed 视图接口，保存旧值、恢复并回读；不改属性内容来隐藏问题。
 - DRC、连接检查、几何和图面分别说明覆盖事实；原生 `pcb drc` 的 `passed:false` 是失败，SCH 的 INFO 不等于错误。
   离线通过、导出成功或截图不能代替现场持久化、制造或硬件验证。
@@ -70,6 +76,7 @@ metadata:
 | 新建、打开、导出或迁移工程 | [工程操作](references/project-import.md) |
 | 交付原理图、PCB 正反面与图册 | [清晰设计图交付](references/design-drawings.md) |
 | 由已有 PCB 生成 3D 打印外壳（上下壳/推盖、开孔、螺丝柱、卡扣） | [参数化外壳](references/pcb.md#参数化外壳离线生成-stl) |
+| 用户说“选中的/这几个/这里” | 先 `easyeda selection --project <名>` 读选区取得 id；选区只用于定位，写入仍显式传 id（[Action 边界](references/actions.md)） |
 | 连接、升级或保存异常 | [环境配置](references/environment-setup.md)、[Action 边界](references/actions.md) |
 | 原始文档源码探针 | [源码读取与同源回写](references/document-source.md)；不接受任意新源码替代设计接口 |
 | 复用案例与历史限制 | [样例索引](references/examples/index.md)；旧案例仅适用于其记录的范围 |

@@ -31,6 +31,7 @@ as incomplete; the current solver supports TOP/BOTTOM only.`,
 	cmd.AddCommand(newPcbLayoutSolveCmd(stdout, stderr))
 	cmd.AddCommand(newPcbLayoutCheckCmd(stdout, stderr))
 	cmd.AddCommand(newPcbLayoutRenderCmd(stdout, stderr))
+	cmd.AddCommand(newPcbLayoutSimulateCmd(stdout, stderr))
 	return cmd
 }
 

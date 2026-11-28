@@ -36,7 +36,16 @@ func routeDeleteResultError(action string, result map[string]any) error {
 	if len(parts) == 0 {
 		return nil
 	}
-	return fmt.Errorf("%s: partial delete — removed %v, but %s; ids churn after any split/merge write or delete, so re-export (`pcb track-list` / `pcb via-list` / `pcb dump --include-copper`), reconcile copper per net and layer, and delete the fresh ids", action, result["count"], strings.Join(parts, ", "))
+	hint := "ids churn after any split/merge write or delete, so re-export (`pcb track-list` / `pcb via-list` / `pcb dump --include-copper`), reconcile copper per net and layer, and delete the fresh ids"
+	if locked := asAnySlice(result["skippedLocked"]); len(locked) > 0 {
+		// #310: locked copper is skipped on purpose; re-exporting ids would not help.
+		ids := strings.Join(anyStrings(locked), ",")
+		if len(locked) > 8 {
+			ids = "<the skippedLocked ids>"
+		}
+		hint = fmt.Sprintf("locked copper is never deleted — unlock it first with `easyeda pcb track-lock --ids %s --unlock` (or `--net <net> --unlock` / `--all --unlock`), then delete again; ", ids) + hint
+	}
+	return fmt.Errorf("%s: partial delete — removed %v, but %s; %s", action, result["count"], strings.Join(parts, ", "), hint)
 }
 
 func asAnySlice(v any) []any {
@@ -51,4 +60,14 @@ func asAnySlice(v any) []any {
 		return out
 	}
 	return nil
+}
+
+func anyStrings(v []any) []string {
+	out := make([]string, 0, len(v))
+	for _, x := range v {
+		if s, ok := x.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }

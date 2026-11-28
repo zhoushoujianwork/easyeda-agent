@@ -64,7 +64,7 @@ RECT/圆角 RECT/OVAL/圆焊盘、直线、实心多边形铜区、禁线区和�
 结果包含原始板文件与需求 SHA256、候选路径、搜索状态和 `preview` 路径；复验要求同一输入文件版本。
 `pass` 仅证明该端点对在声明规则下的离线路径，不能代替整板连通、差分/阻抗、回流或官方 DRC。
 有限搜索失败与预算耗尽均输出 incomplete 和非零退出码；报告不包含可直接执行的写入队列。
-应用候选后仍须 typed 写入、save → reload → fresh dump → 原生 DRC；整板布线遵守布局确认约定。
+应用候选后仍须 typed 写入、save → reload → fresh dump → 原生 DRC；整板布线遵守[写入授权](../SKILL.md#设计与执行边界)。
 
 ### 联合逃线与模块联动（offline-verified）
 
@@ -79,8 +79,9 @@ RECT/圆角 RECT/OVAL/圆焊盘、直线、实心多边形铜区、禁线区和�
 
 逐脚可布性：`pcb routability --board board.json --out routability.json [--component J1]`
 不需要 routing 声明，对每个有网络的贴片焊盘报告合法过孔位数量、最近过孔位和逃线方向；
-既无过孔位又无出口的焊盘列为 `trapped` 并给出阻挡对象，退出码非零。布局确认前必跑；
+既无过孔位又无出口的焊盘列为 `trapped` 并给出阻挡对象，退出码非零。布局复核包形成前必跑；
 关键网（电源干线、先打的过孔）手工布线后再跑一次，确认没有把相邻信号脚的唯一出口堵死。
+直边多边形焊盘（如 USB-C 外壳脚）按精确铜形判定；只有含弧边的多边形、specialPad 或形状未知的焊盘会让结果为 `incomplete`。
 通过只是局部必要条件，相邻焊盘共用的窄通道仍需 `escape-plan` 联合预留。
 
 ### 离线方案写回与对账（live-verified）
@@ -101,6 +102,32 @@ RECT/圆角 RECT/OVAL/圆焊盘、直线、实心多边形铜区、禁线区和�
 于是残留；沿原路径按另一线宽重画的网络线长对得上、线宽不对。这两种情况都要靠带线宽的回读对账才能发现，
 `plan-apply` 已内置。验证范围：一块 4 层板上 42 个网络、约 600 个对象的替换，一轮对账一致，保存重载后复核一致，
 原生 DRC 无新增违例；批量写入仍是逐个对象调用。
+
+### 整板布线顺序（P7）与扇出、诊断（offline-verified，未现场复验）
+
+细间距板按固定顺序走，每步都以回读为准，不放宽规则：
+
+1. `pcb routability` 通过（`fail` 先回布局，`incomplete` 先补几何）。
+2. `pcb route-critical`：电源与差分对先布并锁定。
+3. 有细间距器件时：`pcb escape-plan` → `pcb fanout`。
+4. `pcb autoroute --ignore-net <已布网络>`（官方路由器）。
+5. `pcb save` → `doc reload` → `pcb drc --json` → `pcb route-diagnose --drc`。
+6. 未通网络按诊断回到布局或扇出。
+
+`pcb fanout --escapes escapes.json --board board.json --project-uuid <uuid> [--dry-run] [--lock=false]`
+把 `status=pass` 的 escape-plan 预留路径写成真实走线与过孔。`escapes.boardSemanticSha256` 必须等于
+`--board` 的语义哈希，否则拒绝；折线拆成逐段走线，过孔取报告里的孔径，缺失时用板子实测过孔规则。
+扇出网络上不能已有走线、圆弧或过孔（dump 与实时板都检查），已有铜时拒绝并提示先 `pcb rip-up --net`，
+因为写入沿用 `plan-apply` 的替换语义。写入后按 `plan-apply` 回读对账，过孔大小另行核对；通过后用
+`pcb.track.lock` 只锁新建图元，锁定失败保留报告并退出非零。命令不保存、不重铺、不跑 DRC，之后必须
+`pcb save` → `doc reload` → 新 `pcb dump --include-copper`，再 `pcb autoroute`。
+
+`pcb route-diagnose --board board.json --drc drc.json [--net N] [--out report.json]` 只读。未通网络只取
+`pcb drc --json` 中 `Connection Error` 行的网络，不自行重建连通性。每个未通网络的网络级结论：
+`trapped`（有焊盘既无出线也无过孔位，列出这些焊盘和阻挡对象并集）、`not-locally-trapped`（各焊盘都有出口，
+断点在焊盘之间的通道，报告不说是哪条通道，`drcObjs` 给出 DRC 点名的对象）、`unknown`（几何不完整或焊盘
+未验证，不算通过）。几何准备与 `routability` 共用同一实现。DRC 与 dump 必须来自同一次保存重载后的状态，
+命令无法核对这一点；有未通网络时退出非零，`unknown` 使整体 `incomplete`。
 
 职责边界固定为：Layout 求解器枚举模块位置、旋转、移动组与外部连接重算；每个布局候选
 投影为临时板状态后，调用 PCB Router 公共内核验证固定几何下的端点路径和共同通道。
@@ -147,6 +174,9 @@ at checkpoints. 布线方式见 [`design-flow.md`](./design-flow.md) P7：关键
 和已布关键网，`--layers 1,2` 限定层；返回逐网结果、新建铜计数与锁定铜是否丢失。完成后
 save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
 - 路由器报 `success:true` 只表示已启动；以 `successNetsCount`/`failedNets` 与新建铜为准。
+- `--net` 的限定由连接器把其余全部网络写入 `ignoreNets` 实现：宿主会忽略 `RoutingNets` 名单
+  （2026-11-26 Web 4.1.105 实测：`--net` 三个网却布了全板）。结果的 `createdByNet` 按网络列出新铜，
+  `outOfScopeNets` 非空时命令失败；不存在的网名在布线前拒绝。
 - 失败网先换顺序：rip-up 挡路的同类网（save→reload 证实 0 轨）→ 先布失败网 → 再布其余；
   仍不通再手布（换层绕行）。路由器会把孔贴近已锁定的宽 RF 线（实测 2.8 mil），每轮跑
   `pcb check` 找间距。
@@ -223,14 +253,15 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   布线/铺铜/区域/丝印会静默残留(`components.list` 看着空了、铜其实还在)——要真正清板重来
   用这个。**默认保留锁定图元 + 板框(layer 11)**(板框是布局前提,和 `sch clear` 保留图框对称)。
   收窄:`--only components,routing,copper,regions,silk`(逗号子集,省略 = 全部);`--no-preserve-outline`
-  连板框一起删;`--include-locked` 连锁定图元一起删(危险)。**无 undo**,确认门控。
+  连板框一起删;`--include-locked` 连锁定图元一起删(危险)。**无 undo**,按写入授权走宿主审批。
   封装内嵌过孔(QFN 散热焊盘自带)不单独删,随所属器件删除或保留,计入 `skippedEmbeddedVias`。
   **默认自带 verify 复合流程(#121)**:清 → save → `doc reload` → 二遍清 → 最终 dry-run 计数——
   部分图元只在 save/reload 时被引擎物化,单次 handler 调用内任何枚举(含 #112 的循环)都看不到
   (R2 实测 reload 后冒出 3 条轨);返回 `{pass1, pass2, remainingAfterVerify, verified}`,
   `remainingAfterVerify` 非零 = 锁定/保留件或更深的引擎问题,绝不假报干净。`--no-verify` 回到
   单遍(快,但你要自己 reload 后 `--dry-run` 复查)。
-  ⚠️ **破坏性**:生产流程必须**先 `--dry-run` 报告删除计数、等用户确认**,再执行。
+  ⚠️ **破坏性**:生产流程必须**先 `--dry-run`**,把删除计数与范围写进执行计划和审批理由,由宿主审批机制确认后执行;
+  无宿主审批能力且用户未显式授权清板时才请求授权(见 [写入授权](../SKILL.md#设计与执行边界))。
   生成→检测→清板→重试闭环用这个。
 - `easyeda pcb via-delete --ids …` / `pcb track-delete --ids …` (`pcb.route.delete`) —
   **surgical delete by primitiveId**: one bad via no longer costs re-routing the whole
@@ -254,7 +285,8 @@ save → doc reload → DRC。现场要点（ESP32-S3R8，2026-10-17）：
   in `notDeleted`). **Exit contract (#312)**: any non-empty `notFound` / `notDeleted` /
   `notDeletable` / `skippedLocked` makes the command (and an `easyeda apply` step) exit
   non-zero with a `partial delete` error, while stdout still carries the full result —
-  one valid id no longer turns a batch into a success. **Ids are only valid until the
+  one valid id no longer turns a batch into a success. Locked copper is skipped on
+  purpose: the error names the exact `pcb track-lock --ids … --unlock` to run first. **Ids are only valid until the
   next copper write or delete**: a T-branch splits the trunk into two NEW ids, and
   deleting the branch merges them back into a third NEW id. So when deleting across
   several calls, re-export ids before each call (or put related segments in ONE call),

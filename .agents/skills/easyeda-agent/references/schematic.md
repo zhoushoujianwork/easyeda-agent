@@ -36,6 +36,11 @@ NC 设置按当前页唯一位号定位后只读取目标器件；重复位号�
   `windowId` 会随连接器重连改变，通常按工程路由更稳。
 - `sch connectivity --all-pages` 逐页激活并恢复起始页。普通 `sch list --all-pages`
   可能只得到已加载页面的浅数据，不能用空 pins 证明无引脚或 NC；精确几何须逐页读取。
+- 多单元器件的各单元共享位号与 `uniqueId`，导出合并为一个带 `subParts` 和 `pins[].subPart`
+  的 component；`sch apply` 的工程级位号门禁同样按器件实例判定，身份不明或不同器件同号仍拒绝。
+  `sch designators bind/allocate/plan/verify` 也按器件实例计数：各单元一起改号并写入同一稳定绑定；
+  单元分在多页时，页级修复拒绝只改一部分。这类 component 不能经 compose（含 `--preserve-instances`）
+  或 materialize 重新放置，保留原实例。
 - `sch read` 是语义检查快照；`sch list` 加上述选项才是 compose 所需的完整实测基线。
   两者直接输出 JSON，没有 `--json` 参数。`--include-wires` 同时带活动页连接图元计数。
 - 放置需要官方器件库 UUID；实例的 `primitiveId` 是修改句柄，`uniqueId` 是 sch↔PCB

@@ -63,9 +63,13 @@ type drcFlatViolation struct {
 
 // drcFlatReport is the `pcb drc --json` output shape.
 type drcFlatReport struct {
-	Passed     bool               `json:"passed"`
-	Total      int                `json:"total"`
-	Counts     map[string]int     `json:"counts"`
+	Passed bool           `json:"passed"`
+	Total  int            `json:"total"`
+	Counts map[string]int `json:"counts"`
+	// NetCounts is the number of distinct nets per rule. Native Connection
+	// Errors are one row per missing ratsnest line, so 63 rows can be 26 nets
+	// (#310); rows without a net are not counted here.
+	NetCounts  map[string]int     `json:"netCounts"`
 	Violations []drcFlatViolation `json:"violations"`
 	Binding    map[string]any     `json:"binding,omitempty"` // Netlist-Error board-binding diagnostic, passed through
 }
@@ -97,8 +101,19 @@ func flattenDrcResult(result map[string]any) drcFlatReport {
 		}
 		return a.Index < b.Index
 	})
+	nets := map[string]map[string]bool{}
 	for _, v := range report.Violations {
 		report.Counts[v.Rule]++
+		if v.Net != "" {
+			if nets[v.Rule] == nil {
+				nets[v.Rule] = map[string]bool{}
+			}
+			nets[v.Rule][v.Net] = true
+		}
+	}
+	report.NetCounts = map[string]int{}
+	for rule, set := range nets {
+		report.NetCounts[rule] = len(set)
 	}
 	report.Total = len(report.Violations)
 	return report
@@ -205,4 +220,23 @@ func objSuffix(leaf map[string]any, key string) string {
 		return asString(obj["suffix"])
 	}
 	return ""
+}
+
+// drcRuleSummary renders "Connection Error 63 row(s) across 26 net(s); …" in
+// rule order, so a failing verdict says how many nets, not just how many rows.
+func drcRuleSummary(r drcFlatReport) string {
+	rules := make([]string, 0, len(r.Counts))
+	for rule := range r.Counts {
+		rules = append(rules, rule)
+	}
+	sort.Strings(rules)
+	parts := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		part := fmt.Sprintf("%s %d row(s)", rule, r.Counts[rule])
+		if n, ok := r.NetCounts[rule]; ok {
+			part += fmt.Sprintf(" across %d net(s)", n)
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, "; ")
 }

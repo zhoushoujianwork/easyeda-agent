@@ -128,9 +128,9 @@ S1 采集数据、S5 核对事实时，先把 brief 拆进这四类，再分别�
 2. 第 1 轮无修正后执行第 2 轮：`pcb save` → `doc reload` → fresh `pcb dump` → fresh render，用新数据
    和新整板图复核持久化状态。任何 finding 一旦导致修复，连续通过数同样清零，回到第 1 轮。
 3. 只有紧邻的两轮都没有待修的明显布局/视觉 finding，也没有执行修复，才记录 Layout 完成；随后展示第 2 轮图、事实摘要和
-   两轮 manifest，等待用户确认。用户或 Agent 再改布局时，这两轮结果失效并重新计数。
+   两轮 manifest，作为布线批次的复核包，按[写入授权](../SKILL.md#设计与执行边界)进入布线。用户或 Agent 再改布局时，这两轮结果失效并重新计数。
 
-详细 artifact、属性恢复和用户确认边界见 [pcb-layout.md](pcb-layout.md)。两轮自检是完成证据，
+详细 artifact、属性恢复和布线授权边界见 [pcb-layout.md](pcb-layout.md)。两轮自检是完成证据，
 不恢复旧 `workflow/stage`、评分或版本许可门禁。
 
 ### 规则、布线和铺铜

@@ -105,6 +105,9 @@ type pcbPadP struct {
 	ShapeOK    bool
 	ShapeIssue string
 	SpecialPad bool
+	// Hole is the pad's drill (nil = no hole / not captured by this reader). It
+	// serves the Hole↔Track rule only (findHoleToTrackViolations).
+	Hole *pcbHoleGeometry
 	// Contours is the exact straight-edged outline of a POLYGON pad in absolute
 	// board mil. It serves exact clearance (pcbExactPadSegmentGap) only; pad
 	// contact/net-path inspection still reports POLYGON as unsupported.
@@ -767,14 +770,14 @@ func findNonOrthogonal(tracks []pcbTrack) []pcbCheckFinding {
 // A track whose body passes directly over a pad center that is NOT one of its own
 // endpoints. On the SAME copper layer this is either a hard short (the pad is on a
 // different net) or sloppy routing (same net — the track should have terminated on
-// the pad, not run through it). Different-layer pads are ignored (a top track over
-// a bottom SMD pad is fine); through-hole cross-layer shorts are a known blind spot
-// (pad layer is reported as a single side here).
+// the pad, not run through it). Different-layer SMD pads are ignored (a top track
+// over a bottom SMD pad is fine); a through-hole pad (MULTI) has copper on every
+// layer, so it clashes with a track on any of them (padLayerMatches).
 func findTrackOverPad(tracks []pcbTrack, pads []pcbPadP) []pcbCheckFinding {
 	var out []pcbCheckFinding
 	for _, t := range tracks {
 		for _, p := range pads {
-			if p.Layer != t.Layer {
+			if !padLayerMatches(p.Layer, t.Layer) {
 				continue
 			}
 			// pad is an endpoint of this track → legitimate termination, skip.
@@ -840,7 +843,8 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			continue
 		}
 		for _, p := range pads {
-			if p.Layer != t.Layer || p.Net == t.Net || strings.TrimSpace(p.Net) == "" {
+			// A through-hole pad has copper on every layer ("TH Pad to Track").
+			if !padLayerMatches(p.Layer, t.Layer) || p.Net == t.Net || strings.TrimSpace(p.Net) == "" {
 				continue
 			}
 			if isEnd(p.X, p.Y, t.X1, t.Y1, t.X2, t.Y2) {
@@ -850,16 +854,10 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			if centerD <= pcbOverPadEps {
 				continue // over-pad short is track-over-pad's
 			}
-			// Edge distance: with a real extent the pad is its axis-aligned RECT —
-			// a radial max(W,H)/2 would false-flag a track running legitimately
-			// beside an elongated pad (USB-C 1.0mm pads: half-length 19.7mil ≫
-			// half-width 5.9mil, seen on ceshi). Nominal radius only as fallback.
-			var edgeD float64
-			if p.W > 0 && p.H > 0 {
-				edgeD = rectSegDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, t.X1, t.Y1, t.X2, t.Y2)
-			} else {
-				edgeD = centerD - nominalPadHalf
-			}
+			// Copper to copper, as native DRC measures it ("SMD Pad to Track"):
+			// pad edge to the track's edge, not its centerline (#310). route-short's
+			// hopFeasible gates on the same measure.
+			edgeD := pcbCheckPadGap(p, [2]float64{t.X1, t.Y1}, [2]float64{t.X2, t.Y2}, centerD) - t.Width/2
 			if edgeD >= clearance {
 				continue
 			}
@@ -935,14 +933,8 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 			if p.Net == v.Net || strings.TrimSpace(p.Net) == "" {
 				continue
 			}
-			// Rect model for real-extent pads (see track↔pad above) — a radial
-			// max-half would false-flag vias beside elongated connector pads.
-			var d float64
-			if p.W > 0 && p.H > 0 {
-				d = rectPtDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, v.X, v.Y) - v.Dia/2
-			} else {
-				d = math.Hypot(v.X-p.X, v.Y-p.Y) - v.Dia/2 - nominalPadHalf
-			}
+			c := [2]float64{v.X, v.Y}
+			d := pcbCheckPadGap(p, c, c, math.Hypot(v.X-p.X, v.Y-p.Y)) - v.Dia/2
 			if d < clearance {
 				ref := p.Designator
 				if p.Number != "" {
@@ -1009,6 +1001,81 @@ func findClearanceViolations(tracks []pcbTrack, pads []pcbPadP, vias []pcbViaP, 
 		})
 	}
 	return out
+}
+
+// ── Hole↔Track: a track runs closer than the drill rule to a pad's hole ──────
+// Native DRC's "Hole to Track" (rules.holeToTrackMil): the drill wall to the
+// track's copper edge, on every layer (a drill goes through the whole board).
+// A plated hole's own net is exempt — a same-net track lands on that pad; an
+// explicitly non-plated hole (Plated == false) has no net and clashes with all.
+// Pads whose drill geometry is unknown cannot be judged and are returned as
+// limitations, never as a pass.
+func findHoleToTrackViolations(tracks []pcbTrack, pads []pcbPadP, holeToTrack float64) ([]pcbCheckFinding, []string) {
+	var out []pcbCheckFinding
+	var limits []string
+	unknown := 0
+	for _, p := range pads {
+		h := p.Hole
+		if h == nil {
+			continue
+		}
+		if h.Status != "available" {
+			unknown++
+			continue
+		}
+		if holeToTrack <= 0 {
+			continue
+		}
+		nonPlated := h.Plated != nil && !*h.Plated
+		ref := p.Designator
+		if p.Number != "" {
+			ref += "." + p.Number
+		}
+		for _, t := range tracks {
+			if strings.TrimSpace(t.Net) == "" || !nonPlated && t.Net == p.Net {
+				continue
+			}
+			d := h.segmentGap([2]float64{t.X1, t.Y1}, [2]float64{t.X2, t.Y2}) - t.Width/2
+			if d >= holeToTrack {
+				continue
+			}
+			out = append(out, pcbCheckFinding{
+				Type: "clearance", Level: "ERROR", Net: t.Net, Layer: t.Layer,
+				Designator: p.Designator, Primitives: []string{t.ID},
+				At:      &pcbXY{round2(h.CenterX), round2(h.CenterY)},
+				Message: fmt.Sprintf("track (net %s) runs %.1fmil from the drill of pad %s — under the %.1fmil hole-to-track rule", t.Net, math.Max(d, 0), ref, holeToTrack) + docRule("1.1", "最小间距"),
+			})
+		}
+	}
+	if unknown > 0 {
+		limits = append(limits, fmt.Sprintf("Hole↔Track not judged for %d pad(s) with unknown drill geometry", unknown))
+	}
+	if holeToTrack <= 0 {
+		for _, p := range pads {
+			if p.Hole != nil && p.Hole.Status == "available" {
+				limits = append(limits, "Hole↔Track not judged: the hole-to-track rule was not measured")
+				break
+			}
+		}
+	}
+	return out, limits
+}
+
+// pcbCheckPadGap is the distance from segment a–z to the pad's copper edge.
+// A pad with known geometry uses its exact rotated shape (rounded RECT corners,
+// OVAL, round ELLIPSE, straight-edged POLYGON); an axis-aligned W×H box would
+// false-flag copper beside rotated or rounded pads (#310). Otherwise the
+// axis-aligned extent, then the nominal radius from the center distance.
+func pcbCheckPadGap(p pcbPadP, a, z [2]float64, centerD float64) float64 {
+	if p.exactClearanceKnown() {
+		if g, err := pcbExactPadSegmentGap(p, a, z); err == nil {
+			return g
+		}
+	}
+	if p.W > 0 && p.H > 0 {
+		return rectSegDist(p.X-p.W/2, p.Y-p.H/2, p.X+p.W/2, p.Y+p.H/2, a[0], a[1], z[0], z[1])
+	}
+	return centerD - nominalPadHalf
 }
 
 // ── R5: via issues — stacked/redundant + pointless single-layer ─────────────
@@ -1974,6 +2041,15 @@ func gatherPcbCheckReport(cfg *appConfig, window string, couplingW float64, chec
 		rep.Summary.Warnings++
 		rep.Summary.Total++
 	}
+	holeFindings, holeLimits := findHoleToTrackViolations(tracks, pads, rules.holeToTrackMil)
+	for _, f := range holeFindings {
+		rep.Findings = append(rep.Findings, f)
+		rep.Summary.Clearance++
+		rep.Summary.Errors++
+		rep.Summary.Warnings++
+		rep.Summary.Total++
+	}
+	rep.Limitations = append(rep.Limitations, holeLimits...)
 	// R15 (#118): netless embedded vias re-materialize on every reload, so this
 	// tripwire fires whenever a re-bond is due (fix: `pcb via-bond`).
 	for _, f := range findNetlessViaInPad(pads, vias) {

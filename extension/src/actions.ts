@@ -690,6 +690,125 @@ const documentCurrent: Handler = async () => {
 	};
 };
 
+type SelectionScalar = string | number | boolean;
+
+/**
+ * Call one optional `getState_<name>` getter on a selected primitive. A missing
+ * method, a throw, or anything that is not a plain string/number/boolean (null,
+ * undefined, NaN, empty string, objects) yields undefined so the field is omitted.
+ */
+function selectionScalar(item: unknown, name: string): SelectionScalar | undefined {
+	try {
+		const getter = (item as Record<string, unknown> | null | undefined)?.[`getState_${name}`];
+		if (typeof getter !== 'function') return undefined;
+		const value: unknown = (getter as () => unknown).call(item);
+		if (typeof value === 'string') return value === '' ? undefined : value;
+		if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+		if (typeof value === 'boolean') return value;
+	}
+	catch { /* optional field: omit */ }
+	return undefined;
+}
+
+/** Footprint is either a plain string or an object carrying uuid/name; keep the string only. */
+function selectionFootprint(item: unknown): string | undefined {
+	try {
+		const getter = (item as Record<string, unknown> | null | undefined)?.getState_Footprint;
+		if (typeof getter !== 'function') return undefined;
+		const value: unknown = (getter as () => unknown).call(item);
+		if (typeof value === 'string') return value === '' ? undefined : value;
+		if (value && typeof value === 'object') {
+			const record = value as Record<string, unknown>;
+			for (const key of ['uuid', 'name']) {
+				const text = record[key];
+				if (typeof text === 'string' && text !== '') return text;
+			}
+		}
+	}
+	catch { /* optional field: omit */ }
+	return undefined;
+}
+
+function selectionItem(item: unknown, index: number): Record<string, SelectionScalar> {
+	const primitiveId = selectionScalar(item, 'PrimitiveId');
+	if (typeof primitiveId !== 'string') {
+		throw new ActionError(ErrorCodes.INVALID_STATE, `Selected primitive #${index} has no readable primitiveId.`);
+	}
+	const ctorName = (item as { constructor?: { name?: unknown } } | null)?.constructor?.name;
+	const type = selectionScalar(item, 'PrimitiveType');
+	const out: Record<string, SelectionScalar> = {
+		primitiveId,
+		primitiveType: type !== undefined ? String(type)
+			: typeof ctorName === 'string' && ctorName && ctorName !== 'Object' ? ctorName : 'unknown',
+	};
+	const put = (key: string, value: SelectionScalar | undefined): void => {
+		if (value !== undefined) out[key] = value;
+	};
+	put('designator', selectionScalar(item, 'Designator'));
+	for (const field of ['Name', 'DeviceName', 'Content']) {
+		const value = selectionScalar(item, field);
+		if (value !== undefined) { out.name = value; break; }
+	}
+	put('net', selectionScalar(item, 'Net'));
+	put('layer', selectionScalar(item, 'Layer'));
+	for (const [xField, yField] of [['X', 'Y'], ['StartX', 'StartY']]) {
+		const x = selectionScalar(item, xField), y = selectionScalar(item, yField);
+		if (typeof x === 'number' && typeof y === 'number') { out.x = x; out.y = y; break; }
+	}
+	put('rotation', selectionScalar(item, 'Rotation'));
+	put('footprint', selectionFootprint(item));
+	put('locked', selectionScalar(item, 'PrimitiveLock'));
+	return out;
+}
+
+/**
+ * Read-only: report what the user currently has selected on the active schematic
+ * or PCB canvas. Never selects, clears, or targets anything; callers use the ids
+ * only to locate objects and must pass them explicitly to any write action.
+ */
+const selectionGet: Handler = async () => {
+	const before = await readResponseContext();
+	const documentType = before.documentType;
+	if (documentType !== 'schematic' && documentType !== 'pcb') {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'当前活动文档不是原理图或 PCB，无法读取选区',
+			`documentType=${documentType ?? 'unknown'}`);
+	}
+	const control = documentType === 'schematic' ? eda.sch_SelectControl : eda.pcb_SelectControl;
+	const controlName = documentType === 'schematic' ? 'sch_SelectControl' : 'pcb_SelectControl';
+	let raw: unknown[];
+	let detail: boolean;
+	try {
+		if (typeof control?.getAllSelectedPrimitives === 'function') {
+			raw = (await control.getAllSelectedPrimitives()) as unknown[];
+			detail = true;
+		}
+		else if (typeof control?.getAllSelectedPrimitives_PrimitiveId === 'function') {
+			raw = (await control.getAllSelectedPrimitives_PrimitiveId()) as unknown[];
+			detail = false;
+		}
+		else {
+			throw new ActionError(ErrorCodes.EDA_API_UNAVAILABLE, `eda.${controlName} cannot read the current selection.`);
+		}
+	}
+	catch (err) {
+		if (err instanceof ActionError) throw err;
+		throw edaError(err, 'Failed to read the current selection.');
+	}
+	if (!Array.isArray(raw)) {
+		throw new ActionError(ErrorCodes.INVALID_STATE, 'The selection read did not return a list.');
+	}
+	const after = await readResponseContext();
+	if (after.projectUuid !== before.projectUuid || after.documentUuid !== before.documentUuid || after.tabId !== before.tabId) {
+		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED,
+			'Selection read refused: page drift, the active project/document/tab changed while reading; the selection may belong to another page.');
+	}
+	const items = raw.map((entry, index) => detail
+		? selectionItem(entry, index)
+		: { primitiveId: String(entry), primitiveType: 'unknown' });
+	return { result: { documentType, count: items.length, items, detail } };
+};
+
 /** Reload the whole Web editor after its response has left the connector queue. */
 const systemPageReload: Handler = async (payload) => {
 	const projectUuid = requireString(payload, 'projectUuid');
@@ -11067,14 +11186,20 @@ const pcbReport: Handler = async () => {
 		const pairsRaw = await eda.pcb_Drc.getAllDifferentialPairs();
 		// Since EDA v3.4 this may return an object map instead of an array (a
 		// documented breaking change) — normalize both shapes to a list of pairs.
-		const pairs = (Array.isArray(pairsRaw) ? pairsRaw : Object.values(pairsRaw ?? {}))
-			.filter((p): p is { name: string; positiveNet: string; negativeNet: string } =>
-				!!p && typeof p === 'object' && 'positiveNet' in p && 'negativeNet' in p);
-		result.differentialPairs = await Promise.all(pairs.map(async (p) => {
+		const entries: Array<unknown> = Array.isArray(pairsRaw) ? pairsRaw : Object.values(pairsRaw ?? {});
+		const isPair = (p: unknown): p is { name: string; positiveNet: string; negativeNet: string } =>
+			!!p && typeof p === 'object' && typeof (p as any).positiveNet === 'string' && typeof (p as any).negativeNet === 'string';
+		// #310: a declared pair in an unrecognised shape must not vanish — an empty
+		// list reads as "no skew value" with nothing to say why.
+		const unrecognized = entries.filter(p => !isPair(p));
+		if (unrecognized.length) result.differentialPairsUnrecognized = unrecognized;
+		result.differentialPairs = await Promise.all(entries.filter(isPair).map(async (p) => {
 			const lp = await len(p.positiveNet);
 			const ln = await len(p.negativeNet);
-			const skew = (typeof lp === 'number' && typeof ln === 'number') ? Math.abs(lp - ln) : null;
-			return { name: p.name, positiveNet: p.positiveNet, negativeNet: p.negativeNet, positiveLength: lp, negativeLength: ln, skew };
+			const skew = (typeof lp === 'number' && typeof ln === 'number') ? Math.round(Math.abs(lp - ln) * 1000) / 1000 : null;
+			const missing = [typeof lp === 'number' ? '' : `positive net ${p.positiveNet}`, typeof ln === 'number' ? '' : `negative net ${p.negativeNet}`].filter(Boolean);
+			return { name: p.name, positiveNet: p.positiveNet, negativeNet: p.negativeNet, positiveLength: lp, negativeLength: ln, skew,
+				...(skew === null ? { skewUnavailable: `pcb_Net.getNetLength returned no number for ${missing.join(' and ')}` } : {}) };
 		}));
 	}
 	catch (err) { result.differentialPairsError = describeThrown(err); }
@@ -15300,16 +15425,41 @@ export function parsePcbAutoRouteProps(payload: Record<string, unknown>): Record
 	};
 }
 
-type PcbCopperInventory = { lines: Set<string>; arcs: Set<string>; vias: Set<string>; locked: Set<string> };
+type PcbCopperInventory = { lines: Set<string>; arcs: Set<string>; vias: Set<string>; locked: Set<string>; nets: Map<string, string> };
+
+/**
+ * Make a `nets` request actually scope the router. The host turns RoutingNets
+ * into `routingRange` but its engine ignores a list of names (live 2026-11-26,
+ * Web 4.1.105: `--net OSC_IN,OSC_OUT,NRST` routed every net), while
+ * `ignoreNets` is honoured. So every other board net is added to ignoreNets.
+ * An unknown requested net, or one that is also ignored, is refused upfront.
+ */
+export async function pcbScopeAutoRoute(props: Record<string, unknown>): Promise<Record<string, unknown>> {
+	const requested = props.RoutingNets;
+	if (!Array.isArray(requested) || !requested.length) return props;
+	let names: Array<string>;
+	try { names = ((await eda.pcb_Net.getAllNetsName()) ?? []) as Array<string>; }
+	catch (err) { throw edaError(err, 'Net names are unavailable, so the --net scope cannot be enforced; nothing was routed.'); }
+	const want = new Set(requested as Array<string>);
+	const unknown = [...want].filter(n => !names.includes(n));
+	if (unknown.length) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Requested net(s) not on this board: ${unknown.join(', ')}; nothing was routed.`);
+	const ignored = new Set((props.ignoreNets as Array<string> | undefined) ?? []);
+	const both = [...want].filter(n => ignored.has(n));
+	if (both.length) throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, `Net(s) both requested and ignored: ${both.join(', ')}; nothing was routed.`);
+	for (const n of names) if (!want.has(n)) ignored.add(n);
+	return { ...props, ignoreNets: [...ignored].sort() };
+}
 
 async function pcbCopperInventory(): Promise<PcbCopperInventory> {
-	const inv: PcbCopperInventory = { lines: new Set(), arcs: new Set(), vias: new Set(), locked: new Set() };
+	const inv: PcbCopperInventory = { lines: new Set(), arcs: new Set(), vias: new Set(), locked: new Set(), nets: new Map() };
 	const take = (items: Array<SchPrimitiveLike> | undefined, into: Set<string>, layerFilter: boolean) => {
 		for (const p of items ?? []) {
 			if (layerFilter && !onPcbCopperLayer(pcbPrimLayer(p))) continue;
 			const id = p.getState_PrimitiveId();
 			into.add(id);
 			if (pcbPrimLocked(p)) inv.locked.add(id);
+			const net = (p as { getState_Net?: () => unknown }).getState_Net?.();
+			inv.nets.set(id, typeof net === 'string' ? net : '');
 		}
 	};
 	take(await eda.pcb_PrimitiveLine.getAll(), inv.lines, true);
@@ -15319,7 +15469,7 @@ async function pcbCopperInventory(): Promise<PcbCopperInventory> {
 }
 
 export const pcbRouteAuto: Handler = async (payload) => {
-	const props = parsePcbAutoRouteProps(payload);
+	const props = await pcbScopeAutoRoute(parsePcbAutoRouteProps(payload));
 	const route = (eda.pcb_Document as unknown as { autoRouting?: (p: unknown) => Promise<unknown> }).autoRouting;
 	if (typeof route !== 'function') {
 		throw new ActionError(ErrorCodes.PRECONDITION_REFUSED, 'unsupported: eda.pcb_Document.autoRouting is not available on this EasyEDA build.');
@@ -15341,7 +15491,7 @@ export const pcbRouteAuto: Handler = async (payload) => {
 	if (!changed && (ok !== true || (Array.isArray(failedNets) && failedNets.length > 0))) {
 		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `autoRouting changed nothing (router report: ${JSON.stringify(report)}).`);
 	}
-	return { result: { router: report ?? null, props, ...pcbCopperReport(before, after) } };
+	return { result: { router: report ?? null, props, ...pcbCopperReport(before, after, props) } };
 };
 
 /** Copper added/removed between two inventories, and locked copper that vanished. */
@@ -15355,10 +15505,22 @@ function pcbCopperDelta(before: PcbCopperInventory, after: PcbCopperInventory) {
 	};
 }
 
-function pcbCopperReport(before: PcbCopperInventory, after: PcbCopperInventory) {
+function pcbCopperReport(before: PcbCopperInventory, after: PcbCopperInventory, props?: Record<string, unknown>) {
 	const { created, removedIds, lockedLost } = pcbCopperDelta(before, after);
+	// Per-net count of the copper the router created, so a scoped run can be
+	// proven to have stayed inside its nets (outOfScopeNets non-empty = it did not).
+	const createdByNet: Record<string, number> = {};
+	for (const set of ['lines', 'arcs', 'vias'] as const) {
+		for (const id of after[set]) if (!before[set].has(id)) {
+			const net = after.nets.get(id) ?? '';
+			createdByNet[net] = (createdByNet[net] ?? 0) + 1;
+		}
+	}
+	const scope = Array.isArray(props?.RoutingNets) ? new Set(props.RoutingNets as Array<string>) : undefined;
 	return {
 		created,
+		createdByNet,
+		...(scope ? { outOfScopeNets: Object.keys(createdByNet).filter(n => !scope.has(n)).sort() } : {}),
 		removedPrimitiveIds: removedIds,
 		lockedBefore: before.locked.size,
 		lockedLost,
@@ -15404,7 +15566,7 @@ function requiredJobId(payload: Record<string, unknown>): string {
 }
 
 export const pcbRouteAutoStart: Handler = async (payload) => {
-	const props = parsePcbAutoRouteProps(payload);
+	const props = await pcbScopeAutoRoute(parsePcbAutoRouteProps(payload));
 	const api = pcbAutoJobApi();
 	let before: PcbCopperInventory;
 	try { before = await pcbCopperInventory(); }
@@ -15454,7 +15616,7 @@ export const pcbRouteAutoStatus: Handler = async (payload) => {
 	try { after = await pcbCopperInventory(); }
 	catch (err) { throw edaError(err, 'Copper inventory after auto-routing is unavailable; poll status again.'); }
 	const errorLogs = logs.filter(l => l?.level === 'error').slice(-5);
-	job.final = { ...base, terminal: true, props: job.props, errorLogs, ...pcbCopperReport(job.before, after) };
+	job.final = { ...base, terminal: true, props: job.props, errorLogs, ...pcbCopperReport(job.before, after, job.props) };
 	return { result: job.final };
 };
 
@@ -15554,7 +15716,11 @@ const pcbRouteDelete: Handler = async (payload) => {
 		if (notDeletable.length) {
 			throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing deletable: ${notDeletable.length} id(s) are FOOTPRINT-EMBEDDED (e.g. EPAD thermal vias — part of ${notDeletable[0].parentComponent}); the primitive API cannot delete them. To bond them to a net use \`easyeda pcb via-bond\`; to remove them edit the footprint or delete the component.`);
 		}
-		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing to delete: ${notFound.length} id(s) not found among routing primitives${skippedLocked.length ? `, ${skippedLocked.length} locked` : ''}. Pull fresh ids from pcb.line.list / pcb.via.list.`);
+		// #310: when locked ids are the reason, fresh ids would not help — say how to unlock.
+		const lockedHint = skippedLocked.length
+			? ` Locked copper is never deleted: unlock it first with \`easyeda pcb track-lock --ids ${skippedLocked.length <= 8 ? skippedLocked.join(',') : '<the locked ids>'} --unlock\` (or --net <net> / --all with --unlock), then delete again.`
+			: '';
+		throw new ActionError(ErrorCodes.EDA_CALL_FAILED, `Nothing to delete: ${notFound.length} id(s) not found among routing primitives${skippedLocked.length ? `, ${skippedLocked.length} locked` : ''}.${lockedHint}${notFound.length ? ' Pull fresh ids for the missing ones from pcb.line.list / pcb.via.list.' : ''}`);
 	}
 
 	const results: Record<string, { requested: number; ok: boolean }> = {};
@@ -16520,6 +16686,7 @@ const HANDLERS: Record<string, Handler> = {
 	'project.export': projectExport,
 	'project.import': projectImport,
 	'document.current': documentCurrent,
+	'selection.get': selectionGet,
 	'document.source.get': documentSourceGet,
 	'document.source.roundtrip': documentSourceRoundtrip,
 	'document.source.restore': documentSourceRestore,

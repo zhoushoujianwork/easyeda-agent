@@ -681,3 +681,121 @@ func TestFindClearance_CrossingTracksAreReported(t *testing.T) {
 		t.Errorf("cross-layer crossing is legal, got %d: %+v", len(out), out)
 	}
 }
+
+// #310: the clearance rule used an axis-aligned W×H box for every pad, so it
+// false-flagged copper beside rotated pads and around round pads. Pads with a
+// known shape now use their exact rotated copper.
+func TestFindClearance_RotatedAndRoundPadsUseExactShape(t *testing.T) {
+	// 60×10 RECT rotated 90°: copper runs along Y (x ±5, y ±30). A 6mil
+	// horizontal track at y=10, x from 15 to 100 has 7mil copper-to-copper
+	// (15-5-3, > 6) but would be inside the unrotated 60-wide box.
+	rotated := pcbPadP{Designator: "U1", Number: "1", Net: "A", Layer: 1, X: 0, Y: 0, W: 60, H: 10, Rotation: 90,
+		Shape: "RECT", ShapeW: 60, ShapeH: 10, ShapeOK: true}
+	track := pcbTrack{ID: "t", Net: "B", Layer: 1, X1: 15, Y1: 10, X2: 100, Y2: 10, Width: 6}
+	if out := findClearanceViolations([]pcbTrack{track}, []pcbPadP{rotated}, nil, nil, 6, 6); len(out) != 0 {
+		t.Fatalf("rotated pad false positive: %+v", out)
+	}
+	// Same pad, track 4mil from the real (rotated) copper edge → still flagged.
+	near := pcbTrack{ID: "t2", Net: "B", Layer: 1, X1: 9, Y1: 0, X2: 9, Y2: 100, Width: 6}
+	if out := findClearanceViolations([]pcbTrack{near}, []pcbPadP{rotated}, nil, nil, 6, 6); len(out) != 1 {
+		t.Fatalf("real violation beside a rotated pad must still fail, got %+v", out)
+	}
+	// Round 40mil pad (ELLIPSE w=h).
+	round := pcbPadP{Designator: "J1", Number: "1", Net: "A", Layer: 1, X: 0, Y: 0, W: 40, H: 40,
+		Shape: "ELLIPSE", ShapeW: 40, ShapeH: 40, ShapeOK: true}
+	// Via (dia 10) centred at (25,25): 15.36mil from the circle's edge, so
+	// 10.36mil copper gap (> 6); the box corner (20,20) is only 7.07mil away,
+	// which left 2.07mil — a false violation under the box model.
+	via := pcbViaP{ID: "v", Net: "B", X: 25, Y: 25, Dia: 10}
+	if out := findClearanceViolations(nil, []pcbPadP{round}, []pcbViaP{via}, nil, 6, 6); len(out) != 0 {
+		t.Fatalf("round pad false positive: %+v", out)
+	}
+	// A pad without a usable shape keeps the old box model.
+	legacy := pcbPadP{Designator: "J2", Number: "1", Net: "A", Layer: 1, X: 0, Y: 0, W: 40, H: 40}
+	if out := findClearanceViolations(nil, []pcbPadP{legacy}, []pcbViaP{via}, nil, 6, 6); len(out) != 1 {
+		t.Fatalf("legacy pad must keep the conservative box model, got %+v", out)
+	}
+}
+
+// #310 live (ceshi, J1 at 45°): native DRC reports "SMD Pad to Track … distance
+// is 5mil" for a 6mil track whose centerline is 8mil from the pad. Track↔pad is
+// copper to copper, so the track's half-width counts.
+func TestFindClearance_TrackToPadIsCopperToCopper(t *testing.T) {
+	pad := []pcbPadP{{Designator: "J1", Number: "A1B12", Net: "GND", Layer: 1, X: 0, Y: 0, W: 20, H: 20,
+		Shape: "RECT", ShapeW: 20, ShapeH: 20, ShapeOK: true}}
+	track := pcbTrack{ID: "t", Net: "DN", Layer: 1, X1: 18, Y1: -50, X2: 18, Y2: 50, Width: 6}
+	out := findClearanceViolations([]pcbTrack{track}, pad, nil, nil, 6, 6)
+	if len(out) != 1 || !strings.Contains(out[0].Message, "5.0mil") {
+		t.Fatalf("centerline 8mil from the pad edge is 5mil copper gap, want one finding at 5.0mil, got %+v", out)
+	}
+}
+
+// Live ceshi 2026-11-26 (TYPE-C-31-M-12 at 45°): native DRC reported "TH Pad to
+// Track … 0mil" but `pcb check` skipped every through-hole pad, because its
+// layer (MULTI, 12) never equals a track's copper layer. A TH pad has copper on
+// every layer, so a BOTTOM track beside it is judged like a same-layer one.
+func TestFindClearance_ThroughHolePadBlocksEveryLayer(t *testing.T) {
+	th := pcbPadP{Designator: "J1", Number: "13", Net: "GND", Layer: pcbLayerMulti, X: 0, Y: 0, W: 40, H: 40,
+		Shape: "ELLIPSE", ShapeW: 40, ShapeH: 40, ShapeOK: true}
+	for _, layer := range []int{1, 2, 3} {
+		// Centerline 25mil from center: 5mil past the 20mil copper radius, less the 3mil half-width = 2mil.
+		near := pcbTrack{ID: "near", Net: "DP", Layer: layer, X1: 25, Y1: -60, X2: 25, Y2: 60, Width: 6}
+		if out := findClearanceViolations([]pcbTrack{near}, []pcbPadP{th}, nil, nil, 6, 6); len(out) != 1 || !strings.Contains(out[0].Message, "2.0mil") {
+			t.Fatalf("layer %d: TH pad 2mil from the track must be one clearance finding, got %+v", layer, out)
+		}
+		far := pcbTrack{ID: "far", Net: "DP", Layer: layer, X1: 40, Y1: -60, X2: 40, Y2: 60, Width: 6}
+		if out := findClearanceViolations([]pcbTrack{far}, []pcbPadP{th}, nil, nil, 6, 6); len(out) != 0 {
+			t.Fatalf("layer %d: TH pad 17mil away is legal, got %+v", layer, out)
+		}
+		// Straight through the pad center: track-over-pad owns the exact overlap.
+		over := pcbTrack{ID: "over", Net: "DP", Layer: layer, X1: 0, Y1: -60, X2: 0, Y2: 60, Width: 6}
+		if out := findTrackOverPad([]pcbTrack{over}, []pcbPadP{th}); len(out) != 1 || out[0].Level != "ERROR" {
+			t.Fatalf("layer %d: track through a TH pad center must short, got %+v", layer, out)
+		}
+	}
+	// An SMD pad on TOP still ignores a BOTTOM track.
+	smd := th
+	smd.Layer = 1
+	bottom := pcbTrack{ID: "b", Net: "DP", Layer: 2, X1: 25, Y1: -60, X2: 25, Y2: 60, Width: 6}
+	if out := findClearanceViolations([]pcbTrack{bottom}, []pcbPadP{smd}, nil, nil, 6, 6); len(out) != 0 {
+		t.Fatalf("TOP SMD pad must not judge a BOTTOM track, got %+v", out)
+	}
+}
+
+// Native "Hole to Track 6.6mil < 6.9mil": the drill wall to the track's copper
+// edge on any layer, other-net only for a plated hole.
+func TestFindHoleToTrackViolations(t *testing.T) {
+	plated := true
+	hole := &pcbHoleGeometry{Status: "available", Kind: "ROUND", DiameterMil: 24, CenterX: 0, CenterY: 0, Plated: &plated}
+	pad := pcbPadP{Designator: "J1", Number: "13", Net: "GND", Layer: pcbLayerMulti, X: 0, Y: 0, Hole: hole}
+	// Centerline 21.6mil from center: 12mil drill radius, 3mil half-width → 6.6mil.
+	near := pcbTrack{ID: "near", Net: "DP", Layer: 2, X1: 21.6, Y1: -60, X2: 21.6, Y2: 60, Width: 6}
+	out, limits := findHoleToTrackViolations([]pcbTrack{near}, []pcbPadP{pad}, 6.9)
+	if len(out) != 1 || !strings.Contains(out[0].Message, "6.6mil") || len(limits) != 0 {
+		t.Fatalf("6.6mil hole gap under a 6.9mil rule must be one finding, got %+v %v", out, limits)
+	}
+	far := near
+	far.X1, far.X2 = 25, 25
+	if out, _ := findHoleToTrackViolations([]pcbTrack{far}, []pcbPadP{pad}, 6.9); len(out) != 0 {
+		t.Fatalf("10mil hole gap is legal, got %+v", out)
+	}
+	sameNet := near
+	sameNet.Net = "GND"
+	if out, _ := findHoleToTrackViolations([]pcbTrack{sameNet}, []pcbPadP{pad}, 6.9); len(out) != 0 {
+		t.Fatalf("a plated hole's own net is exempt, got %+v", out)
+	}
+	npth := false
+	npthPad := pad
+	npthPad.Hole = &pcbHoleGeometry{Status: "available", Kind: "ROUND", DiameterMil: 24, Plated: &npth}
+	if out, _ := findHoleToTrackViolations([]pcbTrack{sameNet}, []pcbPadP{npthPad}, 6.9); len(out) != 1 {
+		t.Fatalf("a non-plated hole clashes with every net, got %+v", out)
+	}
+	unknown := pad
+	unknown.Hole = &pcbHoleGeometry{Status: "unknown", Reason: "holeOffsetX is nonzero"}
+	if out, limits := findHoleToTrackViolations([]pcbTrack{near}, []pcbPadP{unknown}, 6.9); len(out) != 0 || len(limits) != 1 {
+		t.Fatalf("unknown drill geometry must be a limitation, not a pass or a finding: %+v %v", out, limits)
+	}
+	if _, limits := findHoleToTrackViolations([]pcbTrack{near}, []pcbPadP{pad}, 0); len(limits) != 1 {
+		t.Fatalf("an unmeasured hole rule must be reported, got %v", limits)
+	}
+}

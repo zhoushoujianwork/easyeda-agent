@@ -1663,7 +1663,7 @@ func layoutBBoxesIntersect(a, b layoutBBox) bool {
 }
 
 func boardCompToAP(c boardComp) apComp {
-	a := apComp{id: c.ID, designator: c.Designator, x: c.X, y: c.Y, rotation: c.Rotation, locked: c.Locked, pads: make([]apPad, 0, len(c.Pads))}
+	a := apComp{id: c.ID, designator: c.Designator, name: c.Name, device: c.Device, x: c.X, y: c.Y, rotation: c.Rotation, locked: c.Locked, layer: c.Layer, pads: make([]apPad, 0, len(c.Pads))}
 	if c.BBox != nil {
 		a.hasBBox = true
 		a.minX = c.BBox.MinX

@@ -59,12 +59,14 @@ type pcbRoutabilityBlocker struct {
 }
 
 type pcbRoutabilityPad struct {
-	Pad               string      `json:"pad"`
-	Net               string      `json:"net"`
-	Layer             int         `json:"layer"`
-	X                 float64     `json:"x"`
-	Y                 float64     `json:"y"`
-	Status            string      `json:"status"` // pass | trapped
+	Pad    string  `json:"pad"`
+	Net    string  `json:"net"`
+	Layer  int     `json:"layer"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Status string  `json:"status"` // pass | trapped | unverified
+	// UnverifiedReason explains an unverified pad that is not about transitions.
+	UnverifiedReason  string      `json:"unverifiedReason,omitempty"`
 	ViaSites          int         `json:"viaSites"`
 	ViaSitesCapped    bool        `json:"viaSitesCapped,omitempty"`
 	NearestViaSite    *[2]float64 `json:"nearestViaSite,omitempty"`
@@ -103,39 +105,46 @@ var pcbRoutabilityDirections = []struct {
 	di, dj int
 }{{"+X", 1, 0}, {"+X+Y", 1, 1}, {"+Y", 0, 1}, {"-X+Y", -1, 1}, {"-X", -1, 0}, {"-X-Y", -1, -1}, {"-Y", 0, -1}, {"+X-Y", 1, -1}}
 
-func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbRoutabilityReport, error) {
-	rep := pcbRoutabilityReport{SchemaVersion: 1, Status: "incomplete", Trapped: []string{}, Pads: []pcbRoutabilityPad{}, Parameters: pcbRoutabilityParameters{StepMil: opt.StepMil, RadiusMil: opt.RadiusMil}, Limitations: []string{
-		"Local necessary condition per pad: neighbouring pads may share one channel; a pass does not reserve capacity or prove whole-net routing.",
-		"Via sites are counted up to 32 in flood order (nearest track path first); viaSitesCapped marks more.", "Track flood uses the minimum track width on the pad's own copper layer at a fixed grid; via sites are sampled on the same grid, so a fail means no witness at this resolution.",
-		"Via sites are checked against every pad, every via and the copper/keepouts on every copper layer that carries any; negative plane-layer copper (automatic anti-pads) is not modelled.",
-		"Escape radius is measured from the source pad's copper edge.",
-		"A reachable same-net via proves a layer change only on a measured two-layer board (via readback has no type or layer span); a reachable same-net through-hole pad needs a captured drill and metallization=true. Otherwise it is reported as unverified and, if it is the pad's only way out, the check is incomplete.",
-		"Board slots (MULTI-layer cutouts) keep max(8 mil, clearance, copper-to-edge) from copper and vias; stroked pour/fill outlines add half their stroke width.",
-		"Through-hole pads already reach every layer and are not flooded.",
-	}}
-	rep.BoardSemanticSHA256, _ = moduleCheckSemanticSHA256(snap)
-	incomplete := func(msg string) (pcbRoutabilityReport, error) {
-		rep.Status, rep.Reason = "incomplete", msg
-		return rep, fmt.Errorf("%s", msg)
+// pcbRoutabilityGeometry is the prepared, read-only geometry that routability
+// and route-diagnose flood. Both commands must see the same obstacles, rules and
+// coverage gate, so the preparation lives here once.
+type pcbRoutabilityGeometry struct {
+	ctx      *pcbEscapeContext
+	captured map[string]boardPad
+	params   pcbRoutabilityParameters
+}
+
+// validatePCBRoutabilityScan checks the flood grid parameters.
+func validatePCBRoutabilityScan(stepMil, radiusMil float64) error {
+	if !allFinite(stepMil, radiusMil) || stepMil < 0.5 || stepMil > 10 || radiusMil < 4*stepMil || radiusMil/stepMil > 400 {
+		return fmt.Errorf("routability requires 0.5 <= step <= 10 mil and 4*step <= radius <= 400*step")
 	}
-	if !allFinite(opt.StepMil, opt.RadiusMil) || opt.StepMil < 0.5 || opt.StepMil > 10 || opt.RadiusMil < 4*opt.StepMil || opt.RadiusMil/opt.StepMil > 400 {
-		return incomplete("routability requires 0.5 <= step <= 10 mil and 4*step <= radius <= 400*step")
+	return nil
+}
+
+// preparePCBRoutabilityGeometry builds the flood context. The error text is the
+// reason the geometry is incomplete; callers must never treat it as a pass.
+func preparePCBRoutabilityGeometry(snap *boardSnapshot, stepMil, radiusMil float64) (*pcbRoutabilityGeometry, error) {
+	if err := validatePCBRoutabilityScan(stepMil, radiusMil); err != nil {
+		return nil, err
 	}
 	// Every component and pad must be captured: a missing pad list would
 	// silently remove obstacles, and a component filter does not narrow that.
-	if coverage := snap.geometryCoverage(false); !coverage.Complete {
-		return incomplete("board geometry capture is incomplete: " + strings.Join(coverage.Limitations, "; "))
+	// Routability measures only distances to pad copper, so straight-edged
+	// POLYGON pads count as exact; pad-contact limits do not apply here.
+	if ok, limits := snap.geometryCoverage(false).clearanceComplete(); !ok {
+		return nil, fmt.Errorf("board geometry capture is incomplete: %s", strings.Join(limits, "; "))
 	}
 	// Fill and poured copper come only from pcbBoardCopperExtras, which keeps
 	// stroke widths and open/closed unfilled paths; the polygon-only area
 	// parser would turn a hollow outline into a solid block.
 	ctx, _, err := preparePCBRouteGeometryAreas(snap, false)
 	if err != nil {
-		return incomplete(err.Error())
+		return nil, err
 	}
 	extras, err := pcbBoardCopperExtras(snap, polygonSourceContours, true)
 	if err != nil {
-		return incomplete(err.Error())
+		return nil, err
 	}
 	ctx.slots, ctx.strokes = extras.slots, extras.strokes
 	captured := map[string]boardPad{}
@@ -154,13 +163,62 @@ func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbR
 		}
 	}
 	if len(unmeasured) > 0 {
-		return incomplete("routability requires rules measured from the board, missing: " + strings.Join(unmeasured, ", ") + " (re-capture with a current pcb dump)")
+		return nil, fmt.Errorf("routability requires rules measured from the board, missing: %s (re-capture with a current pcb dump)", strings.Join(unmeasured, ", "))
 	}
 	if !allFinite(r.ViaDrillMil, r.ViaDiameterMil) || r.ViaDrillMil <= 0 || r.ViaDiameterMil <= r.ViaDrillMil {
-		return incomplete("routability requires valid via drill/diameter rules")
+		return nil, fmt.Errorf("routability requires valid via drill/diameter rules")
 	}
-	rep.Parameters.TrackWidthMil, rep.Parameters.ClearanceMil = r.TrackWidthMinMil, r.ClearanceMil
-	rep.Parameters.ViaDiameterMil, rep.Parameters.ViaDrillMil = r.ViaDiameterMil, r.ViaDrillMil
+	return &pcbRoutabilityGeometry{ctx: ctx, captured: captured, params: pcbRoutabilityParameters{
+		StepMil: stepMil, RadiusMil: radiusMil, TrackWidthMil: r.TrackWidthMinMil, ClearanceMil: r.ClearanceMil,
+		ViaDiameterMil: r.ViaDiameterMil, ViaDrillMil: r.ViaDrillMil,
+	}}, nil
+}
+
+// floodPads runs ctx.routabilityPad for every pad. Pads are independent and the
+// geometry context is read-only, so each worker writes only its own result slot.
+func (g *pcbRoutabilityGeometry) floodPads(pads []pcbPadP) ([]pcbRoutabilityPad, []error) {
+	results := make([]pcbRoutabilityPad, len(pads))
+	errs := make([]error, len(pads))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < runtime.GOMAXPROCS(0); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				results[i], errs[i] = g.ctx.routabilityPad(pads[i], g.params.StepMil, g.params.RadiusMil, g.captured)
+			}
+		}()
+	}
+	for i := range pads {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	return results, errs
+}
+
+func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbRoutabilityReport, error) {
+	rep := pcbRoutabilityReport{SchemaVersion: 1, Status: "incomplete", Trapped: []string{}, Pads: []pcbRoutabilityPad{}, Parameters: pcbRoutabilityParameters{StepMil: opt.StepMil, RadiusMil: opt.RadiusMil}, Limitations: []string{
+		"Local necessary condition per pad: neighbouring pads may share one channel; a pass does not reserve capacity or prove whole-net routing.",
+		"Via sites are counted up to 32 in flood order (nearest track path first); viaSitesCapped marks more.", "Track flood uses the minimum track width on the pad's own copper layer at a fixed grid; via sites are sampled on the same grid, so a fail means no witness at this resolution.",
+		"Via sites are checked against every pad, every via and the copper/keepouts on every copper layer that carries any; negative plane-layer copper (automatic anti-pads) is not modelled.",
+		"Escape radius is measured from the source pad's copper edge.",
+		"A reachable same-net via proves a layer change only on a measured two-layer board (via readback has no type or layer span); a reachable same-net through-hole pad needs a captured drill and metallization=true. Otherwise it is reported as unverified and, if it is the pad's only way out, the check is incomplete.",
+		"Board slots (MULTI-layer cutouts) keep max(8 mil, clearance, copper-to-edge) from copper and vias; stroked pour/fill outlines add half their stroke width.",
+		"Through-hole pads already reach every layer and are not flooded.",
+	}}
+	rep.BoardSemanticSHA256, _ = moduleCheckSemanticSHA256(snap)
+	incomplete := func(msg string) (pcbRoutabilityReport, error) {
+		rep.Status, rep.Reason = "incomplete", msg
+		return rep, fmt.Errorf("%s", msg)
+	}
+	geo, err := preparePCBRoutabilityGeometry(snap, opt.StepMil, opt.RadiusMil)
+	if err != nil {
+		return incomplete(err.Error())
+	}
+	ctx := geo.ctx
+	rep.Parameters = geo.params
 	filter := map[string]bool{}
 	for _, c := range opt.Components {
 		filter[c] = true
@@ -184,27 +242,8 @@ func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbR
 		}
 		pads = append(pads, pad)
 	}
-	// Pads are independent and the geometry context is read-only, so each
-	// worker writes only its own result slot.
 	var unverified []string
-	results := make([]pcbRoutabilityPad, len(pads))
-	errs := make([]error, len(pads))
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for w := 0; w < runtime.GOMAXPROCS(0); w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				results[i], errs[i] = ctx.routabilityPad(pads[i], opt.StepMil, opt.RadiusMil, captured)
-			}
-		}()
-	}
-	for i := range pads {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
+	results, errs := geo.floodPads(pads)
 	for i, result := range results {
 		if errs[i] != nil {
 			return incomplete(errs[i].Error())
@@ -236,7 +275,7 @@ func analyzePCBRoutability(snap *boardSnapshot, opt pcbRoutabilityOptions) (pcbR
 	}
 	if len(unverified) > 0 {
 		sort.Strings(unverified)
-		return incomplete(fmt.Sprintf("%d pad(s) escape only through a same-net transition whose layer span is unproven: %s", len(unverified), strings.Join(unverified, ", ")))
+		return incomplete(fmt.Sprintf("%d pad(s) are unverified (an unproven same-net transition is the only exit, or no grid point lands on the pad copper): %s", len(unverified), strings.Join(unverified, ", ")))
 	}
 	rep.Status = "pass"
 	return rep, nil
@@ -361,26 +400,45 @@ func (ctx *pcbEscapeContext) routabilityPad(pad pcbPadP, step, radius float64, c
 	inside := func(k node) bool {
 		return k.i >= -n && k.i <= n && k.j >= -n && k.j <= n && gap(k) <= radius+netPathGeomEps
 	}
-	seen := map[node]bool{{0, 0}: true}
-	queue := []node{{0, 0}}
+	// Seed the flood with every grid point on the pad's own copper: a POLYGON
+	// pad need not contain its origin, and a track must start on copper.
+	seen := map[node]bool{}
+	var queue []node
+	// halfDiag covers the farthest copper (a POLYGON's W/H is its centered
+	// envelope), so the pad's own copper lies inside this box.
+	m := int(math.Ceil(halfDiag/step)) + 1
+	for i := -m; i <= m; i++ {
+		for j := -m; j <= m; j++ {
+			k := node{i, j}
+			if gap(k) <= netPathGeomEps && track(point(i, j), point(i, j)) {
+				seen[k] = true
+				queue = append(queue, k)
+			}
+		}
+	}
+	if len(queue) == 0 && gap(node{0, 0}) > netPathGeomEps {
+		// No grid point lands on the copper: nothing here proves an exit
+		// or a trap, so do not guess.
+		out.Status = "unverified"
+		out.UnverifiedReason = fmt.Sprintf("pad copper contains no %.2f mil grid point; re-run with a smaller --step", step)
+		return out, nil
+	}
 	var reachable []node
 	exits := map[string]bool{}
-	if track(point(0, 0), point(0, 0)) {
-		for len(queue) > 0 {
-			cur := queue[0]
-			queue = queue[1:]
-			reachable = append(reachable, cur)
-			if gap(cur) > radius-step {
-				exits[pcbRoutabilityOctant(cur.i, cur.j)] = true
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		reachable = append(reachable, cur)
+		if gap(cur) > radius-step {
+			exits[pcbRoutabilityOctant(cur.i, cur.j)] = true
+		}
+		for _, d := range pcbRoutabilityDirections {
+			next := node{cur.i + d.di, cur.j + d.dj}
+			if seen[next] || !inside(next) || !track(point(cur.i, cur.j), point(next.i, next.j)) {
+				continue
 			}
-			for _, d := range pcbRoutabilityDirections {
-				next := node{cur.i + d.di, cur.j + d.dj}
-				if seen[next] || !inside(next) || !track(point(cur.i, cur.j), point(next.i, next.j)) {
-					continue
-				}
-				seen[next] = true
-				queue = append(queue, next)
-			}
+			seen[next] = true
+			queue = append(queue, next)
 		}
 	}
 	out.ReachableAreaMil2 = float64(len(reachable)) * step * step

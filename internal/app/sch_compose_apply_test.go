@@ -658,3 +658,61 @@ func TestComposeApplyUnwiredRecoveryStopsOnLiveSummaryChange(t *testing.T) {
 		})
 	}
 }
+
+// EasyEDA Pro places each unit of a multi-unit device as its own primitive
+// sharing one designator and uniqueId (#362). The project-wide guard must
+// accept that representation on another page while still blocking distinct
+// parts, units whose identity is unproven, and collisions with target refs.
+func TestComposeApplyProjectGuardAcceptsMultiUnitDeviceOnAnotherPage(t *testing.T) {
+	unit := func(primitiveID, uniqueID, subPart, page string) map[string]any {
+		return map[string]any{"componentType": "part", "designator": "U18", "primitiveId": primitiveID, "uniqueId": uniqueID, "subPartName": subPart, "pageUuid": page, "pageName": page}
+	}
+	for _, tc := range []struct {
+		name  string
+		units []any
+		want  string
+	}{
+		{"same-page-units", []any{unit("p1", "gge1_3", "BRIDGE.1", "bridge"), unit("p2", "gge1_3", "BRIDGE.2", "bridge"), unit("p3", "gge1_3", "BRIDGE.3", "bridge")}, ""},
+		{"cross-page-units", []any{unit("p1", "gge1_3", "BRIDGE.1", "bridge"), unit("p2", "gge1_3", "BRIDGE.2", "usb1")}, ""},
+		{"distinct-devices", []any{unit("p1", "gge1_3", "BRIDGE.1", "bridge"), unit("p2", "gge9", "BRIDGE.2", "usb1")}, "different uniqueId"},
+		{"missing-identity", []any{unit("p1", "", "BRIDGE.1", "bridge"), unit("p2", "", "BRIDGE.2", "bridge")}, "no uniqueId"},
+		{"same-unit-twice", []any{unit("p1", "gge1_3", "BRIDGE.1", "bridge"), unit("p2", "gge1_3", "BRIDGE.1", "usb1")}, "placed more than once"},
+		{"different-device-family", []any{unit("p1", "gge1_3", "BRIDGE.1", "bridge"), unit("p2", "gge1_3", "OPAMP.2", "bridge")}, "different devices"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, env := composeApplyFixture(t, false)
+			pb, err := schCompositionPlaybook(p, composeApplyBytes(t, env), true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			guard := pb.Steps[0]
+			if guard.ID != "verify-project-unique-designators" {
+				t.Fatalf("first step is %s", guard.ID)
+			}
+			r := env["result"].(map[string]any)
+			r["components"] = append(r["components"].([]any), tc.units...)
+			err = guard.ExpectSchematic.check(r, nil)
+			if tc.want == "" && err != nil {
+				t.Fatalf("legal multi-unit device on another page blocked apply: %v", err)
+			}
+			if tc.want != "" && (err == nil || !strings.Contains(err.Error(), "duplicate part designator U18") || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("got %v, want rejection containing %q", err, tc.want)
+			}
+		})
+	}
+	t.Run("target-ref-collides-with-units", func(t *testing.T) {
+		p, env := composeApplyFixture(t, false)
+		pb, err := schCompositionPlaybook(p, composeApplyBytes(t, env), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		targetRef := p.Layout.Placements[0].Designator
+		r := env["result"].(map[string]any)
+		r["components"] = append(r["components"].([]any),
+			map[string]any{"componentType": "part", "designator": targetRef, "primitiveId": "x1", "uniqueId": "gge7", "subPartName": "DEV.1"},
+			map[string]any{"componentType": "part", "designator": targetRef, "primitiveId": "x2", "uniqueId": "gge7", "subPartName": "DEV.2"})
+		if err := pb.Steps[0].ExpectSchematic.check(r, nil); err == nil || !strings.Contains(err.Error(), targetRef) {
+			t.Fatalf("multi-unit device reusing a target designator must still block: %v", err)
+		}
+	})
+}

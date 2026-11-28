@@ -15,6 +15,7 @@ easyeda <domain> <action> [flags]
 | `easyeda sch` | 原理图操作（connectivity / plan / apply / place / wire / drc / save / export …） |
 | `easyeda pcb` | PCB 操作（layout / line / via / import / align …） |
 | `easyeda pcb config` | 当前 PCB 配置：get / clearance / track / via / bind；局部参数修改、单位换算、dry-run 和真实回读 |
+| `easyeda selection` | 只读读取用户在当前原理图/PCB 画布上的选区（`selection.get`）；选区只用于定位，写入命令仍须显式传 id |
 | `easyeda bom` | BOM 导出与补全 |
 | `easyeda lib` | 器件库搜索、符号/封装/Device 资产创建与选型；`cbb search/get` 只读检索原生复用块身份与变体，`cbb export-source` 导出原生归档 |
 | `easyeda daemon` | 守护进程管理（start / stop / restart / health；restart 与 start 同为前台阻塞） |

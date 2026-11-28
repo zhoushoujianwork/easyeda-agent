@@ -32,6 +32,10 @@ type planApplyTrack struct {
 type planApplyVia struct {
 	Net  string
 	X, Y float64
+	// HoleMil and DiameterMil are optional (0 = the editor default). They are not
+	// part of the via's identity key: reconcile matches by net and position, and
+	// callers that need the size proven (pcb fanout) compare it after readback.
+	HoleMil, DiameterMil float64
 }
 
 type planApplyLiveLine struct {

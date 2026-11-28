@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 3,
+  "version": "v1.22.0",
+  "result": "pass",
+  "independentReview": "pass",
+  "acceptanceScope": "cli-fixes",
+  "deferredScope": "full-design-e2e",
+  "deferredUntil": "follow-up",
+  "scopeDecision": {
+    "approvedBy": "user",
+    "version": "v1.22.0",
+    "date": "2026-11-28",
+    "summary": "用户提出今天发版；被告知 selection.get 等连接器改动按版本规则须升中版本并提交现场验收与独立复核材料后，先要求修复 #365 并合入 #360，再要求写 Changelog 准备发 v1.22.0，并明确选择“定向验收，E2E 延期”：以全量自动回归、EdaDesk DEV 上多单元器件位号绑定的现场写入与保存重载回读、autoroute --net 的现场运行与回读、selection 读取用户真实选区、v1.21.0 负对照和候选制品等价性为准，完整设计 E2E 延期 follow-up。2026-11-28，#368、#370–#372 合入 dev 后，用户要求“准备发版本”：版本号仍为 v1.22.0，沿用同一定向范围，在源码候选 8594aa0e（运行时 1.22.0-dev.10）上补做第二轮：全量自动回归、多单元器件绑定与写前拒绝重跑、playbook 断言契约及其 v1.21.0 负对照、一键布局与 auto-place --dry-run 的现场运行；autoroute --net、selection 与 #365 负对照沿用第一轮。"
+  },
+  "sha256": {
+    "test-report.md": "56b6e1fcad18d2590c8e8ba7dac4c726c4c97375d962a64406cb87884e9d8bf7",
+    "baseline.md": "100d5e470a2e210274eb65a4bd295562cc9afd1624c901c73f1f3ca0db4fd3d7",
+    "test-cases.md": "effb112efba3f2523e5b8bab7e1bbf05957ce9908af85eec5e8894dbbe4927b3"
+  }
+}

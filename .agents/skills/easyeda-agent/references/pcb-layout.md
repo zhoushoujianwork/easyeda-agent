@@ -162,7 +162,7 @@ Region/keepout 是附加约束，不是换模型的理由。既有器件已经�
 fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未改设计的 PNG 字节必须变化；
 记录每轮 dump/render 路径、SHA256、检查项、findings 和 `fixesApplied`。只有第 1 轮与紧接着的
 第 2 轮都没有待修的明显布局/视觉 finding，且 `fixesApplied=false`，才可称整板 Layout 完成并
-进入用户确认；纯观察项可以保留，但必须说明为什么不需要修改。
+形成布局复核包；纯观察项可以保留，但必须说明为什么不需要修改。
 
 ### 实际回读辅助图
 
@@ -172,7 +172,7 @@ fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未�
 官方 `view-side bottom` 仍只是图层聚焦，不是翻板。SDK bbox、采样板框和浏览器字体的表示
 边界必须保留，未知孔径/样式不填造值。出图与图册见[清晰设计图交付](design-drawings.md)。
 
-### Layout 完成、局部电源铜与用户确认
+### Layout 完成、局部电源铜与布线授权
 
 模块候选全部执行不等于整板 Layout 已完成。先逐项落实板框、固定件、板边方向、机械/封装
 禁区、核心与专属外围、逐脚归属和预留通道；任何题目要求仍为 `incomplete` 时，都只能报告
@@ -188,20 +188,21 @@ fresh render 是 reload 后的新 capture 调用和新 artifact，不要求未�
 - 为后续走线保留的出口/通道和仍需用户取舍的项目，不用综合分数替用户作决定；
 - 当前版本的未完成项。存在机械违规、缺测或保存重载失败时，不请求把它当成完成态确认。
 
-展示复核包后停止在 Layout，等待用户明确回复“OK”“布局确认”或“可以布线”，也接受用户
-描述继续调整。用户提出修改时更新参数、重新生成候选、typed 执行并再次复核。用户也可以
-自己调整 EDA；这不是 Agent 使用 GUI 兜底。用户说调整完成并确认后，Agent 必须先重新 dump，
-以现场 anchor/角度重建参数基线并重跑布局事实检查，避免用旧候选坐标开始走线。
+复核包随布线批次进入执行计划和审批理由，不另设“布局确认”的口头等待。整板布线按
+[写入授权](../SKILL.md#设计与执行边界)执行：宿主有审批卡或 Auto 模式时由宿主判定批次；没有宿主审批
+能力且用户尚未授权整板布线时，展示复核包并请求授权。用户提出修改时更新参数、重新生成候选、
+typed 执行并再次复核。用户也可以自己调整 EDA；这不是 Agent 使用 GUI 兜底。用户说调整完成后，
+Agent 必须先重新 dump，以现场 anchor/角度重建参数基线并重跑布局事实检查，避免用旧候选坐标开始走线。
 
 LDO、DCDC 等电源模块是例外：输入电容到芯片、芯片到输出电容、局部 GND 回流及必要的
-EP/地过孔直接决定模块布局，可以在整板确认前作为一个参数化整体完成。局部铜必须逐网回读、
+EP/地过孔直接决定模块布局，可以在整板布线前作为一个参数化整体完成。局部铜必须逐网回读、
 保存，作为候选比较和布局复核包的一部分；以后移动或旋转模块时，器件与这些 track/via 一起
 重算，不能只移动器件。已有局部铜而工具还不能整体变换时，候选应拒绝移动。该例外不包含
 跨模块电源主干、普通信号、全局铺铜或缝合孔。
 
-没有用户对**当前回读版本**的明确确认，不开始上述例外之外的 track/via/pour 写入，也不运行
-会改变整板铜的自动布线命令。确认记录写明基线哈希、时间和用户原话；它是设计评审记录，
-不是 `workflow/stage`、评分、版本许可或 CLI 解锁令牌。
+Layout 未完成或复核包存在未完成项时，不开始上述例外之外的 track/via/pour 写入，也不运行
+会改变整板铜的自动布线命令。布线批次必须基于当前 fresh dump 的基线哈希；授权或审批记录是执行
+依据，不是 `workflow/stage`、评分、版本许可或 CLI 解锁令牌。
 
 ### Layout adjustment (deterministic — EasyEDA exposes no align/grid API)
 
@@ -228,7 +229,7 @@ EP/地过孔直接决定模块布局，可以在整板确认前作为一个参�
 - `pcb.grid_snap` — round component anchors to `grid` (mil; SMD 25, THT 50).
 - `pcb.components.move` — translate a group by relative `dx` / `dy`.
 - `pcb.components.arrange` — coarse auto-layout **seed** (priority P6): `mode=cluster` groups by shared local nets then grid-packs each cluster into a tidy non-overlapping block; `mode=grid` packs a flat grid. Skips locked parts.
-- `easyeda pcb auto-place` — **module-aware** heuristic placement (daemon-side). Main chips (≥ `--main-pins`, default 8, distinct pins) are anchors that stay put — but a **connector-designated part (J*/CN*/USB*/SIM*/BAT*) never competes for main whatever its pin count (#131)**: a 16-pad USB-C out-pins a small IC, and calling it main made it steal the decoupling caps that belong to the regulator; high- and low-pin connectors alike are skipped with a diag for `place-constrained` to seat. `--anchor U1,U5` FORCES parts into the main set and `--exclude-main <des>` bars them (an excluded high-pin part stays put) — explicit beats every heuristic; every satellite (cap/R/LED) is pulled to the chip edge nearest the pad it connects to (the **nearest same-net pad** — a chip repeats GND/VCC many times), then packed along that edge with no overlap: decoupling caps land by their power pin (3V3/VCC), signal R's by their signal pin, an LED chains beside its series resistor. **v1.1 also re-orients** each 2-pin satellite so its connecting pad faces the chip (rotation 0/90/180/270, packed with the post-rotation bbox); `--no-rotate` keeps the v1 translate-only behavior. **With 2+ main chips**, any that overlap / sit closer than `--multi-gap` (default 150 mil) are spread into a left-to-right row (leftmost stays put) before satellites are placed; `--multi-gap 0` disables it. **Spacing is rule-aware**: `--gap`/`--pitch` default to values derived from the board's live DRC rule (clearance + track width, via `pcb.drc.rules`) instead of a fixed 40/30, so packing never creates sub-clearance corridors. `--dry-run` prints the plan without moving. It is a SEED: use typed `refine`/`place-constrained` and verify with `pcb drc`. Prefer over `arrange` when there is a clear main chip.
+- `easyeda pcb auto-place` — **module-aware** heuristic placement (daemon-side). Main chips (≥ `--main-pins`, default 8, distinct pins) are anchors that stay put — but a **connector-designated part (J*/CN*/USB*/SIM*/BAT*) never competes for main whatever its pin count (#131)**: a 16-pad USB-C out-pins a small IC, and calling it main made it steal the decoupling caps that belong to the regulator; high- and low-pin connectors alike are skipped with a diag for `place-constrained` to seat. `--anchor U1,U5` FORCES parts into the main set and `--exclude-main <des>` bars them (an excluded high-pin part stays put) — explicit beats every heuristic; every satellite (cap/R/LED) is pulled to the chip edge nearest the pad it connects to (the **nearest same-net pad** — a chip repeats GND/VCC many times), then packed with no overlap by a **cost-based slot search (v2)**: each part scores slots on up to 3 rows parallel to the edge (a blocked inner row falls back outward) as distance from its pin + a penalty for parking in front of a different-net pad (escape strip) + (inductors only) a penalty for being within 300 mil of a keep-out or crystal, and takes the cheapest free slot; one occupancy map spans all edges, and every part that does not move (chips, locked parts, fixed group members, skipped connectors) is an obstacle. Decoupling caps land by their power pin (3V3/VCC) with the smallest capacitance (parsed from the component Name, e.g. `100nF`) nearest the pin, then crystals, then signal R's by their signal pin; an LED chains beside its series resistor. A decoupling cap placed more than 100 mil (crystal 160 mil) from its pin is still moved, but a diag reports the distance and what blocks the nearer slots (`blocked by <des|keep-out>; move it ~N mil away`, `crowded`, or `no closer free slot`) — read those diags before accepting the seed. To preview a hand-placed chip/connector/antenna move before touching the board, `easyeda pcb layout simulate --board dump.json [--poses poses.json] --out sim.json` re-runs this same planner offline (satellites cannot be posed; output: final poses, ratsnest, crossings, issues). **RF matching chain**: an antenna (`ANT*`/`AE*`, or a Name containing "antenna" on a part with ≤4 pads) is a mechanical anchor — never moved, an obstacle. The netlist has no RF net class, so the chain is found by topology: from the antenna feed net through 2-pin series parts to a net with a main-chip pad (≤6 hops), plus 2-pin shunts to ground. It is placed before every other group on the straight line from the chip RF pad to the antenna feed pad, antenna end first (moves carry `edge: "rf-chain"`, `via: "rf:<antenna>"`); keep-outs near the antenna do not block chain members, and a member more than 40 mil off the line gets a diag (`free the straight path between them`). No chain found → a diag on the antenna and its parts fall back to normal packing. **v1.1 also re-orients** each 2-pin satellite so its connecting pad faces the chip (rotation 0/90/180/270, packed with the post-rotation bbox); `--no-rotate` keeps the v1 translate-only behavior. **With 2+ main chips**, any that overlap / sit closer than `--multi-gap` (default 150 mil) are spread into a left-to-right row (leftmost stays put) before satellites are placed; `--multi-gap 0` disables it. **Spacing is rule-aware**: `--gap`/`--pitch` default to values derived from the board's live DRC rule (clearance + track width, via `pcb.drc.rules`) instead of a fixed 40/30, so packing never creates sub-clearance corridors. `--dry-run` prints the plan without moving. It is a SEED: use typed `refine`/`place-constrained` and verify with `pcb drc`. Prefer over `arrange` when there is a clear main chip.
 - `easyeda pcb outline-fit` — **tighten the board outline to the placed parts** (daemon-side). Reads every component's bbox, adds `--margin` (default 100 mil), and replaces the outline with that rectangle. Fixes low utilization (ceshi 17%→71%); reports util before/after. **Run AFTER `auto-place`, BEFORE pour/route** (changing the outline after copper exists can strand it). `--dry-run` previews.
 - `easyeda pcb outline-round` — **rounded-rectangle board outline** (圆角板框, daemon-side). Rounds the current outline centerline bbox (or `--rect x0,y0,x1,y1`, `--margin` to expand) with corner `--radius` (default ≈12% of the shorter side, clamped to half). It writes one locked BOARD_OUTLINE polyline with four native 90° ARC commands and 10mil line width. Run BEFORE pour/route. `--dry-run` prints the native source; `pcb outline-get` reads centerline width/height/radius/lineWidth/locked. The old `--segments` chord approximation is obsolete.
 - `easyeda pcb silk-align` — 根据真实文字 bbox、焊盘、完整实测器件包络、禁布区、板边及其他/冻结文字规划位号。
@@ -265,7 +266,8 @@ easyeda pcb image delete --id <primitiveId>
 PNG/JPEG 转制造丝印需要人工调节图稿，不提供自动转换命令，也不列为后续开发目标。
 已有 SVG 丝印导入保持原契约；[透明 PNG 离线样例](examples/image-import/README.md)仅验证参考图片。
 
-- `easyeda pcb silk-delete --id <primitiveId>` — 删除**一条**自由丝印字符串（`pcb.silk.list` 里 `kind=string`，层 3/4）并核对消失。位号/值属性 ID、其他层、锁定和不存在的 ID 在调用 delete 前拒绝，额外 payload 键也拒绝。成功须 delete 返回 true 且新 `getAll()` 不含该 ID；库存读不到不算消失。`verified:false` 或 `partial:true` 使 CLI/`easyeda call`/Apply 非零退出，Apply 不允许 retry、通用 verify 或 continue，失败 journal 保存原回包。最终仍须 save → reload → 新 `pcb.silk.list`。
+- `easyeda pcb silk-list` — 只读列出当前 PCB 全部丝印文字：器件位号/值属性（`kind=attribute`，带 `componentId`、`componentLayer`）与自由字符串（`kind=string`），每条含 `primitiveId`、`text`、`layer`（3 顶/4 底）、`mirror`、`fontFamily`、`fontSize`、`x/y`，另有 `count`。与 `easyeda call pcb.silk.list` 是同一动作；`silk-import-svg` 的图形不在其中。
+- `easyeda pcb silk-delete --id <primitiveId>` — 删除**一条**自由丝印字符串（`pcb silk-list` 里 `kind=string`，层 3/4）并核对消失。位号/值属性 ID、其他层、锁定和不存在的 ID 在调用 delete 前拒绝，额外 payload 键也拒绝。成功须 delete 返回 true 且新 `getAll()` 不含该 ID；库存读不到不算消失。`verified:false` 或 `partial:true` 使 CLI/`easyeda call`/Apply 非零退出，Apply 不允许 retry、通用 verify 或 continue，失败 journal 保存原回包。最终仍须 save → reload → 新 `pcb silk-list`。
 - `easyeda pcb silk-import-svg` — **import an SVG (logo / brand mark / artwork) as a FILLED silkscreen graphic** (`pcb.silk.import_svg` → `eda.pcb_PrimitiveImage.create`) — the typed path for placing a vector graphic on a PCB **without `debug.exec_js`**. The CLI parses the SVG (path `M/L/H/V/C/S/Q/T/A/Z`, `polygon`/`polyline`/`rect`/`circle`/`ellipse`/`line`, nested `transform`, viewBox), **flattens every curve to line segments**, applies viewBox→mil scaling, and sends the resulting **complex polygon** (contours + **even-odd holes**, so a logo's counters — the hole in an "o" — punch through) to the connector, which creates **one** image primitive on the silk layer. `--file <path>`/`--svg <string>`; `--x/--y` (or `--at "x,y"`) = where the artwork's **top-left** lands (mil); `--width`/`--height` in mil (`--keep-aspect` for uniform scaling; only one given ⇒ aspect always preserved); `--layer` 3=top (default) / 4=bottom (auto-mirrors); `--rotation`/`--mirror`; `--flatten-tol` (curve tolerance mil). **`--dry-run` parses + scales WITHOUT touching the editor** and prints target bbox / contour count / vertex count / **min-feature** (a DFM proxy — warns when < `--min-line-width`, JLCPCB silk min ≈ 6 mil) — always dry-run first. **Fill rule is even-odd; stroke-only art is not stroked (all geometry is filled).** Returns `primitiveId` + rendered `bbox`. **Real-machine verified**: creates on top/bottom silk, holes punch, rotation/mirror honored, and it **persists across `doc reload` + `pcb save`** (same primitiveId/bbox). Note: the image is a distinct primitive type — it does **not** appear in `pcb silk-list` (that lists silk *text*); read it back via `pcb check` (runs clean) or a snapshot. After a real import follow reload → check → `pcb save`.
 - **原生泪滴对象 — `unsupported`.** `eda.*` 没有创建原生泪滴的接口（0.4.25 类型与 Web 4.1.78 运行时均查无；
   TearDrop 只是 Gerber 导出的对象类别）。禁止用交互菜单补做。题目允许「线条形状泪滴」时用下面的
@@ -533,6 +535,6 @@ Operational order:
 3. **P6 coarse seed** — when the board has a clear main chip, `easyeda pcb auto-place` (module-aware: satellites hug the chip pin they connect to); otherwise `pcb.components.arrange mode=cluster` for a net-clustered seed. Run `--dry-run` first to review the plan.
 4. **P2/P4 local overrides** — decoupling caps tight to the IC power pin (≤2-layer ≤150 mil; 4+-layer ≤250 mil **but leave via room**); crystal + 2 load caps tight to the MCU osc pins inside a 200 mil guard; minimize the switcher input loop `{Cin + switch + catch-diode}` bbox; spread hot parts ≥400 mil; keep heat-sensitive parts (electrolytics/crystals/sensors) ≥200 mil from heat.
 5. **P7 tidy-up** — `pcb.align` / `pcb.distribute` / `pcb.grid_snap`, **without breaking any function-driven position**.
-6. **Verify** — `pcb.drc.check` (and the PCB linter once it lands); fix by rule number. Pull fresh primitiveIds before each mutation; confirm destructive ops; log before/after.
+6. **Verify** — `pcb.drc.check` (and the PCB linter once it lands); fix by rule number. Pull fresh primitiveIds before each mutation; put destructive-op `--dry-run` counts in the write plan for host approval (see SKILL.md write authorization); log before/after.
 
 **Key corrections from review** (see the conventions doc): decoupling effectiveness is governed by the cap's **mounting-loop inductance** (pad→via→plane), not raw distance; **default a single solid ground plane** partitioned by placement (do *not* split-ground by default); all hard thresholds are **conditioned on stackup / fab / enclosure** context.

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -50,7 +52,65 @@ type skillStatusReport struct {
 	CLIVersion string                   `json:"cliVersion"`
 	Latest     string                   `json:"latest,omitempty"`
 	LatestErr  string                   `json:"latestError,omitempty"`
+	Active     activeSkill              `json:"active"`
 	Targets    []selfupdate.SkillTarget `json:"targets"`
+}
+
+// activeSkill is the Skill copy that commands such as `skill read` actually
+// load: the same resolver order, so $EASYEDA_SKILLS_DIR (a host such as
+// EdaDesk pinning its verified copy) wins over the personal client dirs.
+type activeSkill struct {
+	Dir     string `json:"dir,omitempty"`
+	Version string `json:"version,omitempty"`
+	// Source is "EASYEDA_SKILLS_DIR", a client name ("claude"|"codex"|"agents"),
+	// or "repository" (walked up from the binary or working directory).
+	Source string `json:"source,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+func resolveActiveSkill() activeSkill {
+	entry, err := (skillAsset{name: "SKILL.md", rels: []string{"easyeda-agent/SKILL.md"}, flagHint: "--skill-root"}).resolve("")
+	if err != nil {
+		return activeSkill{Error: strings.SplitN(err.Error(), "\n", 2)[0]}
+	}
+	dir := filepath.Dir(entry)
+	same := func(other string) bool {
+		a, errA := filepath.EvalSymlinks(dir)
+		b, errB := filepath.EvalSymlinks(other)
+		return errA == nil && errB == nil && a == b
+	}
+	active := activeSkill{Dir: dir, Source: "repository"}
+	if root := strings.TrimSpace(os.Getenv("EASYEDA_SKILLS_DIR")); root != "" && same(filepath.Join(root, "easyeda-agent")) {
+		active.Source = "EASYEDA_SKILLS_DIR"
+	} else {
+		for _, t := range selfupdate.Targets(true) {
+			if same(t.Dir) {
+				active.Source = t.Client
+				break
+			}
+		}
+	}
+	if v, verr := selfupdate.SkillVersionAt(dir); verr != nil {
+		active.Error = verr.Error()
+	} else {
+		active.Version = v
+	}
+	return active
+}
+
+// formatActiveSkill is the "Active:" line of `skill status`: the copy commands load.
+func formatActiveSkill(a activeSkill) string {
+	if a.Dir == "" {
+		return fmt.Sprintf("Active: (none: %s)", a.Error)
+	}
+	v := a.Version
+	switch {
+	case a.Error != "":
+		v = "unknown (" + a.Error + ")"
+	case v == "":
+		v = "unknown"
+	}
+	return fmt.Sprintf("Active: %s  (%s)  %s", v, a.Source, a.Dir)
 }
 
 func newSkillStatusCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -68,6 +128,7 @@ func newSkillStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 
 			rep := skillStatusReport{
 				CLIVersion: version.Version,
+				Active:     resolveActiveSkill(),
 				Targets:    selfupdate.Targets(false),
 			}
 			if latest, err := selfupdate.LatestReleaseVersion(ctx); err != nil {
@@ -92,6 +153,7 @@ func newSkillStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 			} else {
 				fmt.Fprintf(stdout, "Latest: (unavailable: %s)\n", rep.LatestErr)
 			}
+			fmt.Fprintln(stdout, formatActiveSkill(rep.Active))
 			fmt.Fprintln(stdout, "Skill dirs:")
 			for _, t := range rep.Targets {
 				state := t.Installed

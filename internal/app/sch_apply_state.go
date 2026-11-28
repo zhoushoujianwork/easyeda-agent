@@ -7,6 +7,8 @@ import (
 	"math"
 	"slices"
 	"strings"
+
+	"github.com/zhoushoujianwork/easyeda-agent/internal/connectivity"
 )
 
 // These expectations refer to physical part designators and pin numbers, never
@@ -340,7 +342,7 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 	if !ok {
 		return fmt.Errorf("components must be an available array")
 	}
-	parts := map[string]map[string]any{}
+	var records []map[string]any
 	for _, entry := range components {
 		part, ok := entry.(map[string]any)
 		if !ok {
@@ -357,10 +359,21 @@ func (e *schematicStateExpectation) check(result any, vars map[string]string) er
 		if !ok || ref == "" {
 			return fmt.Errorf("part %v has no designator", part["primitiveId"])
 		}
-		if _, exists := parts[ref]; exists {
-			return fmt.Errorf("duplicate part designator %s; cannot attribute pins unambiguously", ref)
+		records = append(records, part)
+	}
+	// Sub-parts of one multi-unit device legitimately repeat a designator;
+	// only records proven to be units of one device (same uniqueId, distinct
+	// subPartName) are accepted. Distinct parts still fail here.
+	groups, _, err := connectivity.GroupPartsByDesignator(records)
+	if err != nil {
+		return fmt.Errorf("duplicate part designator %w; cannot attribute pins unambiguously", err)
+	}
+	parts := map[string]map[string]any{}
+	for ref, units := range groups {
+		parts[ref] = units[0]
+		if _, want := expected.Parts[ref]; want && len(units) > 1 {
+			return fmt.Errorf("%s is a multi-unit device with %d placed sub-parts; a single-instance expectation cannot attribute it", ref, len(units))
 		}
-		parts[ref] = part
 	}
 	for _, ref := range expected.AbsentParts {
 		if _, exists := parts[ref]; exists {

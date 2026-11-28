@@ -509,7 +509,9 @@ func TestPlanShortRoutes_MultilayerFinePitch(t *testing.T) {
 
 	board := []apComp{
 		// Pad a sits in a fine-pitch field: an other-net pad 20mil away (< finePitch 26).
-		mkComp("a", "A", 0, 0, 50, 50, []apPad{p("1", "5V", 0, 0), p("2", "SIG", 0, 20)}),
+		// Pads are real 10×10: sizeless ones are nominal 24mil circles that leave
+		// no copper-to-copper room at 20mil pitch (#310).
+		mkComp("a", "A", 0, 0, 50, 50, []apPad{sized(p("1", "5V", 0, 0)), sized(p("2", "SIG", 0, 20))}),
 		// Far endpoint (> maxLen) forces the multilayer detour.
 		mkComp("b", "B", 2000, 0, 50, 50, []apPad{p("1", "5V", 2000, 0)}),
 	}
@@ -577,4 +579,9 @@ func TestPlanShortRoutes_RuleUnitEquivalence(t *testing.T) {
 			t.Fatalf("mil routing differs: segs=%+v vias=%+v diags=%+v", segs, vias, diags)
 		}
 	}
+}
+
+func sized(pd apPad) apPad {
+	pd.w, pd.h = 10, 10
+	return pd
 }

@@ -145,7 +145,7 @@ easyeda daemon health
   `EASYEDA_SKILL_PRESERVE=1`(保留本地改动);关掉用 `daemon start --auto-update-skill=false`。
   手动触发/查看:
   ```bash
-  easyeda skill status      # 各 skill 目录版本 vs 最新 release
+  easyeda skill status      # 命令实际加载的 Skill（Active）与各 skill 目录版本 vs 最新 release
   easyeda skill sync        # 立即同步到最新(--version 锁版本,--preserve 保留本地改动)
   easyeda update --check    # 想连 CLI 二进制和连接器一起看时用这个
   ```

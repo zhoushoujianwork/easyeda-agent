@@ -212,7 +212,7 @@ typed 连接器后重新读取。dry-run 同样不补发 debug 查询，不能�
 | 基础放置 | `sch materialize`：已知库身份和 placement → 仅放件队列。它不是完整模块绘图器；`--with-connectivity` 已停用。 |
 | 明确的标记增量 | `sch plan before.json after.json`：仅新增 `power/ground/net_port_in/net_port_out/net_port_bi` 连接；对应脚原为 `unconnected` 时，目标移除此声明；原为 NC 时，目标须同时清 NC 并新增明确标记连接。其他器件/引脚/NC 变更、删网或重接均拒绝。 |
 | 只画框和标题 | `sch frame apply/check --from frames.json`；字段见 `sch frame --help` 与 [actions.md](actions.md)。 |
-| 执行队列 | `sch apply plan.json`，顺序等待 WebSocket 响应并记录 journal。 |
+| 执行队列 | `sch apply plan.json`，顺序等待 WebSocket 响应并记录 journal。手写队列格式见 `sch apply --help`：`assert`/`capture` 路径相对动作的 `result`，以 `$` 开头（`$.count`、`$.texts[0].primitiveId`，不写 `result.`）；判定式为 `==X`、`!=X`、`>=N`、`len==N`、`exists`、`true` 等；`${变量}` 替换 payload、flags、args、notify 和判定式，不替换路径。`--dry-run` 校验这些写法，但不知道动作实际返回哪些字段；路径缺失时错误会列出 `result` 的顶层字段。 |
 
 `sch materialize --with-connectivity` 已停止生成队列：旧路径逐脚接线未规划碰撞，可能把相邻
 引脚短接，也不能替代模块内部短导线。完整重建走 `lib-layout → compose → apply`，保留

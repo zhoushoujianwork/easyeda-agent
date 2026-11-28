@@ -75,7 +75,7 @@ func parseSchDesignatorBaseline(raw []byte, allowUnwired ...bool) (schDesignator
 	if !ok {
 		return out, fmt.Errorf("component inventory unavailable")
 	}
-	seen, canonical := map[string]bool{}, map[string]bool{}
+	seen, canonical := map[string]bool{}, map[string][]map[string]any{}
 	for _, item := range components {
 		c, ok := item.(map[string]any)
 		if !ok {
@@ -96,10 +96,7 @@ func parseSchDesignatorBaseline(raw []byte, allowUnwired ...bool) (schDesignator
 		if err != nil {
 			return out, err
 		}
-		if canonical[id] {
-			return out, fmt.Errorf("duplicate component binding %s", id)
-		}
-		canonical[id] = true
+		canonical[id] = append(canonical[id], c)
 		if _, ok := c["uniqueId"].(string); !ok || (stringVal(c["uniqueId"]) == "" && !verifiedUnwired) {
 			return out, fmt.Errorf("%s: uniqueId unavailable", pid)
 		}
@@ -150,6 +147,11 @@ func parseSchDesignatorBaseline(raw []byte, allowUnwired ...bool) (schDesignator
 	if len(out.Parts) == 0 {
 		return out, fmt.Errorf("no placed parts in baseline")
 	}
+	for id, records := range canonical {
+		if err := schDesignatorSameDevice(id, records); err != nil {
+			return out, err
+		}
+	}
 	if verifiedUnwired {
 		_, provenance, err := schComposeKnownUnconnectedConnectivity(raw, out.Result)
 		if err != nil {
@@ -185,8 +187,49 @@ func schDesignatorComponentID(c map[string]any) (string, error) {
 	return "cmp-" + ref, nil
 }
 
+// schDesignatorSameDevice accepts several placed records under one canonical
+// ID only when they are the units of one multi-unit device (same reference and
+// the read-back proof of connectivity.CheckMultiUnitParts); anything else is
+// two parts claiming one identity.
+func schDesignatorSameDevice(id string, records []map[string]any) error {
+	if len(records) < 2 {
+		return nil
+	}
+	ref := stringVal(records[0]["designator"])
+	for _, r := range records[1:] {
+		if stringVal(r["designator"]) != ref {
+			return fmt.Errorf("duplicate component binding %s", id)
+		}
+	}
+	if err := connectivity.CheckMultiUnitParts(ref, records); err != nil {
+		return fmt.Errorf("duplicate component binding %s: %w", id, err)
+	}
+	return nil
+}
+
+// schDesignatorUnits lists the placed records of each canonical component in
+// sub-part order, so every unit of a multi-unit device is handled together.
+func schDesignatorUnits(before schDesignatorBaseline) map[string][]string {
+	units := map[string][]string{}
+	for pid, id := range before.IDs {
+		units[id] = append(units[id], pid)
+	}
+	for _, pids := range units {
+		sort.Slice(pids, func(i, j int) bool {
+			a, b := stringVal(before.Parts[pids[i]]["subPartName"]), stringVal(before.Parts[pids[j]]["subPartName"])
+			if a != b {
+				return a < b
+			}
+			return pids[i] < pids[j]
+		})
+	}
+	return units
+}
+
 func schDesignatorTargets(before schDesignatorBaseline, target connectivity.Document) (map[string]connectivity.Component, error) {
-	if err := connectivity.ValidatePlacementDesignators(target); err != nil {
+	// Renumbering and binding keep existing instances, so a multi-unit device
+	// is allowed here; only placement from connectivity refuses it.
+	if err := connectivity.ValidateDesignators(target); err != nil {
 		return nil, err
 	}
 	// A merged full-project target can retain its originating page's documentId.
@@ -210,21 +253,37 @@ func schDesignatorTargets(before schDesignatorBaseline, target connectivity.Docu
 	for _, c := range target.Connections {
 		nets[[2]string{c.ComponentID, c.PinNumber}] = names[c.NetID]
 	}
-	for pid, old := range before.Parts {
-		id := before.IDs[pid]
+	for id, pids := range schDesignatorUnits(before) {
 		c, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("%s: placed component %s missing from full-project target", pid, id)
+			return nil, fmt.Errorf("%s: placed component %s missing from full-project target", pids[0], id)
 		}
-		dev := old["device"].(map[string]any)
-		if c.Device.UUID != stringVal(dev["uuid"]) || c.Device.LibraryUUID != stringVal(dev["libraryUuid"]) {
-			return nil, fmt.Errorf("%s: target changes official library identity", id)
+		// All units must be repaired together; renaming the units on this page
+		// alone would split the device's reference and binding across pages.
+		if len(c.SubParts) > len(pids) {
+			return nil, fmt.Errorf("%s (%s): multi-unit device has %d of %d units on this page; designator repair needs every unit on the repaired page", id, c.Ref, len(pids), len(c.SubParts))
 		}
 		pins := map[string]connectivity.Pin{}
 		for _, p := range c.Pins {
 			pins[p.Number] = p
 		}
-		observed := old["pins"].([]any)
+		// A multi-unit device spreads its pins over its units: compare the union.
+		observed, numbers := []any{}, map[string]bool{}
+		for _, pid := range pids {
+			old := before.Parts[pid]
+			dev := old["device"].(map[string]any)
+			if c.Device.UUID != stringVal(dev["uuid"]) || c.Device.LibraryUUID != stringVal(dev["libraryUuid"]) {
+				return nil, fmt.Errorf("%s: target changes official library identity", id)
+			}
+			for _, item := range old["pins"].([]any) {
+				number := schDesignatorPinNumber(item.(map[string]any))
+				if numbers[number] {
+					return nil, fmt.Errorf("%s.%s: pin appears on more than one unit", id, number)
+				}
+				numbers[number] = true
+				observed = append(observed, item)
+			}
+		}
 		if len(pins) != len(observed) {
 			return nil, fmt.Errorf("%s: target changes pin inventory", id)
 		}
@@ -261,25 +320,22 @@ func buildSchDesignatorsPlan(before schDesignatorBaseline, target connectivity.D
 	pb.Steps = append(pb.Steps, guard("before"))
 	// Follow the canonical document's declaration order; API enumeration order
 	// must never alter numbering or the queued repair order.
-	pids := map[string]string{}
-	for pid, id := range before.IDs {
-		pids[id] = pid
-	}
+	// Every unit of a multi-unit device gets the same reference and binding;
+	// binding only some units would leave the device unprovable.
+	units := schDesignatorUnits(before)
 	for _, c := range target.Components {
-		pid, found := pids[c.ID]
-		if !found {
-			continue
+		for _, pid := range units[c.ID] {
+			old := before.Parts[pid]
+			props, _ := old["otherProperty"].(map[string]any)
+			if stringVal(old["designator"]) == c.Ref && props[connectivity.ComponentIDProperty] == c.ID && (c.Role == "" || props[connectivity.ComponentRoleProperty] == c.Role) {
+				continue
+			}
+			attributes := map[string]any{connectivity.ComponentIDProperty: c.ID}
+			if byID[c.ID].Role != "" {
+				attributes[connectivity.ComponentRoleProperty] = c.Role
+			}
+			pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("bind-%03d", len(pb.Steps)), Action: "schematic.component.modify", Payload: map[string]any{"primitiveId": pid, "patch": map[string]any{"designator": c.Ref, "customAttributes": attributes}}})
 		}
-		old := before.Parts[pid]
-		props, _ := old["otherProperty"].(map[string]any)
-		if stringVal(old["designator"]) == c.Ref && props[connectivity.ComponentIDProperty] == c.ID && (c.Role == "" || props[connectivity.ComponentRoleProperty] == c.Role) {
-			continue
-		}
-		attributes := map[string]any{connectivity.ComponentIDProperty: c.ID}
-		if byID[c.ID].Role != "" {
-			attributes[connectivity.ComponentRoleProperty] = c.Role
-		}
-		pb.Steps = append(pb.Steps, playbookStep{ID: fmt.Sprintf("bind-%03d", len(pb.Steps)), Action: "schematic.component.modify", Payload: map[string]any{"primitiveId": pid, "patch": map[string]any{"designator": c.Ref, "customAttributes": attributes}}})
 	}
 	pb.Steps = append(pb.Steps, guard("after"), playbookStep{ID: "save", Action: "schematic.save"})
 	return pb, nil
@@ -545,6 +601,7 @@ func verifySchDesignatorGlobal(before schDesignatorBaseline, target connectivity
 		return fmt.Errorf("global reference inventory missing")
 	}
 	seen := map[string]bool{}
+	units := map[string][]map[string]any{}
 	for _, item := range components {
 		c, ok := item.(map[string]any)
 		if !ok {
@@ -564,6 +621,9 @@ func verifySchDesignatorGlobal(before schDesignatorBaseline, target connectivity
 			}
 			if page != before.Context.DocumentUUID {
 				if wantIDs[id] {
+					if refs[strings.ToUpper(stringVal(c["designator"]))] == id {
+						return fmt.Errorf("multi-unit device %s has a unit on page %s; page-scoped binding would bind only some of its units", id, page)
+					}
 					return fmt.Errorf("global component %s on page %s duplicates a target component ID", id, page)
 				}
 				if owner, found := refs[strings.ToUpper(stringVal(c["designator"]))]; found {
@@ -572,12 +632,19 @@ func verifySchDesignatorGlobal(before schDesignatorBaseline, target connectivity
 				continue
 			}
 		}
-		if !wantIDs[id] || seen[id] {
+		units[id] = append(units[id], c)
+		if !wantIDs[id] {
 			return fmt.Errorf("global component %s is missing from target or duplicated", id)
 		}
 		seen[id] = true
 		if owner, found := refs[strings.ToUpper(stringVal(c["designator"]))]; found && owner != id {
 			return fmt.Errorf("target reference %s is already occupied by %s", c["designator"], id)
+		}
+	}
+	// Units of one multi-unit device share an ID; anything else is a duplicate.
+	for id, records := range units {
+		if err := schDesignatorSameDevice(id, records); err != nil {
+			return fmt.Errorf("global component %s is missing from target or duplicated: %w", id, err)
 		}
 	}
 	for id := range wantIDs {
