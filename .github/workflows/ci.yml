@@ -1,9 +1,13 @@
 name: CI
 
+# docs/ is not built or packaged. Changes there skip CI; the docs link check
+# (scripts/tests/test_agent_skills.py) still runs with the next code change.
 on:
   push:
     branches: [main, dev]
+    paths-ignore: ['docs/**']
   pull_request:
+    paths-ignore: ['docs/**']
   workflow_dispatch:
 
 permissions:
