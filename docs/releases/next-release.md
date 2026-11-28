@@ -1,3 +1,10 @@
+# v1.22.0 已发布
+
+当前正式版为 [v1.22.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.22.0)（2026-11-28 发布）。
+本版新增 `easyeda selection`、多单元器件位号绑定、布线流水线、`pcb layout simulate` 与一键布局、auto-place v2 等，
+连接器运行时有变化，按中版本发布；schema 3 `cli-fixes` 定向范围，两轮现场验收与独立复核，完整设计 E2E 延期
+follow-up。来源、检查、资产 SHA256 与市场状态见 [v1.22.0 发布记录](release-1.22.md)。
+
 # v1.21.0 已发布
 
 当前正式版为 [v1.21.0](https://github.com/zhoushoujianwork/easyeda-agent/releases/tag/v1.21.0)（2026-11-25 发布）。
