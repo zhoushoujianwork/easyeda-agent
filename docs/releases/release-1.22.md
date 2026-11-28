@@ -57,8 +57,9 @@
 
 - ClawHub：返回 `Published easyeda-agent@1.22.0`，回执 `k979qqe7wafj0vj8fdvgxw78dh8k2h3x`；公开 latest 是否已切换未核对。
 - SkillHub：`Publish skill to skillhub.cn` workflow 成功（`easyeda-agent v1.22.0`），前台审核状态未核对。
-- DSH 插件市场与立创连接器市场本轮未更新；连接器运行时有变化，需要时另行人工投递。
-- EdaDesk 正式版仍内置 v1.21.0，需另行发布 EdaDesk 才会带上本版。
+- DSH 插件市场（2026-11-28 发布后补投）：目录条目 tarball 由 v1.20.0 改为 v1.22.0，PR [awesome-dsh-plugin#19638](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/19638) 待维护者合并；资产 SHA256 `f3ad215a…` 与 `checksums.txt` 一致，包内版本 1.22.0，打包测试仍断言 12 个工具。合并且目录每日重建前市场仍是旧地址。
+- 立创连接器市场（2026-11-28 补投）：用户登录后在“扩展管理 → 更新”上传 Release 的 `easyeda-agent-connector.eext`（SHA256 `0607ea70…`，版本 1.22.0，UUID `4dae2740…`）。市场提示“文件含邮箱”，核查包内无真实邮箱（命中的是 `@beta`、`${uuid}@${libraryUuid}` 等代码字符串与 GitHub 用户名），用户确认继续。“版本管理”显示 v1.22.0 审核中；公开页仍为 v1.21.0，审核通过后才会更新。
+- EdaDesk：2026-11-28 已发布 0.2.4 内置本版（见 edadesk 仓库 `docs/validation/release-0.2.4-20261128.md`）。
 
 ## 现场验证范围
 

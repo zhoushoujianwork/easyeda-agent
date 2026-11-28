@@ -70,7 +70,7 @@ v1.20.0 起每个 Release 都带这个资产；目录条目已经指向它（条
 [#18440](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/18440)）：
 
 ```yaml
-tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/download/v1.20.0/easyeda-agent-dsh.tgz
+tarball: https://github.com/zhoushoujianwork/easyeda-agent/releases/download/v1.22.0/easyeda-agent-dsh.tgz  # #19638 待合并，此前为 v1.20.0
 ```
 
 每个新版本只需把 URL 里的 tag 换成新 Release；资产文件名不变，`checksums.txt` 里有对应 SHA256。
